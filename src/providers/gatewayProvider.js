@@ -55,6 +55,7 @@ const gatewayProvider = {
     if (!pdfFile) return { success: false, error: 'PDF dosyası boş.' }
     const form = new FormData()
     form.append('file', pdfFile)
+    form.append('provider', 'audiveris')
     let res
     try {
       res = await doFetch('/api/jobs', { method: 'POST', body: form })
@@ -63,6 +64,14 @@ const gatewayProvider = {
     }
     const data = await res.json()
     const d = data.data || data
+    if (d.provider && d.provider !== 'audiveris') {
+      return {
+        success: false,
+        error: `Sağlayıcı uyumsuzluğu: istek 'audiveris' gönderildi, sunucu '${d.provider}' döndürdü.`,
+        code: 'PROVIDER_MISMATCH',
+        provider: d.provider,
+      }
+    }
     return { success: true, jobId: d.jobId, status: d.status, provider: d.provider }
   },
 

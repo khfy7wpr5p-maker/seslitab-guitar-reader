@@ -96,7 +96,7 @@ describe('gatewayProvider — HTTP istemcisi', async () => {
       const key = `${opts?.method || 'GET'} ${url}`
       const r = responses[key] || responses[url]
       if (!r) return makeResponse({ success: false, error: { code: 'NOT_FOUND', message: 'Stub yok: ' + key } }, { status: 404 })
-      return typeof r === 'function' ? r() : r
+      return typeof r === 'function' ? r(opts) : r
     }
   }
 
@@ -111,13 +111,73 @@ describe('gatewayProvider — HTTP istemcisi', async () => {
 
   test('1. createJob: geçerli PDF ile iş oluşturur', async () => {
     stubFetch({
-      'POST http://x/api/jobs': makeResponse({ success: true, data: { jobId: 'job_123', status: 'queued' } }, { status: 201 }),
+      'POST http://x/api/jobs': makeResponse({ success: true, data: { jobId: 'job_123', status: 'queued', provider: 'audiveris' } }, { status: 201 }),
     })
     const fakeFile = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
     const r = await provider.uploadPdf(fakeFile)
     assert.equal(r.success, true)
     assert.equal(r.jobId, 'job_123')
+    assert.equal(r.provider, 'audiveris')
     assert.equal(fetchCalls, 1)
+  })
+
+  test('1a. FormData includes provider=audiveris', async () => {
+    let capturedBody = null
+    stubFetch({
+      'POST http://x/api/jobs': (opts) => {
+        capturedBody = opts?.body
+        return makeResponse({ success: true, data: { jobId: 'job_p', status: 'queued', provider: 'audiveris' } }, { status: 201 })
+      },
+    })
+    const fakeFile = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+    await provider.uploadPdf(fakeFile)
+    assert.ok(capturedBody instanceof FormData, 'Body should be FormData')
+    assert.equal(capturedBody.get('provider'), 'audiveris', 'FormData must include provider=audiveris')
+    assert.ok(capturedBody.get('file') instanceof Blob, 'FormData must include file')
+  })
+
+  test('1b. provider=mock response is rejected with PROVIDER_MISMATCH', async () => {
+    stubFetch({
+      'POST http://x/api/jobs': makeResponse({ success: true, data: { jobId: 'job_m', status: 'queued', provider: 'mock' } }, { status: 201 }),
+    })
+    const fakeFile = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+    const r = await provider.uploadPdf(fakeFile)
+    assert.equal(r.success, false)
+    assert.equal(r.code, 'PROVIDER_MISMATCH')
+    assert.equal(r.provider, 'mock')
+    assert.match(r.error, /audiveris/)
+    assert.match(r.error, /mock/)
+  })
+
+  test('1c. no demo result is shown after a real OMR request returns mock', async () => {
+    // After a PROVIDER_MISMATCH, the result must not be treated as a
+    // successful OMR job — no jobId to poll, no mock MusicXML generated.
+    stubFetch({
+      'POST http://x/api/jobs': makeResponse({ success: true, data: { jobId: 'job_m', status: 'queued', provider: 'mock' } }, { status: 201 }),
+    })
+    const fakeFile = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+    const r = await provider.uploadPdf(fakeFile)
+    assert.equal(r.success, false)
+    assert.equal(r.jobId, undefined, 'Must not return a jobId for polling')
+    assert.equal(r.musicXml, undefined, 'Must not return mock MusicXML')
+  })
+
+  test('1d. successful audiveris response continues normally', async () => {
+    stubFetch({
+      'POST http://x/api/jobs': makeResponse({ success: true, data: { jobId: 'job_ok', status: 'queued', provider: 'audiveris' } }, { status: 201 }),
+      'GET http://x/api/jobs/job_ok/status': makeResponse({ success: true, data: { jobId: 'job_ok', status: 'completed', progress: 100 } }),
+      'GET http://x/api/jobs/job_ok/musicxml': makeResponse('<?xml version="1.0"?><score-partwise/>', { contentType: 'application/xml' }),
+    })
+    const fakeFile = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+    const up = await provider.uploadPdf(fakeFile)
+    assert.equal(up.success, true)
+    assert.equal(up.provider, 'audiveris')
+    const st = await provider.getStatus('job_ok')
+    assert.equal(st.success, true)
+    assert.equal(st.status, 'completed')
+    const dl = await provider.downloadMusicXML('job_ok')
+    assert.equal(dl.success, true)
+    assert.ok(dl.musicXml.includes('<score-partwise'))
   })
 
   test('2. getJobStatus: durum döner', async () => {
@@ -156,11 +216,16 @@ describe('gatewayProvider — HTTP istemcisi', async () => {
     assert.equal(r.success, true)
   })
 
-  test('6. Gateway URL eksikse hata döner', async () => {
+  test('6. Gateway URL eksikse production fallback kullanılır', async () => {
     delete globalThis.__OMR_GATEWAY_URL__
+    let calledUrl = null
+    globalThis.fetch = async (url, opts) => {
+      calledUrl = url
+      return makeResponse({ success: true, data: { jobId: 'job_fb', status: 'queued', provider: 'audiveris' } }, { status: 201 })
+    }
     const r = await provider.uploadPdf(new Blob(['x']))
-    assert.equal(r.success, false)
-    assert.match(r.error, /yapılandırılmamış|VITE_OMR_GATEWAY_URL/i)
+    assert.equal(r.success, true)
+    assert.ok(calledUrl && calledUrl.includes('seslitab-omr.onrender.com'), 'Production URL fallback kullanılmalı: ' + calledUrl)
   })
 
   test('7. Ağ hatası: NETWORK_ERROR döner', async () => {
@@ -186,11 +251,12 @@ describe('gatewayProvider — HTTP istemcisi', async () => {
     assert.match(r.error, /bağlanılamadı/i)
   })
 
-  test('8c. URL eksik mesajı Türkçe', async () => {
+  test('8c. Production fallback URL ile ağ hatası Türkçe', async () => {
     delete globalThis.__OMR_GATEWAY_URL__
+    globalThis.fetch = async () => { throw new Error('connection refused') }
     const r = await provider.uploadPdf(new Blob(['x']))
     assert.equal(r.success, false)
-    assert.match(r.error, /yapılandırılmamış/i)
+    assert.match(r.error, /bağlanılamadı/i)
   })
 
   test('8d. Boş MusicXML mesajı Türkçe', async () => {
