@@ -1,7 +1,7 @@
 // Audiveris runtime preflight — safe, non-destructive checks for the health endpoint.
 //
 // Verifies that the Audiveris executable exists, is executable, and responds to
-// a headless `-batch -version` invocation, without running a full transcription.
+// a headless `-version` invocation, without running a full transcription.
 // Exposes only safe information (no env vars, no process stderr beyond the
 // version output).
 
@@ -60,7 +60,7 @@ function runBatchVersion(command, timeoutMs) {
     let settled = false
     let stdout = ''
     let stderr = ''
-    const child = spawn(command, ['-batch', '-version'], {
+    const child = spawn(command, ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, HOME: process.env.HOME || '/var/lib/audiveris' },
     })
@@ -106,7 +106,7 @@ async function runAudiverisPreflight(config = parseConfig()) {
       audiverisCommand: '',
       exists: false,
       executable: false,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: safeError('MISSING_CONFIG', 'Audiveris komutu yapılandırılmamış.'),
     }
@@ -118,7 +118,7 @@ async function runAudiverisPreflight(config = parseConfig()) {
       audiverisCommand: command,
       exists: false,
       executable: false,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: safeError('INVALID_TIMEOUT', 'Audiveris zaman aşımı yapılandırması geçersiz.'),
     }
@@ -138,7 +138,7 @@ async function runAudiverisPreflight(config = parseConfig()) {
       audiverisCommand: command,
       exists: execResult.exists ?? false,
       executable: execResult.executable ?? false,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: safeError(execResult.code, msg),
     }
@@ -151,7 +151,7 @@ async function runAudiverisPreflight(config = parseConfig()) {
       audiverisCommand: command,
       exists: true,
       executable: true,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: safeError('TMP_NOT_WRITABLE', 'Geçici dizin yazılabilir değil.'),
     }
@@ -164,16 +164,16 @@ async function runAudiverisPreflight(config = parseConfig()) {
   const batchResult = await runBatchVersion(command, batchTimeout)
   if (!batchResult.ok) {
     const msg = batchResult.code === 'TIMEOUT'
-      ? 'Audiveris -batch -version zaman aşımına uğradı.'
+      ? 'Audiveris -version zaman aşımına uğradı.'
       : batchResult.code === 'SPAWN_ERROR'
         ? `Audiveris süreci başlatılamadı: ${batchResult.error || ''}`
-        : `Audiveris -batch -version başarısız (çıkış kodu ${batchResult.exitCode}).`
+        : `Audiveris -version başarısız (çıkış kodu ${batchResult.exitCode}).`
     return {
       available: false,
       audiverisCommand: command,
       exists: true,
       executable: true,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: (batchResult.stdout || '').trim(),
       error: safeError(batchResult.code, msg),
     }
@@ -184,7 +184,7 @@ async function runAudiverisPreflight(config = parseConfig()) {
     audiverisCommand: command,
     exists: true,
     executable: true,
-    batchVersionCheck: true,
+    versionCheck: true,
     versionOutput: (batchResult.stdout || '').trim(),
   }
   cachedResult = result
@@ -197,7 +197,7 @@ function safePreflightResponse(result) {
     audiverisCommand: result.audiverisCommand,
     exists: result.exists ?? false,
     executable: result.executable ?? false,
-    batchVersionCheck: result.batchVersionCheck ?? false,
+    versionCheck: result.versionCheck ?? false,
     versionOutput: result.versionOutput ?? '',
     error: result.available ? undefined : { code: result.error.code, message: result.error.message },
   }

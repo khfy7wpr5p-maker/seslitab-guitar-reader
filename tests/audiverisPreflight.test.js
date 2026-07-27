@@ -16,10 +16,10 @@ describe('Audiveris preflight', () => {
   })
 
   test('1. Audiveris runtime available', async () => {
-    const result = { available: true, audiverisCommand: '/opt/audiveris/bin/Audiveris', exists: true, executable: true, batchVersionCheck: true, versionOutput: 'Audiveris 5.11.0' }
+    const result = { available: true, audiverisCommand: '/opt/audiveris/bin/Audiveris', exists: true, executable: true, versionCheck: true, versionOutput: 'Audiveris 5.11.0' }
     const safe = safePreflightResponse(result)
     assert.equal(safe.audiverisAvailable, true)
-    assert.equal(safe.batchVersionCheck, true)
+    assert.equal(safe.versionCheck, true)
     assert.equal(safe.versionOutput, 'Audiveris 5.11.0')
     assert.equal(safe.error, undefined)
   })
@@ -30,7 +30,7 @@ describe('Audiveris preflight', () => {
     assert.equal(result.error.code, 'EXECUTABLE_NOT_FOUND')
     assert.equal(result.exists, false)
     assert.equal(result.executable, false)
-    assert.equal(result.batchVersionCheck, false)
+    assert.equal(result.versionCheck, false)
     assert.equal(result.audiverisCommand, '/nonexistent/audiveris')
   })
 
@@ -43,7 +43,7 @@ describe('Audiveris preflight', () => {
     assert.equal(result.error.code, 'EXECUTABLE_NOT_FOUND')
     assert.equal(result.exists, true)
     assert.equal(result.executable, false)
-    assert.equal(result.batchVersionCheck, false)
+    assert.equal(result.versionCheck, false)
   })
 
   test('4. Temporary directory not writable', async () => {
@@ -57,13 +57,13 @@ describe('Audiveris preflight', () => {
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: false,
       executable: false,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: { code: 'EXECUTABLE_NOT_FOUND', message: '/usr/local/bin/audiveris not found', stack: 'at ...' },
     }
     const safe = safePreflightResponse(result)
     assert.equal(safe.audiverisAvailable, false)
-    assert.equal(safe.batchVersionCheck, false)
+    assert.equal(safe.versionCheck, false)
     assert.equal(safe.error.code, 'EXECUTABLE_NOT_FOUND')
     assert.equal(safe.error.stack, undefined, 'Stack must not be exposed')
   })
@@ -74,7 +74,7 @@ describe('Audiveris preflight', () => {
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: false,
       executable: false,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: { code: 'EXECUTABLE_NOT_FOUND', message: 'Audiveris çalıştırılabilir dosyası bulunamadı.' },
     }
@@ -89,7 +89,7 @@ describe('Audiveris preflight', () => {
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: false,
       executable: false,
-      batchVersionCheck: false,
+      versionCheck: false,
       versionOutput: '',
       error: { code: 'SPAWN_ERROR', message: 'Audiveris süreci başlatılamadı.', stdout: 'Java exception...', stderr: 'Error: ...' },
     }
@@ -112,7 +112,7 @@ describe('Audiveris preflight', () => {
     assert.equal(result.available, false)
     assert.equal(result.error.code, 'MISSING_CONFIG')
     assert.equal(result.audiverisCommand, '')
-    assert.equal(result.batchVersionCheck, false)
+    assert.equal(result.versionCheck, false)
   })
 
   test('10. Invalid timeout returns safe error', async () => {
@@ -120,7 +120,7 @@ describe('Audiveris preflight', () => {
     assert.equal(result.available, false)
     assert.equal(result.error.code, 'INVALID_TIMEOUT')
     assert.equal(result.audiverisCommand, 'audiveris')
-    assert.equal(result.batchVersionCheck, false)
+    assert.equal(result.versionCheck, false)
   })
 
   test('11. checkExecutable with real executable file', async () => {
@@ -138,13 +138,13 @@ describe('Audiveris preflight', () => {
     assert.equal(result.executable, false)
   })
 
-  test('13. safePreflightResponse exposes batch version fields', () => {
+  test('13. safePreflightResponse exposes version check fields', () => {
     const result = {
       available: true,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: true,
       executable: true,
-      batchVersionCheck: true,
+      versionCheck: true,
       versionOutput: 'Audiveris 5.11.0',
     }
     const safe = safePreflightResponse(result)
@@ -152,7 +152,7 @@ describe('Audiveris preflight', () => {
     assert.equal(safe.audiverisCommand, '/opt/audiveris/bin/Audiveris')
     assert.equal(safe.exists, true)
     assert.equal(safe.executable, true)
-    assert.equal(safe.batchVersionCheck, true)
+    assert.equal(safe.versionCheck, true)
     assert.equal(safe.versionOutput, 'Audiveris 5.11.0')
     assert.equal(safe.error, undefined)
   })

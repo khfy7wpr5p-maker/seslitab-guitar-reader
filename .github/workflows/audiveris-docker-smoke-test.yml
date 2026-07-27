@@ -64,9 +64,9 @@ jobs:
             exit 1
           fi
 
-      - name: Run Audiveris -batch -version inside container
+      - name: Run Audiveris -version inside container
         run: |
-          docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -batch -version
+          docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -version
 
       - name: Cleanup
         if: always()

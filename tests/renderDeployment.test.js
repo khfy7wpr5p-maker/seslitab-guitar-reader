@@ -171,8 +171,10 @@ describe('Dockerfile security', () => {
     assert.ok(dockerfile.includes('test -x /opt/audiveris/bin/Audiveris'),
       'Must require /opt/audiveris/bin/Audiveris after extraction')
     // Must run a strict headless smoke test
-    assert.ok(dockerfile.includes('Audiveris -batch -version'),
-      'Must run headless -batch -version smoke test')
+    assert.ok(dockerfile.includes('Audiveris -version'),
+      'Must run headless -version smoke test')
+    assert.ok(!dockerfile.includes('Audiveris -batch -version'),
+      'Must not use -batch -version (triggers native OCR initialization)')
     // Must NOT use apt/dpkg package installation
     assert.ok(!dockerfile.includes('apt-get install -y --no-install-recommends /tmp/audiveris.deb'),
       'Must not install .deb with apt-get install')

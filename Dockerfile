@@ -49,10 +49,10 @@ RUN set -eux; \
 ENV HOME=/var/lib/audiveris
 RUN mkdir -p /var/lib/audiveris && chmod 0755 /var/lib/audiveris
 
-# Strict headless build-time smoke test: -batch -version must exit 0 without
-# launching a graphical interface. Failure stops the build and preserves
-# the complete error output.
-RUN /opt/audiveris/bin/Audiveris -batch -version
+# Strict headless build-time smoke test: -version must exit 0 without
+# launching a graphical interface or initializing batch transcription.
+# Failure stops the build and preserves the complete error output.
+RUN timeout 30s /opt/audiveris/bin/Audiveris -version
 
 # Create non-root application user
 RUN groupadd -r seslitab && useradd -r -g seslitab -d /home/seslitab -m seslitab
