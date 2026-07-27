@@ -6,11 +6,13 @@
 
 import { assertProvider } from './IOmrProvider.js'
 
+const PRODUCTION_GATEWAY_URL = 'https://seslitab-omr.onrender.com'
+
 function getBaseUrl() {
   // Allow tests to inject a base URL without relying on Vite's import.meta.env.
   if (globalThis.__OMR_GATEWAY_URL__ !== undefined && globalThis.__OMR_GATEWAY_URL__ !== '') return globalThis.__OMR_GATEWAY_URL__
   if (import.meta.env && import.meta.env.VITE_OMR_GATEWAY_URL) return import.meta.env.VITE_OMR_GATEWAY_URL
-  return ''
+  return PRODUCTION_GATEWAY_URL
 }
 
 function gatewayUrl() {
