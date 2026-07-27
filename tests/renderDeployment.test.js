@@ -134,7 +134,12 @@ describe('Render Blueprint', () => {
 describe('Dockerfile security', () => {
   test('14. Uses non-root user', async () => {
     const dockerfile = readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
-    assert.ok(dockerfile.includes('USER seslitab'), 'Must use non-root user')
+    const entrypoint = readFileSync(path.join(ROOT, 'docker-entrypoint.sh'), 'utf8')
+    // The container starts as root so the entrypoint can fix up the Render
+    // disk mount, then drops permanently to seslitab via runuser.
+    assert.ok(dockerfile.includes('ENTRYPOINT'), 'Must use ENTRYPOINT for root-to-seslitab drop')
+    assert.ok(entrypoint.includes('runuser -u seslitab'), 'Entrypoint must drop to seslitab user')
+    assert.ok(!entrypoint.includes('sudo'), 'Entrypoint must not use sudo')
     assert.ok(dockerfile.includes('groupadd'), 'Must create user group')
     assert.ok(dockerfile.includes('useradd'), 'Must create user')
   })

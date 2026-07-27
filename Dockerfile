@@ -98,10 +98,12 @@ RUN mkdir -p /app/storage/jobs && chown -R seslitab:seslitab /app
 
 # Copy the entrypoint script that creates the persistent storage directory
 # tree at runtime (as root) before dropping to the seslitab user.
+# The container starts as root so the entrypoint can fix up the Render disk
+# mount point, then runuser drops permanently to seslitab before exec'ing Node.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
-USER seslitab
+# No USER instruction here — the entrypoint drops to seslitab via runuser.
 
 # Audiveris user configuration/cache under the persistent disk
 ENV HOME=/var/lib/seslitab
