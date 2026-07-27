@@ -151,12 +151,35 @@ describe('Dockerfile security', () => {
     assert.ok(!dockerfile.includes('/latest/'), 'Must not use latest URL')
   })
 
-  test('17. Verifies Audiveris executable during build', async () => {
+  test('17. Installs Audiveris .deb with strict, non-suppressed installation', async () => {
     const dockerfile = readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
-    assert.ok(dockerfile.includes('/opt/audiveris/bin/Audiveris'), 'Must reference executable path')
-    assert.ok(!dockerfile.includes('dpkg -s audiveris | grep -q'), 'Must not hard-fail on dpkg check')
-    assert.ok(!/test -x \/opt\/audiveris\/bin\/Audiveris\s*\\/.test(dockerfile.replace(/\\\n/g, '\n')), 'Must not hard-fail on test -x')
-    assert.ok(dockerfile.includes('Audiveris build-time diagnostics'), 'Must include non-failing diagnostics')
-    assert.ok(dockerfile.includes('ln -sf'), 'Must create symlink if executable found elsewhere')
+    // Must use the official Ubuntu 24.04 x86_64 release asset name
+    assert.ok(dockerfile.includes('Audiveris-${AUDIVERIS_VERSION}-ubuntu24.04-x86_64.deb'),
+      'Must use official Audiveris-5.11.0-ubuntu24.04-x86_64.deb asset name')
+    assert.ok(dockerfile.includes('https://github.com/Audiveris/audiveris/releases/download/'),
+      'Must use official GitHub release URL')
+    // Must install the local .deb directly with apt/apt-get (resolves dependencies)
+    assert.ok(dockerfile.includes('apt-get install -y --no-install-recommends /tmp/audiveris.deb'),
+      'Must install local .deb directly with apt-get install')
+    // Must verify the package is installed after installation
+    assert.ok(dockerfile.includes("dpkg-query -W -f='${Status}\\n' audiveris"),
+      'Must verify audiveris package is installed')
+    assert.ok(dockerfile.includes("grep -Fx 'install ok installed'"),
+      'Must confirm package status is install ok installed')
+    // Must require /opt/audiveris/bin/Audiveris after installation
+    assert.ok(dockerfile.includes('test -x /opt/audiveris/bin/Audiveris'),
+      'Must require /opt/audiveris/bin/Audiveris after installation')
+    // Must NOT use the broken dpkg -i || apt-get install -f pattern
+    assert.ok(!/dpkg\s+-i\s+.*\|\|\s*apt-get\s+install\s+-f/.test(dockerfile),
+      'Must not use dpkg -i || apt-get install -f fallback pattern')
+    // Must NOT suppress installation errors with 2>/dev/null
+    assert.ok(!/dpkg\s+-i\s+.*2>\/dev\/null/.test(dockerfile),
+      'Must not suppress dpkg installation errors with 2>/dev/null')
+    // Must NOT create symlinks to hide a failed installation
+    assert.ok(!dockerfile.includes('ln -sf'),
+      'Must not create symlinks to hide failed installation')
+    // Must NOT run the Audiveris GUI during build
+    assert.ok(!/Audiveris\s+-version/.test(dockerfile),
+      'Must not execute Audiveris GUI during build')
   })
 })

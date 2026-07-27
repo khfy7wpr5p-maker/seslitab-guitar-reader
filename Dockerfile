@@ -11,43 +11,28 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# OS dependencies: curl for download, dpkg for install, ca-certificates for HTTPS
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+ARG AUDIVERIS_VERSION=5.11.0
+ARG AUDIVERIS_DEB=Audiveris-${AUDIVERIS_VERSION}-ubuntu24.04-x86_64.deb
 
-# Install official Audiveris 5.11.0 from the GitHub release .deb
-# Ubuntu 24.04 x86_64 asset. HTTPS only; fail build on download error.
-RUN curl -fL --retry 3 -o /tmp/audiveris.deb \
-    "https://github.com/Audiveris/audiveris/releases/download/5.11.0/audiveris-5.11.0-linux-x86_64.deb" \
-  && dpkg -i /tmp/audiveris.deb 2>/dev/null || apt-get update && apt-get install -f -y \
-  && rm -f /tmp/audiveris.deb \
-  && rm -rf /var/lib/apt/lists/*
-
-# Non-failing Audiveris installation diagnostics.
-# Audiveris is a Java GUI app; we must NOT run it or hard-fail the build if the
-# executable/package check cannot be confirmed at build time. Real availability
-# validation happens at runtime via the /health endpoint.
-RUN echo "=== Audiveris build-time diagnostics ===" \
-  && (dpkg -s audiveris 2>/dev/null || echo "dpkg: audiveris package not found") \
-  && (ls -la /opt/audiveris/bin 2>/dev/null || echo "dir /opt/audiveris/bin not found") \
-  && (find / -name Audiveris -type f 2>/dev/null | head -20 || echo "find: no Audiveris executable found") \
-  && echo "=== End Audiveris diagnostics ==="
-
-# If Audiveris was installed to a non-standard path, symlink it to the expected location.
-# Allow failure silently if the expected path already exists or no alternative is found.
-RUN if [ ! -x /opt/audiveris/bin/Audiveris ]; then \
-      FOUND=$(find / -name Audiveris -type f -perm -u+x 2>/dev/null | head -1 || true); \
-      if [ -n "$FOUND" ]; then \
-        mkdir -p /opt/audiveris/bin && ln -sf "$FOUND" /opt/audiveris/bin/Audiveris \
-        && echo "Symlinked $FOUND -> /opt/audiveris/bin/Audiveris"; \
-      else \
-        echo "Audiveris executable not found at build time; will be validated at runtime"; \
-      fi; \
-    else \
-      echo "Audiveris executable confirmed at /opt/audiveris/bin/Audiveris"; \
-    fi
+# Install official Audiveris 5.11.0 from the GitHub release .deb.
+# Uses the Ubuntu 24.04 x86_64 release asset. Every step must succeed or the
+# build stops — no silent installation failures, no apt-get install -f
+# fallback, no error suppression. The Audiveris GUI is never executed here.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    curl -fL --retry 3 --retry-all-errors \
+      -o /tmp/audiveris.deb \
+      "https://github.com/Audiveris/audiveris/releases/download/${AUDIVERIS_VERSION}/${AUDIVERIS_DEB}"; \
+    test -s /tmp/audiveris.deb; \
+    echo "Downloaded Audiveris package metadata:"; \
+    dpkg-deb -f /tmp/audiveris.deb Package Version Architecture; \
+    apt-get install -y --no-install-recommends /tmp/audiveris.deb; \
+    dpkg-query -W -f='${Status}\n' audiveris | grep -Fx 'install ok installed'; \
+    test -x /opt/audiveris/bin/Audiveris; \
+    ls -la /opt/audiveris/bin/Audiveris; \
+    rm -f /tmp/audiveris.deb; \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root application user
 RUN groupadd -r seslitab && useradd -r -g seslitab -d /home/seslitab -m seslitab
