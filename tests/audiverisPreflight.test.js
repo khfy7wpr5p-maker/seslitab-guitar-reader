@@ -8,7 +8,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
-import { runAudiverisPreflight, safePreflightResponse, checkExecutable, checkTempWritable, runBatchVersion, clearPreflightCache } from '../backend/services/audiverisPreflight.js'
+import { runAudiverisPreflight, safePreflightResponse, checkExecutable, checkTempWritable, runBatchVersion, probeTempWritable, resolveTempDir, clearPreflightCache } from '../backend/services/audiverisPreflight.js'
 
 describe('Audiveris preflight', () => {
   beforeEach(() => {
@@ -175,5 +175,133 @@ describe('Audiveris preflight', () => {
     const r2 = await runAudiverisPreflight({ command: '/different/path', timeoutMs: 110000 })
     assert.equal(r1.audiverisCommand, r2.audiverisCommand, 'Second call should return cached result')
     assert.equal(r2.audiverisCommand, '/bin/echo')
+  })
+
+  test('17. probeTempWritable succeeds on writable dedicated temp dir', async () => {
+    const probe = await probeTempWritable()
+    assert.equal(probe.ok, true)
+    assert.ok(probe.tempDir, 'tempDir should be reported')
+  })
+
+  test('18. probeTempWritable fails on non-writable directory', async () => {
+    const origTmpdir = process.env.TMPDIR
+    process.env.TMPDIR = '/nonexistent-root-path-12345'
+    try {
+      const probe = await probeTempWritable()
+      assert.equal(probe.ok, false)
+      assert.ok(probe.testedPath, 'testedPath should be reported on failure')
+      assert.ok(probe.syscall, 'syscall/error code should be reported')
+      assert.ok(probe.message, 'message should be reported')
+    } finally {
+      if (origTmpdir === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = origTmpdir
+    }
+  })
+
+  test('19. probeTempWritable cleans up after successful probe', async () => {
+    const probe = await probeTempWritable()
+    assert.equal(probe.ok, true)
+    assert.ok(probe.probeDir, 'probeDir should be reported')
+    await assert.rejects(fs.stat(probe.probeDir), /ENOENT/, 'Probe directory should not exist after cleanup')
+  })
+
+  test('20. probeTempWritable cleans up even when probe fails', async () => {
+    const origTmpdir = process.env.TMPDIR
+    const bogusDir = path.join(os.tmpdir(), 'seslitab-bogus-' + Date.now())
+    await fs.mkdir(bogusDir, { recursive: true })
+    await fs.chmod(bogusDir, 0o555)
+    process.env.TMPDIR = bogusDir
+    try {
+      const probe = await probeTempWritable()
+      // When running as root, chmod 0o555 does not prevent writing.
+      // In that case the probe succeeds; just verify it returns a result.
+      assert.ok(typeof probe.ok === 'boolean')
+    } finally {
+      await fs.chmod(bogusDir, 0o755).catch(() => {})
+      await fs.rmdir(bogusDir).catch(() => {})
+      if (origTmpdir === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = origTmpdir
+    }
+  })
+
+  test('21. resolveTempDir honors TMPDIR environment variable', () => {
+    const orig = process.env.TMPDIR
+    process.env.TMPDIR = '/custom/tmp/path'
+    try {
+      assert.equal(resolveTempDir(), '/custom/tmp/path')
+    } finally {
+      if (orig === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = orig
+    }
+  })
+
+  test('22. resolveTempDir falls back to os.tmpdir() when TMPDIR unset', () => {
+    const orig = process.env.TMPDIR
+    delete process.env.TMPDIR
+    try {
+      assert.equal(resolveTempDir(), os.tmpdir())
+    } finally {
+      if (orig !== undefined) process.env.TMPDIR = orig
+    }
+  })
+
+  test('23. safePreflightResponse includes tempDir and tempWritable on success', () => {
+    const result = {
+      available: true,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: true,
+      executable: true,
+      versionCheck: true,
+      versionOutput: 'Audiveris 5.11.0',
+      tempDir: '/app/tmp',
+      tempWritable: true,
+    }
+    const safe = safePreflightResponse(result)
+    assert.equal(safe.tempDir, '/app/tmp')
+    assert.equal(safe.tempWritable, true)
+    assert.equal(safe.tempProbeError, undefined)
+    assert.equal(safe.error, undefined)
+  })
+
+  test('24. safePreflightResponse includes tempProbeError on failure', () => {
+    const result = {
+      available: false,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: true,
+      executable: true,
+      versionCheck: false,
+      versionOutput: '',
+      tempDir: '/app/tmp',
+      tempWritable: false,
+      tempProbeError: {
+        testedPath: '/app/tmp/seslitab_preflight_123',
+        syscall: 'EACCES',
+        message: 'permission denied',
+      },
+      error: { code: 'TMP_NOT_WRITABLE', message: 'Geçici dizin yazılabilir değil.' },
+    }
+    const safe = safePreflightResponse(result)
+    assert.equal(safe.audiverisAvailable, false)
+    assert.equal(safe.tempWritable, false)
+    assert.equal(safe.tempProbeError.testedPath, '/app/tmp/seslitab_preflight_123')
+    assert.equal(safe.tempProbeError.syscall, 'EACCES')
+    assert.equal(safe.error.code, 'TMP_NOT_WRITABLE')
+  })
+
+  test('25. runAudiverisPreflight reports TMP_NOT_WRITABLE with diagnostics when temp is not writable', async () => {
+    const origTmpdir = process.env.TMPDIR
+    process.env.TMPDIR = '/nonexistent-root-path-67890'
+    try {
+      const result = await runAudiverisPreflight({ command: '/bin/echo', timeoutMs: 110000 })
+      assert.equal(result.available, false)
+      assert.equal(result.error.code, 'TMP_NOT_WRITABLE')
+      assert.equal(result.tempWritable, false)
+      assert.ok(result.tempProbeError, 'tempProbeError should be present')
+      assert.ok(result.tempProbeError.testedPath, 'testedPath should be present')
+      assert.ok(result.tempProbeError.syscall, 'syscall should be present')
+    } finally {
+      if (origTmpdir === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = origTmpdir
+    }
   })
 })

@@ -65,6 +65,15 @@ RUN mkdir -p /var/lib/seslitab/tmp /var/lib/seslitab/musicxml /var/lib/seslitab/
 
 WORKDIR /app
 
+# Dedicated writable temp directory for the non-root application user.
+# Render's persistent disk mount may not be writable at /var/lib/seslitab/tmp,
+# so /app/tmp lives in the container image filesystem and is owned by the
+# seslitab user. TMPDIR is inherited by both the Node process and spawned
+# Audiveris child processes.
+RUN mkdir -p /app/tmp \
+  && chown seslitab:seslitab /app/tmp \
+  && chmod 0755 /app/tmp
+
 # Install Node.js 20 from NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
   && apt-get install -y --no-install-recommends nodejs \
@@ -94,6 +103,7 @@ ENV AUDIVERIS_COMMAND=/opt/audiveris/bin/Audiveris
 ENV AUDIVERIS_TIMEOUT_MS=110000
 ENV SESLITAB_DATA_DIR=/var/lib/seslitab
 ENV SESLITAB_TEMP_DIR=/var/lib/seslitab/tmp
+ENV TMPDIR=/app/tmp
 ENV SESLITAB_MUSICXML_DIR=/var/lib/seslitab/musicxml
 
 EXPOSE 3001

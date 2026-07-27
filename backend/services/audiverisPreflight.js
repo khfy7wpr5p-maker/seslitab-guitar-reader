@@ -8,6 +8,7 @@
 import { promises as fs } from 'node:fs'
 import { spawn } from 'node:child_process'
 import os from 'node:os'
+import path from 'node:path'
 import { parseConfig } from '../providers/AudiverisProvider.js'
 import { GATEWAY_CONFIG } from '../config/gatewayConfig.js'
 
@@ -22,18 +23,47 @@ function safeError(category, message) {
   return err
 }
 
-async function checkTempWritable() {
-  const base = GATEWAY_CONFIG.tempDir || os.tmpdir()
-  const dir = `${base}/seslitab_preflight_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+function resolveTempDir() {
+  const env = process.env.TMPDIR
+  if (env && env.trim()) return env.trim()
+  const cfg = GATEWAY_CONFIG.tempDir
+  if (cfg && cfg.trim()) return cfg.trim()
+  return os.tmpdir()
+}
+
+async function probeTempWritable() {
+  const base = resolveTempDir()
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const dir = path.join(base, `seslitab_preflight_${stamp}`)
+  let created = false
+  const testFile = path.join(dir, 'probe.tmp')
   try {
     await fs.mkdir(dir, { recursive: true })
-    const testFile = `${dir}/test.tmp`
-    await fs.writeFile(testFile, 'ok')
-    await fs.unlink(testFile)
-    await fs.rmdir(dir)
-    return true
-  } catch {
-    return false
+    created = true
+    const payload = `seslitab-probe-${stamp}`
+    await fs.writeFile(testFile, payload, { mode: 0o600 })
+    const readBack = await fs.readFile(testFile, 'utf8')
+    if (readBack !== payload) {
+      throw Object.assign(new Error('Yazılan veri geri okunamadı.'), { code: 'ECONTENT' })
+    }
+    const stat = await fs.stat(testFile)
+    if (!stat.isFile() || stat.size !== Buffer.byteLength(payload)) {
+      throw Object.assign(new Error('Geçici dosya boyutu uyuşmuyor.'), { code: 'ESIZE' })
+    }
+    return { ok: true, tempDir: base, probeDir: dir }
+  } catch (err) {
+    return {
+      ok: false,
+      tempDir: base,
+      testedPath: dir,
+      syscall: err.code || err.syscall || 'UNKNOWN',
+      message: err.message || 'Geçici dizin yazılabilir değil.',
+    }
+  } finally {
+    if (created) {
+      try { await fs.unlink(testFile).catch(() => {}) } catch {}
+      try { await fs.rmdir(dir).catch(() => {}) } catch {}
+    }
   }
 }
 
@@ -62,7 +92,11 @@ function runBatchVersion(command, timeoutMs) {
     let stderr = ''
     const child = spawn(command, ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, HOME: process.env.HOME || '/var/lib/audiveris' },
+      env: {
+        ...process.env,
+        HOME: process.env.HOME || '/var/lib/audiveris',
+        TMPDIR: process.env.TMPDIR || os.tmpdir(),
+      },
     })
     const timer = setTimeout(() => {
       if (!settled) {
@@ -144,8 +178,8 @@ async function runAudiverisPreflight(config = parseConfig()) {
     }
   }
 
-  const tempOk = await checkTempWritable()
-  if (!tempOk) {
+  const tempProbe = await probeTempWritable()
+  if (!tempProbe.ok) {
     return {
       available: false,
       audiverisCommand: command,
@@ -153,6 +187,13 @@ async function runAudiverisPreflight(config = parseConfig()) {
       executable: true,
       versionCheck: false,
       versionOutput: '',
+      tempDir: tempProbe.tempDir,
+      tempWritable: false,
+      tempProbeError: {
+        testedPath: tempProbe.testedPath,
+        syscall: tempProbe.syscall,
+        message: tempProbe.message,
+      },
       error: safeError('TMP_NOT_WRITABLE', 'Geçici dizin yazılabilir değil.'),
     }
   }
@@ -175,6 +216,8 @@ async function runAudiverisPreflight(config = parseConfig()) {
       executable: true,
       versionCheck: false,
       versionOutput: (batchResult.stdout || '').trim(),
+      tempDir: tempProbe.tempDir,
+      tempWritable: true,
       error: safeError(batchResult.code, msg),
     }
   }
@@ -186,6 +229,8 @@ async function runAudiverisPreflight(config = parseConfig()) {
     executable: true,
     versionCheck: true,
     versionOutput: (batchResult.stdout || '').trim(),
+    tempDir: tempProbe.tempDir,
+    tempWritable: true,
   }
   cachedResult = result
   return result
@@ -199,6 +244,9 @@ function safePreflightResponse(result) {
     executable: result.executable ?? false,
     versionCheck: result.versionCheck ?? false,
     versionOutput: result.versionOutput ?? '',
+    tempDir: result.tempDir,
+    tempWritable: result.tempWritable ?? false,
+    tempProbeError: result.tempProbeError,
     error: result.available ? undefined : { code: result.error.code, message: result.error.message },
   }
 }
@@ -207,11 +255,18 @@ function clearPreflightCache() {
   cachedResult = null
 }
 
+async function checkTempWritable() {
+  const probe = await probeTempWritable()
+  return probe.ok
+}
+
 export {
   runAudiverisPreflight,
   safePreflightResponse,
   checkExecutable,
   checkTempWritable,
+  probeTempWritable,
+  resolveTempDir,
   runBatchVersion,
   clearPreflightCache,
 }

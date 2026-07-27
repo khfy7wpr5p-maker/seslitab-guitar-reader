@@ -64,6 +64,16 @@ jobs:
             exit 1
           fi
 
+      - name: Verify tempWritable is true
+        run: |
+          TEMP_WRITABLE=$(jq -r '.data.runtime.tempWritable' /tmp/health.json)
+          echo "tempWritable=$TEMP_WRITABLE"
+          if [ "$TEMP_WRITABLE" != "true" ]; then
+            echo "::error::tempWritable is not true"
+            cat /tmp/health.json
+            exit 1
+          fi
+
       - name: Run Audiveris -version inside container
         run: |
           docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -version
