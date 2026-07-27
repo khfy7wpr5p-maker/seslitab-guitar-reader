@@ -1,0 +1,286 @@
+name: E2E — Real OMR via Render API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e-render-omr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RENDER_BASE_URL: https://seslitab-omr.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # ── B. Health check ──────────────────────────────────────────
+      - name: Verify production health endpoint
+        id: health
+        run: |
+          set -euo pipefail
+          echo "=== Fetching /health ==="
+          curl -sS --fail-with-body --retry 3 --retry-delay 5 \
+            "${RENDER_BASE_URL}/health" -o /tmp/health.json
+          echo "--- health.json ---"
+          cat /tmp/health.json
+          echo
+          echo "=== Assertions ==="
+          STATUS=$(jq -r '.data.status' /tmp/health.json)
+          PROVIDER=$(jq -r '.data.provider' /tmp/health.json)
+          AVAIL=$(jq -r '.data.runtime.audiverisAvailable' /tmp/health.json)
+          EXISTS=$(jq -r '.data.runtime.exists' /tmp/health.json)
+          EXEC=$(jq -r '.data.runtime.executable' /tmp/health.json)
+          VCHECK=$(jq -r '.data.runtime.versionCheck' /tmp/health.json)
+          TMP_W=$(jq -r '.data.runtime.tempWritable' /tmp/health.json)
+          echo "status=$STATUS provider=$PROVIDER audiverisAvailable=$AVAIL exists=$EXISTS executable=$EXEC versionCheck=$VCHECK tempWritable=$TMP_W"
+          FAIL=0
+          [ "$STATUS" = "ok" ] || { echo "::error::data.status != ok (got $STATUS)"; FAIL=1; }
+          [ "$PROVIDER" = "audiveris" ] || { echo "::error::data.provider != audiveris (got $PROVIDER)"; FAIL=1; }
+          [ "$AVAIL" = "true" ] || { echo "::error::audiverisAvailable != true (got $AVAIL)"; FAIL=1; }
+          [ "$EXISTS" = "true" ] || { echo "::error::exists != true (got $EXISTS)"; FAIL=1; }
+          [ "$EXEC" = "true" ] || { echo "::error::executable != true (got $EXEC)"; FAIL=1; }
+          [ "$VCHECK" = "true" ] || { echo "::error::versionCheck != true (got $VCHECK)"; FAIL=1; }
+          [ "$TMP_W" = "true" ] || { echo "::error::tempWritable != true (got $TMP_W)"; FAIL=1; }
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::Health check failed. Complete response:"
+            cat /tmp/health.json
+            exit 1
+          fi
+          echo "Health check passed."
+
+      # ── C. Download official Audiveris example PDF ───────────────
+      - name: Download official Audiveris example PDF
+        run: |
+          set -euo pipefail
+          URL="https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/Dichterliebe01.pdf"
+          echo "=== Downloading $URL ==="
+          curl -sS --fail --location --retry 3 --retry-delay 5 \
+            -o /tmp/dichterliebe-full.pdf "$URL"
+          echo "Download complete."
+          ls -lh /tmp/dichterliebe-full.pdf
+          SIZE=$(stat -c%s /tmp/dichterliebe-full.pdf)
+          echo "File size: $SIZE bytes"
+          if [ "$SIZE" -le 10240 ]; then
+            echo "::error::File is too small (<= 10 KB): $SIZE bytes"
+            exit 1
+          fi
+          SIG=$(head -c 4 /tmp/dichterliebe-full.pdf)
+          echo "First 4 bytes: '$SIG'"
+          if [ "$SIG" != "%PDF" ]; then
+            echo "::error::PDF signature mismatch. Expected %PDF, got '$SIG'"
+            exit 1
+          fi
+          echo "PDF download verified."
+
+      # ── D. Extract page 1 ─────────────────────────────────────────
+      - name: Install pdftk for page extraction
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pdftk
+
+      - name: Extract page 1 into a new PDF
+        run: |
+          set -euo pipefail
+          echo "=== Extracting page 1 ==="
+          pdftk /tmp/dichterliebe-full.pdf cat 1 output /tmp/dichterliebe-page-1.pdf
+          echo "Extraction complete."
+          ls -lh /tmp/dichterliebe-page-1.pdf
+          SIZE=$(stat -c%s /tmp/dichterliebe-page-1.pdf)
+          echo "Page-1 file size: $SIZE bytes"
+          if [ "$SIZE" -le 5120 ]; then
+            echo "::error::Extracted file is too small (<= 5 KB): $SIZE bytes"
+            exit 1
+          fi
+          SIG=$(head -c 4 /tmp/dichterliebe-page-1.pdf)
+          echo "First 4 bytes: '$SIG'"
+          if [ "$SIG" != "%PDF" ]; then
+            echo "::error::Extracted PDF signature mismatch. Expected %PDF, got '$SIG'"
+            exit 1
+          fi
+          echo "Page extraction verified."
+
+      # ── E. Upload one-page PDF ────────────────────────────────────
+      - name: Upload PDF to Render OMR API
+        id: upload
+        run: |
+          set -euo pipefail
+          echo "=== Uploading /tmp/dichterliebe-page-1.pdf ==="
+          HTTP_CODE=$(curl -sS -o /tmp/upload-response.json -w "%{http_code}" \
+            -D /tmp/upload-headers.txt \
+            -X POST "${RENDER_BASE_URL}/api/v1/pdf/upload" \
+            -F "file=@/tmp/dichterliebe-page-1.pdf" \
+            -F "provider=audiveris")
+          echo "--- HTTP status: $HTTP_CODE ---"
+          echo "--- Upload headers ---"
+          cat /tmp/upload-headers.txt
+          echo "--- Upload response JSON ---"
+          cat /tmp/upload-response.json
+          echo
+          if [ "$HTTP_CODE" != "201" ]; then
+            echo "::error::Upload failed with HTTP $HTTP_CODE (expected 201)"
+            exit 1
+          fi
+          SUCCESS=$(jq -r '.success' /tmp/upload-response.json)
+          JOB_ID=$(jq -r '.data.jobId' /tmp/upload-response.json)
+          JOB_PROVIDER=$(jq -r '.data.provider' /tmp/upload-response.json)
+          JOB_STATUS=$(jq -r '.data.status' /tmp/upload-response.json)
+          echo "success=$SUCCESS jobId=$JOB_ID provider=$JOB_PROVIDER status=$JOB_STATUS"
+          if [ "$SUCCESS" != "true" ]; then
+            echo "::error::Upload success != true"
+            exit 1
+          fi
+          if [ -z "$JOB_ID" ] || [ "$JOB_ID" = "null" ]; then
+            echo "::error::Upload returned empty jobId"
+            exit 1
+          fi
+          if [ "$JOB_PROVIDER" != "audiveris" ]; then
+            echo "::error::Upload provider != audiveris (got $JOB_PROVIDER)"
+            exit 1
+          fi
+          case "$JOB_STATUS" in
+            uploaded|queued|processing) echo "Initial status OK: $JOB_STATUS" ;;
+            *) echo "::error::Unexpected initial status: $JOB_STATUS"; exit 1 ;;
+          esac
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+
+      # ── F. Poll job status ────────────────────────────────────────
+      - name: Poll job status until terminal
+        id: poll
+        run: |
+          set -euo pipefail
+          JOB_ID="${{ steps.upload.outputs.job_id }}"
+          echo "=== Polling status for job $JOB_ID ==="
+          : > /tmp/polling-log.txt
+          FINAL_STATUS=""
+          for i in $(seq 1 36); do
+            curl -sS -o "/tmp/status-$i.json" \
+              "${RENDER_BASE_URL}/api/v1/job/$JOB_ID"
+            STATUS=$(jq -r '.status' "/tmp/status-$i.json")
+            PROGRESS=$(jq -r '.progress // "n/a"' "/tmp/status-$i.json")
+            UPDATED=$(jq -r '.updatedAt // "n/a"' "/tmp/status-$i.json")
+            LINE="Poll #$i: status=$STATUS progress=$PROGRESS updatedAt=$UPDATED"
+            echo "$LINE"
+            echo "$LINE" >> /tmp/polling-log.txt
+            FINAL_STATUS="$STATUS"
+            case "$STATUS" in
+              completed|musicxml_created)
+                echo "Job reached terminal/ready state: $STATUS"
+                echo "final_status=$STATUS" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              failed|expired)
+                echo "::error::Job reached $STATUS. Complete status response:"
+                cat "/tmp/status-$i.json"
+                echo
+                ERR_CODE=$(jq -r '.error.code // "none"' "/tmp/status-$i.json")
+                ERR_MSG=$(jq -r '.error.message // "none"' "/tmp/status-$i.json")
+                echo "error.code=$ERR_CODE"
+                echo "error.message=$ERR_MSG"
+                echo "error.details:"
+                jq '.error.details // {}' "/tmp/status-$i.json"
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "::error::Polling timed out after 180 seconds. Final status: $FINAL_STATUS"
+          echo "=== Final complete status JSON ==="
+          cat "/tmp/status-36.json" 2>/dev/null || echo "(no final status file)"
+          exit 1
+
+      # ── G. Download raw MusicXML ──────────────────────────────────
+      - name: Download raw MusicXML
+        run: |
+          set -euo pipefail
+          JOB_ID="${{ steps.upload.outputs.job_id }}"
+          echo "=== Downloading raw MusicXML for job $JOB_ID ==="
+          HTTP_CODE=$(curl -sS -o /tmp/output.musicxml -w "%{http_code}" \
+            -D /tmp/download-headers.txt \
+            "${RENDER_BASE_URL}/api/jobs/$JOB_ID/musicxml")
+          echo "--- HTTP status: $HTTP_CODE ---"
+          echo "--- Download headers ---"
+          cat /tmp/download-headers.txt
+          echo "--- File info ---"
+          ls -lh /tmp/output.musicxml
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Download failed with HTTP $HTTP_CODE (expected 200)"
+            cat /tmp/output.musicxml
+            exit 1
+          fi
+          CT=$(grep -i '^content-type:' /tmp/download-headers.txt | head -1 | tr -d '\r')
+          echo "Content-Type: $CT"
+          if ! echo "$CT" | grep -qi 'application/xml\|text/xml'; then
+            echo "::error::Content-Type does not contain application/xml or text/xml"
+            exit 1
+          fi
+          SIZE=$(stat -c%s /tmp/output.musicxml)
+          echo "File size: $SIZE bytes"
+          if [ "$SIZE" -le 500 ]; then
+            echo "::error::MusicXML file is too small (<= 500 bytes): $SIZE"
+            exit 1
+          fi
+          CONTENT=$(cat /tmp/output.musicxml)
+          if ! echo "$CONTENT" | grep -q '<score-partwise\|<score-timewise'; then
+            echo "::error::MusicXML does not contain <score-partwise or <score-timewise"
+            exit 1
+          fi
+          MEASURE_COUNT=$(echo "$CONTENT" | grep -o '<measure ' | wc -l)
+          NOTE_COUNT=$(echo "$CONTENT" | grep -o '<note ' | wc -l)
+          echo "Structural checks: measures=$MEASURE_COUNT notes=$NOTE_COUNT"
+          if [ "$MEASURE_COUNT" -lt 1 ]; then
+            echo "::error::No <measure> elements found"
+            exit 1
+          fi
+          if [ "$NOTE_COUNT" -lt 1 ]; then
+            echo "::error::No <note> elements found"
+            exit 1
+          fi
+          echo "Raw MusicXML download verified."
+
+      # ── H. Validate with real parser ──────────────────────────────
+      - name: Validate MusicXML with real SesliTab parser
+        run: |
+          set -euo pipefail
+          echo "=== Running real MusicXML parser ==="
+          node scripts/validateE2eMusicXml.mjs /tmp/output.musicxml
+          echo "Parser validation passed."
+
+      # ── I. Cleanup (always) ───────────────────────────────────────
+      - name: Cleanup test job
+        if: always()
+        run: |
+          JOB_ID="${{ steps.upload.outputs.job_id }}"
+          if [ -z "$JOB_ID" ]; then
+            echo "No job ID was created; skipping cleanup."
+            exit 0
+          fi
+          echo "=== Deleting job $JOB_ID ==="
+          HTTP_CODE=$(curl -sS -o /tmp/cleanup-response.json -w "%{http_code}" \
+            -X DELETE "${RENDER_BASE_URL}/api/v1/job/$JOB_ID" || true)
+          echo "Cleanup HTTP status: $HTTP_CODE"
+          echo "Cleanup response:"
+          cat /tmp/cleanup-response.json 2>/dev/null || echo "(no response body)"
+          echo
+
+      # ── J. Upload diagnostics ─────────────────────────────────────
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-render-omr-diagnostics
+          path: |
+            /tmp/health.json
+            /tmp/upload-response.json
+            /tmp/upload-headers.txt
+            /tmp/status-*.json
+            /tmp/polling-log.txt
+            /tmp/download-headers.txt
+            /tmp/output.musicxml
+            /tmp/cleanup-response.json
+          if-no-files-found: ignore
+          retention-days: 14
