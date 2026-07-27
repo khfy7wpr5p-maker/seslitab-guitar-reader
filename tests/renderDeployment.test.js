@@ -218,6 +218,18 @@ describe('Dockerfile security', () => {
     assert.ok(dockerfile.includes('mkdir -p /var/lib/audiveris'),
       'Must create writable runtime home directory')
   })
+
+  test('17a. Final runtime stage copies root package.json with type=module', async () => {
+    const dockerfile = readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
+    assert.equal(pkg.type, 'module', 'Root package.json must declare type=module')
+    assert.ok(dockerfile.includes('COPY package.json /app/package.json'),
+      'Must copy root package.json to /app/package.json in the final stage')
+    assert.ok(dockerfile.includes("p.type !== 'module'"),
+      'Must validate type=module at build time')
+    assert.ok(dockerfile.includes("'Runtime package.json must contain type=module'"),
+      'Must fail the build with a clear message when type is not module')
+  })
 })
 
 describe('E2E workflow jq paths', () => {

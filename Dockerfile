@@ -115,6 +115,16 @@ COPY --from=node-build /build/node_modules /app/node_modules
 # Copy backend source
 COPY backend/ ./backend/
 
+# Copy the root package.json so Node resolves "type": "module" for the
+# ES module backend source. Without this, Node defaults to CommonJS and
+# /app/backend/server.js fails with "Cannot use import statement outside
+# a module". Only the metadata is copied — no source or lockfile.
+COPY package.json /app/package.json
+
+# Strict build-time check: the runtime package.json must declare
+# type=module, otherwise the ES module backend will not load.
+RUN node -e "const p=require('./package.json'); if (p.type !== 'module') { console.error('Runtime package.json must contain type=module'); process.exit(1); }"
+
 # Create application storage directory
 RUN mkdir -p /app/storage/jobs && chown -R seslitab:seslitab /app
 
