@@ -219,3 +219,66 @@ describe('Dockerfile security', () => {
       'Must create writable runtime home directory')
   })
 })
+
+describe('E2E workflow jq paths', () => {
+  test('18. Status polling uses .data.status not top-level .status', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    // Must use nested .data.status for job status polling
+    assert.ok(wf.includes('.data.status'), 'Must poll .data.status')
+    // Must NOT use top-level .status for the job status endpoint
+    // Bad pattern: jq -r '.status' (without .data prefix)
+    assert.ok(!/jq\s+-r\s+'\.status'/.test(wf), 'Must not use top-level .status in jq')
+  })
+
+  test('19. Status polling uses .data.progress not top-level .progress', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('.data.progress'), 'Must use .data.progress')
+    assert.ok(!/jq\s+-r\s+'\.progress/.test(wf), 'Must not use top-level .progress in jq')
+  })
+
+  test('20. Status polling uses .data.updatedAt not top-level .updatedAt', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('.data.updatedAt'), 'Must use .data.updatedAt')
+    assert.ok(!/jq\s+-r\s+'\.updatedAt/.test(wf), 'Must not use top-level .updatedAt in jq')
+  })
+
+  test('21. Error handling uses .data.error not top-level .error', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('.data.error.code'), 'Must use .data.error.code')
+    assert.ok(wf.includes('.data.error.message'), 'Must use .data.error.message')
+    assert.ok(wf.includes('.data.error.details'), 'Must use .data.error.details')
+    // Must NOT use top-level .error.code/.error.message/.error.details
+    const wfNoDataError = wf.replace(/\.data\.error/g, '')
+    assert.ok(!wfNoDataError.includes('.error.code'), 'Must not use top-level .error.code')
+    assert.ok(!wfNoDataError.includes('.error.message'), 'Must not use top-level .error.message')
+    assert.ok(!wfNoDataError.includes('.error.details'), 'Must not use top-level .error.details')
+  })
+
+  test('22. Handles null/missing status as malformed response', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('null'), 'Must check for null status')
+    assert.ok(wf.includes('Malformed'), 'Must have malformed-response error message')
+  })
+
+  test('23. completed is a terminal state that exits immediately', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('completed)'), 'Must handle completed state')
+  })
+
+  test('24. failed and expired are terminal states that exit 1', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('failed|expired'), 'Must handle failed and expired states')
+  })
+
+  test('25. musicxml_created is an intermediate state that continues polling', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('musicxml_created'), 'Must handle musicxml_created state')
+    assert.ok(wf.includes('continuing to poll'), 'Must continue polling after musicxml_created')
+  })
+
+  test('26. Polls every 5 seconds with 180 second max', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('sleep 5'), 'Must poll every 5 seconds')
+    assert.ok(wf.includes('180'), 'Must have 180 second max')
+  })
+})

@@ -160,29 +160,39 @@ jobs:
           for i in $(seq 1 36); do
             curl -sS -o "/tmp/status-$i.json" \
               "${RENDER_BASE_URL}/api/v1/job/$JOB_ID"
-            STATUS=$(jq -r '.status' "/tmp/status-$i.json")
-            PROGRESS=$(jq -r '.progress // "n/a"' "/tmp/status-$i.json")
-            UPDATED=$(jq -r '.updatedAt // "n/a"' "/tmp/status-$i.json")
+            STATUS=$(jq -r '.data.status' "/tmp/status-$i.json")
+            # Fail immediately on malformed response (null/missing status)
+            if [ -z "$STATUS" ] || [ "$STATUS" = "null" ]; then
+              echo "::error::Malformed status response: .data.status is null or missing. Complete response:"
+              cat "/tmp/status-$i.json"
+              echo
+              exit 1
+            fi
+            PROGRESS=$(jq -r '.data.progress // "n/a"' "/tmp/status-$i.json")
+            UPDATED=$(jq -r '.data.updatedAt // "n/a"' "/tmp/status-$i.json")
             LINE="Poll #$i: status=$STATUS progress=$PROGRESS updatedAt=$UPDATED"
             echo "$LINE"
             echo "$LINE" >> /tmp/polling-log.txt
             FINAL_STATUS="$STATUS"
             case "$STATUS" in
-              completed|musicxml_created)
-                echo "Job reached terminal/ready state: $STATUS"
+              completed)
+                echo "Job reached terminal state: $STATUS"
                 echo "final_status=$STATUS" >> "$GITHUB_OUTPUT"
                 exit 0
+                ;;
+              musicxml_created)
+                echo "Job reached intermediate state: $STATUS — continuing to poll"
                 ;;
               failed|expired)
                 echo "::error::Job reached $STATUS. Complete status response:"
                 cat "/tmp/status-$i.json"
                 echo
-                ERR_CODE=$(jq -r '.error.code // "none"' "/tmp/status-$i.json")
-                ERR_MSG=$(jq -r '.error.message // "none"' "/tmp/status-$i.json")
+                ERR_CODE=$(jq -r '.data.error.code // "none"' "/tmp/status-$i.json")
+                ERR_MSG=$(jq -r '.data.error.message // "none"' "/tmp/status-$i.json")
                 echo "error.code=$ERR_CODE"
                 echo "error.message=$ERR_MSG"
                 echo "error.details:"
-                jq '.error.details // {}' "/tmp/status-$i.json"
+                jq '.data.error.details // {}' "/tmp/status-$i.json"
                 exit 1
                 ;;
             esac
