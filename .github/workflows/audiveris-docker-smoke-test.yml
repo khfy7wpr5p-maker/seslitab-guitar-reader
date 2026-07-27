@@ -1,0 +1,74 @@
+name: Audiveris Docker smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/audiveris-docker-smoke-test.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/audiveris-docker-smoke-test.yml'
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: seslitab-omr:smoke
+          push: false
+
+      - name: Start container
+        id: start
+        run: |
+          docker run -d --name seslitab-smoke -p 8080:8080 \
+            -e PORT=8080 \
+            -e OMR_PROVIDER=audiveris \
+            -e AUDIVERIS_COMMAND=/opt/audiveris/bin/Audiveris \
+            seslitab-omr:smoke
+          echo "container=seslitab-smoke" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for health endpoint
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /tmp/health.json 2>/dev/null; then
+              echo "Health endpoint responded:"
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health endpoint did not respond within 60s"
+          docker logs seslitab-smoke
+          exit 1
+
+      - name: Verify audiverisAvailable is true
+        run: |
+          AVAILABLE=$(jq -r '.runtime.audiverisAvailable' /tmp/health.json)
+          echo "audiverisAvailable=$AVAILABLE"
+          if [ "$AVAILABLE" != "true" ]; then
+            echo "::error::audiverisAvailable is not true"
+            cat /tmp/health.json
+            exit 1
+          fi
+
+      - name: Run Audiveris -batch -version inside container
+        run: |
+          docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -batch -version
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f seslitab-smoke 2>/dev/null || true

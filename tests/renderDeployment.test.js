@@ -151,50 +151,64 @@ describe('Dockerfile security', () => {
     assert.ok(!dockerfile.includes('/latest/'), 'Must not use latest URL')
   })
 
-  test('17. Installs Audiveris .deb with strict, non-suppressed installation', async () => {
+  test('17. Extracts Audiveris payload from .deb without package installation', async () => {
     const dockerfile = readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
     // Must use the official Ubuntu 24.04 x86_64 release asset name
     assert.ok(dockerfile.includes('Audiveris-${AUDIVERIS_VERSION}-ubuntu24.04-x86_64.deb'),
       'Must use official Audiveris-5.11.0-ubuntu24.04-x86_64.deb asset name')
     assert.ok(dockerfile.includes('https://github.com/Audiveris/audiveris/releases/download/'),
       'Must use official GitHub release URL')
-    // Must install xdg-utils and desktop-file-utils before the .deb
-    assert.ok(dockerfile.includes('xdg-utils'),
-      'Must install xdg-utils for Audiveris post-install script')
-    assert.ok(dockerfile.includes('desktop-file-utils'),
-      'Must install desktop-file-utils for Audiveris post-install script')
-    // Must create XDG directories before installing the .deb
-    assert.ok(dockerfile.includes('/usr/share/applications'),
-      'Must create /usr/share/applications before .deb installation')
-    assert.ok(dockerfile.includes('/usr/share/desktop-directories'),
-      'Must create /usr/share/desktop-directories before .deb installation')
-    assert.ok(dockerfile.includes('install -d -m 0755'),
-      'Must create XDG directories with install -d -m 0755')
-    // Must install the local .deb directly with apt/apt-get (resolves dependencies)
-    assert.ok(dockerfile.includes('apt-get install -y --no-install-recommends /tmp/audiveris.deb'),
-      'Must install local .deb directly with apt-get install')
-    // Must verify the package is installed after installation
-    assert.ok(dockerfile.includes("dpkg-query -W -f='${Status}\\n' audiveris"),
-      'Must verify audiveris package is installed')
-    assert.ok(dockerfile.includes("grep -Fx 'install ok installed'"),
-      'Must confirm package status is install ok installed')
-    // Must require /opt/audiveris/bin/Audiveris after installation
+    // Must extract the payload with dpkg-deb -x (no package installation)
+    assert.ok(dockerfile.includes('dpkg-deb -x /tmp/audiveris.deb /tmp/audiveris-root'),
+      'Must extract .deb payload with dpkg-deb -x')
+    // Must verify the extracted executable before copying
+    assert.ok(dockerfile.includes('test -x /tmp/audiveris-root/opt/audiveris/bin/Audiveris'),
+      'Must verify extracted executable exists before copying')
+    // Must copy the complete /opt/audiveris payload (not individual files)
+    assert.ok(dockerfile.includes('cp -a /tmp/audiveris-root/opt/audiveris /opt/audiveris'),
+      'Must copy complete /opt/audiveris directory tree')
+    // Must verify the final executable
     assert.ok(dockerfile.includes('test -x /opt/audiveris/bin/Audiveris'),
-      'Must require /opt/audiveris/bin/Audiveris after installation')
-    // Must NOT use the broken dpkg -i || apt-get install -f pattern
-    assert.ok(!/dpkg\s+-i\s+.*\|\|\s*apt-get\s+install\s+-f/.test(dockerfile),
-      'Must not use dpkg -i || apt-get install -f fallback pattern')
-    // Must NOT suppress installation errors with 2>/dev/null
-    assert.ok(!/dpkg\s+-i\s+.*2>\/dev\/null/.test(dockerfile),
-      'Must not suppress dpkg installation errors with 2>/dev/null')
+      'Must require /opt/audiveris/bin/Audiveris after extraction')
+    // Must run a strict headless smoke test
+    assert.ok(dockerfile.includes('Audiveris -batch -version'),
+      'Must run headless -batch -version smoke test')
+    // Must NOT use apt/dpkg package installation
+    assert.ok(!dockerfile.includes('apt-get install -y --no-install-recommends /tmp/audiveris.deb'),
+      'Must not install .deb with apt-get install')
+    assert.ok(!/dpkg\s+-i\s+/.test(dockerfile),
+      'Must not use dpkg -i to install the package')
+    assert.ok(!dockerfile.includes('apt-get install -f'),
+      'Must not use apt-get install -f fallback')
+    // Must NOT use XDG desktop workarounds
+    assert.ok(!dockerfile.includes('xdg-utils'),
+      'Must not install xdg-utils')
+    assert.ok(!dockerfile.includes('desktop-file-utils'),
+      'Must not install desktop-file-utils')
+    assert.ok(!dockerfile.includes('/usr/share/applications'),
+      'Must not create XDG applications directory')
+    assert.ok(!dockerfile.includes('/usr/share/desktop-directories'),
+      'Must not create XDG desktop-directories')
+    // Must NOT suppress errors or use fallback patterns
+    assert.ok(!/2>\/dev\/null/.test(dockerfile),
+      'Must not suppress errors with 2>/dev/null')
+    assert.ok(!dockerfile.includes('|| true'),
+      'Must not use || true to suppress failures')
     // Must NOT create symlinks to hide a failed installation
     assert.ok(!dockerfile.includes('ln -sf'),
       'Must not create symlinks to hide failed installation')
-    // Must NOT run the Audiveris GUI during build
-    assert.ok(!/Audiveris\s+-version/.test(dockerfile),
-      'Must not execute Audiveris GUI during build')
     // Must NOT use dpkg --unpack as a workaround
     assert.ok(!dockerfile.includes('dpkg --unpack'),
       'Must not use dpkg --unpack as a workaround')
+    // Must install only headless runtime libraries
+    assert.ok(dockerfile.includes('fontconfig'),
+      'Must install fontconfig for headless rendering')
+    assert.ok(dockerfile.includes('libfreetype6'),
+      'Must install libfreetype6 for headless rendering')
+    // Must set up writable runtime home
+    assert.ok(dockerfile.includes('HOME=/var/lib/audiveris'),
+      'Must set HOME to writable runtime directory')
+    assert.ok(dockerfile.includes('mkdir -p /var/lib/audiveris'),
+      'Must create writable runtime home directory')
   })
 })
