@@ -1,0 +1,15 @@
+node_modules
+dist
+storage/jobs
+.env
+.env.local
+*.log
+.git
+.gitignore
+.bolt
+tests
+docs/music-engine-architecture.md
+docs/api-contract.md
+docs/api-contract-v1.md
+docs/cloud-omr-gateway-architecture.md
+scripts

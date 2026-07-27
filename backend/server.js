@@ -1,0 +1,230 @@
+// SesliTab Cloud OMR Gateway — Express HTTP Server
+//
+// Endpoints:
+//   POST   /api/v1/pdf/upload        — multipart/form-data, field "file" = PDF
+//   POST   /api/v1/pdf/analyze       — JSON body: { jobId }
+//   GET    /api/v1/job/:jobId        — poll job status
+//   GET    /api/v1/musicxml/:jobId   — download MusicXML
+//   DELETE /api/v1/job/:jobId        — cancel and delete job
+//   GET    /api/v1/health            — health check
+
+import express from 'express'
+import cors from 'cors'
+import multer from 'multer'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
+import { GATEWAY_CONFIG } from './config/gatewayConfig.js'
+import { getProviderName } from './providers/index.js'
+import { runAudiverisPreflight, safePreflightResponse } from './services/audiverisPreflight.js'
+import { startGateway, stopGateway } from './index.js'
+import { toGatewayError, ValidationError } from './utils/errors.js'
+
+import { handleUploadPdf } from './api/uploadPdf.js'
+import { handleAnalyzePdf } from './api/analyzePdf.js'
+import { handleGetJobStatus } from './api/getJobStatus.js'
+import { handleDownloadMusicXml } from './api/downloadMusicXml.js'
+import { handleDeleteJob } from './api/deleteJob.js'
+import { handleCancelJob } from './api/cancelJob.js'
+
+const PORT = process.env.PORT || process.env.OMR_GATEWAY_PORT || 3001
+const HOST = '0.0.0.0'
+async function ensureRuntimeDirs() {
+  const dirs = [GATEWAY_CONFIG.storagePath]
+  if (GATEWAY_CONFIG.tempDir) dirs.push(GATEWAY_CONFIG.tempDir)
+  if (GATEWAY_CONFIG.dataDir) dirs.push(GATEWAY_CONFIG.dataDir)
+  for (const d of dirs) {
+    if (d) await fs.mkdir(d, { recursive: true }).catch(() => {})
+  }
+}
+
+await ensureRuntimeDirs()
+
+const app = express()
+
+let shuttingDown = false
+
+// CORS — allow all origins in development.
+// TODO: Production'da belirli origin'lere kısıtla (örn. sadece seslitab.cloud).
+app.use(cors({ origin: true, credentials: true }))
+app.use(express.json())
+
+// Reject new jobs during shutdown
+app.use('/api/jobs', (req, res, next) => {
+  if (shuttingDown && (req.method === 'POST' || req.method === 'PUT')) {
+    return res.status(503).json({ success: false, error: { code: 'SHUTTING_DOWN', message: 'Sunucu kapanıyor, yeni iş kabul edilmiyor.' } })
+  }
+  next()
+})
+app.use('/api/v1/pdf', (req, res, next) => {
+  if (shuttingDown && (req.method === 'POST' || req.method === 'PUT')) {
+    return res.status(503).json({ success: false, error: { code: 'SHUTTING_DOWN', message: 'Sunucu kapanıyor, yeni iş kabul edilmiyor.' } })
+  }
+  next()
+})
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: GATEWAY_CONFIG.maxUploadSizeBytes },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true)
+    else cb(new Error('Sadece PDF dosyaları kabul edilir.'))
+  },
+})
+
+function sendSuccess(res, data, status = 200) {
+  res.status(status).json({ success: true, data })
+}
+
+function sendError(res, err) {
+  const e = toGatewayError(err)
+  res.status(e.statusCode).json(e.toJSON())
+}
+
+// --- Routes ---
+
+app.get('/health', async (_req, res) => {
+  const provider = getProviderName()
+  let runtime = undefined
+  if (provider === 'audiveris') {
+    const result = await runAudiverisPreflight()
+    runtime = safePreflightResponse(result)
+  }
+  sendSuccess(res, { status: 'ok', provider, runtime })
+})
+
+app.get('/api/v1/health', async (_req, res) => {
+  const provider = getProviderName()
+  let runtime = undefined
+  if (provider === 'audiveris') {
+    const result = await runAudiverisPreflight()
+    runtime = safePreflightResponse(result)
+  }
+  sendSuccess(res, { status: 'ok', provider, runtime })
+})
+
+app.post('/api/v1/pdf/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return sendError(res, new ValidationError('PDF dosyası zorunludur. "file" alanını gönderin.'))
+    const result = await handleUploadPdf({ fileBuffer: req.file.buffer, fileName: req.file.originalname, provider: req.body?.provider })
+    sendSuccess(res, result.data || result, 201)
+  } catch (e) { sendError(res, e) }
+})
+
+app.post('/api/v1/pdf/analyze', async (req, res) => {
+  try {
+    const result = await handleAnalyzePdf({ jobId: req.body?.jobId })
+    sendSuccess(res, result.data || result, 202)
+  } catch (e) { sendError(res, e) }
+})
+
+app.get('/api/v1/job/:jobId', async (req, res) => {
+  try {
+    const result = await handleGetJobStatus({ jobId: req.params.jobId })
+    const { success, ...data } = result
+    sendSuccess(res, data)
+  } catch (e) { sendError(res, e) }
+})
+
+app.get('/api/v1/musicxml/:jobId', async (req, res) => {
+  try {
+    const result = await handleDownloadMusicXml({ jobId: req.params.jobId })
+    sendSuccess(res, { jobId: req.params.jobId, musicXml: result.musicXml, fileName: result.fileName })
+  } catch (e) { sendError(res, e) }
+})
+
+app.delete('/api/v1/job/:jobId', async (req, res) => {
+  try {
+    const result = await handleDeleteJob({ jobId: req.params.jobId })
+    sendSuccess(res, result.data || result)
+  } catch (e) { sendError(res, e) }
+})
+
+// --- New /api/jobs endpoints (clean RESTful surface) ---
+
+// POST /api/jobs — upload a PDF and create a job
+app.post('/api/jobs', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return sendError(res, new ValidationError('PDF dosyası zorunludur. "file" alanını gönderin.'))
+    const result = await handleUploadPdf({ fileBuffer: req.file.buffer, fileName: req.file.originalname, provider: req.body?.provider })
+    sendSuccess(res, result.data || result, 201)
+  } catch (e) { sendError(res, e) }
+})
+
+// GET /api/jobs/:id/status — current job status
+app.get('/api/jobs/:id/status', async (req, res) => {
+  try {
+    const result = await handleGetJobStatus({ jobId: req.params.id })
+    const { success, ...data } = result
+    sendSuccess(res, data)
+  } catch (e) { sendError(res, e) }
+})
+
+// GET /api/jobs/:id/musicxml — download MusicXML (only when ready)
+app.get('/api/jobs/:id/musicxml', async (req, res) => {
+  try {
+    const result = await handleDownloadMusicXml({ jobId: req.params.id })
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${result.fileName || 'output.musicxml'}"`)
+    res.status(200).send(result.musicXml)
+  } catch (e) { sendError(res, e) }
+})
+
+// POST /api/jobs/:id/cancel — cancel a queued/processing job
+app.post('/api/jobs/:id/cancel', async (req, res) => {
+  try {
+    const result = await handleCancelJob({ jobId: req.params.id })
+    sendSuccess(res, result.data || result)
+  } catch (e) { sendError(res, e) }
+})
+
+// DELETE /api/jobs/:id — remove job and its files
+app.delete('/api/jobs/:id', async (req, res) => {
+  try {
+    const result = await handleDeleteJob({ jobId: req.params.id })
+    sendSuccess(res, result.data || result)
+  } catch (e) { sendError(res, e) }
+})
+
+// 404
+app.use((_req, res) => {
+  res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Endpoint bulunamadı.' } })
+})
+
+// Error handler
+app.use((err, _req, res, _next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Dosya boyutu 10 MB sınırını aşıyor.' } })
+  if (err.message?.includes('Sadece PDF')) return res.status(415).json({ success: false, error: { code: 'UNSUPPORTED_FILE_TYPE', message: err.message } })
+  sendError(res, err)
+})
+
+// --- Start ---
+
+const server = app.listen(PORT, HOST, () => {
+  console.log(`[OMR Gateway] HTTP server on ${HOST}:${PORT}`)
+  startGateway()
+  console.log(`[OMR Gateway] Endpoints:`)
+  console.log(`  POST   /api/v1/pdf/upload`)
+  console.log(`  POST   /api/v1/pdf/analyze`)
+  console.log(`  GET    /api/v1/job/:jobId`)
+  console.log(`  GET    /api/v1/musicxml/:jobId`)
+  console.log(`  DELETE /api/v1/job/:jobId`)
+  console.log(`  GET    /api/v1/health`)
+  console.log(`  POST   /api/jobs`)
+  console.log(`  GET    /api/jobs/:id/status`)
+  console.log(`  GET    /api/jobs/:id/musicxml`)
+  console.log(`  POST   /api/jobs/:id/cancel`)
+  console.log(`  DELETE /api/jobs/:id`)
+})
+
+async function shutdown() {
+  console.log('[OMR Gateway] Shutting down...')
+  shuttingDown = true
+  server.close()
+  await stopGateway()
+  process.exit(0)
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
+
+export { app, server }

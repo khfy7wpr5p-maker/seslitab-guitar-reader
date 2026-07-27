@@ -1,0 +1,37 @@
+# Render Blueprint — SesliTab OMR Gateway with Audiveris
+#
+# This file defines the Render service configuration. Actual service creation
+# is performed manually after review. Do not deploy automatically.
+#
+# Cost warning: Standard instances and persistent disks incur charges.
+# Suspend or delete the service when not in use to avoid unnecessary costs.
+
+services:
+  - type: web
+    name: seslitab-omr
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard
+    autoDeploy: false
+    healthCheckPath: /health
+    disk:
+      name: seslitab-data
+      mountPath: /var/lib/seslitab
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OMR_PROVIDER
+        value: audiveris
+      - key: AUDIVERIS_COMMAND
+        value: /opt/audiveris/bin/Audiveris
+      - key: AUDIVERIS_TIMEOUT_MS
+        value: "110000"
+      # Audiveris 5.11.0 is installed in the Dockerfile from the official
+      # GitHub release: https://github.com/Audiveris/audiveris/releases/tag/5.11.0
+      - key: SESLITAB_DATA_DIR
+        value: /var/lib/seslitab
+      - key: SESLITAB_TEMP_DIR
+        value: /var/lib/seslitab/tmp
+      - key: SESLITAB_MUSICXML_DIR
+        value: /var/lib/seslitab/musicxml

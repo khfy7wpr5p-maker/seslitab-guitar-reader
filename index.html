@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SesliTab — Görme Engelli Gitar Öğrencileri İçin Erişilebilir TAB ve Nota Dönüştürücü</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- aria-live region for screen reader announcements -->
+    <div id="aria-live-region" role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+
+    <header class="app-header">
+      <div class="header-content">
+        <div class="logo">
+          <span class="logo-icon" aria-hidden="true">♪</span>
+          <div class="logo-text">
+            <h1>SesliTab</h1>
+            <p class="logo-subtitle">Görme engelli gitar öğrencileri için TAB ve nota bilgilerini Türkçe sesli anlatıma ve ritmik çalmaya dönüştüren erişilebilir uygulama.</p>
+          </div>
+        </div>
+        <div class="header-badge" id="provider-badge" aria-label="Aktif OMR sağlayıcı">Mock Provider</div>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Step 1: Input -->
+      <section class="card input-card" id="input-section" aria-labelledby="input-heading">
+        <div class="card-header">
+          <span class="step-number" aria-hidden="true">1</span>
+          <h2 id="input-heading">PDF veya TAB Girişi</h2>
+        </div>
+        <div class="card-body">
+          <div class="input-tabs" role="tablist" aria-label="Giriş türü seç">
+            <button class="input-tab-btn active" role="tab" aria-selected="true" aria-controls="pdf-panel" id="pdf-tab-btn" data-tab="pdf">PDF Yükle</button>
+            <button class="input-tab-btn" role="tab" aria-selected="false" aria-controls="tab-panel" id="tab-tab-btn" data-tab="tab">TAB Yapıştır</button>
+          </div>
+
+          <!-- PDF Panel -->
+          <div id="pdf-panel" role="tabpanel" aria-labelledby="pdf-tab-btn" class="input-panel active">
+            <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="PDF dosyası yüklemek için tıklayın veya sürükleyin">
+              <div class="drop-zone-content">
+                <div class="drop-icon" aria-hidden="true">📄</div>
+                <p class="drop-text">PDF dosyanızı buraya sürükleyin</p>
+                <p class="drop-hint">veya tıklayarak seçin</p>
+                <p class="drop-limit">Maksimum 10 MB · Sadece PDF</p>
+              </div>
+              <input type="file" id="file-input" accept="application/pdf" hidden aria-label="PDF dosya seç" />
+            </div>
+            <div class="file-info" id="file-info" hidden>
+              <div class="file-info-content">
+                <span class="file-icon" aria-hidden="true">📄</span>
+                <div class="file-details">
+                  <span class="file-name" id="file-name"></span>
+                  <span class="file-size" id="file-size"></span>
+                </div>
+                <button class="btn-icon" id="remove-file" title="Kaldır" aria-label="Dosyayı kaldır">✕</button>
+              </div>
+            </div>
+            <div class="upload-actions">
+              <button class="btn btn-primary" id="upload-btn" disabled aria-label="PDF dosyasını dönüştür">
+                <span class="btn-text">Dönüştür</span>
+              </button>
+              <button class="btn btn-secondary" id="cancel-btn" hidden aria-label="Dönüştürmeyi iptal et">
+                <span class="btn-text">İptal Et</span>
+              </button>
+            </div>
+            <div class="mock-notice" id="mock-notice" hidden role="status" aria-live="polite"></div>
+            <div class="progress-container" id="progress-container" hidden>
+              <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+              <span class="progress-text" id="progress-text">Hazırlanıyor...</span>
+            </div>
+            <div class="error-message" id="upload-error" hidden role="alert"></div>
+          </div>
+
+          <!-- TAB Panel -->
+          <div id="tab-panel" role="tabpanel" aria-labelledby="tab-tab-btn" class="input-panel" hidden>
+            <label for="tab-textarea" class="textarea-label">Gitar TAB metnini yapıştırın:</label>
+            <textarea id="tab-textarea" class="tab-textarea" rows="8" wrap="off" spellcheck="false" placeholder="e|---0---1---3---|
+B|---1-----------|
+G|---------------|
+D|---------------|
+A|---------------|
+E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
+            <div class="tab-actions">
+              <button class="btn btn-primary" id="tab-convert-btn" aria-label="TAB metnini çevir">TAB'ı Çevir</button>
+              <button class="btn btn-secondary" id="tab-sample-btn" aria-label="Örnek TAB yükle">Örnek TAB</button>
+              <button class="btn btn-secondary" id="tab-clear-btn" aria-label="TAB metnini temizle">Temizle</button>
+            </div>
+            <div class="error-message" id="tab-error" hidden role="alert"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 2: Rhythmic Text Output -->
+      <section class="card results-card" id="results-section" hidden aria-labelledby="results-heading">
+        <div class="card-header">
+          <span class="step-number" aria-hidden="true">2</span>
+          <h2 id="results-heading">Ritimli Metin Çıktısı</h2>
+          <div class="card-actions">
+            <button class="btn btn-secondary btn-sm" id="copy-btn" aria-label="Ritmik metni kopyala">
+              <span class="btn-icon-text" aria-hidden="true">📋 Kopyala</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="reset-btn" aria-label="Tümünü sıfırla">
+              <span class="btn-icon-text" aria-hidden="true">↺ Yeni</span>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="result-tabs" role="tablist" aria-label="Çıktı görünümü seç">
+            <button class="tab-btn active" role="tab" aria-selected="true" data-tab="rhythmic">Ritimli Metin</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="html">Ritimli HTML</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="notes">Nota Kartları</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="xml">MusicXML Ham Çıktı</button>
+          </div>
+
+          <div class="tab-content" id="tab-rhythmic" role="tabpanel">
+            <div class="rhythm-warning" id="rhythm-warning" hidden></div>
+            <pre class="rhythmic-text" id="rhythmic-output" aria-label="Ritmik metin çıktısı"></pre>
+          </div>
+
+          <div class="tab-content" id="tab-html" role="tabpanel" hidden>
+            <div class="rhythm-warning" id="rhythm-warning-html" hidden></div>
+            <div class="rhythmic-html" id="rhythmic-html-output" aria-label="Ritmik HTML çıktısı"></div>
+          </div>
+
+          <div class="tab-content" id="tab-notes" role="tabpanel" hidden>
+            <div class="notes-grid" id="notes-output" aria-label="Nota kartları"></div>
+          </div>
+
+          <div class="tab-content" id="tab-xml" role="tabpanel" hidden>
+            <pre class="xml-text" id="xml-output" aria-label="MusicXML ham çıktı"></pre>
+          </div>
+
+          <div class="notes-summary" id="notes-summary" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Step 3: Voice Playback -->
+      <section class="card playback-card" id="voice-section" hidden aria-labelledby="voice-heading">
+        <div class="card-header">
+          <span class="step-number" aria-hidden="true">3</span>
+          <h2 id="voice-heading">Sesli Dinle</h2>
+        </div>
+        <div class="card-body">
+          <div class="playback-controls">
+            <button class="btn btn-play" id="voice-btn" aria-label="Türkçe sesli okuma başlat">
+              <span class="btn-icon-text" aria-hidden="true">🔊 Sesli Oku</span>
+            </button>
+            <button class="btn btn-secondary" id="voice-stop-btn" aria-label="Sesli okumayı durdur" disabled>
+              <span class="btn-icon-text" aria-hidden="true">⏹ Durdur</span>
+            </button>
+            <div class="speed-control">
+              <label for="speed-slider">Ses Hızı</label>
+              <input type="range" id="speed-slider" min="0.5" max="2" step="0.1" value="1" aria-label="Ses hızı kontrolü" />
+              <span class="speed-value" id="speed-value">1.0x</span>
+            </div>
+          </div>
+          <div class="playback-status" id="voice-status" hidden aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Step 4: Rhythm Playback -->
+      <section class="card playback-card" id="rhythm-section" hidden aria-labelledby="rhythm-heading">
+        <div class="card-header">
+          <span class="step-number" aria-hidden="true">4</span>
+          <h2 id="rhythm-heading">Ritmik Çal</h2>
+        </div>
+        <div class="card-body">
+          <div class="playback-controls">
+            <button class="btn btn-play" id="rhythm-btn" aria-label="Notaları ritmik olarak çal">
+              <span class="btn-icon-text" aria-hidden="true">🎵 Notaları Çal</span>
+            </button>
+            <button class="btn btn-secondary" id="rhythm-stop-btn" aria-label="Çalmayı durdur" disabled>
+              <span class="btn-icon-text" aria-hidden="true">⏹ Durdur</span>
+            </button>
+            <div class="speed-control">
+              <label for="tempo-slider">Tempo</label>
+              <input type="range" id="tempo-slider" min="60" max="200" step="10" value="120" aria-label="Tempo kontrolü" />
+              <span class="speed-value" id="tempo-value">120 BPM</span>
+            </div>
+          </div>
+          <div class="playback-status" id="rhythm-status" hidden aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>SesliTab v1.0 · Görme engelli gitar öğrencileri için erişilebilir TAB ve nota dönüştürücü</p>
+    </footer>
+  </div>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
