@@ -153,7 +153,10 @@ describe('Dockerfile security', () => {
 
   test('17. Verifies Audiveris executable during build', async () => {
     const dockerfile = readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
-    assert.ok(dockerfile.includes('/opt/audiveris/bin/Audiveris'), 'Must verify executable path')
-    assert.ok(dockerfile.includes('dpkg -s audiveris'), 'Must verify package installation during build')
+    assert.ok(dockerfile.includes('/opt/audiveris/bin/Audiveris'), 'Must reference executable path')
+    assert.ok(!dockerfile.includes('dpkg -s audiveris | grep -q'), 'Must not hard-fail on dpkg check')
+    assert.ok(!/test -x \/opt\/audiveris\/bin\/Audiveris\s*\\/.test(dockerfile.replace(/\\\n/g, '\n')), 'Must not hard-fail on test -x')
+    assert.ok(dockerfile.includes('Audiveris build-time diagnostics'), 'Must include non-failing diagnostics')
+    assert.ok(dockerfile.includes('ln -sf'), 'Must create symlink if executable found elsewhere')
   })
 })

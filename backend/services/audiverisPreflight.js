@@ -37,52 +37,90 @@ async function checkExecutable(command) {
   // Verify the executable exists and is runnable via filesystem stat.
   // Audiveris is a Java GUI application whose -version flag exits non-zero
   // in headless environments, so we check the file rather than spawning it.
+  let exists = false
+  let executable = false
   try {
     const stat = await fs.stat(command)
-    if (!stat.isFile()) return { ok: false, code: 'EXECUTABLE_NOT_FOUND' }
-    if (!(stat.mode & 0o111)) return { ok: false, code: 'EXECUTABLE_NOT_FOUND' }
-    return { ok: true }
+    exists = stat.isFile()
+    executable = exists && Boolean(stat.mode & 0o111)
   } catch (err) {
-    if (err.code === 'ENOENT') return { ok: false, code: 'EXECUTABLE_NOT_FOUND' }
-    return { ok: false, code: 'SPAWN_ERROR' }
+    if (err.code === 'ENOENT') {
+      return { ok: false, code: 'EXECUTABLE_NOT_FOUND', exists: false, executable: false }
+    }
+    return { ok: false, code: 'SPAWN_ERROR', exists: false, executable: false }
   }
+  if (!exists) return { ok: false, code: 'EXECUTABLE_NOT_FOUND', exists: false, executable: false }
+  if (!executable) return { ok: false, code: 'EXECUTABLE_NOT_FOUND', exists: true, executable: false }
+  return { ok: true, exists: true, executable: true }
 }
 
 async function runAudiverisPreflight(config = parseConfig()) {
   const { command, timeoutMs } = config
 
   if (!command) {
-    return { available: false, error: safeError('MISSING_CONFIG', 'Audiveris komutu yapılandırılmamış.') }
+    return {
+      available: false,
+      audiverisCommand: '',
+      exists: false,
+      executable: false,
+      error: safeError('MISSING_CONFIG', 'Audiveris komutu yapılandırılmamış.'),
+    }
   }
 
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return { available: false, error: safeError('INVALID_TIMEOUT', 'Audiveris zaman aşımı yapılandırması geçersiz.') }
+    return {
+      available: false,
+      audiverisCommand: command,
+      exists: false,
+      executable: false,
+      error: safeError('INVALID_TIMEOUT', 'Audiveris zaman aşımı yapılandırması geçersiz.'),
+    }
   }
 
   const execResult = await checkExecutable(command)
   if (!execResult.ok) {
     const msg = execResult.code === 'EXECUTABLE_NOT_FOUND'
-      ? 'Audiveris çalıştırılabilir dosyası bulunamadı.'
-      : execResult.code === 'TIMEOUT'
-        ? 'Audiveris çalıştırılabilir dosyası yanıt vermedi.'
-        : execResult.code === 'RUNTIME_ERROR'
-          ? 'Audiveris çalışma zamanı kullanılamıyor (Java eksik olabilir).'
-          : 'Audiveris süreci başlatılamadı.'
-    return { available: false, error: safeError(execResult.code, msg) }
+      ? (execResult.exists === false
+          ? `Audiveris çalıştırılabilir dosyası bulunamadı: ${command}`
+          : `Audiveris dosyası mevcut ancak çalıştırılabilir değil: ${command}`)
+      : execResult.code === 'SPAWN_ERROR'
+        ? 'Audiveris dosya durumu kontrol edilemedi.'
+        : 'Audiveris süreci başlatılamadı.'
+    return {
+      available: false,
+      audiverisCommand: command,
+      exists: execResult.exists ?? false,
+      executable: execResult.executable ?? false,
+      error: safeError(execResult.code, msg),
+    }
   }
 
   const tempOk = await checkTempWritable()
   if (!tempOk) {
-    return { available: false, error: safeError('TMP_NOT_WRITABLE', 'Geçici dizin yazılabilir değil.') }
+    return {
+      available: false,
+      audiverisCommand: command,
+      exists: true,
+      executable: true,
+      error: safeError('TMP_NOT_WRITABLE', 'Geçici dizin yazılabilir değil.'),
+    }
   }
 
-  return { available: true }
+  return {
+    available: true,
+    audiverisCommand: command,
+    exists: true,
+    executable: true,
+  }
 }
 
 function safePreflightResponse(result) {
   return {
-    available: result.available,
-    error: result.available ? undefined : { code: result.error.code },
+    audiverisAvailable: result.available,
+    audiverisCommand: result.audiverisCommand,
+    exists: result.exists ?? false,
+    executable: result.executable ?? false,
+    error: result.available ? undefined : { code: result.error.code, message: result.error.message },
   }
 }
 

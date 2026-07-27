@@ -37,9 +37,9 @@ describe('Audiveris preflight', () => {
   test('1. Audiveris runtime available', async () => {
     const origSpawn = import('node:child_process').then ? null : null
     // We test the safePreflightResponse with a positive result
-    const result = { available: true }
+    const result = { available: true, audiverisCommand: '/opt/audiveris/bin/Audiveris', exists: true, executable: true }
     const safe = safePreflightResponse(result)
-    assert.equal(safe.available, true)
+    assert.equal(safe.audiverisAvailable, true)
     assert.equal(safe.error, undefined)
   })
 
@@ -47,6 +47,9 @@ describe('Audiveris preflight', () => {
     const result = await runAudiverisPreflight({ command: '/nonexistent/audiveris', timeoutMs: 110000 })
     assert.equal(result.available, false)
     assert.equal(result.error.code, 'EXECUTABLE_NOT_FOUND')
+    assert.equal(result.exists, false)
+    assert.equal(result.executable, false)
+    assert.equal(result.audiverisCommand, '/nonexistent/audiveris')
   })
 
   test('3. Java/runtime process unavailable', async () => {
@@ -57,6 +60,8 @@ describe('Audiveris preflight', () => {
     await fs.unlink(tmpFile)
     assert.equal(result.available, false)
     assert.equal(result.error.code, 'EXECUTABLE_NOT_FOUND')
+    assert.equal(result.exists, true)
+    assert.equal(result.executable, false)
   })
 
   test('4. Temporary directory not writable', async () => {
@@ -69,30 +74,37 @@ describe('Audiveris preflight', () => {
   test('5. Safe health response — no sensitive data', () => {
     const result = {
       available: false,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: false,
+      executable: false,
       error: { code: 'EXECUTABLE_NOT_FOUND', message: '/usr/local/bin/audiveris not found', stack: 'at ...' },
     }
     const safe = safePreflightResponse(result)
-    assert.equal(safe.available, false)
+    assert.equal(safe.audiverisAvailable, false)
     assert.equal(safe.error.code, 'EXECUTABLE_NOT_FOUND')
-    assert.equal(safe.error.message, undefined, 'Message must not be exposed')
     assert.equal(safe.error.stack, undefined, 'Stack must not be exposed')
   })
 
-  test('6. Absolute paths are not exposed', () => {
+  test('6. Absolute paths are not exposed beyond audiverisCommand', () => {
     const result = {
       available: false,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: false,
+      executable: false,
       error: { code: 'EXECUTABLE_NOT_FOUND', message: 'Audiveris çalıştırılabilir dosyası bulunamadı.' },
     }
     const safe = safePreflightResponse(result)
     const json = JSON.stringify(safe)
-    assert.ok(!json.includes('/usr/'), 'No absolute paths in safe response')
-    assert.ok(!json.includes('/opt/'), 'No absolute paths in safe response')
-    assert.ok(!json.includes('/home/'), 'No absolute paths in safe response')
+    // audiverisCommand is intentionally exposed; other paths must not leak
+    assert.ok(!json.includes('/home/'), 'No home paths in safe response')
   })
 
   test('7. Process output is not exposed', () => {
     const result = {
       available: false,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: false,
+      executable: false,
       error: { code: 'SPAWN_ERROR', message: 'Audiveris süreci başlatılamadı.', stdout: 'Java exception...', stderr: 'Error: ...' },
     }
     const safe = safePreflightResponse(result)
@@ -113,23 +125,29 @@ describe('Audiveris preflight', () => {
     const result = await runAudiverisPreflight({ command: '', timeoutMs: 110000 })
     assert.equal(result.available, false)
     assert.equal(result.error.code, 'MISSING_CONFIG')
+    assert.equal(result.audiverisCommand, '')
   })
 
   test('10. Invalid timeout returns safe error', async () => {
     const result = await runAudiverisPreflight({ command: 'audiveris', timeoutMs: -1 })
     assert.equal(result.available, false)
     assert.equal(result.error.code, 'INVALID_TIMEOUT')
+    assert.equal(result.audiverisCommand, 'audiveris')
   })
 
   test('11. checkExecutable with real executable file', async () => {
     // Use a real executable file that exists on the system
     const result = await checkExecutable('/bin/echo')
     assert.equal(result.ok, true)
+    assert.equal(result.exists, true)
+    assert.equal(result.executable, true)
   })
 
   test('12. checkExecutable with nonexistent command', async () => {
     const result = await checkExecutable('/nonexistent/path/audiveris')
     assert.equal(result.ok, false)
     assert.equal(result.code, 'EXECUTABLE_NOT_FOUND')
+    assert.equal(result.exists, false)
+    assert.equal(result.executable, false)
   })
 })
