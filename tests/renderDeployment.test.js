@@ -158,6 +158,18 @@ describe('Dockerfile security', () => {
       'Must use official Audiveris-5.11.0-ubuntu24.04-x86_64.deb asset name')
     assert.ok(dockerfile.includes('https://github.com/Audiveris/audiveris/releases/download/'),
       'Must use official GitHub release URL')
+    // Must install xdg-utils and desktop-file-utils before the .deb
+    assert.ok(dockerfile.includes('xdg-utils'),
+      'Must install xdg-utils for Audiveris post-install script')
+    assert.ok(dockerfile.includes('desktop-file-utils'),
+      'Must install desktop-file-utils for Audiveris post-install script')
+    // Must create XDG directories before installing the .deb
+    assert.ok(dockerfile.includes('/usr/share/applications'),
+      'Must create /usr/share/applications before .deb installation')
+    assert.ok(dockerfile.includes('/usr/share/desktop-directories'),
+      'Must create /usr/share/desktop-directories before .deb installation')
+    assert.ok(dockerfile.includes('install -d -m 0755'),
+      'Must create XDG directories with install -d -m 0755')
     // Must install the local .deb directly with apt/apt-get (resolves dependencies)
     assert.ok(dockerfile.includes('apt-get install -y --no-install-recommends /tmp/audiveris.deb'),
       'Must install local .deb directly with apt-get install')
@@ -181,5 +193,8 @@ describe('Dockerfile security', () => {
     // Must NOT run the Audiveris GUI during build
     assert.ok(!/Audiveris\s+-version/.test(dockerfile),
       'Must not execute Audiveris GUI during build')
+    // Must NOT use dpkg --unpack as a workaround
+    assert.ok(!dockerfile.includes('dpkg --unpack'),
+      'Must not use dpkg --unpack as a workaround')
   })
 })

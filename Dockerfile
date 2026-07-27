@@ -20,7 +20,14 @@ ARG AUDIVERIS_DEB=Audiveris-${AUDIVERIS_VERSION}-ubuntu24.04-x86_64.deb
 # fallback, no error suppression. The Audiveris GUI is never executed here.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl ca-certificates; \
+    apt-get install -y --no-install-recommends \
+      curl \
+      ca-certificates \
+      xdg-utils \
+      desktop-file-utils; \
+    install -d -m 0755 \
+      /usr/share/applications \
+      /usr/share/desktop-directories; \
     curl -fL --retry 3 --retry-all-errors \
       -o /tmp/audiveris.deb \
       "https://github.com/Audiveris/audiveris/releases/download/${AUDIVERIS_VERSION}/${AUDIVERIS_DEB}"; \
