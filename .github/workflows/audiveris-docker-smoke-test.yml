@@ -74,6 +74,16 @@ jobs:
             exit 1
           fi
 
+      - name: Verify storageWritable is true
+        run: |
+          STORAGE_WRITABLE=$(jq -r '.data.runtime.storageWritable' /tmp/health.json)
+          echo "storageWritable=$STORAGE_WRITABLE"
+          if [ "$STORAGE_WRITABLE" != "true" ]; then
+            echo "::error::storageWritable is not true"
+            cat /tmp/health.json
+            exit 1
+          fi
+
       - name: Run Audiveris -version inside container
         run: |
           docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -version

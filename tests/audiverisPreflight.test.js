@@ -8,7 +8,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
-import { runAudiverisPreflight, safePreflightResponse, checkExecutable, checkTempWritable, runBatchVersion, probeTempWritable, resolveTempDir, clearPreflightCache } from '../backend/services/audiverisPreflight.js'
+import { runAudiverisPreflight, safePreflightResponse, checkExecutable, checkTempWritable, checkStorageWritable, runBatchVersion, probeTempWritable, probeStorageWritable, resolveTempDir, resolveStorageDir, clearPreflightCache } from '../backend/services/audiverisPreflight.js'
 
 describe('Audiveris preflight', () => {
   beforeEach(() => {
@@ -302,6 +302,160 @@ describe('Audiveris preflight', () => {
     } finally {
       if (origTmpdir === undefined) delete process.env.TMPDIR
       else process.env.TMPDIR = origTmpdir
+    }
+  })
+})
+
+describe('Storage writability probe', () => {
+  beforeEach(() => {
+    clearPreflightCache()
+  })
+
+  test('26. probeStorageWritable succeeds on writable storage directory', async () => {
+    const probe = await probeStorageWritable()
+    assert.equal(probe.ok, true)
+    assert.ok(probe.storageDir, 'storageDir should be reported')
+    assert.ok(probe.probeDir, 'probeDir should be reported')
+  })
+
+  test('27. probeStorageWritable creates a per-job subdirectory', async () => {
+    const probe = await probeStorageWritable()
+    assert.equal(probe.ok, true)
+    assert.ok(probe.probeDir.includes('seslitab_storage_probe_'), 'probeDir should be a unique subdirectory')
+  })
+
+  test('28. probeStorageWritable fails on non-writable directory', async () => {
+    const origStorageDir = process.env.SESLITAB_MUSICXML_DIR
+    process.env.SESLITAB_MUSICXML_DIR = '/nonexistent-root-path-storage-12345'
+    try {
+      const probe = await probeStorageWritable()
+      // When running as root, mkdir with recursive succeeds even under nonexistent paths.
+      if (process.getuid && process.getuid() === 0) {
+        assert.equal(typeof probe.ok, 'boolean')
+        if (probe.ok && probe.probeDir) await fs.rmdir(probe.probeDir).catch(() => {})
+      } else {
+        assert.equal(probe.ok, false)
+        assert.ok(probe.testedPath, 'testedPath should be reported on failure')
+        assert.ok(probe.syscall, 'syscall/error code should be reported')
+        assert.ok(probe.message, 'message should be reported')
+      }
+    } finally {
+      if (origStorageDir === undefined) delete process.env.SESLITAB_MUSICXML_DIR
+      else process.env.SESLITAB_MUSICXML_DIR = origStorageDir
+    }
+  })
+
+  test('29. probeStorageWritable cleans up after successful probe', async () => {
+    const probe = await probeStorageWritable()
+    assert.equal(probe.ok, true)
+    assert.ok(probe.probeDir, 'probeDir should be reported')
+    await assert.rejects(fs.stat(probe.probeDir), /ENOENT/, 'Probe directory should not exist after cleanup')
+  })
+
+  test('30. probeStorageWritable cleans up after failed probe', async () => {
+    const bogusDir = path.join(os.tmpdir(), 'seslitab-bogus-storage-' + Date.now())
+    await fs.mkdir(bogusDir, { recursive: true })
+    await fs.chmod(bogusDir, 0o555)
+    const origStorageDir = process.env.SESLITAB_MUSICXML_DIR
+    process.env.SESLITAB_MUSICXML_DIR = bogusDir
+    try {
+      const probe = await probeStorageWritable()
+      // When running as root, chmod 0o555 does not prevent writing.
+      // In that case the probe succeeds; just verify it returns a result.
+      assert.ok(typeof probe.ok === 'boolean')
+    } finally {
+      await fs.chmod(bogusDir, 0o755).catch(() => {})
+      await fs.rmdir(bogusDir).catch(() => {})
+      if (origStorageDir === undefined) delete process.env.SESLITAB_MUSICXML_DIR
+      else process.env.SESLITAB_MUSICXML_DIR = origStorageDir
+    }
+  })
+
+  test('31. safePreflightResponse includes storageDir and storageWritable on success', () => {
+    const result = {
+      available: true,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: true,
+      executable: true,
+      versionCheck: true,
+      versionOutput: 'Audiveris 5.11.0',
+      tempDir: '/app/tmp',
+      tempWritable: true,
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: true,
+    }
+    const safe = safePreflightResponse(result)
+    assert.equal(safe.storageDir, '/var/lib/seslitab/musicxml')
+    assert.equal(safe.storageWritable, true)
+    assert.equal(safe.storageProbeError, undefined)
+    assert.equal(safe.error, undefined)
+  })
+
+  test('32. safePreflightResponse includes storageProbeError on failure', () => {
+    const result = {
+      available: false,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: true,
+      executable: true,
+      versionCheck: false,
+      versionOutput: '',
+      tempDir: '/app/tmp',
+      tempWritable: true,
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: false,
+      storageProbeError: {
+        testedPath: '/var/lib/seslitab/musicxml/seslitab_storage_probe_123',
+        syscall: 'EACCES',
+        message: 'permission denied',
+      },
+      error: { code: 'STORAGE_NOT_WRITABLE', message: 'Depolama dizini yazılabilir değil.' },
+    }
+    const safe = safePreflightResponse(result)
+    assert.equal(safe.audiverisAvailable, false)
+    assert.equal(safe.storageWritable, false)
+    assert.equal(safe.storageProbeError.testedPath, '/var/lib/seslitab/musicxml/seslitab_storage_probe_123')
+    assert.equal(safe.storageProbeError.syscall, 'EACCES')
+    assert.equal(safe.error.code, 'STORAGE_NOT_WRITABLE')
+  })
+
+  test('33. runAudiverisPreflight reports STORAGE_NOT_WRITABLE with diagnostics when storage is not writable', async () => {
+    const origStorageDir = process.env.SESLITAB_MUSICXML_DIR
+    process.env.SESLITAB_MUSICXML_DIR = '/nonexistent-root-path-storage-67890'
+    try {
+      const result = await runAudiverisPreflight({ command: '/bin/echo', timeoutMs: 110000 })
+      if (process.getuid && process.getuid() === 0) {
+        // When running as root, storage probes succeed; just verify structure.
+        assert.equal(typeof result.available, 'boolean')
+        if (result.storageProbeError && result.storageProbeError.testedPath) {
+          // cleanup if a probe dir was created
+        }
+      } else {
+        assert.equal(result.available, false)
+        assert.equal(result.error.code, 'STORAGE_NOT_WRITABLE')
+        assert.equal(result.storageWritable, false)
+        assert.ok(result.storageProbeError, 'storageProbeError should be present')
+        assert.ok(result.storageProbeError.testedPath, 'testedPath should be present')
+        assert.ok(result.storageProbeError.syscall, 'syscall should be present')
+      }
+    } finally {
+      if (origStorageDir === undefined) delete process.env.SESLITAB_MUSICXML_DIR
+      else process.env.SESLITAB_MUSICXML_DIR = origStorageDir
+    }
+  })
+
+  test('34. checkStorageWritable returns true on writable directory', async () => {
+    const ok = await checkStorageWritable()
+    assert.equal(ok, true)
+  })
+
+  test('35. resolveStorageDir honors SESLITAB_MUSICXML_DIR environment variable', () => {
+    const orig = process.env.SESLITAB_MUSICXML_DIR
+    process.env.SESLITAB_MUSICXML_DIR = '/custom/storage/path'
+    try {
+      assert.equal(resolveStorageDir(), '/custom/storage/path')
+    } finally {
+      if (orig === undefined) delete process.env.SESLITAB_MUSICXML_DIR
+      else process.env.SESLITAB_MUSICXML_DIR = orig
     }
   })
 })

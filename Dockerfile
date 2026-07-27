@@ -16,6 +16,8 @@ ARG AUDIVERIS_DEB=Audiveris-${AUDIVERIS_VERSION}-ubuntu24.04-x86_64.deb
 
 # Install runtime libraries required for headless Audiveris processing.
 # No desktop environment, X11 server, or GUI packages.
+# util-linux provides runuser, used by docker-entrypoint.sh to drop
+# from root to the seslitab user after creating the storage directory tree.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -24,7 +26,8 @@ RUN set -eux; \
       fontconfig \
       libfreetype6 \
       libgtk-3-0 \
-      libglib2.0-0; \
+      libglib2.0-0 \
+      util-linux; \
     rm -rf /var/lib/apt/lists/*
 
 # Download and validate the official Audiveris 5.11.0 .deb, then extract the
@@ -59,7 +62,11 @@ RUN timeout 30s /opt/audiveris/bin/Audiveris -version
 # Create non-root application user
 RUN groupadd -r seslitab && useradd -r -g seslitab -d /home/seslitab -m seslitab
 
-# Create writable directories on the persistent disk mount point
+# Create writable directories on the persistent disk mount point.
+# These are created at build time for local/docker testing. On Render, the
+# persistent disk is mounted at /var/lib/seslitab at runtime, overlaying these
+# directories with a root-owned mount point. docker-entrypoint.sh re-creates
+# the directory tree as root at startup, then drops to the seslitab user.
 RUN mkdir -p /var/lib/seslitab/tmp /var/lib/seslitab/musicxml /var/lib/seslitab/audiveris \
   && chown -R seslitab:seslitab /var/lib/seslitab
 
@@ -89,6 +96,11 @@ COPY backend/ ./backend/
 # Create application storage directory
 RUN mkdir -p /app/storage/jobs && chown -R seslitab:seslitab /app
 
+# Copy the entrypoint script that creates the persistent storage directory
+# tree at runtime (as root) before dropping to the seslitab user.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
+
 USER seslitab
 
 # Audiveris user configuration/cache under the persistent disk
@@ -111,4 +123,5 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "backend/server.js"]

@@ -67,6 +67,54 @@ async function probeTempWritable() {
   }
 }
 
+function resolveStorageDir() {
+  const env = process.env.SESLITAB_MUSICXML_DIR
+  if (env && env.trim()) return env.trim()
+  const cfg = GATEWAY_CONFIG.storagePath
+  if (cfg && cfg.trim()) return cfg.trim()
+  return ''
+}
+
+async function probeStorageWritable() {
+  const base = resolveStorageDir()
+  if (!base) {
+    return { ok: false, storageDir: '', testedPath: '', syscall: 'ENOCONFIG', message: 'Storage dizini yapılandırılmamış.' }
+  }
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const dir = path.join(base, `seslitab_storage_probe_${stamp}`)
+  let created = false
+  const testFile = path.join(dir, 'probe.tmp')
+  try {
+    await fs.mkdir(base, { recursive: true })
+    await fs.mkdir(dir, { recursive: true })
+    created = true
+    const payload = `seslitab-storage-probe-${stamp}`
+    await fs.writeFile(testFile, payload, { mode: 0o600 })
+    const readBack = await fs.readFile(testFile, 'utf8')
+    if (readBack !== payload) {
+      throw Object.assign(new Error('Yazılan depolama verisi geri okunamadı.'), { code: 'ECONTENT' })
+    }
+    const stat = await fs.stat(testFile)
+    if (!stat.isFile() || stat.size !== Buffer.byteLength(payload)) {
+      throw Object.assign(new Error('Depolama dosyası boyutu uyuşmuyor.'), { code: 'ESIZE' })
+    }
+    return { ok: true, storageDir: base, probeDir: dir }
+  } catch (err) {
+    return {
+      ok: false,
+      storageDir: base,
+      testedPath: dir,
+      syscall: err.code || err.syscall || 'UNKNOWN',
+      message: err.message || 'Depolama dizini yazılabilir değil.',
+    }
+  } finally {
+    if (created) {
+      try { await fs.unlink(testFile).catch(() => {}) } catch {}
+      try { await fs.rmdir(dir).catch(() => {}) } catch {}
+    }
+  }
+}
+
 async function checkExecutable(command) {
   let exists = false
   let executable = false
@@ -198,6 +246,28 @@ async function runAudiverisPreflight(config = parseConfig()) {
     }
   }
 
+  const storageProbe = await probeStorageWritable()
+  if (!storageProbe.ok) {
+    return {
+      available: false,
+      audiverisCommand: command,
+      exists: true,
+      executable: true,
+      versionCheck: false,
+      versionOutput: '',
+      tempDir: tempProbe.tempDir,
+      tempWritable: true,
+      storageDir: storageProbe.storageDir,
+      storageWritable: false,
+      storageProbeError: {
+        testedPath: storageProbe.testedPath,
+        syscall: storageProbe.syscall,
+        message: storageProbe.message,
+      },
+      error: safeError('STORAGE_NOT_WRITABLE', 'Depolama dizini yazılabilir değil.'),
+    }
+  }
+
   const batchTimeout = Math.min(
     Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : BATCH_VERSION_TIMEOUT_MS,
     BATCH_VERSION_TIMEOUT_MS,
@@ -231,6 +301,8 @@ async function runAudiverisPreflight(config = parseConfig()) {
     versionOutput: (batchResult.stdout || '').trim(),
     tempDir: tempProbe.tempDir,
     tempWritable: true,
+    storageDir: storageProbe.storageDir,
+    storageWritable: true,
   }
   cachedResult = result
   return result
@@ -247,6 +319,9 @@ function safePreflightResponse(result) {
     tempDir: result.tempDir,
     tempWritable: result.tempWritable ?? false,
     tempProbeError: result.tempProbeError,
+    storageDir: result.storageDir,
+    storageWritable: result.storageWritable ?? false,
+    storageProbeError: result.storageProbeError,
     error: result.available ? undefined : { code: result.error.code, message: result.error.message },
   }
 }
@@ -260,13 +335,21 @@ async function checkTempWritable() {
   return probe.ok
 }
 
+async function checkStorageWritable() {
+  const probe = await probeStorageWritable()
+  return probe.ok
+}
+
 export {
   runAudiverisPreflight,
   safePreflightResponse,
   checkExecutable,
   checkTempWritable,
+  checkStorageWritable,
   probeTempWritable,
+  probeStorageWritable,
   resolveTempDir,
+  resolveStorageDir,
   runBatchVersion,
   clearPreflightCache,
 }
