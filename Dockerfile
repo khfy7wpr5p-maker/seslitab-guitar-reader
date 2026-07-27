@@ -3,10 +3,29 @@
 # Build:  docker build -t seslitab-gateway .
 # Run:    docker run -p 3001:3001 --env-file .env seslitab-gateway
 #
-# Ubuntu 24.04 base with official Audiveris 5.11.0 .deb from the
-# Audiveris GitHub release repository. The Audiveris .deb bundles its
-# required Java runtime, so no separate JRE is installed.
+# Multi-stage build:
+#   Stage 1 (node-build): official pinned Node 20.18.1 image used only to
+#     install production node_modules with npm ci. No NodeSource apt repo,
+#     no remote GPG key download, no curl-to-NodeSource.
+#   Stage 2 (final): Ubuntu 24.04 base with official Audiveris 5.11.0 .deb
+#     from the Audiveris GitHub release repository. The Audiveris .deb
+#     bundles its required Java runtime, so no separate JRE is installed.
+#     Only the node binary and production node_modules are copied from
+#     stage 1; the final image never runs a Node package manager.
 
+# ── Stage 1: Node build ──────────────────────────────────────────────
+# Pinned official Node 20.18.1 LTS slim image (Debian 12 / glibc 2.36,
+# forward-compatible with the Ubuntu 24.04 final stage).
+FROM node:20.18.1-bookworm-slim AS node-build
+
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+
+# Install production dependencies only (no devDependencies).
+RUN npm ci --omit=dev || npm install --omit=dev
+
+# ── Stage 2: Final runtime image ─────────────────────────────────────
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -81,14 +100,17 @@ RUN mkdir -p /app/tmp \
   && chown seslitab:seslitab /app/tmp \
   && chmod 0755 /app/tmp
 
-# Install Node.js 20 from NodeSource
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-  && apt-get install -y --no-install-recommends nodejs \
-  && rm -rf /var/lib/apt/lists/*
+# Copy the Node.js 20.18.1 runtime binary from the pinned official Node
+# build stage. No NodeSource apt repository, no remote GPG signing-key
+# download, no curl-to-NodeSource. The binary (built against glibc 2.36)
+# is forward-compatible with Ubuntu 24.04's glibc 2.39.
+COPY --from=node-build /usr/local/bin/node /usr/local/bin/node
 
-# Install Node dependencies (cached layer)
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev || npm install --omit=dev
+# Verify the exact required Node.js runtime version is present.
+RUN node --version | grep -q '^v20\.18\.1$'
+
+# Copy production node_modules from the Node build stage.
+COPY --from=node-build /build/node_modules /app/node_modules
 
 # Copy backend source
 COPY backend/ ./backend/
@@ -106,7 +128,6 @@ RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 # No USER instruction here — the entrypoint drops to seslitab via runuser.
 
 # Audiveris user configuration/cache under the persistent disk
-ENV HOME=/var/lib/seslitab
 ENV XDG_CONFIG_HOME=/var/lib/seslitab/audiveris/config
 ENV XDG_DATA_HOME=/var/lib/seslitab/audiveris/data
 ENV XDG_CACHE_HOME=/var/lib/seslitab/audiveris/cache
