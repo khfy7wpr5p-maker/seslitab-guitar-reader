@@ -281,4 +281,70 @@ describe('E2E workflow jq paths', () => {
     assert.ok(wf.includes('sleep 5'), 'Must poll every 5 seconds')
     assert.ok(wf.includes('180'), 'Must have 180 second max')
   })
+
+  test('27. Validates root element directly from file, not shell variable', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('grep -Eq'), 'Must use grep -Eq for root validation')
+    assert.ok(wf.includes('/tmp/output.musicxml'), 'Must read /tmp/output.musicxml directly')
+    // Must NOT load entire XML into a shell variable and pipe echo into grep.
+    // Only flag large XML content variables, not small ones like $CT.
+    assert.ok(!/echo\s+"\$CONTENT"\s*\|\s*grep/.test(wf),
+      'Must not pipe echo "$CONTENT" | grep')
+    assert.ok(!wf.includes('CONTENT=$(cat'), 'Must not load XML into CONTENT variable')
+  })
+
+  test('28. Root regex accepts score-partwise with attributes', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    // The workflow contains this grep -Eq pattern (with shell escaping):
+    //   grep -Eq '<score-(partwise|timewise)([[:space:]>])' /tmp/output.musicxml
+    assert.ok(wf.includes("score-(partwise|timewise)"),
+      'Must use score-(partwise|timewise) pattern')
+    assert.ok(wf.includes('[[:space:]>]'),
+      'Must use [[:space:>] character class for space/attr/bracket')
+    // Verify the regex logic accepts score-partwise with attributes
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<score-partwise version="4.0">\n<measure /></score-partwise>'
+    assert.ok(/<score-(partwise|timewise)([\s>])/.test(xml),
+      'Regex should match score-partwise with attributes')
+  })
+
+  test('29. Root regex accepts score-timewise with attributes', () => {
+    const xml = '<?xml version="1.0"?>\n<score-timewise version="3.1">\n<measure /></score-timewise>'
+    assert.ok(/<score-(partwise|timewise)([\s>])/.test(xml),
+      'Regex should match score-timewise with attributes')
+  })
+
+  test('30. Root regex accepts XML declaration before root', () => {
+    const xml = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<score-partwise>'
+    assert.ok(/<score-(partwise|timewise)([\s>])/.test(xml),
+      'Regex should match with XML declaration before root')
+  })
+
+  test('31. Root regex rejects invalid XML without score-partwise/timewise', () => {
+    const xml = '<?xml version="1.0"?>\n<html><body>not music</body></html>'
+    assert.ok(!/<score-(partwise|timewise)([\s>])/.test(xml),
+      'Regex should not match non-MusicXML root')
+  })
+
+  test('32. No large-variable echo pipe remains for validation', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    // The old broken pattern: CONTENT=$(cat ...) then echo "$CONTENT" | grep
+    assert.ok(!wf.includes('CONTENT=$(cat'), 'Must not load XML into CONTENT variable')
+    assert.ok(!/echo\s+"\$CONTENT"\s*\|/.test(wf), 'Must not pipe echo "$CONTENT" anywhere')
+  })
+
+  test('33. Prints safe diagnostics on validation failure', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(wf.includes('head -c 500'), 'Must print first 500 bytes')
+    assert.ok(wf.includes('Content-Type:'), 'Must print Content-Type')
+    assert.ok(wf.includes('File size:'), 'Must print file size')
+    assert.ok(wf.includes('First XML element:'), 'Must print first XML element')
+  })
+
+  test('34. Measure and note counts read from file directly', () => {
+    const wf = readFileSync(path.join(ROOT, '.github/workflows/e2e-render-omr.yml'), 'utf8')
+    assert.ok(/grep -o '<measure '\s*\/tmp\/output\.musicxml/.test(wf),
+      'Must grep measures from file directly')
+    assert.ok(/grep -o '<note '\s*\/tmp\/output\.musicxml/.test(wf),
+      'Must grep notes from file directly')
+  })
 })

@@ -234,13 +234,23 @@ jobs:
             echo "::error::MusicXML file is too small (<= 500 bytes): $SIZE"
             exit 1
           fi
-          CONTENT=$(cat /tmp/output.musicxml)
-          if ! echo "$CONTENT" | grep -q '<score-partwise\|<score-timewise'; then
-            echo "::error::MusicXML does not contain <score-partwise or <score-timewise"
+          # Validate root element directly from disk (no shell-variable pipe,
+          # which causes false SIGPIPE failures under set -o pipefail).
+          if ! grep -Eq '<score-(partwise|timewise)([[:space:]>])' /tmp/output.musicxml; then
+            echo "::error::MusicXML does not contain <score-partwise or <score-timewise root element"
+            echo "--- Diagnostics ---"
+            echo "Content-Type: $CT"
+            echo "File size: $SIZE bytes"
+            echo "First 500 bytes:"
+            head -c 500 /tmp/output.musicxml
+            echo
+            echo "First XML element:"
+            grep -m1 -o '<[a-zA-Z][^>]*>' /tmp/output.musicxml || echo "(no XML element found)"
             exit 1
           fi
-          MEASURE_COUNT=$(echo "$CONTENT" | grep -o '<measure ' | wc -l)
-          NOTE_COUNT=$(echo "$CONTENT" | grep -o '<note ' | wc -l)
+          # Count structural elements directly from the file (no echo pipe).
+          MEASURE_COUNT=$(grep -o '<measure ' /tmp/output.musicxml | wc -l)
+          NOTE_COUNT=$(grep -o '<note ' /tmp/output.musicxml | wc -l)
           echo "Structural checks: measures=$MEASURE_COUNT notes=$NOTE_COUNT"
           if [ "$MEASURE_COUNT" -lt 1 ]; then
             echo "::error::No <measure> elements found"
