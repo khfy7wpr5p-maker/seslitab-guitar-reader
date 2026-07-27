@@ -56,7 +56,7 @@ jobs:
 
       - name: Verify audiverisAvailable is true
         run: |
-          AVAILABLE=$(jq -r '.runtime.audiverisAvailable' /tmp/health.json)
+          AVAILABLE=$(jq -r '.data.runtime.audiverisAvailable' /tmp/health.json)
           echo "audiverisAvailable=$AVAILABLE"
           if [ "$AVAILABLE" != "true" ]; then
             echo "::error::audiverisAvailable is not true"
