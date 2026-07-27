@@ -22,7 +22,9 @@ RUN set -eux; \
       curl \
       ca-certificates \
       fontconfig \
-      libfreetype6; \
+      libfreetype6 \
+      libgtk-3-0 \
+      libglib2.0-0; \
     rm -rf /var/lib/apt/lists/*
 
 # Download and validate the official Audiveris 5.11.0 .deb, then extract the
