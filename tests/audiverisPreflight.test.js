@@ -7,8 +7,27 @@ import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 
 import { runAudiverisPreflight, safePreflightResponse, checkExecutable, checkTempWritable, checkStorageWritable, runBatchVersion, probeTempWritable, probeStorageWritable, resolveTempDir, resolveStorageDir, clearPreflightCache } from '../backend/services/audiverisPreflight.js'
+
+function createSpawnStub({ exitCode = 0, stdout = 'Audiveris test 1.0\n', stderr = '' } = {}) {
+  return () => {
+    const child = new EventEmitter()
+    child.stdout = new PassThrough()
+    child.stderr = new PassThrough()
+    child.kill = () => {}
+    queueMicrotask(() => {
+      if (stdout) child.stdout.write(stdout)
+      if (stderr) child.stderr.write(stderr)
+      child.stdout.end()
+      child.stderr.end()
+      child.emit('close', exitCode)
+    })
+    return child
+  }
+}
 
 describe('Audiveris preflight', () => {
   beforeEach(() => {
@@ -124,7 +143,7 @@ describe('Audiveris preflight', () => {
   })
 
   test('11. checkExecutable with real executable file', async () => {
-    const result = await checkExecutable('/bin/echo')
+    const result = await checkExecutable(process.execPath)
     assert.equal(result.ok, true)
     assert.equal(result.exists, true)
     assert.equal(result.executable, true)
@@ -158,23 +177,36 @@ describe('Audiveris preflight', () => {
   })
 
   test('14. runBatchVersion reports failure for non-Audiveris command', async () => {
-    const result = await runBatchVersion('/bin/false', 5000)
+    const result = await runBatchVersion(process.execPath, 5000, createSpawnStub({ exitCode: 1, stdout: '' }))
     assert.equal(result.ok, false)
-    assert.ok(result.code === 'RUNTIME_ERROR' || result.code === 'TIMEOUT', 'Should fail with runtime error or timeout')
+    assert.equal(result.code, 'RUNTIME_ERROR')
   })
 
   test('15. runBatchVersion reports success for echo-like command', async () => {
-    const result = await runBatchVersion('/bin/echo', 5000)
+    const result = await runBatchVersion(process.execPath, 5000, createSpawnStub())
     assert.equal(result.ok, true)
     assert.ok(result.stdout.length > 0, 'Should capture stdout')
   })
 
   test('16. Preflight result is cached after first successful run', async () => {
-    const r1 = await runAudiverisPreflight({ command: '/bin/echo', timeoutMs: 110000 })
-    assert.equal(r1.available, true, 'First call should succeed with /bin/echo')
-    const r2 = await runAudiverisPreflight({ command: '/different/path', timeoutMs: 110000 })
-    assert.equal(r1.audiverisCommand, r2.audiverisCommand, 'Second call should return cached result')
-    assert.equal(r2.audiverisCommand, '/bin/echo')
+    const storageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'seslitab-preflight-storage-'))
+    const origStorageDir = process.env.SESLITAB_MUSICXML_DIR
+    process.env.SESLITAB_MUSICXML_DIR = storageDir
+    try {
+      const r1 = await runAudiverisPreflight({
+        command: process.execPath,
+        timeoutMs: 110000,
+        spawnImpl: createSpawnStub(),
+      })
+      assert.equal(r1.available, true, 'First call should succeed with the stubbed version process')
+      const r2 = await runAudiverisPreflight({ command: '/different/path', timeoutMs: 110000 })
+      assert.equal(r1.audiverisCommand, r2.audiverisCommand, 'Second call should return cached result')
+      assert.equal(r2.audiverisCommand, process.execPath)
+    } finally {
+      if (origStorageDir === undefined) delete process.env.SESLITAB_MUSICXML_DIR
+      else process.env.SESLITAB_MUSICXML_DIR = origStorageDir
+      await fs.rm(storageDir, { recursive: true, force: true })
+    }
   })
 
   test('17. probeTempWritable succeeds on writable dedicated temp dir', async () => {
@@ -292,7 +324,7 @@ describe('Audiveris preflight', () => {
     const origTmpdir = process.env.TMPDIR
     process.env.TMPDIR = '/nonexistent-root-path-67890'
     try {
-      const result = await runAudiverisPreflight({ command: '/bin/echo', timeoutMs: 110000 })
+      const result = await runAudiverisPreflight({ command: process.execPath, timeoutMs: 110000 })
       assert.equal(result.available, false)
       assert.equal(result.error.code, 'TMP_NOT_WRITABLE')
       assert.equal(result.tempWritable, false)
@@ -422,7 +454,7 @@ describe('Storage writability probe', () => {
     const origStorageDir = process.env.SESLITAB_MUSICXML_DIR
     process.env.SESLITAB_MUSICXML_DIR = '/nonexistent-root-path-storage-67890'
     try {
-      const result = await runAudiverisPreflight({ command: '/bin/echo', timeoutMs: 110000 })
+      const result = await runAudiverisPreflight({ command: process.execPath, timeoutMs: 110000 })
       if (process.getuid && process.getuid() === 0) {
         // When running as root, storage probes succeed; just verify structure.
         assert.equal(typeof result.available, 'boolean')

@@ -133,12 +133,12 @@ async function checkExecutable(command) {
   return { ok: true, exists: true, executable: true }
 }
 
-function runBatchVersion(command, timeoutMs) {
+function runBatchVersion(command, timeoutMs, spawnImpl = spawn) {
   return new Promise((resolve) => {
     let settled = false
     let stdout = ''
     let stderr = ''
-    const child = spawn(command, ['-version'], {
+    const child = spawnImpl(command, ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -178,7 +178,7 @@ function runBatchVersion(command, timeoutMs) {
 }
 
 async function runAudiverisPreflight(config = parseConfig()) {
-  const { command, timeoutMs } = config
+  const { command, timeoutMs, spawnImpl = spawn } = config
 
   if (cachedResult) return cachedResult
 
@@ -272,7 +272,7 @@ async function runAudiverisPreflight(config = parseConfig()) {
     Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : BATCH_VERSION_TIMEOUT_MS,
     BATCH_VERSION_TIMEOUT_MS,
   )
-  const batchResult = await runBatchVersion(command, batchTimeout)
+  const batchResult = await runBatchVersion(command, batchTimeout, spawnImpl)
   if (!batchResult.ok) {
     const msg = batchResult.code === 'TIMEOUT'
       ? 'Audiveris -version zaman aşımına uğradı.'
