@@ -218,6 +218,28 @@ export function speakRhythmicText(text, rate = 1, onStart = null) {
   })
 }
 
+/**
+ * Convert BPM to milliseconds per beat using the standard formula:
+ *   millisecondsPerBeat = 60000 / BPM
+ * @param {number} bpm
+ * @returns {number}
+ */
+export function millisecondsPerBeat(bpm) {
+  if (!Number.isFinite(bpm) || bpm <= 0) return 60000 / 120
+  return 60000 / bpm
+}
+
+/**
+ * Convert BPM to a speed multiplier relative to 120 BPM baseline.
+ * Higher BPM → higher multiplier → faster playback.
+ * @param {number} bpm
+ * @returns {number}
+ */
+export function bpmToSpeed(bpm) {
+  if (!Number.isFinite(bpm) || bpm <= 0) return 1
+  return bpm / 120
+}
+
 export function stopSpeech() {
   activeUtterance = null
   if ('speechSynthesis' in window) {

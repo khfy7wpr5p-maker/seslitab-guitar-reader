@@ -24,7 +24,7 @@ import {
 } from './services/musicEngine.js'
 import {
   speakRhythmicText, stopSpeech, playRhythm, stopRhythm,
-  isSpeechSupported, isAudioSupported, preloadVoices,
+  isSpeechSupported, isAudioSupported, preloadVoices, bpmToSpeed,
 } from './services/voiceService.js'
 import { getOmrProviderName } from './providers/index.js'
 import { normalizeTabInput } from '../tabParser.js'
@@ -553,7 +553,7 @@ async function toggleRhythm() {
   announce('Ritmik çalma başladı')
 
   const tempo = parseFloat($('tempo-slider').value)
-  const speed = 120 / tempo // Convert tempo to speed multiplier
+  const speed = bpmToSpeed(tempo)
 
   await playRhythm(parsedNotes, speed, (note, i) => {
     document.querySelectorAll('.note-card.playing').forEach((c) => c.classList.remove('playing'))
