@@ -83,6 +83,24 @@ import { parseMusicXmlWithStructure } from '../musicXmlParser.js'
 import { buildMeasureTimeline } from '../src/services/musicXmlMeasureTimeline.js'
 import { validateOmrMeasureDurations } from '../src/services/omrQualityValidator.js'
 
+function findTimelineMeasure(timeline, measure) {
+  if (measure.measureKey) {
+    return timeline.measures.find((entry) => entry.measureKey === measure.measureKey)
+  }
+  return timeline.measures.find(
+    (entry) =>
+      entry.measureNumber === measure.measureNumber &&
+      (measure.partId === null || measure.partId === undefined || entry.partId === measure.partId)
+  )
+}
+
+function formatMeasureReference(measure) {
+  if (Number.isFinite(measure.measureIndex) && measure.partId) {
+    return `${measure.measureNumber} [${measure.partId}, sıra ${measure.measureIndex + 1}]`
+  }
+  return `${measure.measureNumber}`
+}
+
 // ── Core: run pipeline on a single file ─────────────────────────────
 
 /**
@@ -256,18 +274,28 @@ export function runQualityReport(filePath) {
 
   // 6. Build report
   const allTimelineWarnings = []
-  for (const tm of timeline.measures) {
+  const validatedTimelineMeasures = timeline.measures.filter(
+    (measure) =>
+      validation.validatedPartId === null ||
+      measure.partId === null ||
+      measure.partId === validation.validatedPartId
+  )
+  for (const tm of validatedTimelineMeasures) {
     for (const w of tm.warnings) {
-      allTimelineWarnings.push(`Measure ${tm.measureNumber}: ${w}`)
+      allTimelineWarnings.push(w)
     }
   }
 
   const suspiciousMeasures = validation.measures
     .filter((m) => m.status !== 'valid' && m.status !== 'unknown')
     .map((m) => {
-      const tm = timeline.measures.find((t) => t.measureNumber === m.measureNumber)
+      const tm = findTimelineMeasure(timeline, m)
       return {
+        measureKey: m.measureKey,
         measureNumber: m.measureNumber,
+        partId: m.partId,
+        partIndex: m.partIndex,
+        measureIndex: m.measureIndex,
         expectedBeats: m.expectedBeats,
         actualBeats: m.actualBeats,
         difference: m.difference,
@@ -281,9 +309,13 @@ export function runQualityReport(filePath) {
   const unknownMeasuresDetail = validation.measures
     .filter((m) => m.status === 'unknown')
     .map((m) => {
-      const tm = timeline.measures.find((t) => t.measureNumber === m.measureNumber)
+      const tm = findTimelineMeasure(timeline, m)
       return {
+        measureKey: m.measureKey,
         measureNumber: m.measureNumber,
+        partId: m.partId,
+        partIndex: m.partIndex,
+        measureIndex: m.measureIndex,
         expectedBeats: m.expectedBeats,
         actualBeats: m.actualBeats,
         difference: m.difference,
@@ -302,6 +334,10 @@ export function runQualityReport(filePath) {
     timeSignatures: structured.timeSignatures || [],
     divisionsValues: [...new Set((structured.divisionsByMeasure || []).map((d) => d.divisions).filter((v) => v !== null))],
     totalStructuredEvents: structured.measureEvents?.length || 0,
+    parts: structured.parts || [],
+    primaryPartId: structured.primaryPartId || null,
+    validatedPartId: validation.validatedPartId,
+    ignoredPartIds: validation.ignoredPartIds,
     timelineWarnings: allTimelineWarnings,
     validMeasures: validation.validMeasures,
     warningMeasures: validation.warningMeasures,
@@ -334,6 +370,12 @@ export function formatConsoleSummary(report) {
   lines.push(`Errors: ${report.errorMeasures}`)
   lines.push(`Unknown: ${report.unknownMeasures}`)
   lines.push(`Quality: ${report.qualityStatus}`)
+  if (report.validatedPartId) {
+    lines.push(`Validated part: ${report.validatedPartId}`)
+  }
+  if (report.ignoredPartIds?.length > 0) {
+    lines.push(`Ignored parallel parts: ${report.ignoredPartIds.join(', ')}`)
+  }
 
   if (report.timelineWarnings.length > 0) {
     lines.push('')
@@ -348,7 +390,7 @@ export function formatConsoleSummary(report) {
     lines.push('')
     lines.push('Suspicious measures:')
     for (const m of suspicious) {
-      lines.push(`- Measure ${m.measureNumber}: expected ${m.expectedBeats}, actual ${m.actualBeats}, ${m.status}`)
+      lines.push(`- Measure ${formatMeasureReference(m)}: expected ${m.expectedBeats}, actual ${m.actualBeats}, ${m.status}`)
     }
   }
 
@@ -357,7 +399,7 @@ export function formatConsoleSummary(report) {
     lines.push('')
     lines.push('Unknown measures:')
     for (const m of unknown) {
-      lines.push(`- Measure ${m.measureNumber}: ${m.reasons.join('; ')}`)
+      lines.push(`- Measure ${formatMeasureReference(m)}: ${m.reasons.join('; ')}`)
     }
   }
 

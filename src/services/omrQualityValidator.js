@@ -1,21 +1,8 @@
-// OMR Quality Validator — Phase 1: Measure Duration Validation
+// OMR Quality Validator — measure duration validation.
 //
-// Pure, read-only validation module. No network, storage, UI, or provider
-// dependencies. Reuses the existing canonical duration resolver
-// (resolveBeats from noteTheory.js) — does not create a competing
-// duration calculation engine.
-//
-// Limitations of the current parsed model (reported, not worked around):
-//   - Time signatures are not extracted by parseMusicXml. They must be
-//     supplied via options.timeSignatures or parsedScore.timeSignatures.
-//     When absent, measures receive status "unknown".
-//   - Chord notes (<chord/>) are not detected by parseMusicXml. Without
-//     options.chordNoteFlags, chord notes inflate the actual duration.
-//     This limitation is noted in the reasons array.
-//   - <backup> and <forward> elements are not parsed. Forward elements
-//     may cause underfilling that the validator cannot account for.
-//   - Pickup/anacrusis/implicit-measure metadata is not preserved.
-//     When options.measureMetadata is absent, the limitation is noted.
+// The structured path keeps a stable identity for every measure:
+// partId + measureIndex. MusicXML's displayed measure number is only a
+// label and may repeat inside a part or across parallel parts.
 
 import { resolveBeats } from '../../noteTheory.js'
 import { buildMeasureTimeline } from './musicXmlMeasureTimeline.js'
@@ -26,14 +13,12 @@ export const QUALITY_THRESHOLDS = {
   errorRatioThreshold: 0.20,
 }
 
-function getTimeSignatureForMeasure(measureNumber, timeSignatures) {
-  if (!timeSignatures || timeSignatures.length === 0) return null
-  let active = null
-  for (const ts of timeSignatures) {
-    if (ts.measureNumber <= measureNumber) active = ts
-    else break
+function getMeasureKey(value) {
+  if (value?.measureKey) return value.measureKey
+  if (value?.partId !== undefined && Number.isFinite(value?.measureIndex)) {
+    return `${value.partId}:${value.measureIndex}`
   }
-  return active
+  return `legacy:${value?.measureNumber ?? value?.number ?? 1}`
 }
 
 function calculateExpectedBeats(timeSig) {
@@ -41,98 +26,252 @@ function calculateExpectedBeats(timeSig) {
   return timeSig.beats * (4 / timeSig.beatType)
 }
 
-function calculateActualBeats(measureNotes, chordNoteFlags, indexOffset) {
+function calculateActualBeats(indexedNotes, chordNoteFlags) {
   const voiceDurations = new Map()
-  for (let i = 0; i < measureNotes.length; i++) {
-    const note = measureNotes[i]
-    const globalIndex = indexOffset + i
-    if (chordNoteFlags && chordNoteFlags[globalIndex]) continue
+
+  for (const { note, index } of indexedNotes) {
+    if (chordNoteFlags && chordNoteFlags[index]) continue
     const voice = note.voice ?? 1
     const beats = resolveBeats(note)
     voiceDurations.set(voice, (voiceDurations.get(voice) || 0) + beats)
   }
+
   let max = 0
-  for (const dur of voiceDurations.values()) {
-    if (dur > max) max = dur
+  for (const duration of voiceDurations.values()) {
+    if (duration > max) max = duration
   }
   return max
+}
+
+function isStructuredMeasure(value) {
+  return !!value && (
+    !!value.measureKey ||
+    (value.partId !== undefined && value.partId !== null) ||
+    Number.isFinite(value.measureIndex)
+  )
+}
+
+function selectValidatedPartId(parsedScore, options) {
+  if (options.validateAllParts) return null
+  if (options.partId) return options.partId
+  if (parsedScore?.primaryPartId) return parsedScore.primaryPartId
+
+  const parts = parsedScore?.parts || []
+  if (parts.length > 0) {
+    return [...parts]
+      .sort((a, b) =>
+        ((b.pitchedNoteCount || 0) - (a.pitchedNoteCount || 0)) ||
+        ((b.measureCount || 0) - (a.measureCount || 0)) ||
+        ((a.partIndex || 0) - (b.partIndex || 0))
+      )[0].partId
+  }
+
+  const firstStructuredItem = [
+    ...(parsedScore?.measureMetadata || []),
+    ...(parsedScore?.measureEvents || []),
+    ...(parsedScore?.notes || []),
+  ].find((item) => item?.partId)
+
+  return firstStructuredItem?.partId ?? null
+}
+
+function belongsToSelectedPart(value, validatedPartId, validateAllParts) {
+  if (validateAllParts || validatedPartId === null) return true
+  return value?.partId === undefined || value?.partId === validatedPartId
+}
+
+function getTimeSignatureForMeasure(descriptor, timeSignatures) {
+  if (!timeSignatures || timeSignatures.length === 0) return null
+
+  const candidates = timeSignatures
+    .filter((ts) => {
+      if (descriptor.partId === null || descriptor.partId === undefined) {
+        return ts.partId === undefined || ts.partId === null
+      }
+      return ts.partId === undefined || ts.partId === descriptor.partId
+    })
+    .sort((a, b) => {
+      const aPosition = Number.isFinite(a.measureIndex) ? a.measureIndex : a.measureNumber
+      const bPosition = Number.isFinite(b.measureIndex) ? b.measureIndex : b.measureNumber
+      return aPosition - bPosition
+    })
+
+  let active = null
+  const descriptorPosition = Number.isFinite(descriptor.measureIndex)
+    ? descriptor.measureIndex
+    : descriptor.measureNumber
+
+  for (const timeSignature of candidates) {
+    const signaturePosition = Number.isFinite(timeSignature.measureIndex)
+      ? timeSignature.measureIndex
+      : timeSignature.measureNumber
+    if (signaturePosition <= descriptorPosition) active = timeSignature
+    else break
+  }
+
+  return active
+}
+
+function buildStructuredDescriptors(parsedScore, timeline, validatedPartId, validateAllParts) {
+  const descriptors = []
+  const seen = new Set()
+
+  const add = (value, metadata = null) => {
+    if (!belongsToSelectedPart(value, validatedPartId, validateAllParts)) return
+    const measureKey = getMeasureKey(value)
+    if (seen.has(measureKey)) return
+    seen.add(measureKey)
+    descriptors.push({
+      measureKey,
+      measureNumber: value.measureNumber ?? value.number ?? 1,
+      partId: value.partId ?? null,
+      partIndex: Number.isFinite(value.partIndex) ? value.partIndex : null,
+      measureIndex: Number.isFinite(value.measureIndex) ? value.measureIndex : null,
+      metadata: metadata || value,
+    })
+  }
+
+  for (const metadata of parsedScore.measureMetadata || []) add(metadata, metadata)
+  for (const measure of timeline?.measures || []) add(measure)
+  for (const note of parsedScore.notes || []) add(note)
+
+  descriptors.sort(compareMeasurePosition)
+  return descriptors
+}
+
+function buildLegacyDescriptors(notes, measureMetadata, timeSignatures) {
+  const allMeasureNumbers = new Set()
+  for (const note of notes) allMeasureNumbers.add(note.measure ?? note.measureNumber ?? 1)
+  for (const metadata of measureMetadata) allMeasureNumbers.add(metadata.measureNumber ?? metadata.number)
+  for (const timeSignature of timeSignatures) allMeasureNumbers.add(timeSignature.measureNumber)
+
+  let maxMeasure = 0
+  for (const measureNumber of allMeasureNumbers) {
+    if (measureNumber > maxMeasure) maxMeasure = measureNumber
+  }
+  for (let measureNumber = 1; measureNumber <= maxMeasure; measureNumber++) {
+    allMeasureNumbers.add(measureNumber)
+  }
+
+  return [...allMeasureNumbers]
+    .sort((a, b) => a - b)
+    .map((measureNumber) => ({
+      measureKey: `legacy:${measureNumber}`,
+      measureNumber,
+      partId: null,
+      partIndex: null,
+      measureIndex: null,
+      metadata: measureMetadata.find(
+        (metadata) => (metadata.measureNumber ?? metadata.number) === measureNumber
+      ) || null,
+    }))
+}
+
+function compareMeasurePosition(a, b) {
+  const aPart = Number.isFinite(a.partIndex) ? a.partIndex : Number.MAX_SAFE_INTEGER
+  const bPart = Number.isFinite(b.partIndex) ? b.partIndex : Number.MAX_SAFE_INTEGER
+  if (aPart !== bPart) return aPart - bPart
+
+  const aMeasure = Number.isFinite(a.measureIndex) ? a.measureIndex : a.measureNumber
+  const bMeasure = Number.isFinite(b.measureIndex) ? b.measureIndex : b.measureNumber
+  return aMeasure - bMeasure
 }
 
 export function validateOmrMeasureDurations(parsedScore, options = {}) {
   const notes = parsedScore?.notes ?? []
   const timeSignatures = parsedScore?.timeSignatures ?? options.timeSignatures ?? []
-  const measureMetadata = parsedScore?.measureMetadata ?? parsedScore?.measures ?? options.measureMetadata ?? []
-  const explicitChordFlags = options.chordNoteFlags ?? null
+  const measureMetadata =
+    parsedScore?.measureMetadata ??
+    parsedScore?.measures ??
+    options.measureMetadata ??
+    []
   const tolerance = options.tolerance ?? QUALITY_THRESHOLDS.tolerance
+  const validateAllParts = options.validateAllParts === true
+  const validatedPartId = selectValidatedPartId(parsedScore, options)
 
-  // Auto-derive chord note flags from notes[].isChordNote when not explicitly supplied.
-  const chordNoteFlags = explicitChordFlags ?? (notes.some((n) => n.isChordNote) ? notes.map((n) => !!n.isChordNote) : null)
+  const hasStructuredMeasures = [
+    ...measureMetadata,
+    ...(parsedScore?.measureEvents || []),
+    ...notes,
+  ].some(isStructuredMeasure)
 
-  const hasChordFlags = chordNoteFlags !== null
-  const hasMeasureMetadata = measureMetadata.length > 0
-
-  // Build timeline from structured events when available.
   const hasMeasureEvents = parsedScore?.measureEvents && parsedScore.measureEvents.length > 0
   const timeline = hasMeasureEvents ? buildMeasureTimeline(parsedScore) : null
+
+  const descriptors = hasStructuredMeasures
+    ? buildStructuredDescriptors(parsedScore, timeline, validatedPartId, validateAllParts)
+    : buildLegacyDescriptors(notes, measureMetadata, timeSignatures)
+
   const timelineByMeasure = new Map()
-  if (timeline) {
-    for (const tm of timeline.measures) {
-      timelineByMeasure.set(tm.measureNumber, tm)
-    }
+  for (const timelineMeasure of timeline?.measures || []) {
+    timelineByMeasure.set(getMeasureKey(timelineMeasure), timelineMeasure)
   }
 
-  const measuresMap = new Map()
-  for (let i = 0; i < notes.length; i++) {
-    const note = notes[i]
-    const measureNum = note.measure ?? note.measureNumber ?? 1
-    if (!measuresMap.has(measureNum)) {
-      measuresMap.set(measureNum, { notes: [], firstIndex: i })
-    }
-    measuresMap.get(measureNum).notes.push(note)
+  const indexedNotesByMeasure = new Map()
+  for (let index = 0; index < notes.length; index++) {
+    const note = notes[index]
+    if (!belongsToSelectedPart(note, validatedPartId, validateAllParts)) continue
+    const key = hasStructuredMeasures
+      ? getMeasureKey(note)
+      : `legacy:${note.measure ?? note.measureNumber ?? 1}`
+    if (!indexedNotesByMeasure.has(key)) indexedNotesByMeasure.set(key, [])
+    indexedNotesByMeasure.get(key).push({ note, index })
   }
 
-  // Include measures that appear in metadata or time signatures but have no notes.
-  const allMeasureNumbers = new Set(measuresMap.keys())
-  for (const m of measureMetadata) allMeasureNumbers.add(m.measureNumber ?? m.number)
-  for (const ts of timeSignatures) allMeasureNumbers.add(ts.measureNumber)
-  // Also infer intermediate measure numbers from the max measure seen.
-  let maxMeasure = 0
-  for (const n of allMeasureNumbers) if (n > maxMeasure) maxMeasure = n
-  for (let m = 1; m <= maxMeasure; m++) allMeasureNumbers.add(m)
+  const relevantNotes = [...indexedNotesByMeasure.values()].flat().map(({ note }) => note)
+  const explicitChordFlags = options.chordNoteFlags ?? null
+  const chordNoteFlags = explicitChordFlags ??
+    (relevantNotes.some((note) => note.isChordNote)
+      ? notes.map((note) => !!note.isChordNote)
+      : null)
+  const hasChordFlags = chordNoteFlags !== null
 
   const measures = []
 
-  for (const measureNum of allMeasureNumbers) {
-    const entry = measuresMap.get(measureNum) || { notes: [], firstIndex: 0 }
-    const timeSig = getTimeSignatureForMeasure(measureNum, timeSignatures)
-    const expectedBeats = calculateExpectedBeats(timeSig)
-    // Prefer timeline-based actual beats when available; fall back to max-voice-duration.
-    const tmEntry = timelineByMeasure.get(measureNum)
+  for (const descriptor of descriptors) {
+    const indexedNotes = indexedNotesByMeasure.get(descriptor.measureKey) || []
+    const timeSignature = getTimeSignatureForMeasure(descriptor, timeSignatures)
+    const expectedBeats = calculateExpectedBeats(timeSignature)
+    const timelineMeasure = timelineByMeasure.get(descriptor.measureKey)
+
     let actualBeats
     let timelineWarnings = []
-    if (tmEntry && typeof tmEntry.durationBeats === 'number' && Number.isFinite(tmEntry.durationBeats)) {
-      actualBeats = tmEntry.durationBeats
-      timelineWarnings = tmEntry.warnings || []
-    } else if (tmEntry && tmEntry.warnings && tmEntry.warnings.length > 0) {
-      // Timeline exists but divisions are missing/invalid — classify as unknown.
+
+    if (
+      timelineMeasure &&
+      typeof timelineMeasure.durationBeats === 'number' &&
+      Number.isFinite(timelineMeasure.durationBeats)
+    ) {
+      actualBeats = timelineMeasure.durationBeats
+      timelineWarnings = timelineMeasure.warnings || []
+    } else if (timelineMeasure?.warnings?.length > 0) {
       actualBeats = null
-      timelineWarnings = tmEntry.warnings
+      timelineWarnings = timelineMeasure.warnings
     } else {
-      actualBeats = calculateActualBeats(entry.notes, chordNoteFlags, entry.firstIndex)
+      actualBeats = calculateActualBeats(indexedNotes, chordNoteFlags)
     }
 
-    const meta = measureMetadata.find((m) => (m.measureNumber ?? m.number) === measureNum)
-    const isImplicit = meta?.implicit ?? false
-    const isPickup = meta?.pickup ?? false
+    const metadata = descriptor.metadata
+    const isImplicit = metadata?.implicit ?? false
+    const isPickup = metadata?.pickup ?? false
     const reasons = []
+    const identity = {
+      measureKey: descriptor.measureKey,
+      measureNumber: descriptor.measureNumber,
+      partId: descriptor.partId,
+      partIndex: descriptor.partIndex,
+      measureIndex: descriptor.measureIndex,
+    }
 
-    if (!timeSig || actualBeats === null) {
-      if (!timeSig) reasons.push('Time signature information not available')
+    if (!timeSignature || actualBeats === null) {
+      if (!timeSignature) reasons.push('Time signature information not available')
       if (actualBeats === null) reasons.push(...timelineWarnings)
-      if (!hasChordFlags && actualBeats !== null) reasons.push('Chord detection not available — actual duration may be inaccurate')
+      if (!hasChordFlags && actualBeats !== null) {
+        reasons.push('Chord detection not available — actual duration may be inaccurate')
+      }
       measures.push({
-        measureNumber: measureNum,
-        expectedBeats: timeSig ? expectedBeats : null,
+        ...identity,
+        expectedBeats: timeSignature ? expectedBeats : null,
         actualBeats: actualBeats ?? 0,
         difference: null,
         status: 'unknown',
@@ -142,10 +281,10 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
       continue
     }
 
-    if (actualBeats === 0 || (actualBeats !== null && actualBeats === 0)) {
+    if (actualBeats === 0) {
       reasons.push('Measure contains no notes or rests')
       measures.push({
-        measureNumber: measureNum,
+        ...identity,
         expectedBeats,
         actualBeats: 0,
         difference: -expectedBeats,
@@ -157,11 +296,11 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
     }
 
     const difference = actualBeats - expectedBeats
-    const absDiff = Math.abs(difference)
+    const absoluteDifference = Math.abs(difference)
 
-    if (absDiff <= tolerance) {
+    if (absoluteDifference <= tolerance) {
       measures.push({
-        measureNumber: measureNum,
+        ...identity,
         expectedBeats,
         actualBeats,
         difference,
@@ -169,8 +308,12 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
         severity: 'none',
         reasons: [],
       })
-    } else if (difference < 0) {
-      reasons.push(`Measure has ${actualBeats} beats, expected ${expectedBeats}`)
+      continue
+    }
+
+    reasons.push(`Measure has ${actualBeats} beats, expected ${expectedBeats}`)
+
+    if (difference < 0) {
       if (isImplicit || isPickup) {
         reasons.push('Measure marked as implicit/pickup — not flagged as error')
       }
@@ -179,9 +322,9 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
       }
       const severity = (isImplicit || isPickup)
         ? 'none'
-        : (absDiff >= QUALITY_THRESHOLDS.errorDifferenceThreshold ? 'error' : 'warning')
+        : (absoluteDifference >= QUALITY_THRESHOLDS.errorDifferenceThreshold ? 'error' : 'warning')
       measures.push({
-        measureNumber: measureNum,
+        ...identity,
         expectedBeats,
         actualBeats,
         difference,
@@ -189,40 +332,49 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
         severity,
         reasons,
       })
-    } else {
-      reasons.push(`Measure has ${actualBeats} beats, expected ${expectedBeats}`)
-      if (!hasChordFlags) {
-        reasons.push('Chord detection not available — duration may be inflated by undetected chord notes')
-      }
-      const severity = absDiff >= QUALITY_THRESHOLDS.errorDifferenceThreshold ? 'error' : 'warning'
-      measures.push({
-        measureNumber: measureNum,
-        expectedBeats,
-        actualBeats,
-        difference,
-        status: 'overfilled',
-        severity,
-        reasons,
-      })
+      continue
     }
+
+    if (!hasChordFlags) {
+      reasons.push('Chord detection not available — duration may be inflated by undetected chord notes')
+    }
+    const severity = absoluteDifference >= QUALITY_THRESHOLDS.errorDifferenceThreshold
+      ? 'error'
+      : 'warning'
+    measures.push({
+      ...identity,
+      expectedBeats,
+      actualBeats,
+      difference,
+      status: 'overfilled',
+      severity,
+      reasons,
+    })
   }
 
-  measures.sort((a, b) => a.measureNumber - b.measureNumber)
+  measures.sort(compareMeasurePosition)
 
   const totalMeasures = measures.length
-  const validMeasures = measures.filter((m) => m.status === 'valid').length
-  const warningMeasures = measures.filter((m) => m.severity === 'warning').length
-  const errorMeasures = measures.filter((m) => m.severity === 'error').length
-  const underfilledMeasures = measures.filter((m) => m.status === 'underfilled').length
-  const overfilledMeasures = measures.filter((m) => m.status === 'overfilled').length
-  const emptyMeasures = measures.filter((m) => m.status === 'empty').length
-  const unknownMeasures = measures.filter((m) => m.status === 'unknown').length
+  const validMeasures = measures.filter((measure) => measure.status === 'valid').length
+  const warningMeasures = measures.filter((measure) => measure.severity === 'warning').length
+  const errorMeasures = measures.filter((measure) => measure.severity === 'error').length
+  const underfilledMeasures = measures.filter((measure) => measure.status === 'underfilled').length
+  const overfilledMeasures = measures.filter((measure) => measure.status === 'overfilled').length
+  const emptyMeasures = measures.filter((measure) => measure.status === 'empty').length
+  const unknownMeasures = measures.filter((measure) => measure.status === 'unknown').length
 
   const errorRatio = totalMeasures > 0 ? errorMeasures / totalMeasures : 0
   const qualityStatus =
     errorRatio >= QUALITY_THRESHOLDS.errorRatioThreshold ? 'unreliable'
-    : (errorMeasures > 0 || warningMeasures > 0) ? 'review_required'
-    : 'good'
+      : (errorMeasures > 0 || warningMeasures > 0) ? 'review_required'
+        : 'good'
+
+  const availablePartIds = (parsedScore?.parts || [])
+    .map((part) => part.partId)
+    .filter(Boolean)
+  const ignoredPartIds = validateAllParts || validatedPartId === null
+    ? []
+    : availablePartIds.filter((partId) => partId !== validatedPartId)
 
   return {
     totalMeasures,
@@ -234,6 +386,8 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
     emptyMeasures,
     unknownMeasures,
     qualityStatus,
+    validatedPartId,
+    ignoredPartIds,
     measures,
   }
 }
