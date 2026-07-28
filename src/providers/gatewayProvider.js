@@ -128,6 +128,19 @@ const gatewayProvider = {
     }
     return { success: true, jobId }
   },
+
+  async downloadOmrProject(jobId) {
+    if (!jobId) return { success: false, error: 'İş kimliği gerekli.' }
+    let res
+    try {
+      res = await doFetch(`/api/jobs/${jobId}/omr`)
+    } catch (e) {
+      return { success: false, error: e.message, code: e.code, statusCode: e.statusCode }
+    }
+    const blob = await res.blob()
+    if (blob.size === 0) return { success: false, error: 'OMR projesi henüz hazır değil.' }
+    return { success: true, blob }
+  },
 }
 
 assertProvider(gatewayProvider, 'gatewayProvider')

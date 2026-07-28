@@ -15,7 +15,7 @@
 // Accessibility: all interactive elements have aria-labels, status messages
 // use aria-live, keyboard navigation works throughout.
 
-import { uploadAndAnalyze, pollAndDownload, cancelOmrJob, deleteOmrJob } from './services/omrService.js'
+import { uploadAndAnalyze, pollAndDownload, cancelOmrJob, deleteOmrJob, downloadOmrProject } from './services/omrService.js'
 import {
   parseTabToNotes, tabToSpokenText,
   notesToRhythmicText, notesToRhythmicHtml, notesToSummary,
@@ -100,6 +100,10 @@ function init() {
   // Copy & Reset
   $('copy-btn').addEventListener('click', copyRhythmicText)
   $('reset-btn').addEventListener('click', resetApp)
+
+  // OMR project download
+  const omrDlBtn = $('omr-download-btn')
+  if (omrDlBtn) omrDlBtn.addEventListener('click', handleOmrDownload)
 
   // Voice playback
   $('voice-btn').addEventListener('click', toggleVoice)
@@ -232,12 +236,8 @@ async function handleUpload() {
     $('progress-text').textContent = 'Dönüştürme tamamlandı.'
     announce('Dönüştürme tamamlandı')
     if (backendProvider === 'mock') showMockNotice()
+    showOmrDownloadButton()
     handleAnalysisResult(parseResult.notes, result.musicXml, true)
-
-    // Step 4: Cleanup backend job data after successful download
-    if (activeJobId) {
-      deleteOmrJob(activeJobId).catch(() => {})
-    }
   } catch (err) {
     const msg = err.message || 'Dönüştürme başarısız oldu.'
     showPdfError(msg)
@@ -246,9 +246,7 @@ async function handleUpload() {
     $('upload-btn').disabled = false
   } finally {
     $('cancel-btn').hidden = true
-    activeJobId = null
     abortController = null
-    backendProvider = null
   }
 }
 
@@ -444,6 +442,8 @@ function resetApp() {
   if (activeJobId && !musicXmlDownloaded) {
     cancelOmrJob(activeJobId).catch(() => {})
     deleteOmrJob(activeJobId).catch(() => {})
+  } else if (activeJobId && musicXmlDownloaded) {
+    deleteOmrJob(activeJobId).catch(() => {})
   }
   parsedNotes = null
   musicXmlString = null
@@ -473,6 +473,7 @@ function resetApp() {
   hidePdfError()
   hideTabError()
   hideMockNotice()
+  hideOmrDownloadButton()
   announce('Uygulama sıfırlandı')
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -603,6 +604,58 @@ function hideMockNotice() {
   const el = $('mock-notice')
   if (!el) return
   el.hidden = true
+}
+
+// ── OMR project download ──────────────────────────────────────
+
+function showOmrDownloadButton() {
+  const btn = $('omr-download-btn')
+  if (!btn) return
+  if (backendProvider !== 'audiveris' || !activeJobId) { btn.hidden = true; return }
+  btn.hidden = false
+  const status = $('omr-download-status')
+  if (status) status.hidden = true
+}
+
+function hideOmrDownloadButton() {
+  const btn = $('omr-download-btn')
+  if (btn) btn.hidden = true
+  const status = $('omr-download-status')
+  if (status) { status.hidden = true; status.textContent = '' }
+}
+
+async function handleOmrDownload() {
+  const btn = $('omr-download-btn')
+  const status = $('omr-download-status')
+  if (!btn || !activeJobId) return
+
+  btn.disabled = true
+  if (status) { status.hidden = false; status.textContent = 'OMR projesi indiriliyor…' }
+  announce('OMR projesi indiriliyor')
+
+  try {
+    const result = await downloadOmrProject(activeJobId)
+    if (!result.success) {
+      if (status) status.textContent = 'OMR projesi indirilemedi.'
+      announce('OMR projesi indirilemedi')
+      return
+    }
+    const url = URL.createObjectURL(result.blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'project.omr'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    if (status) status.textContent = 'OMR projesi indirildi.'
+    announce('OMR projesi indirildi')
+  } catch (err) {
+    if (status) status.textContent = 'OMR projesi indirilemedi.'
+    announce('OMR projesi indirilemedi')
+  } finally {
+    btn.disabled = false
+  }
 }
 
 // ── Utilities ──────────────────────────────────────────────

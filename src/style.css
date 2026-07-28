@@ -156,6 +156,10 @@ body {
 /* Notes summary */
 .notes-summary { margin-top: 1rem; padding: 0.625rem 0.875rem; background: var(--primary-50); border-radius: var(--radius-sm); font-size: 0.8125rem; color: var(--primary-700); font-weight: 500; }
 
+/* OMR project download */
+.omr-download-area { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+.omr-download-status { font-size: 0.8125rem; color: var(--neutral-600); }
+
 /* Playback */
 .playback-controls { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .speed-control { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }

@@ -77,6 +77,13 @@ function makeResponse(body, opts = {}) {
     headers: { get: (h) => (h === 'content-type' ? opts.contentType || 'application/json' : null) },
     async json() { return body },
     async text() { return typeof body === 'string' ? body : JSON.stringify(body) },
+    async blob() {
+      if (body instanceof Blob) return body
+      if (Buffer.isBuffer(body)) return new Blob([body], { type: opts.contentType || 'application/octet-stream' })
+      if (body instanceof ArrayBuffer) return new Blob([body], { type: opts.contentType || 'application/octet-stream' })
+      if (typeof body === 'string') return new Blob([body], { type: opts.contentType || 'text/plain' })
+      return new Blob([JSON.stringify(body)], { type: 'application/json' })
+    },
   }
 }
 
@@ -266,6 +273,44 @@ describe('gatewayProvider — HTTP istemcisi', async () => {
     const r = await provider.downloadMusicXML('job_e')
     assert.equal(r.success, false)
     assert.match(r.error, /boş veya geçersiz/i)
+  })
+
+  test('8e. downloadOmrProject: doğru endpoint\'i kullanır', async () => {
+    let calledUrl = null
+    stubFetch({
+      'GET http://x/api/jobs/job_omr/omr': (opts) => {
+        calledUrl = 'GET http://x/api/jobs/job_omr/omr'
+        return makeResponse(Buffer.from('fake-omr-binary'), { contentType: 'application/octet-stream' })
+      },
+    })
+    const r = await provider.downloadOmrProject('job_omr')
+    assert.equal(r.success, true)
+    assert.ok(r.blob, 'Blob dönmeli')
+    assert.ok(calledUrl && calledUrl.includes('/api/jobs/job_omr/omr'), 'Doğru endpoint: ' + calledUrl)
+  })
+
+  test('8f. downloadOmrProject: 404 durumunda hata döner', async () => {
+    stubFetch({
+      'GET http://x/api/jobs/job_404/omr': makeResponse({ success: false, error: { code: 'NOT_FOUND', message: 'OMR projesi bulunamadı.' } }, { status: 404 }),
+    })
+    const r = await provider.downloadOmrProject('job_404')
+    assert.equal(r.success, false)
+    assert.equal(r.statusCode, 404)
+  })
+
+  test('8g. downloadOmrProject: boş yanıt başarısız sayılır', async () => {
+    stubFetch({
+      'GET http://x/api/jobs/job_empty_omr/omr': makeResponse(new ArrayBuffer(0), { contentType: 'application/octet-stream' }),
+    })
+    const r = await provider.downloadOmrProject('job_empty_omr')
+    assert.equal(r.success, false)
+    assert.match(r.error, /henüz hazır değil/i)
+  })
+
+  test('8h. downloadOmrProject: jobId olmadan hata döner', async () => {
+    const r = await provider.downloadOmrProject(null)
+    assert.equal(r.success, false)
+    assert.match(r.error, /kimliği gerekli/)
   })
 })
 

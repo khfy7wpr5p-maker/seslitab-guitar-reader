@@ -23,6 +23,14 @@ export async function downloadMusicXML(jobId) {
   return getOmrProvider().downloadMusicXML(jobId)
 }
 
+export async function downloadOmrProject(jobId) {
+  const provider = getOmrProvider()
+  if (typeof provider.downloadOmrProject !== 'function') {
+    return { success: false, error: 'Bu sağlayıcı OMR proje indirmeyi desteklemiyor.' }
+  }
+  return provider.downloadOmrProject(jobId)
+}
+
 /**
  * Upload a PDF and start analysis. Returns { success, jobId }.
  * Does NOT wait for the MusicXML — the caller should poll separately.
