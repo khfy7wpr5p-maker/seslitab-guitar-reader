@@ -279,6 +279,10 @@ export function resolveBeats(note) {
   if (note) {
     const base = DURATION_TO_BEATS[note.duration] ?? DURATION_TO_BEATS[note.restType]
     if (typeof base === 'number' && base > 0) {
+      // If the duration string already includes "dotted-", the map value
+      // already has one dot applied — don't apply dotCount again (double-dot bug).
+      const isDotted = typeof note.duration === 'string' && note.duration.startsWith('dotted-')
+      if (isDotted) return base
       return applyDots(base, note.dotCount || 0)
     }
   }
