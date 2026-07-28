@@ -18,6 +18,7 @@
 //     When options.measureMetadata is absent, the limitation is noted.
 
 import { resolveBeats } from '../../noteTheory.js'
+import { buildMeasureTimeline } from './musicXmlMeasureTimeline.js'
 
 export const QUALITY_THRESHOLDS = {
   tolerance: 0.01,
@@ -70,6 +71,16 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
   const hasChordFlags = chordNoteFlags !== null
   const hasMeasureMetadata = measureMetadata.length > 0
 
+  // Build timeline from structured events when available.
+  const hasMeasureEvents = parsedScore?.measureEvents && parsedScore.measureEvents.length > 0
+  const timeline = hasMeasureEvents ? buildMeasureTimeline(parsedScore) : null
+  const timelineByMeasure = new Map()
+  if (timeline) {
+    for (const tm of timeline.measures) {
+      timelineByMeasure.set(tm.measureNumber, tm)
+    }
+  }
+
   const measuresMap = new Map()
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i]
@@ -95,20 +106,34 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
     const entry = measuresMap.get(measureNum) || { notes: [], firstIndex: 0 }
     const timeSig = getTimeSignatureForMeasure(measureNum, timeSignatures)
     const expectedBeats = calculateExpectedBeats(timeSig)
-    const actualBeats = calculateActualBeats(entry.notes, chordNoteFlags, entry.firstIndex)
+    // Prefer timeline-based actual beats when available; fall back to max-voice-duration.
+    const tmEntry = timelineByMeasure.get(measureNum)
+    let actualBeats
+    let timelineWarnings = []
+    if (tmEntry && typeof tmEntry.durationBeats === 'number' && Number.isFinite(tmEntry.durationBeats)) {
+      actualBeats = tmEntry.durationBeats
+      timelineWarnings = tmEntry.warnings || []
+    } else if (tmEntry && tmEntry.warnings && tmEntry.warnings.length > 0) {
+      // Timeline exists but divisions are missing/invalid — classify as unknown.
+      actualBeats = null
+      timelineWarnings = tmEntry.warnings
+    } else {
+      actualBeats = calculateActualBeats(entry.notes, chordNoteFlags, entry.firstIndex)
+    }
 
     const meta = measureMetadata.find((m) => (m.measureNumber ?? m.number) === measureNum)
     const isImplicit = meta?.implicit ?? false
     const isPickup = meta?.pickup ?? false
     const reasons = []
 
-    if (!timeSig) {
-      reasons.push('Time signature information not available')
-      if (!hasChordFlags) reasons.push('Chord detection not available — actual duration may be inaccurate')
+    if (!timeSig || actualBeats === null) {
+      if (!timeSig) reasons.push('Time signature information not available')
+      if (actualBeats === null) reasons.push(...timelineWarnings)
+      if (!hasChordFlags && actualBeats !== null) reasons.push('Chord detection not available — actual duration may be inaccurate')
       measures.push({
         measureNumber: measureNum,
-        expectedBeats: null,
-        actualBeats,
+        expectedBeats: timeSig ? expectedBeats : null,
+        actualBeats: actualBeats ?? 0,
         difference: null,
         status: 'unknown',
         severity: 'none',
@@ -117,7 +142,7 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
       continue
     }
 
-    if (actualBeats === 0) {
+    if (actualBeats === 0 || (actualBeats !== null && actualBeats === 0)) {
       reasons.push('Measure contains no notes or rests')
       measures.push({
         measureNumber: measureNum,
