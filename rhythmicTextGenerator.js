@@ -18,6 +18,7 @@ const BEATS_TO_TEXT = {
   4: 'dört vuruş',
   3: 'üç vuruş',
   2: 'iki vuruş',
+  1.5: 'bir buçuk vuruş',
   1: 'bir vuruş',
   0.75: 'üç çeyrek vuruş',
   0.5: 'yarım vuruş',
@@ -31,7 +32,7 @@ const BEATS_TO_TEXT = {
  * @param {number} beats
  * @returns {string}
  */
-function beatsToTurkishText(beats) {
+export function beatsToTurkishText(beats) {
   // Try exact match first
   if (BEATS_TO_TEXT[beats]) {
     return BEATS_TO_TEXT[beats]
@@ -60,15 +61,37 @@ function beatsToTurkishText(beats) {
 }
 
 /**
+ * Resolve the normalized beat value for a note or rest.
+ * Prefers note.beats when already calculated by the parser.
+ * Falls back to duration / divisions when beats is missing.
+ * Never rounds, ceils, floors, or silently falls back to 1.
+ * @param {NoteObject} note
+ * @returns {number}
+ */
+function resolveBeats(note) {
+  if (typeof note.beats === 'number' && note.beats > 0) {
+    return note.beats
+  }
+  if (typeof note.durationValue === 'number' && typeof note.divisions === 'number' && note.divisions > 0) {
+    return note.durationValue / note.divisions
+  }
+  const fromType = durationBeats(note.duration)
+  if (typeof fromType === 'number' && fromType > 0) {
+    return fromType
+  }
+  return note.beats || 0
+}
+
+/**
  * Format a single note as Turkish text
  * @param {NoteObject} note
  * @returns {string}
  */
-function formatNoteAsText(note) {
+export function formatNoteAsText(note) {
   // Handle rests
   if (note.isRest) {
     const restLabel = durationLabel(note.duration || note.restType || 'quarter')
-    const beatsVal = durationBeats(note.duration || note.restType) || 1
+    const beatsVal = resolveBeats(note)
     const beatsText = beatsToTurkishText(beatsVal)
     return `${restLabel}, sus, ${beatsText}`
   }
@@ -103,7 +126,7 @@ function formatNoteAsText(note) {
   parts.push(durLabel)
 
   // Beat count
-  const beatsVal = note.beats || durationBeats(note.duration) || 1
+  const beatsVal = resolveBeats(note)
   const beatsText = beatsToTurkishText(beatsVal)
   parts.push(beatsText)
 

@@ -21,10 +21,15 @@ export function parseMusicXml(musicXmlString) {
     const notes = []
     const measures = doc.querySelectorAll('measure')
     let measureNumber = 0
+    let currentDivisions = null
 
     for (const measure of measures) {
       measureNumber = parseInt(measure.getAttribute('number')) || (measureNumber + 1)
-      const measureNotes = parseMeasure(measure, measureNumber)
+      const divisionsEl = measure.querySelector('attributes divisions')
+      if (divisionsEl) {
+        currentDivisions = parseInt(divisionsEl.textContent, 10) || currentDivisions
+      }
+      const measureNotes = parseMeasure(measure, measureNumber, currentDivisions)
       notes.push(...measureNotes)
     }
 
@@ -35,14 +40,14 @@ export function parseMusicXml(musicXmlString) {
 }
 
 // Parse a single measure
-function parseMeasure(measureEl, measureNumber) {
+function parseMeasure(measureEl, measureNumber, divisions) {
   const notes = []
   const noteEls = measureEl.querySelectorAll('note')
   let measureBeats = 0
   const measureStartBeat = 0 // Reset per measure for measure-relative positions
 
   for (const noteEl of noteEls) {
-    const noteData = parseNote(noteEl, measureNumber, measureBeats)
+    const noteData = parseNote(noteEl, measureNumber, measureBeats, divisions)
     if (noteData) {
       notes.push(noteData)
       measureBeats += noteData.beats
@@ -53,20 +58,26 @@ function parseMeasure(measureEl, measureNumber) {
 }
 
 // Parse a single note element
-function parseNote(noteEl, measure, startBeat) {
+function parseNote(noteEl, measure, startBeat, divisions) {
+  const durationEl = noteEl.querySelector('duration')
+  const durationValue = durationEl ? parseInt(durationEl.textContent, 10) : null
+
   // Check if this is a rest
   const rest = noteEl.querySelector('rest')
   if (rest) {
-    const duration = noteEl.querySelector('duration')
     const type = noteEl.querySelector('type')
     const durationText = type ? type.textContent : 'quarter'
-    const beats = getDurationBeats(durationText)
+    const baseBeats = getDurationBeats(durationText)
+    const dotCount = noteEl.querySelectorAll('dot').length
+    const beats = applyDots(baseBeats, dotCount)
     return {
       isRest: true,
       measure,
       startBeat,
       duration: beatsToDurationId(beats),
       beats,
+      durationValue,
+      divisions,
       confidence: 0.9,
       confidenceReason: 'Sus işareti',
     }
@@ -112,6 +123,7 @@ function parseNote(noteEl, measure, startBeat) {
   // Check for dots
   const dotCount = noteEl.querySelectorAll('dot').length
   const dottedBeats = applyDots(beats, dotCount)
+  const durationId = beatsToDurationId(dottedBeats)
 
   // Map string number to letter
   const stringLetter = getStringLetter(stringNum)
@@ -127,8 +139,10 @@ function parseNote(noteEl, measure, startBeat) {
     noteName: noteNameVal,
     frequency: freq,
     midi: noteToMidi(stringLetter, fret),
-    duration: beatsToDurationId(dottedBeats),
+    duration: durationId,
     beats: dottedBeats,
+    durationValue,
+    divisions,
     startBeat,
     confidence: 0.85,
     confidenceReason: technical ? 'MusicXML teknik bilgi' : 'MusicXML perdeden hesaplandı',
