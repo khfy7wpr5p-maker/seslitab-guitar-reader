@@ -23,6 +23,7 @@ import { handleUploadPdf } from './api/uploadPdf.js'
 import { handleAnalyzePdf } from './api/analyzePdf.js'
 import { handleGetJobStatus } from './api/getJobStatus.js'
 import { handleDownloadMusicXml } from './api/downloadMusicXml.js'
+import { handleDownloadOmr } from './api/downloadOmr.js'
 import { handleDeleteJob } from './api/deleteJob.js'
 import { handleCancelJob } from './api/cancelJob.js'
 
@@ -132,6 +133,16 @@ app.get('/api/v1/musicxml/:jobId', async (req, res) => {
   } catch (e) { sendError(res, e) }
 })
 
+app.get('/api/v1/omr/:jobId', async (req, res) => {
+  try {
+    const result = await handleDownloadOmr({ jobId: req.params.jobId })
+    if (!result.success) return sendError(res, new ValidationError(result.error || '.omr bulunamadı.'))
+    res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader('Content-Disposition', `attachment; filename="${result.fileName || 'project.omr'}"`)
+    res.status(200).send(result.omrBuffer)
+  } catch (e) { sendError(res, e) }
+})
+
 app.delete('/api/v1/job/:jobId', async (req, res) => {
   try {
     const result = await handleDeleteJob({ jobId: req.params.jobId })
@@ -166,6 +177,16 @@ app.get('/api/jobs/:id/musicxml', async (req, res) => {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="${result.fileName || 'output.musicxml'}"`)
     res.status(200).send(result.musicXml)
+  } catch (e) { sendError(res, e) }
+})
+
+app.get('/api/jobs/:id/omr', async (req, res) => {
+  try {
+    const result = await handleDownloadOmr({ jobId: req.params.id })
+    if (!result.success) return sendError(res, new ValidationError(result.error || '.omr bulunamadı.'))
+    res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader('Content-Disposition', `attachment; filename="${result.fileName || 'project.omr'}"`)
+    res.status(200).send(result.omrBuffer)
   } catch (e) { sendError(res, e) }
 })
 
@@ -207,6 +228,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`  POST   /api/v1/pdf/analyze`)
   console.log(`  GET    /api/v1/job/:jobId`)
   console.log(`  GET    /api/v1/musicxml/:jobId`)
+  console.log(`  GET    /api/v1/omr/:jobId`)
   console.log(`  DELETE /api/v1/job/:jobId`)
   console.log(`  GET    /api/v1/health`)
   console.log(`  POST   /api/jobs`)

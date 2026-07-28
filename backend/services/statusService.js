@@ -30,3 +30,11 @@ export async function getMusicXml(jobId) {
   cSet(`m:${jobId}`, res, TTL.musicXml)
   return res
 }
+
+export async function getOmrArtifact(jobId) {
+  const r = await jobManager.getJob(jobId)
+  if (r.status !== 'completed') throw new JobNotReadyError(jobId, r.status)
+  const buf = await storage.readOmr(jobId)
+  if (!buf) return { success: false, jobId, error: '.omr dosyası bulunamadı.' }
+  return { success: true, jobId, omrBuffer: buf, fileName: r.fileName.replace(/\.pdf$/i, '.omr') }
+}

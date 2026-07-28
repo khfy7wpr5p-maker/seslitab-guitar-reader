@@ -149,6 +149,23 @@ async function findOutputFile(outputDir) {
   return candidates[0]
 }
 
+async function findOmrFile(outputDir) {
+  let files
+  try {
+    files = await fs.readdir(outputDir)
+  } catch (e) {
+    if (e.code === 'ENOENT') return null
+    return null
+  }
+  for (const f of files) {
+    if (path.extname(f).toLowerCase() === '.omr') {
+      const stat = await fs.stat(path.join(outputDir, f)).catch(() => null)
+      if (stat && stat.isFile() && stat.size > 0) return { name: f, size: stat.size }
+    }
+  }
+  return null
+}
+
 async function readOutputFile(outputDir, file) {
   const filePath = path.join(outputDir, file.name)
   if (file.ext === '.mxl') {
@@ -311,7 +328,7 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
         await fs.mkdir(outputDir, { recursive: true })
         await fs.writeFile(inputPath, j.pdfBuffer)
 
-        const args = ['-batch', '-transcribe', '-export', '-output', outputDir, '--', inputPath, ...extraArgs]
+        const args = ['-batch', '-transcribe', '-export', '-save', '-output', outputDir, '--', inputPath, ...extraArgs]
 
         let result
         try {
@@ -362,9 +379,20 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
         }
 
         j.musicXml = xml
+
+        // Preserve the Audiveris .omr project file for diagnostics.
+        const omrFile = await findOmrFile(outputDir)
+        if (omrFile) {
+          j.omrBuffer = await fs.readFile(path.join(outputDir, omrFile.name))
+          j.omrFileName = omrFile.name
+          console.log(`[AudiverisProvider] .omr artifact found: ${omrFile.name} (${j.omrBuffer.length} bytes) | MusicXML: ${Buffer.byteLength(xml)} bytes | exit: 0 | stdout: ${result.stdout.length} bytes | stderr: ${result.stderr.length} bytes`)
+        } else {
+          console.log(`[AudiverisProvider] No .omr artifact found in ${outputDir} | MusicXML: ${Buffer.byteLength(xml)} bytes | exit: 0 | stdout: ${result.stdout.length} bytes | stderr: ${result.stderr.length} bytes`)
+        }
+
         j.status = 'completed'
         j.progress = 100
-        return { success: true, providerJobId: id, status: 'completed', progress: 100 }
+        return { success: true, providerJobId: id, status: 'completed', progress: 100, omrFileName: j.omrFileName || null }
       } catch (err) {
         j.status = 'failed'
         const code = err.code || 'TMP_IO_ERROR'
@@ -385,6 +413,12 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
       const j = jobs.get(id)
       if (!j || !j.musicXml) return { success: false, error: 'MusicXML hazır değil.', retryable: false }
       return { success: true, providerJobId: id, status: 'completed', musicXml: j.musicXml }
+    },
+
+    async downloadOmrArtifact(id) {
+      const j = jobs.get(id)
+      if (!j || !j.omrBuffer) return { success: false, error: '.omr dosyası hazır değil.', retryable: false }
+      return { success: true, providerJobId: id, status: 'completed', omrBuffer: j.omrBuffer, omrFileName: j.omrFileName }
     },
 
     async cancelJob(id) {

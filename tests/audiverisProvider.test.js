@@ -546,6 +546,64 @@ describe('AudiverisProvider user-facing error protection', () => {
   })
 })
 
+describe('AudiverisProvider .omr artifact preservation', () => {
+  test('32. -save flag is passed to Audiveris', async () => {
+    const { mockSpawn, calls } = makeMockSpawn()
+    const p = makeProvider({}, { spawn: mockSpawn })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    await p.analyzePdf(up.providerJobId)
+    assert.ok(calls[0].args.includes('-save'), 'Audiveris command must include -save flag')
+  })
+
+  test('33. .omr artifact detected and preserved after success', async () => {
+    const { mockSpawn } = makeMockSpawn({
+      writeFiles: async (dir) => {
+        await fs.writeFile(path.join(dir, 'output.musicxml'), SAMPLE_PARTWISE)
+        await fs.writeFile(path.join(dir, 'project.omr'), Buffer.from('fake-omr-binary-data'))
+      },
+    })
+    const p = makeProvider({}, { spawn: mockSpawn })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    const an = await p.analyzePdf(up.providerJobId)
+    assert.equal(an.success, true)
+    assert.ok(an.omrFileName, 'analyzePdf should return omrFileName')
+    const dl = await p.downloadOmrArtifact(up.providerJobId)
+    assert.equal(dl.success, true)
+    assert.ok(dl.omrBuffer)
+    assert.equal(dl.omrFileName, an.omrFileName)
+  })
+
+  test('34. Missing .omr artifact handled gracefully', async () => {
+    const { mockSpawn } = makeMockSpawn({
+      writeFiles: async (dir) => {
+        await fs.writeFile(path.join(dir, 'output.musicxml'), SAMPLE_PARTWISE)
+      },
+    })
+    const p = makeProvider({}, { spawn: mockSpawn })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    const an = await p.analyzePdf(up.providerJobId)
+    assert.equal(an.success, true)
+    assert.equal(an.omrFileName, null)
+    const dl = await p.downloadOmrArtifact(up.providerJobId)
+    assert.equal(dl.success, false)
+  })
+
+  test('35. MusicXML generation not regressed when .omr present', async () => {
+    const { mockSpawn } = makeMockSpawn({
+      writeFiles: async (dir) => {
+        await fs.writeFile(path.join(dir, 'output.musicxml'), SAMPLE_PARTWISE)
+        await fs.writeFile(path.join(dir, 'project.omr'), Buffer.from('omr-data'))
+      },
+    })
+    const p = makeProvider({}, { spawn: mockSpawn })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    await p.analyzePdf(up.providerJobId)
+    const dl = await p.downloadMusicXML(up.providerJobId)
+    assert.equal(dl.success, true)
+    assert.ok(dl.musicXml.includes('<score-partwise'))
+  })
+})
+
 describe('AudiverisProvider config parsing', () => {
   test('Config parsing defaults', () => {
     const c = parseConfig({})

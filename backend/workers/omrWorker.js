@@ -72,6 +72,21 @@ async function processJob(entry, workerId) {
   if (!dl.success || !dl.musicXml) throw new ProviderError(dl.error || 'MusicXML indirilemedi.', { jobId })
 
   await storage.writeMusicXml(jobId, dl.musicXml)
+
+  if (typeof provider.downloadOmrArtifact === 'function') {
+    try {
+      const omr = await provider.downloadOmrArtifact(pid)
+      if (omr.success && omr.omrBuffer) {
+        await storage.writeOmr(jobId, omr.omrBuffer)
+        console.log(`[Worker ${workerId}] Job ${jobId} .omr artifact saved (${omr.omrBuffer.length} bytes).`)
+      } else {
+        console.log(`[Worker ${workerId}] Job ${jobId} no .omr artifact.`)
+      }
+    } catch (e) {
+      console.error(`[Worker ${workerId}] Job ${jobId} .omr artifact error:`, e.message)
+    }
+  }
+
   await jobManager.updateStatus(jobId, 'musicxml_created', { progress: 100 })
   await jobManager.updateStatus(jobId, 'completed', { progress: 100 })
   console.log(`[Worker ${workerId}] Job ${jobId} completed.`)

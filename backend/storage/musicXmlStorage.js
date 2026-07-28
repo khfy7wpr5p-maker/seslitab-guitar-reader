@@ -25,6 +25,17 @@ export async function writeMusicXml(jobId, xml) {
   await fs.writeFile(path.join(jobDir(jobId), 'output.musicxml'), xml, 'utf8')
 }
 
+export async function writeOmr(jobId, buf) {
+  if (!buf?.length) throw new StorageError('.omr dosyası boş.', { jobId })
+  await ensureDir(jobDir(jobId))
+  await fs.writeFile(path.join(jobDir(jobId), 'project.omr'), buf)
+}
+
+export async function readOmr(jobId) {
+  try { return await fs.readFile(path.join(jobDir(jobId), 'project.omr')) }
+  catch (e) { if (e.code === 'ENOENT') return null; throw new StorageError(`Okunamadı: ${jobId}`, { cause: e.message }) }
+}
+
 export async function writeMetadata(jobId, meta) {
   await ensureDir(jobDir(jobId))
   await fs.writeFile(path.join(jobDir(jobId), 'metadata.json'), JSON.stringify(meta, null, 2), 'utf8')
