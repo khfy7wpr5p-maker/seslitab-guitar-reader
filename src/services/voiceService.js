@@ -14,6 +14,10 @@ function getAudioCtx() {
 }
 
 const NO_TURKISH_VOICE_WARNING = 'Bu cihazda Türkçe ses bulunamadı.'
+const START_TIMEOUT_MS = 3000
+
+let cachedVoices = []
+let activeUtterance = null
 
 /**
  * Select a Turkish voice from a list using priority:
@@ -59,55 +63,163 @@ export function loadVoices(synth) {
 }
 
 /**
+ * Preload and cache available voices at application startup so the
+ * Turkish voice is ready immediately when the user presses the button.
+ * Updates the cache on subsequent voiceschanged events.
+ * @param {SpeechSynthesis} synth
+ */
+export function preloadVoices(synth) {
+  const update = () => {
+    const voices = synth.getVoices()
+    if (voices && voices.length > 0) {
+      cachedVoices = voices
+      console.info('[RhythmicHTML TTS] Voices preloaded:', voices.length)
+    }
+  }
+  update()
+  synth.addEventListener('voiceschanged', update)
+}
+
+/**
+ * Return the cached Turkish voice, or null.
+ * @returns {SpeechSynthesisVoice | null}
+ */
+export function getCachedTurkishVoice() {
+  return selectTurkishVoice(cachedVoices)
+}
+
+/**
+ * Reset the voice cache (for testing).
+ */
+export function resetVoiceCache() {
+  cachedVoices = []
+  activeUtterance = null
+}
+
+/**
  * Speak text using SpeechSynthesis API (Turkish).
- * Loads voices first, selects a Turkish voice explicitly, and refuses
- * to speak with a non-Turkish voice. Rejects with NO_TURKISH_VOICE_WARNING
- * when no Turkish voice is available.
+ *
+ * Lifecycle:
+ *   - Uses the cached Turkish voice immediately (no async wait on click).
+ *   - Calls speechSynthesis.cancel() only to stop a previous utterance.
+ *   - Calls speechSynthesis.resume() if the synthesizer is paused.
+ *   - Preserves the utterance in module-level state until onend/onerror.
+ *   - Resolves only after onend, rejects on onerror.
+ *   - Rejects with a start timeout if onstart does not fire within ~3s.
+ *   - Calls onstart callback when speech begins.
+ *   - Refuses to speak with a non-Turkish voice.
+ *
  * @param {string} text
  * @param {number} rate — speech rate (0.5–2.0)
+ * @param {function} [onStart] — called when utterance.onstart fires
  * @returns {Promise<void>}
  */
-export function speakRhythmicText(text, rate = 1) {
+export function speakRhythmicText(text, rate = 1, onStart = null) {
   return new Promise((resolve, reject) => {
+    console.info('[RhythmicHTML TTS] Button click received')
+
     if (!('speechSynthesis' in window)) {
+      console.info('[RhythmicHTML TTS] speechSynthesis not supported')
       reject(new Error('Tarayıcı sesli okuma desteklemiyor.'))
       return
     }
 
     const synth = window.speechSynthesis
+
+    // Use cached voices immediately — no async wait before speak()
+    let trVoice = getCachedTurkishVoice()
+
+    if (!trVoice) {
+      // Cache may be empty on first use; try a synchronous fetch
+      const voices = synth.getVoices()
+      if (voices && voices.length > 0) {
+        cachedVoices = voices
+        trVoice = selectTurkishVoice(voices)
+      }
+    }
+
+    console.info('[RhythmicHTML TTS] Voice selected:', !!trVoice)
+    console.info('[RhythmicHTML TTS] Selected voice name:', trVoice ? trVoice.name : 'none')
+    console.info('[RhythmicHTML TTS] Selected voice language:', trVoice ? trVoice.lang : 'none')
+    console.info('[RhythmicHTML TTS] Available voices (cached):', cachedVoices.length)
+
+    if (!trVoice) {
+      console.info('[RhythmicHTML TTS] No Turkish voice found, not speaking')
+      reject(new Error(NO_TURKISH_VOICE_WARNING))
+      return
+    }
+
+    // Stop any previous active utterance only
     synth.cancel()
 
-    loadVoices(synth).then((voices) => {
-      const trVoice = selectTurkishVoice(voices)
-      const turkishFound = !!trVoice
+    // Resume if the synthesizer is paused (can happen on some browsers)
+    if (synth.paused) {
+      console.info('[RhythmicHTML TTS] Synth was paused, calling resume()')
+      synth.resume()
+    }
 
-      // Temporary diagnostic information
-      console.info('[RhythmicHTML TTS] Available voices:', voices.length)
-      console.info('[RhythmicHTML TTS] Turkish voice found:', turkishFound)
-      console.info('[RhythmicHTML TTS] Selected voice name:', trVoice ? trVoice.name : 'none')
-      console.info('[RhythmicHTML TTS] Selected voice language:', trVoice ? trVoice.lang : 'none')
+    console.info('[RhythmicHTML TTS] speaking:', synth.speaking, 'pending:', synth.pending, 'paused:', synth.paused)
 
-      if (!trVoice) {
-        reject(new Error(NO_TURKISH_VOICE_WARNING))
-        return
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.voice = trVoice
+    utterance.lang = trVoice.lang || 'tr-TR'
+    utterance.rate = rate
+    utterance.pitch = 1
+    utterance.volume = 1
+
+    // Preserve utterance in module-level state so it is not GC'd early
+    activeUtterance = utterance
+
+    let started = false
+    let settled = false
+
+    const startTimer = setTimeout(() => {
+      if (!started && !settled) {
+        console.info('[RhythmicHTML TTS] Timeout fired — onstart did not occur within', START_TIMEOUT_MS, 'ms')
+        console.info('[RhythmicHTML TTS] speaking:', synth.speaking, 'pending:', synth.pending, 'paused:', synth.paused)
+        settled = true
+        activeUtterance = null
+        synth.cancel()
+        reject(new Error('Sesli okuma başlatılamadı.'))
       }
+    }, START_TIMEOUT_MS)
 
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.voice = trVoice
-      utterance.lang = trVoice.lang || 'tr-TR'
-      utterance.rate = rate
-      utterance.pitch = 1
-      utterance.volume = 1
+    utterance.onstart = () => {
+      started = true
+      clearTimeout(startTimer)
+      console.info('[RhythmicHTML TTS] onstart fired')
+      console.info('[RhythmicHTML TTS] speaking:', synth.speaking, 'pending:', synth.pending, 'paused:', synth.paused)
+      if (onStart) onStart()
+    }
 
-      utterance.onend = () => resolve()
-      utterance.onerror = (e) => reject(new Error('Sesli okuma hatası: ' + e.error))
+    utterance.onend = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(startTimer)
+      activeUtterance = null
+      console.info('[RhythmicHTML TTS] onend fired')
+      console.info('[RhythmicHTML TTS] speaking:', synth.speaking, 'pending:', synth.pending, 'paused:', synth.paused)
+      resolve()
+    }
 
-      synth.speak(utterance)
-    })
+    utterance.onerror = (e) => {
+      if (settled) return
+      settled = true
+      clearTimeout(startTimer)
+      activeUtterance = null
+      console.info('[RhythmicHTML TTS] onerror fired, error:', e.error)
+      console.info('[RhythmicHTML TTS] speaking:', synth.speaking, 'pending:', synth.pending, 'paused:', synth.paused)
+      reject(new Error('Sesli okuma hatası: ' + (e.error || 'bilinmeyen hata')))
+    }
+
+    console.info('[RhythmicHTML TTS] speak() called')
+    synth.speak(utterance)
+    // Do NOT call cancel() after speak() — it would abort the utterance
   })
 }
 
 export function stopSpeech() {
+  activeUtterance = null
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel()
   }

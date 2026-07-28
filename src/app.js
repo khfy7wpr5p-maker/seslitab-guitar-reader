@@ -24,7 +24,7 @@ import {
 } from './services/musicEngine.js'
 import {
   speakRhythmicText, stopSpeech, playRhythm, stopRhythm,
-  isSpeechSupported, isAudioSupported,
+  isSpeechSupported, isAudioSupported, preloadVoices,
 } from './services/voiceService.js'
 import { getOmrProviderName } from './providers/index.js'
 import { normalizeTabInput } from '../tabParser.js'
@@ -62,6 +62,12 @@ E|---------------|`
 // ── Init ──────────────────────────────────────────────────────
 
 function init() {
+  // Preload and cache speech synthesis voices at startup so the Turkish
+  // voice is ready immediately when the user presses the voice button.
+  if ('speechSynthesis' in window) {
+    preloadVoices(window.speechSynthesis)
+  }
+
   $('provider-badge').textContent =
     getOmrProviderName().charAt(0).toUpperCase() + getOmrProviderName().slice(1) + ' Provider'
 
@@ -490,13 +496,19 @@ async function toggleVoice() {
   $('voice-btn').querySelector('.btn-icon-text').textContent = '⏸ Duraklat'
   $('voice-stop-btn').disabled = false
   $('voice-status').hidden = false
-  $('voice-status').textContent = 'Sesli okuma başladı...'
+  $('voice-status').textContent = 'Sesli okuma hazırlanıyor...'
   announce('Sesli okuma başladı')
 
   try {
     const speed = parseFloat($('speed-slider').value)
     const spokenText = notesToSpokenText(parsedNotes)
-    await speakRhythmicText(spokenText, speed)
+    await speakRhythmicText(spokenText, speed, () => {
+      $('voice-status').textContent = 'Sesli okunuyor...'
+      announce('Sesli okunuyor')
+    })
+    // Only reached on successful onend
+    $('voice-status').textContent = 'Sesli okuma tamamlandı.'
+    announce('Sesli okuma tamamlandı')
   } catch (err) {
     if (err.message === 'Bu cihazda Türkçe ses bulunamadı.') {
       $('voice-status').textContent = err.message
@@ -509,8 +521,6 @@ async function toggleVoice() {
 
   isSpeaking = false
   resetVoiceButtons()
-  $('voice-status').textContent = 'Sesli okuma tamamlandı.'
-  announce('Sesli okuma tamamlandı')
 }
 
 function stopVoice() {
