@@ -498,8 +498,13 @@ async function toggleVoice() {
     const spokenText = notesToSpokenText(parsedNotes)
     await speakRhythmicText(spokenText, speed)
   } catch (err) {
-    $('voice-status').textContent = 'Hata: ' + err.message
-    announce('Sesli okuma hatası')
+    if (err.message === 'Bu cihazda Türkçe ses bulunamadı.') {
+      $('voice-status').textContent = err.message
+      announce(err.message)
+    } else {
+      $('voice-status').textContent = 'Hata: ' + err.message
+      announce('Sesli okuma hatası')
+    }
   }
 
   isSpeaking = false

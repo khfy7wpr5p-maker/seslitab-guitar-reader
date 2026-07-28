@@ -13,8 +13,56 @@ function getAudioCtx() {
   return audioCtx
 }
 
+const NO_TURKISH_VOICE_WARNING = 'Bu cihazda Türkçe ses bulunamadı.'
+
+/**
+ * Select a Turkish voice from a list using priority:
+ *   a. lang === "tr-TR"
+ *   b. lang starts with "tr-"
+ *   c. lang starts with "tr"
+ * Returns the voice or null if none found.
+ * Pure function — no browser dependencies, safe to unit-test.
+ * @param {SpeechSynthesisVoice[]} voices
+ * @returns {SpeechSynthesisVoice | null}
+ */
+export function selectTurkishVoice(voices) {
+  if (!voices || voices.length === 0) return null
+
+  return (
+    voices.find((v) => v.lang === 'tr-TR') ||
+    voices.find((v) => v.lang.startsWith('tr-')) ||
+    voices.find((v) => v.lang.startsWith('tr')) ||
+    null
+  )
+}
+
+/**
+ * Load speech synthesis voices, waiting for the "voiceschanged" event
+ * when getVoices() initially returns an empty array (common in Chrome).
+ * @param {SpeechSynthesis} synth
+ * @returns {Promise<SpeechSynthesisVoice[]>}
+ */
+export function loadVoices(synth) {
+  return new Promise((resolve) => {
+    const existing = synth.getVoices()
+    if (existing && existing.length > 0) {
+      resolve(existing)
+      return
+    }
+
+    const handler = () => {
+      synth.removeEventListener('voiceschanged', handler)
+      resolve(synth.getVoices())
+    }
+    synth.addEventListener('voiceschanged', handler)
+  })
+}
+
 /**
  * Speak text using SpeechSynthesis API (Turkish).
+ * Loads voices first, selects a Turkish voice explicitly, and refuses
+ * to speak with a non-Turkish voice. Rejects with NO_TURKISH_VOICE_WARNING
+ * when no Turkish voice is available.
  * @param {string} text
  * @param {number} rate — speech rate (0.5–2.0)
  * @returns {Promise<void>}
@@ -26,22 +74,36 @@ export function speakRhythmicText(text, rate = 1) {
       return
     }
 
-    window.speechSynthesis.cancel()
+    const synth = window.speechSynthesis
+    synth.cancel()
 
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'tr-TR'
-    utterance.rate = rate
-    utterance.pitch = 1
-    utterance.volume = 1
+    loadVoices(synth).then((voices) => {
+      const trVoice = selectTurkishVoice(voices)
+      const turkishFound = !!trVoice
 
-    const voices = window.speechSynthesis.getVoices()
-    const trVoice = voices.find((v) => v.lang.startsWith('tr'))
-    if (trVoice) utterance.voice = trVoice
+      // Temporary diagnostic information
+      console.info('[RhythmicHTML TTS] Available voices:', voices.length)
+      console.info('[RhythmicHTML TTS] Turkish voice found:', turkishFound)
+      console.info('[RhythmicHTML TTS] Selected voice name:', trVoice ? trVoice.name : 'none')
+      console.info('[RhythmicHTML TTS] Selected voice language:', trVoice ? trVoice.lang : 'none')
 
-    utterance.onend = () => resolve()
-    utterance.onerror = (e) => reject(new Error('Sesli okuma hatası: ' + e.error))
+      if (!trVoice) {
+        reject(new Error(NO_TURKISH_VOICE_WARNING))
+        return
+      }
 
-    window.speechSynthesis.speak(utterance)
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.voice = trVoice
+      utterance.lang = trVoice.lang || 'tr-TR'
+      utterance.rate = rate
+      utterance.pitch = 1
+      utterance.volume = 1
+
+      utterance.onend = () => resolve()
+      utterance.onerror = (e) => reject(new Error('Sesli okuma hatası: ' + e.error))
+
+      synth.speak(utterance)
+    })
   })
 }
 
