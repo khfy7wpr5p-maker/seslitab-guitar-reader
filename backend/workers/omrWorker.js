@@ -6,7 +6,8 @@ import * as queue from '../queue/uploadQueue.js'
 import * as jobManager from '../jobs/jobManager.js'
 import * as storage from '../storage/musicXmlStorage.js'
 import { getProviderByName } from '../providers/index.js'
-import { ProviderError, ProviderTimeoutError } from '../utils/errors.js'
+import { ProviderError, ProviderTimeoutError, ProviderStartFailedError, JobProcessingTimeoutError } from '../utils/errors.js'
+import { logLifecycle } from '../utils/logger.js'
 
 const workers = []
 let stopping = false
@@ -30,26 +31,36 @@ async function runWorkerLoop(workerId) {
   while (!stopping) {
     const entry = queue.dequeue()
     if (!entry) { await sleep(500); continue }
+    logLifecycle('worker_picked_up', { jobId: entry.jobId, status: 'queued', provider: entry.provider })
     try { await processJob(entry, workerId) }
     catch (err) {
-      console.error(`[Worker ${workerId}] Job ${entry.jobId} failed:`, err.message)
-      await jobManager.handleFailure(entry.jobId, { code: err.code || 'WORKER_ERROR', message: err.message, retryable: err.retryable !== false })
+      const code = err.code || 'WORKER_ERROR'
+      logLifecycle('worker_failed', { jobId: entry.jobId, status: 'failed', provider: entry.provider, error: err.message })
+      await jobManager.handleFailure(entry.jobId, { code, message: err.message, retryable: err.retryable !== false })
     }
   }
 }
 
-async function processJob(entry, workerId) {
+export async function processJob(entry, workerId = 'test') {
   const { jobId, provider: pn, pdfPath, fileName } = entry
   await jobManager.updateStatus(jobId, 'processing', { workerId, progress: 0 })
+  logLifecycle('provider_started', { jobId, status: 'processing', provider: pn })
+
   const provider = getProviderByName(pn)
   const pdf = await fs.readFile(pdfPath)
 
   const up = await provider.uploadPdf(pdf, fileName)
-  if (!up.success) throw new ProviderError(up.error || 'PDF yüklenemedi.', { jobId })
+  if (!up.success) {
+    logLifecycle('provider_start_failed', { jobId, status: 'processing', provider: pn, error: up.error?.message || up.error || 'uploadPdf failed' })
+    throw new ProviderStartFailedError(up.error?.message || up.error || 'PDF yüklenemedi.', { jobId })
+  }
   const pid = up.providerJobId
 
   const an = await provider.analyzePdf(pid)
-  if (!an.success) throw new ProviderError(an.error || 'Analiz başlatılamadı.', { jobId })
+  if (!an.success) {
+    logLifecycle('provider_start_failed', { jobId, status: 'processing', provider: pn, error: an.error?.message || an.error || 'analyzePdf failed' })
+    throw new ProviderStartFailedError(an.error?.message || an.error || 'Analiz başlatılamadı.', { jobId })
+  }
 
   const cfg = GATEWAY_CONFIG.providers[pn] || {}
   const timeoutMs = (cfg.jobTimeoutSeconds || GATEWAY_CONFIG.jobTimeoutSeconds) * 1000
@@ -66,12 +77,16 @@ async function processJob(entry, workerId) {
     if (last === 'completed') break
     if (last === 'failed') throw new ProviderError('OMR motoru başarısız.', { jobId })
   }
-  if (last !== 'completed') throw new ProviderTimeoutError('OMR zaman aşımı.', { jobId })
+  if (last !== 'completed') {
+    logLifecycle('provider_timeout', { jobId, status: 'processing', provider: pn, error: 'OMR_PROVIDER_TIMEOUT' })
+    throw new ProviderTimeoutError('OMR zaman aşımı.', { jobId })
+  }
 
   const dl = await provider.downloadMusicXML(pid)
   if (!dl.success || !dl.musicXml) throw new ProviderError(dl.error || 'MusicXML indirilemedi.', { jobId })
 
   await storage.writeMusicXml(jobId, dl.musicXml)
+  logLifecycle('musicxml_stored', { jobId, status: 'musicxml_created', provider: pn })
 
   if (typeof provider.downloadOmrArtifact === 'function') {
     try {
@@ -89,6 +104,7 @@ async function processJob(entry, workerId) {
 
   await jobManager.updateStatus(jobId, 'musicxml_created', { progress: 100 })
   await jobManager.updateStatus(jobId, 'completed', { progress: 100 })
+  logLifecycle('job_completed', { jobId, status: 'completed', provider: pn })
   console.log(`[Worker ${workerId}] Job ${jobId} completed.`)
 }
 

@@ -2,9 +2,17 @@
 //
 // Supports both the in-browser mock provider and the Express OMR Gateway
 // backend (via gatewayProvider). Polling stops on completion, failure,
-// cancellation, or timeout (120s max).
+// cancellation, or after the configured maximum poll duration.
 
 import { getOmrProvider } from '../providers/index.js'
+
+// Configurable polling defaults. Audiveris on a cold Render instance can
+// take several minutes, so the maximum poll duration is generous (10 min).
+// A single slow/failed status request does NOT fail the job — only repeated
+// consecutive failures beyond the threshold do.
+const POLL_INTERVAL_MS = 2000
+const MAX_POLL_DURATION_MS = 600000
+const MAX_CONSECUTIVE_ERRORS = 5
 
 export async function uploadPdf(pdfFile) {
   return getOmrProvider().uploadPdf(pdfFile)
@@ -46,9 +54,18 @@ export async function uploadAndAnalyze(pdfFile) {
 
 /**
  * Poll job status until completed, then download MusicXML.
+ *
+ * Timeout/error model (separated concepts):
+ *   - HTTP request timeout: handled by the provider/fetch layer.
+ *   - Maximum poll duration: MAX_POLL_DURATION_MS (overall frontend wait).
+ *   - Transient polling errors: retried up to MAX_CONSECUTIVE_ERRORS times.
+ *
+ * A single slow or failed status request does NOT terminate the job.
+ * Only the backend's terminal status (completed/failed) is authoritative.
+ *
  * @param {string} jobId
  * @param {function} onProgress — optional callback(status, progress)
- * @param {{ signal?: AbortSignal }} [options]
+ * @param {{ signal?: AbortSignal, pollIntervalMs?: number, maxPollDurationMs?: number, maxConsecutiveErrors?: number }} [options]
  * @returns {Promise<{success: boolean, musicXml?: string, error?: string, status?: string}>}
  */
 export async function pollAndDownload(jobId, onProgress = null, options = {}) {
@@ -56,24 +73,42 @@ export async function pollAndDownload(jobId, onProgress = null, options = {}) {
 
   const provider = getOmrProvider()
   const signal = options.signal
-  const maxWaitMs = 120000
-  const pollIntervalMs = 1500
+  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS
+  const maxPollDurationMs = options.maxPollDurationMs ?? MAX_POLL_DURATION_MS
+  const maxConsecutiveErrors = options.maxConsecutiveErrors ?? MAX_CONSECUTIVE_ERRORS
   const start = Date.now()
 
   let status = 'processing'
+  let consecutiveErrors = 0
 
   while (status !== 'completed' && status !== 'failed' && status !== 'canceled') {
     if (signal?.aborted) return { success: false, error: 'İşlem iptal edildi.', status: 'canceled' }
-    if (Date.now() - start > maxWaitMs) return { success: false, error: 'İşlem zaman aşımına uğradı.', status: 'timeout' }
+    if (Date.now() - start > maxPollDurationMs) {
+      return { success: false, error: 'İşlem zaman aşımına uğradı.', status: 'timeout' }
+    }
 
     await sleep(pollIntervalMs)
     if (signal?.aborted) return { success: false, error: 'İşlem iptal edildi.', status: 'canceled' }
 
     const statusResult = await provider.getStatus(jobId)
     if (!statusResult.success) {
-      if (statusResult.statusCode === 404) return { success: false, error: 'İş kaydı bulunamadı.', status: 'not_found' }
-      return { success: false, error: statusResult.error || 'Durum sorgulanamadı.' }
+      // A 404 means the job genuinely doesn't exist — fail immediately.
+      if (statusResult.statusCode === 404) {
+        return { success: false, error: 'İş kaydı bulunamadı.', status: 'not_found' }
+      }
+      // A backend-reported failure is authoritative.
+      if (statusResult.status === 'failed') {
+        return { success: false, error: statusResult.error || 'Dönüştürme başarısız oldu.', status: 'failed' }
+      }
+      // Transient network/polling error — retry with a consecutive threshold.
+      consecutiveErrors++
+      if (consecutiveErrors >= maxConsecutiveErrors) {
+        return { success: false, error: statusResult.error || 'Durum sorgulanamadı.', status: 'error', code: statusResult.code }
+      }
+      continue
     }
+    // Successful poll resets the error counter.
+    consecutiveErrors = 0
     status = statusResult.status
     if (onProgress) onProgress(status, statusResult.progress || 0)
   }

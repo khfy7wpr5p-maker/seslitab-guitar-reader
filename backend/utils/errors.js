@@ -37,8 +37,18 @@ export class ProviderError extends GatewayError {
 export class ProviderTimeoutError extends GatewayError {
   constructor(m, d = {}) { super('OMR_PROVIDER_TIMEOUT', m, d, 504) }
 }
+export class JobQueueTimeoutError extends GatewayError {
+  constructor(m, d = {}) { super('JOB_QUEUE_TIMEOUT', m, d, 504) }
+}
+export class JobProcessingTimeoutError extends GatewayError {
+  constructor(m, d = {}) { super('JOB_PROCESSING_TIMEOUT', m, d, 504) }
+}
+export class ProviderStartFailedError extends GatewayError {
+  constructor(m, d = {}) { super('PROVIDER_START_FAILED', m, d, 502) }
+}
 export class StorageError extends GatewayError {
-  constructor(m, d = {}) { super('STORAGE_ERROR', m, d, 500) }
+  constructor(m, d = {}) { super('STORAGE_ERROR', m, d, 500)
+  }
 }
 export class InternalError extends GatewayError {
   constructor(m, d = {}) { super('INTERNAL_ERROR', m, d, 500) }
