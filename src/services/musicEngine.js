@@ -5,8 +5,8 @@
 // rhythm services consume, plus text/HTML generators for the output panels.
 
 import { tabToNotes, tabToTurkish, noteFrequency } from '../../tabParser.js'
-import { createNote, noteName, STRING_NAMES, STRING_NUMBER, noteToTurkish } from '../../noteTheory.js'
-import { generateTurkishRhythmicText, generateTurkishRhythmicHtml, generateNotesSummary } from '../../rhythmicTextGenerator.js'
+import { createNote, noteName, STRING_NAMES, STRING_NUMBER } from '../../noteTheory.js'
+import { generateTurkishRhythmicText, generateTurkishRhythmicHtml, generateTurkishRhythmicSpokenText, generateNotesSummary } from '../../rhythmicTextGenerator.js'
 import { parseMusicXml as parseXml } from '../../musicXmlParser.js'
 
 // ── TAB → NoteObject[] ──────────────────────────────────────────
@@ -92,10 +92,7 @@ export function notesToSummary(notes) {
  * @returns {string}
  */
 export function notesToSpokenText(notes) {
-  if (!notes || notes.length === 0) return 'Nota bulunamadı.'
-
-  const phrases = notes.map((note) => noteToTurkish(note))
-  return phrases.join('. ') + '.'
+  return generateTurkishRhythmicSpokenText(notes)
 }
 
 // ── MusicXML → NoteObject[] ─────────────────────────────────────

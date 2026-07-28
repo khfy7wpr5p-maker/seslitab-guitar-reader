@@ -177,14 +177,14 @@ export function generateTurkishRhythmicText(notes) {
 }
 
 /**
- * Simplified formatter for the Rhythmic HTML output.
+ * Simplified formatter for the Rhythmic HTML output and spoken text.
  * Shows only guitar position and note name — no duration, beat, or tie text.
  * Internal note objects (duration, beats, dotCount, tie flags, etc.) are
- * never modified; this function only controls the visible HTML string.
+ * never modified; this function only controls the visible/spoken string.
  * @param {NoteObject} note
  * @returns {string}
  */
-function formatNoteAsHtmlText(note) {
+export function formatNoteAsHtmlText(note) {
   if (note.isRest) {
     return 'sus'
   }
@@ -250,6 +250,22 @@ export function generateTurkishRhythmicHtml(notes) {
   }
 
   return htmlParts.join('')
+}
+
+/**
+ * Generate plain Turkish spoken text for the Rhythmic HTML section's TTS.
+ * Reuses the same simplified formatter as the visible HTML output
+ * (formatNoteAsHtmlText), so speech matches exactly what is on screen —
+ * only guitar position and note name, no duration or beat descriptions.
+ * Internal note objects are never modified.
+ * @param {NoteObject[]} notes
+ * @returns {string}
+ */
+export function generateTurkishRhythmicSpokenText(notes) {
+  if (!notes || notes.length === 0) return 'Nota bulunamadı.'
+
+  const phrases = notes.map((note) => formatNoteAsHtmlText(note))
+  return phrases.join('. ') + '.'
 }
 
 /**
