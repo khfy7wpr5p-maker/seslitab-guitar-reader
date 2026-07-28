@@ -132,6 +132,7 @@ export function parseMusicXmlToNotes(musicXmlString) {
       tieStart: n.tieStart,
       tieStop: n.tieStop,
       tieContinue: n.tieContinue,
+      isChordNote: n.isChordNote,
     })
   )
 

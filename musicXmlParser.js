@@ -92,6 +92,11 @@ function parseNote(noteEl, measure, startBeat, divisions) {
     if (type === 'stop') tieStop = true
   }
 
+  // Chord detection: <chord/> means this note is a continuation of a chord
+  // (same onset as the previous note). The first note of a chord does NOT
+  // have <chord/> and remains isChordNote: false.
+  const isChordNote = noteEl.querySelector('chord') !== null
+
   // Check if this is a rest
   const rest = noteEl.querySelector('rest')
   if (rest) {
@@ -104,6 +109,7 @@ function parseNote(noteEl, measure, startBeat, divisions) {
     const beats = resolveNoteBeats(durationValue, divisions, dottedBeats)
     return {
       isRest: true,
+      isChordNote,
       measure,
       startBeat,
       duration: beatsToDurationId(beats),
@@ -181,6 +187,7 @@ function parseNote(noteEl, measure, startBeat, divisions) {
 
   return {
     measure,
+    isChordNote,
     string: stringLetter,
     fret,
     noteName: noteNameVal,
@@ -292,4 +299,158 @@ function pitchToGuitarPosition(step, alter, octave) {
   }
 
   return { string: bestString, fret: bestFret, playbackMidi }
+}
+
+// ── Structural parser ──────────────────────────────────────────
+//
+// parseMusicXmlWithStructure(xml) returns the same flat note array as
+// parseMusicXml(xml), plus structural metadata required by the OMR
+// Quality Validator. The existing parseMusicXml is unchanged; this
+// function reuses the same parseNote/parseMeasure logic and adds
+// parallel extraction of time signatures, divisions, backup/forward
+// elements, measure metadata, and an ordered event list.
+//
+// Return shape:
+//   {
+//     notes,              // same NoteObject[] as parseMusicXml
+//     timeSignatures,     // [{ measureNumber, beats, beatType, symbol? }]
+//     divisionsByMeasure, // [{ measureNumber, divisions }]
+//     measureMetadata,    // [{ measureNumber, implicit, nonControlling, width }]
+//     measureEvents,      // [{ measureNumber, sequenceIndex, type, ... }]
+//   }
+
+export function parseMusicXmlWithStructure(musicXmlString) {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(musicXmlString, 'application/xml')
+    const parseError = doc.querySelector('parsererror')
+    if (parseError) {
+      return { notes: [], error: 'Geçersiz MusicXML formatı' }
+    }
+
+    const notes = []
+    const timeSignatures = []
+    const divisionsByMeasure = []
+    const measureMetadata = []
+    const measureEvents = []
+
+    const parts = doc.querySelectorAll('part')
+
+    for (const part of parts) {
+      const measures = part.querySelectorAll('measure')
+      let measureNumber = 0
+      let currentDivisions = null
+
+      for (const measure of measures) {
+        measureNumber = parseInt(measure.getAttribute('number')) || (measureNumber + 1)
+
+        // ── Divisions ──
+        const attrsEl = measure.querySelector('attributes')
+        if (attrsEl) {
+          const divEl = attrsEl.querySelector('divisions')
+          if (divEl) {
+            currentDivisions = parseInt(divEl.textContent, 10) || currentDivisions
+          }
+        }
+        divisionsByMeasure.push({ measureNumber, divisions: currentDivisions })
+
+        // ── Time signatures ──
+        const timeEls = measure.querySelectorAll('time')
+        for (const timeEl of timeEls) {
+          const beatsEl = timeEl.querySelector('beats')
+          const beatTypeEl = timeEl.querySelector('beat-type')
+          const symbol = timeEl.getAttribute('symbol')
+          if (beatsEl && beatTypeEl) {
+            const ts = {
+              measureNumber,
+              beats: parseInt(beatsEl.textContent, 10) || 4,
+              beatType: parseInt(beatTypeEl.textContent, 10) || 4,
+            }
+            if (symbol) ts.symbol = symbol
+            timeSignatures.push(ts)
+          }
+        }
+
+        // ── Measure metadata ──
+        const implicit = measure.getAttribute('implicit') === 'yes'
+        const nonControlling = measure.getAttribute('non-controlling') === 'yes'
+        const width = measure.getAttribute('width')
+        measureMetadata.push({
+          measureNumber,
+          implicit,
+          nonControlling,
+          width: width || null,
+        })
+
+        // ── Ordered event list ──
+        let sequenceIndex = 0
+
+        // Attributes changes (divisions, time, key, clef)
+        const attributesEl = measure.querySelector('attributes')
+        if (attributesEl) {
+          measureEvents.push({
+            measureNumber,
+            sequenceIndex,
+            type: 'attributes',
+          })
+          sequenceIndex++
+        }
+
+        // Iterate direct children in source order: note, backup, forward
+        const measureChildren = measure.children || []
+        for (const child of measureChildren) {
+          const tag = child.tagName || child.tag
+          if (tag === 'note') {
+            const noteData = parseNote(child, measureNumber, 0, currentDivisions)
+            if (noteData) {
+              notes.push(noteData)
+              measureEvents.push({
+                measureNumber,
+                sequenceIndex,
+                type: 'note',
+                isChordNote: noteData.isChordNote || false,
+                isRest: noteData.isRest || false,
+                voice: noteData.voice,
+                staff: noteData.staff,
+                beats: noteData.beats,
+                durationValue: noteData.durationValue,
+                divisions: noteData.divisions,
+              })
+              sequenceIndex++
+            }
+          } else if (tag === 'backup') {
+            const durEl = child.querySelector('duration')
+            const durationDivisions = durEl ? parseInt(durEl.textContent, 10) : 0
+            measureEvents.push({
+              measureNumber,
+              sequenceIndex,
+              type: 'backup',
+              durationDivisions,
+            })
+            sequenceIndex++
+          } else if (tag === 'forward') {
+            const durEl = child.querySelector('duration')
+            const durationDivisions = durEl ? parseInt(durEl.textContent, 10) : 0
+            measureEvents.push({
+              measureNumber,
+              sequenceIndex,
+              type: 'forward',
+              durationDivisions,
+            })
+            sequenceIndex++
+          }
+        }
+      }
+    }
+
+    return {
+      notes,
+      timeSignatures,
+      divisionsByMeasure,
+      measureMetadata,
+      measureEvents,
+    }
+  } catch (err) {
+    return { notes: [], error: err.message || 'MusicXML parse hatası' }
+  }
 }

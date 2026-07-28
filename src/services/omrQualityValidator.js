@@ -60,9 +60,12 @@ function calculateActualBeats(measureNotes, chordNoteFlags, indexOffset) {
 export function validateOmrMeasureDurations(parsedScore, options = {}) {
   const notes = parsedScore?.notes ?? []
   const timeSignatures = parsedScore?.timeSignatures ?? options.timeSignatures ?? []
-  const measureMetadata = parsedScore?.measures ?? options.measureMetadata ?? []
-  const chordNoteFlags = options.chordNoteFlags ?? null
+  const measureMetadata = parsedScore?.measureMetadata ?? parsedScore?.measures ?? options.measureMetadata ?? []
+  const explicitChordFlags = options.chordNoteFlags ?? null
   const tolerance = options.tolerance ?? QUALITY_THRESHOLDS.tolerance
+
+  // Auto-derive chord note flags from notes[].isChordNote when not explicitly supplied.
+  const chordNoteFlags = explicitChordFlags ?? (notes.some((n) => n.isChordNote) ? notes.map((n) => !!n.isChordNote) : null)
 
   const hasChordFlags = chordNoteFlags !== null
   const hasMeasureMetadata = measureMetadata.length > 0
@@ -79,7 +82,7 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
 
   // Include measures that appear in metadata or time signatures but have no notes.
   const allMeasureNumbers = new Set(measuresMap.keys())
-  for (const m of measureMetadata) allMeasureNumbers.add(m.number)
+  for (const m of measureMetadata) allMeasureNumbers.add(m.measureNumber ?? m.number)
   for (const ts of timeSignatures) allMeasureNumbers.add(ts.measureNumber)
   // Also infer intermediate measure numbers from the max measure seen.
   let maxMeasure = 0
@@ -94,7 +97,7 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
     const expectedBeats = calculateExpectedBeats(timeSig)
     const actualBeats = calculateActualBeats(entry.notes, chordNoteFlags, entry.firstIndex)
 
-    const meta = measureMetadata.find((m) => m.number === measureNum)
+    const meta = measureMetadata.find((m) => (m.measureNumber ?? m.number) === measureNum)
     const isImplicit = meta?.implicit ?? false
     const isPickup = meta?.pickup ?? false
     const reasons = []

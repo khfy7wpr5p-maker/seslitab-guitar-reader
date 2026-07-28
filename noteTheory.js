@@ -341,6 +341,7 @@ export function createNote(data = {}) {
 
     // --- Chord ---
     isChord: data.isChord ?? false,                             // Akor bilgisi
+    isChordNote: data.isChordNote ?? false,                     // <chord/> MusicXML — continuation note of a chord
     chordName: data.chordName ?? null,                          // Akor adı ('Am', 'C', 'G7', ...)
     chordNotes: data.chordNotes ?? null,                         // Akordaki diğer notalar (NoteObject[])
 
