@@ -8,6 +8,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
+  <meta property="og:image" content="https://bolt.new/static/og_default.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
 </head>
 <body>
   <div id="app">
@@ -32,11 +35,12 @@
       <section class="card input-card" id="input-section" aria-labelledby="input-heading">
         <div class="card-header">
           <span class="step-number" aria-hidden="true">1</span>
-          <h2 id="input-heading">PDF veya TAB Girişi</h2>
+          <h2 id="input-heading">PDF, MusicXML veya TAB Girişi</h2>
         </div>
         <div class="card-body">
           <div class="input-tabs" role="tablist" aria-label="Giriş türü seç">
             <button class="input-tab-btn active" role="tab" aria-selected="true" aria-controls="pdf-panel" id="pdf-tab-btn" data-tab="pdf">PDF Yükle</button>
+            <button class="input-tab-btn" role="tab" aria-selected="false" aria-controls="musicxml-panel" id="musicxml-tab-btn" data-tab="musicxml">MusicXML Yükle</button>
             <button class="input-tab-btn" role="tab" aria-selected="false" aria-controls="tab-panel" id="tab-tab-btn" data-tab="tab">TAB Yapıştır</button>
           </div>
 
@@ -77,6 +81,41 @@
               <span class="progress-text" id="progress-text">Hazırlanıyor...</span>
             </div>
             <div class="error-message" id="upload-error" hidden role="alert"></div>
+          </div>
+
+          <!-- MusicXML Panel -->
+          <div id="musicxml-panel" role="tabpanel" aria-labelledby="musicxml-tab-btn" class="input-panel" hidden>
+            <div class="drop-zone" id="musicxml-drop-zone" role="button" tabindex="0" aria-label="MusicXML dosyası yüklemek için tıklayın veya sürükleyin">
+              <div class="drop-zone-content">
+                <div class="drop-icon" aria-hidden="true">🎼</div>
+                <p class="drop-text">MusicXML dosyanızı buraya sürükleyin</p>
+                <p class="drop-hint">veya tıklayarak seçin</p>
+                <p class="drop-limit">Maksimum 10 MB · .xml veya .musicxml</p>
+              </div>
+              <input type="file" id="musicxml-file-input" accept=".xml,.musicxml,application/xml,text/xml,application/vnd.recordare.musicxml+xml" hidden aria-label="MusicXML dosyası seç" />
+            </div>
+            <div class="file-info" id="musicxml-file-info" hidden>
+              <div class="file-info-content">
+                <span class="file-icon" aria-hidden="true">🎼</span>
+                <div class="file-details">
+                  <span class="file-name" id="musicxml-file-name"></span>
+                  <span class="file-size" id="musicxml-file-size"></span>
+                </div>
+                <button class="btn-icon" id="musicxml-remove-file" title="Kaldır" aria-label="MusicXML dosyasını kaldır">✕</button>
+              </div>
+            </div>
+            <div class="upload-actions">
+              <button class="btn btn-primary" id="musicxml-open-btn" disabled aria-label="MusicXML dosyasını aç ve dönüştür">
+                <span class="btn-text">MusicXML'i Aç</span>
+              </button>
+            </div>
+            <div class="progress-container" id="musicxml-progress" hidden>
+              <div class="progress-bar">
+                <div class="progress-fill" id="musicxml-progress-fill"></div>
+              </div>
+              <span class="progress-text" id="musicxml-progress-text">MusicXML okunuyor...</span>
+            </div>
+            <div class="error-message" id="musicxml-error" hidden role="alert"></div>
           </div>
 
           <!-- TAB Panel -->

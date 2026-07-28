@@ -1,8 +1,9 @@
 // SesliTab — Main application UI logic.
 //
-// Supports two input modes:
+// Supports three input modes:
 //   1. PDF upload → OMR → MusicXML → NoteObject[]
-//   2. TAB paste → tabParser → NoteObject[]
+//   2. MusicXML upload → MusicXML parser → NoteObject[]
+//   3. TAB paste → tabParser → NoteObject[]
 //
 // Both paths produce the same NoteObject[] that feeds:
 //   - Rhythmic text output (Turkish)
@@ -27,6 +28,7 @@ import {
   isSpeechSupported, isAudioSupported, preloadVoices, bpmToSpeed,
 } from './services/voiceService.js'
 import { getOmrProviderName } from './providers/index.js'
+import { validateMusicXmlFile, musicXmlHasRhythm } from './services/musicXmlFile.js'
 import { normalizeTabInput } from '../tabParser.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -51,6 +53,8 @@ let activeJobId = null
 let abortController = null
 let musicXmlDownloaded = false
 let backendProvider = null
+let selectedPdfFile = null
+let selectedMusicXmlFile = null
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -71,7 +75,7 @@ function init() {
   $('provider-badge').textContent =
     getOmrProviderName().charAt(0).toUpperCase() + getOmrProviderName().slice(1) + ' Provider'
 
-  // Input tabs (PDF / TAB)
+  // Input tabs (PDF / MusicXML / TAB)
   document.querySelectorAll('.input-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => switchInputTab(btn.dataset.tab))
     btn.addEventListener('keydown', (e) => {
@@ -92,6 +96,22 @@ function init() {
   $('remove-file').addEventListener('click', removeFile)
   $('upload-btn').addEventListener('click', handleUpload)
   $('cancel-btn').addEventListener('click', handleCancel)
+
+  // MusicXML drop zone
+  const musicXmlDropZone = $('musicxml-drop-zone')
+  musicXmlDropZone.addEventListener('click', () => $('musicxml-file-input').click())
+  musicXmlDropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('musicxml-file-input').click() }
+  })
+  musicXmlDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault()
+    musicXmlDropZone.classList.add('dragover')
+  })
+  musicXmlDropZone.addEventListener('dragleave', () => musicXmlDropZone.classList.remove('dragover'))
+  musicXmlDropZone.addEventListener('drop', handleMusicXmlDrop)
+  $('musicxml-file-input').addEventListener('change', handleMusicXmlFileSelect)
+  $('musicxml-remove-file').addEventListener('click', removeMusicXmlFile)
+  $('musicxml-open-btn').addEventListener('click', handleMusicXmlOpen)
 
   // TAB actions
   $('tab-convert-btn').addEventListener('click', handleTabConvert)
@@ -142,8 +162,10 @@ function switchInputTab(tabName) {
   })
 
   $('pdf-panel').hidden = tabName !== 'pdf'
+  $('musicxml-panel').hidden = tabName !== 'musicxml'
   $('tab-panel').hidden = tabName !== 'tab'
   $('pdf-panel').classList.toggle('active', tabName === 'pdf')
+  $('musicxml-panel').classList.toggle('active', tabName === 'musicxml')
   $('tab-panel').classList.toggle('active', tabName === 'tab')
 }
 
@@ -171,6 +193,7 @@ function selectFile(file) {
     return
   }
 
+  selectedPdfFile = file
   $('file-name').textContent = file.name
   $('file-size').textContent = formatFileSize(file.size)
   $('drop-zone').hidden = true
@@ -181,6 +204,7 @@ function selectFile(file) {
 }
 
 function removeFile() {
+  selectedPdfFile = null
   $('file-input').value = ''
   $('drop-zone').hidden = false
   $('file-info').hidden = true
@@ -191,7 +215,7 @@ function removeFile() {
 // ── PDF upload & OMR ─────────────────────────────────────────
 
 async function handleUpload() {
-  const file = $('file-input').files[0]
+  const file = selectedPdfFile || $('file-input').files[0]
   if (!file) return
 
   $('upload-btn').disabled = true
@@ -286,6 +310,106 @@ function statusLabel(status) {
   return labels[status] || 'İşleniyor'
 }
 
+// ── MusicXML file handling ─────────────────────────────────
+
+function handleMusicXmlDrop(e) {
+  e.preventDefault()
+  $('musicxml-drop-zone').classList.remove('dragover')
+  const file = e.dataTransfer.files[0]
+  if (file) selectMusicXmlFile(file)
+}
+
+function handleMusicXmlFileSelect(e) {
+  const file = e.target.files[0]
+  if (file) selectMusicXmlFile(file)
+}
+
+function selectMusicXmlFile(file) {
+  const error = validateMusicXmlFile(file)
+  if (error) {
+    selectedMusicXmlFile = null
+    $('musicxml-file-input').value = ''
+    $('musicxml-drop-zone').hidden = false
+    $('musicxml-file-info').hidden = true
+    $('musicxml-open-btn').disabled = true
+    showMusicXmlError(error)
+    return
+  }
+
+  selectedMusicXmlFile = file
+  $('musicxml-file-name').textContent = file.name
+  $('musicxml-file-size').textContent = formatFileSize(file.size)
+  $('musicxml-drop-zone').hidden = true
+  $('musicxml-file-info').hidden = false
+  $('musicxml-open-btn').disabled = false
+  hideMusicXmlError()
+  announce('MusicXML yüklendi: ' + file.name)
+}
+
+function removeMusicXmlFile() {
+  selectedMusicXmlFile = null
+  $('musicxml-file-input').value = ''
+  $('musicxml-drop-zone').hidden = false
+  $('musicxml-file-info').hidden = true
+  $('musicxml-open-btn').disabled = true
+  $('musicxml-progress').hidden = true
+  hideMusicXmlError()
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('MusicXML dosyası okunamadı.'))
+    reader.readAsText(file, 'UTF-8')
+  })
+}
+
+async function handleMusicXmlOpen() {
+  const file = selectedMusicXmlFile || $('musicxml-file-input').files[0]
+  const validationError = validateMusicXmlFile(file)
+  if (validationError) {
+    showMusicXmlError(validationError)
+    return
+  }
+
+  $('musicxml-open-btn').disabled = true
+  $('musicxml-progress').hidden = false
+  $('musicxml-progress-fill').style.width = '35%'
+  $('musicxml-progress-text').textContent = 'MusicXML dosyası okunuyor...'
+  hideMusicXmlError()
+  hideMockNotice()
+  hideOmrDownloadButton()
+  announce('MusicXML analizi başladı')
+
+  try {
+    const xmlString = await readFileAsText(file)
+    if (!xmlString.trim()) throw new Error('MusicXML dosyası boş.')
+
+    $('musicxml-progress-fill').style.width = '70%'
+    $('musicxml-progress-text').textContent = 'Nota ve ritim bilgileri hazırlanıyor...'
+
+    const parseResult = parseMusicXmlToNotes(xmlString)
+    if (parseResult.error) throw new Error(parseResult.error)
+    if (!parseResult.notes.length) throw new Error('MusicXML içinde okunabilir nota bulunamadı.')
+
+    backendProvider = null
+    activeJobId = null
+    musicXmlDownloaded = true
+    $('musicxml-progress-fill').style.width = '100%'
+    $('musicxml-progress-text').textContent = 'MusicXML hazır.'
+    announce('MusicXML analiz edildi: ' + parseResult.notes.length + ' nota')
+    handleAnalysisResult(parseResult.notes, xmlString, musicXmlHasRhythm(parseResult.notes))
+  } catch (err) {
+    const message = err.message || 'MusicXML dosyası işlenemedi.'
+    showMusicXmlError(message)
+    announce(message)
+    $('musicxml-progress').hidden = true
+  } finally {
+    $('musicxml-open-btn').disabled = false
+  }
+}
+
 // ── TAB handling ────────────────────────────────────────────
 
 function handleTabConvert() {
@@ -376,6 +500,7 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
 
   // Show result sections
   $('progress-container').hidden = true
+  $('musicxml-progress').hidden = true
   $('results-section').hidden = false
   $('voice-section').hidden = false
   $('rhythm-section').hidden = false
@@ -458,6 +583,8 @@ function resetApp() {
   activeJobId = null
   abortController = null
   musicXmlDownloaded = false
+  selectedPdfFile = null
+  selectedMusicXmlFile = null
 
   $('file-input').value = ''
   $('drop-zone').hidden = false
@@ -465,6 +592,11 @@ function resetApp() {
   $('upload-btn').disabled = true
   $('progress-container').hidden = true
   $('cancel-btn').hidden = true
+  $('musicxml-file-input').value = ''
+  $('musicxml-drop-zone').hidden = false
+  $('musicxml-file-info').hidden = true
+  $('musicxml-open-btn').disabled = true
+  $('musicxml-progress').hidden = true
   $('tab-textarea').value = ''
   $('results-section').hidden = true
   $('voice-section').hidden = true
@@ -477,6 +609,7 @@ function resetApp() {
   resetPlaybackButtons()
 
   hidePdfError()
+  hideMusicXmlError()
   hideTabError()
   hideMockNotice()
   hideOmrDownloadButton()
@@ -606,6 +739,8 @@ function updateTempo() {
 
 function showPdfError(msg) { $('upload-error').textContent = msg; $('upload-error').hidden = false }
 function hidePdfError() { $('upload-error').hidden = true }
+function showMusicXmlError(msg) { $('musicxml-error').textContent = msg; $('musicxml-error').hidden = false }
+function hideMusicXmlError() { $('musicxml-error').hidden = true }
 function showTabError(msg) { $('tab-error').textContent = msg; $('tab-error').hidden = false }
 function hideTabError() { $('tab-error').hidden = true }
 
