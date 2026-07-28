@@ -138,6 +138,8 @@ function parseNote(noteEl, measure, startBeat, divisions) {
   let stringNum = 1
   let fret = 0
 
+  let playbackMidi = null
+
   if (technical) {
     const stringEl = technical.querySelector('string')
     const fretEl = technical.querySelector('fret')
@@ -148,6 +150,7 @@ function parseNote(noteEl, measure, startBeat, divisions) {
     const result = pitchToGuitarPosition(step, alter, octave)
     stringNum = result.string
     fret = result.fret
+    playbackMidi = result.playbackMidi
   }
 
   // Get duration
@@ -167,8 +170,10 @@ function parseNote(noteEl, measure, startBeat, divisions) {
   const stringLetter = getStringLetter(stringNum)
   const noteNameVal = noteName(stringLetter, fret)
 
-  // Calculate frequency
-  const freq = noteFrequency(stringLetter, fret)
+  // Calculate frequency: use the original written-pitch MIDI (not the
+  // octave-lowered mapping MIDI) so playback pitch is preserved.
+  const midiVal = playbackMidi !== null ? playbackMidi : noteToMidi(stringLetter, fret)
+  const freq = playbackMidi !== null ? midiToFrequency(playbackMidi) : noteFrequency(stringLetter, fret)
 
   // Determine tie continuation (start but not stop = pure start;
   // stop but not start = pure stop; both = start+stop in same note)
@@ -180,7 +185,7 @@ function parseNote(noteEl, measure, startBeat, divisions) {
     fret,
     noteName: noteNameVal,
     frequency: freq,
-    midi: noteToMidi(stringLetter, fret),
+    midi: midiVal,
     duration: durationId,
     beats,
     durationValue,
@@ -252,12 +257,19 @@ function getStringLetter(stringNum) {
   return letters[stringNum - 1] || 'e'
 }
 
-// Convert pitch to approximate guitar position
-// Returns { string: letter, fret: number }
+// Convert pitch to approximate guitar position.
+// Guitar notation sounds one octave lower than written, so the
+// mapping pitch is playbackMidi - 12.  The original playbackMidi is
+// returned alongside so the caller can compute the correct sounding
+// frequency without overwriting the display string/fret.
+// Returns { string: letter, fret: number, playbackMidi: number }
 function pitchToGuitarPosition(step, alter, octave) {
-  // MIDI note calculation
+  // MIDI note calculation from written pitch
   const stepToMidi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
-  let midi = (octave + 1) * 12 + stepToMidi[step] + alter
+  const playbackMidi = (octave + 1) * 12 + stepToMidi[step] + alter
+
+  // Mapping pitch: one octave lower for guitar string/fret selection
+  const mappingMidi = playbackMidi - 12
 
   // Standard guitar tuning MIDI notes for open strings
   // e=64, B=59, G=55, D=50, A=45, E=40
@@ -271,7 +283,7 @@ function pitchToGuitarPosition(step, alter, octave) {
   let minFret = Infinity
 
   for (let i = 0; i < 6; i++) {
-    const fret = midi - openMidi[i]
+    const fret = mappingMidi - openMidi[i]
     if (fret >= 0 && fret <= 24 && fret < minFret) {
       minFret = fret
       bestString = i + 1
@@ -279,5 +291,5 @@ function pitchToGuitarPosition(step, alter, octave) {
     }
   }
 
-  return { string: letters[bestString - 1], fret: bestFret }
+  return { string: bestString, fret: bestFret, playbackMidi }
 }

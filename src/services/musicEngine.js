@@ -112,6 +112,8 @@ export function parseMusicXmlToNotes(musicXmlString) {
       stringLetter: n.string,
       fret: n.fret,
       noteName: n.noteName,
+      midi: n.midi,
+      frequency: n.frequency,
       duration: n.duration,
       measureNumber: n.measure,
       startBeat: n.startBeat,
