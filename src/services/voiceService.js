@@ -5,6 +5,8 @@
 import { resolveBeats, buildTieChains, tieChainBeats } from '../../noteTheory.js'
 
 let audioCtx = null
+let activeRhythm = null
+let rhythmGeneration = 0
 
 function getAudioCtx() {
   if (!audioCtx) {
@@ -247,6 +249,143 @@ export function stopSpeech() {
   }
 }
 
+const RHYTHM_LOOKAHEAD_SECONDS = 2
+const RHYTHM_SCHEDULER_INTERVAL_MS = 250
+const GRACE_NOTE_PLAYBACK_BEATS = 0.125
+
+function sameOnset(first, second) {
+  const firstMeasure = first.measureKey ?? first.measureNumber ?? first.measure
+  const secondMeasure = second.measureKey ?? second.measureNumber ?? second.measure
+  return firstMeasure === secondMeasure && first.startBeat === second.startBeat
+}
+
+/**
+ * Build a pure, relative-time playback schedule.
+ *
+ * Grace notes receive a short audible duration but do not advance the
+ * musical cursor. MusicXML chord continuations share the first note's
+ * start time. The browser scheduler consumes this plan in small windows,
+ * so long scores do not create thousands of Web Audio nodes at once.
+ */
+export function buildRhythmSchedule(notes, speed = 1, tempo = 120) {
+  const safeNotes = Array.isArray(notes) ? notes : []
+  const safeSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1
+  const safeTempo = Number.isFinite(tempo) && tempo > 0 ? tempo : 120
+  const secondsPerBeat = (60 / safeTempo) / safeSpeed
+  const { attacks, chains } = buildTieChains(safeNotes)
+
+  const chainMap = new Map()
+  for (const chain of chains) {
+    for (const member of chain) chainMap.set(member, chain)
+  }
+
+  const events = []
+  let cursorSeconds = 0
+  let latestEndSeconds = 0
+  let index = 0
+
+  while (index < attacks.length) {
+    const first = attacks[index]
+    const group = [{ note: first, index }]
+    let nextIndex = index + 1
+
+    while (nextIndex < attacks.length) {
+      const next = attacks[nextIndex]
+      const isChordContinuation = next.isChordNote === true || (first.isChord && next.isChord)
+      if (!isChordContinuation || !sameOnset(first, next)) break
+      group.push({ note: next, index: nextIndex })
+      nextIndex++
+    }
+
+    let groupAdvanceBeats = 0
+
+    for (const entry of group) {
+      const { note, index: attackIndex } = entry
+      const chain = chainMap.get(note)
+      const resolvedBeats = note.isGrace
+        ? 0
+        : (chain ? tieChainBeats(chain) : resolveBeats(note))
+      const safeResolvedBeats = Number.isFinite(resolvedBeats) && resolvedBeats > 0
+        ? resolvedBeats
+        : 0
+      const playbackBeats = note.isGrace
+        ? GRACE_NOTE_PLAYBACK_BEATS
+        : safeResolvedBeats
+      const durationSeconds = playbackBeats * secondsPerBeat
+      const audible = (
+        !note.isRest &&
+        Number.isFinite(note.frequency) &&
+        note.frequency > 0 &&
+        durationSeconds > 0
+      )
+
+      events.push({
+        note,
+        index: attackIndex,
+        startSeconds: cursorSeconds,
+        durationSeconds,
+        audible,
+        isGrace: note.isGrace === true,
+      })
+
+      if (!note.isGrace && safeResolvedBeats > groupAdvanceBeats) {
+        groupAdvanceBeats = safeResolvedBeats
+      }
+      latestEndSeconds = Math.max(latestEndSeconds, cursorSeconds + durationSeconds)
+    }
+
+    cursorSeconds += groupAdvanceBeats * secondsPerBeat
+    latestEndSeconds = Math.max(latestEndSeconds, cursorSeconds)
+    index = nextIndex
+  }
+
+  return {
+    events,
+    totalSeconds: latestEndSeconds,
+    secondsPerBeat,
+  }
+}
+
+function scheduleAudioEvent(ctx, absoluteStart, event, onNote, generation) {
+  if (!event.audible) return
+
+  const duration = Math.max(0.03, event.durationSeconds)
+  const attackDuration = Math.min(0.02, duration * 0.25)
+  const sustainEnd = Math.max(absoluteStart + attackDuration, absoluteStart + duration * 0.7)
+
+  try {
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = 'triangle'
+    osc.frequency.value = event.note.frequency
+
+    gain.gain.setValueAtTime(0, absoluteStart)
+    gain.gain.linearRampToValueAtTime(0.3, absoluteStart + attackDuration)
+    gain.gain.setValueAtTime(0.3, sustainEnd)
+    gain.gain.linearRampToValueAtTime(0, absoluteStart + duration)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(absoluteStart)
+    osc.stop(absoluteStart + duration)
+  } catch (error) {
+    console.warn('[SesliTab rhythm] Note could not be scheduled:', error)
+    return
+  }
+
+  if (onNote && activeRhythm?.generation === generation) {
+    const delayMs = Math.max(0, (absoluteStart - ctx.currentTime) * 1000)
+    const timeoutId = setTimeout(() => {
+      activeRhythm?.callbackTimers.delete(timeoutId)
+      if (activeRhythm?.generation === generation) {
+        onNote(event.note, event.index)
+      }
+    }, delayMs)
+    activeRhythm.callbackTimers.add(timeoutId)
+  }
+}
+
 /**
  * Play notes rhythmically using Web Audio API oscillators.
  * Each NoteObject may have a `frequency` field; if missing, skip.
@@ -258,75 +397,82 @@ export function stopSpeech() {
  * @returns {Promise<void>}
  */
 export function playRhythm(notes, speed = 1, onNote = null) {
+  stopRhythm()
+
   return new Promise((resolve) => {
     const ctx = getAudioCtx()
-    const tempo = 120
-    const beatSeconds = 60 / tempo
-    let currentTime = ctx.currentTime + 0.1
+    const schedule = buildRhythmSchedule(notes, speed)
+    const generation = ++rhythmGeneration
+    const baseTime = ctx.currentTime + 0.1
+    let nextEventIndex = 0
 
-    // Build tie chains so tied notes produce one continuous sound
-    // instead of separate attacks. buildTieChains returns attacks (notes
-    // that start a sound) and chains (groups of tied notes).
-    const { attacks } = buildTieChains(notes)
-
-    // Map each note to its chain (if any) so we can compute total duration
-    const chainMap = new Map()
-    const { chains } = buildTieChains(notes)
-    for (const chain of chains) {
-      for (const member of chain) {
-        chainMap.set(member, chain)
-      }
+    activeRhythm = {
+      generation,
+      ctx,
+      resolve,
+      schedulerTimer: null,
+      callbackTimers: new Set(),
+      settled: false,
     }
 
-    attacks.forEach((note, i) => {
-      const chain = chainMap.get(note)
-      const beats = chain ? tieChainBeats(chain) : resolveBeats(note)
+    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      ctx.resume().catch(() => {})
+    }
 
-      if (!note.frequency || note.isRest) {
-        currentTime += beats * beatSeconds / speed
+    const finish = () => {
+      if (!activeRhythm || activeRhythm.generation !== generation || activeRhythm.settled) return
+      activeRhythm.settled = true
+      activeRhythm.resolve()
+      activeRhythm = null
+    }
+
+    const scheduleWindow = () => {
+      if (!activeRhythm || activeRhythm.generation !== generation) return
+
+      const horizon = ctx.currentTime + RHYTHM_LOOKAHEAD_SECONDS
+      while (nextEventIndex < schedule.events.length) {
+        const event = schedule.events[nextEventIndex]
+        const absoluteStart = baseTime + event.startSeconds
+        if (absoluteStart > horizon) break
+        scheduleAudioEvent(ctx, absoluteStart, event, onNote, generation)
+        nextEventIndex++
+      }
+
+      if (ctx.currentTime >= baseTime + schedule.totalSeconds) {
+        finish()
         return
       }
 
-      const duration = beats * beatSeconds / speed
-      const startTime = currentTime
+      activeRhythm.schedulerTimer = setTimeout(
+        scheduleWindow,
+        RHYTHM_SCHEDULER_INTERVAL_MS
+      )
+    }
 
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-
-      osc.type = 'triangle'
-      osc.frequency.value = note.frequency
-
-      gain.gain.setValueAtTime(0, startTime)
-      gain.gain.linearRampToValueAtTime(0.3, startTime + 0.02)
-      gain.gain.setValueAtTime(0.3, startTime + duration * 0.7)
-      gain.gain.linearRampToValueAtTime(0, startTime + duration)
-
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-
-      if (onNote) {
-        const delayMs = (startTime - ctx.currentTime) * 1000
-        setTimeout(() => onNote(note, i), Math.max(0, delayMs))
-      }
-
-      // If this is NOT a chord member, advance time. Chord members share startBeat.
-      if (!note.isChord || i === attacks.length - 1 || attacks[i + 1]?.startBeat !== note.startBeat) {
-        currentTime += duration
-      }
-    })
-
-    const totalMs = (currentTime - ctx.currentTime) * 1000
-    setTimeout(() => resolve(), Math.max(0, totalMs) + 100)
+    scheduleWindow()
   })
 }
 
 export function stopRhythm() {
+  rhythmGeneration++
+
+  if (activeRhythm) {
+    if (activeRhythm.schedulerTimer) clearTimeout(activeRhythm.schedulerTimer)
+    for (const timeoutId of activeRhythm.callbackTimers) clearTimeout(timeoutId)
+    if (!activeRhythm.settled) {
+      activeRhythm.settled = true
+      activeRhythm.resolve()
+    }
+    activeRhythm = null
+  }
+
   if (audioCtx) {
-    audioCtx.close()
+    const contextToClose = audioCtx
     audioCtx = null
+    const closeResult = contextToClose.close()
+    if (closeResult && typeof closeResult.catch === 'function') {
+      closeResult.catch(() => {})
+    }
   }
 }
 

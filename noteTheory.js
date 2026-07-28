@@ -266,6 +266,10 @@ const DURATION_TO_BEATS = {
  * @returns {number}
  */
 export function resolveBeats(note) {
+  // Grace notes are untimed ornaments in MusicXML. Their visual note type
+  // must never be used as measure duration.
+  if (note?.isGrace) return 0
+
   if (note && typeof note.beats === 'number' && note.beats > 0) {
     return note.beats
   }
@@ -298,6 +302,10 @@ export function createNote(data = {}) {
   const note = {
     // --- Position dans la partition ---
     measureNumber: data.measureNumber ?? data.measure ?? 1,     // Ölçü numarası (1, 2, 3, ...)
+    measureKey: data.measureKey ?? null,                         // Benzersiz ölçü kimliği (partId + sıra)
+    measureIndex: data.measureIndex ?? null,                     // Part içindeki ölçü sırası (0 tabanlı)
+    partId: data.partId ?? null,                                 // MusicXML part kimliği
+    partIndex: data.partIndex ?? null,                           // MusicXML part sırası (0 tabanlı)
     startBeat: data.startBeat ?? 0,                              // Ölçü içindeki başlangıç zamanı (vuruş cinsinden)
     beatNumber: data.beatNumber ?? 1,                            // Vuruş numarası (1-4 in 4/4 time)
 
@@ -337,6 +345,7 @@ export function createNote(data = {}) {
 
     // --- Rest ---
     isRest: data.isRest ?? false,                               // Sus işareti
+    isGrace: data.isGrace ?? false,                             // Süresiz süsleme notası (<grace/>)
     restType: data.restType ?? null,                             // Sus türü ('whole', 'half', 'quarter', 'eighth', ...)
 
     // --- Chord ---
@@ -493,7 +502,7 @@ export function validateNote(note) {
     }
   }
 
-  if (note.beats <= 0) {
+  if (note.beats <= 0 && !note.isGrace) {
     errors.push('Vuruş süresi pozitif olmalı')
   }
 
