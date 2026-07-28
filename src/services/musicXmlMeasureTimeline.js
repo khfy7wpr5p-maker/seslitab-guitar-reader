@@ -23,44 +23,31 @@ export function buildMeasureTimeline(structuredScore) {
 
   const measureEvents = structuredScore.measureEvents
   const divisionsByMeasure = structuredScore.divisionsByMeasure || []
-  const measureMetadata = structuredScore.measureMetadata || []
 
-  // Group by the stable structural identity (part + measure sequence).
-  // Displayed MusicXML measure numbers are not unique: they can repeat
-  // after page/system breaks and they repeat in every part.
+  // Group events by measure number, preserving sequenceIndex order.
   const measuresMap = new Map()
-  for (const meta of measureMetadata) {
-    const key = getMeasureKey(meta)
-    if (!measuresMap.has(key)) {
-      measuresMap.set(key, { context: getMeasureContext(meta, key), events: [] })
-    }
-  }
-
   for (const evt of measureEvents) {
-    const key = getMeasureKey(evt)
-    if (!measuresMap.has(key)) {
-      measuresMap.set(key, { context: getMeasureContext(evt, key), events: [] })
+    const mn = evt.measureNumber
+    if (!measuresMap.has(mn)) {
+      measuresMap.set(mn, [])
     }
-    measuresMap.get(key).events.push(evt)
+    measuresMap.get(mn).push(evt)
   }
 
   // Build a lookup for active divisions per measure.
   const divisionsLookup = new Map()
   for (const d of divisionsByMeasure) {
-    divisionsLookup.set(getMeasureKey(d), d.divisions)
+    divisionsLookup.set(d.measureNumber, d.divisions)
   }
 
   const result = []
 
-  for (const [measureKey, entry] of measuresMap) {
-    const { context, events } = entry
-    const { measureNumber, partId, partIndex, measureIndex } = context
-
+  for (const [measureNumber, events] of measuresMap) {
     // Sort by sequenceIndex to guarantee source order.
     events.sort((a, b) => a.sequenceIndex - b.sequenceIndex)
 
-    const divisions = divisionsLookup.has(measureKey)
-      ? divisionsLookup.get(measureKey)
+    const divisions = divisionsLookup.has(measureNumber)
+      ? divisionsLookup.get(measureNumber)
       : null
 
     const measureWarnings = []
@@ -93,18 +80,15 @@ export function buildMeasureTimeline(structuredScore) {
       }
 
       if (evt.type === 'note') {
-        const isGrace = evt.isGrace === true
         const durationDivisions = typeof evt.durationValue === 'number' && Number.isFinite(evt.durationValue)
           ? evt.durationValue
           : null
 
-        // MusicXML grace notes intentionally have no <duration>. They are
-        // ornamental, do not consume measure time, and are therefore valid.
-        if (durationDivisions === null && !isGrace) {
+        if (durationDivisions === null) {
           measureWarnings.push(`Measure ${measureNumber}: note at sequence ${evt.sequenceIndex} has no valid duration`)
         }
 
-        const noteDuration = isGrace ? 0 : (durationDivisions ?? 0)
+        const noteDuration = durationDivisions ?? 0
 
         let startDivisions
         if (evt.isChordNote) {
@@ -112,7 +96,7 @@ export function buildMeasureTimeline(structuredScore) {
           startDivisions = lastNonChordCursor
         } else {
           startDivisions = cursor
-          if (!isGrace) lastNonChordCursor = cursor
+          lastNonChordCursor = cursor
         }
 
         const endDivisions = startDivisions + noteDuration
@@ -130,7 +114,6 @@ export function buildMeasureTimeline(structuredScore) {
           startDivisions,
           durationDivisions: noteDuration,
           endDivisions,
-          isGrace,
           isChordNote: evt.isChordNote || false,
         })
 
@@ -145,8 +128,8 @@ export function buildMeasureTimeline(structuredScore) {
           voiceEntry.maxCursor = endDivisions
         }
 
-        if (!evt.isChordNote && !isGrace) {
-          // Only timed, non-chord notes advance the cursor.
+        if (!evt.isChordNote) {
+          // Only non-chord notes advance the cursor.
           cursor = endDivisions
         }
 
@@ -246,11 +229,7 @@ export function buildMeasureTimeline(structuredScore) {
     const durationBeats = hasValidDivisions ? maxCursor / divisions : null
 
     result.push({
-      measureKey,
       measureNumber,
-      partId,
-      partIndex,
-      measureIndex,
       divisions: hasValidDivisions ? divisions : null,
       startCursorDivisions: 0,
       endCursorDivisions: cursor,
@@ -262,37 +241,9 @@ export function buildMeasureTimeline(structuredScore) {
       events: timedEvents,
       warnings: measureWarnings,
     })
-
-    warnings.push(...measureWarnings)
   }
 
-  result.sort((a, b) => {
-    const aPart = Number.isFinite(a.partIndex) ? a.partIndex : Number.MAX_SAFE_INTEGER
-    const bPart = Number.isFinite(b.partIndex) ? b.partIndex : Number.MAX_SAFE_INTEGER
-    if (aPart !== bPart) return aPart - bPart
-
-    const aMeasure = Number.isFinite(a.measureIndex) ? a.measureIndex : a.measureNumber
-    const bMeasure = Number.isFinite(b.measureIndex) ? b.measureIndex : b.measureNumber
-    return aMeasure - bMeasure
-  })
+  result.sort((a, b) => a.measureNumber - b.measureNumber)
 
   return { measures: result, warnings }
-}
-
-function getMeasureKey(value) {
-  if (value?.measureKey) return value.measureKey
-  if (value?.partId !== undefined && Number.isFinite(value?.measureIndex)) {
-    return `${value.partId}:${value.measureIndex}`
-  }
-  return `legacy:${value?.measureNumber ?? value?.number ?? 1}`
-}
-
-function getMeasureContext(value, measureKey) {
-  return {
-    measureKey,
-    measureNumber: value?.measureNumber ?? value?.number ?? 1,
-    partId: value?.partId ?? null,
-    partIndex: Number.isFinite(value?.partIndex) ? value.partIndex : null,
-    measureIndex: Number.isFinite(value?.measureIndex) ? value.measureIndex : null,
-  }
 }

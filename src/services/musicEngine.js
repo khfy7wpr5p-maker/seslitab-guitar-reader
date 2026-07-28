@@ -106,15 +106,8 @@ export function parseMusicXmlToNotes(musicXmlString) {
   const result = parseXml(musicXmlString)
   if (result.error) return { notes: [], error: result.error }
 
-  // SesliTab is a single-instrument reader. OMR exports can contain a
-  // parallel rest-only part; use the parser-selected pitched part so the
-  // second part is not appended as silence or duplicate timing.
-  const sourceNotes = result.primaryPartId
-    ? (result.notes || []).filter((note) => note.partId === result.primaryPartId)
-    : (result.notes || [])
-
   // Convert raw parsed notes into full NoteObjects via createNote
-  const notes = sourceNotes.map((n) =>
+  const notes = (result.notes || []).map((n) =>
     createNote({
       stringLetter: n.string,
       fret: n.fret,
@@ -123,10 +116,6 @@ export function parseMusicXmlToNotes(musicXmlString) {
       frequency: n.frequency,
       duration: n.duration,
       measureNumber: n.measure,
-      measureKey: n.measureKey,
-      measureIndex: n.measureIndex,
-      partId: n.partId,
-      partIndex: n.partIndex,
       startBeat: n.startBeat,
       beats: n.beats,
       durationValue: n.durationValue,
@@ -135,7 +124,6 @@ export function parseMusicXmlToNotes(musicXmlString) {
       confidence: n.confidence,
       confidenceReason: n.confidenceReason,
       isRest: n.isRest,
-      isGrace: n.isGrace,
       voice: n.voice,
       staff: n.staff,
       step: n.step,

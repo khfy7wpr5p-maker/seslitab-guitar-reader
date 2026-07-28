@@ -20,104 +20,40 @@ export function parseMusicXml(musicXmlString) {
 
     const notes = []
     const parts = doc.querySelectorAll('part')
-    const partSummaries = []
 
-    for (let partIndex = 0; partIndex < parts.length; partIndex++) {
-      const part = parts[partIndex]
-      const partId = part.getAttribute('id') || `P${partIndex + 1}`
+    for (const part of parts) {
       const measures = part.querySelectorAll('measure')
       let measureNumber = 0
       let currentDivisions = null
-      let pitchedNoteCount = 0
-      let restCount = 0
 
-      for (let measureIndex = 0; measureIndex < measures.length; measureIndex++) {
-        const measure = measures[measureIndex]
-        measureNumber = parseMeasureNumber(measure.getAttribute('number'), measureNumber + 1)
-        const measureKey = createMeasureKey(partId, measureIndex)
+      for (const measure of measures) {
+        measureNumber = parseInt(measure.getAttribute('number')) || (measureNumber + 1)
         const divisionsEl = measure.querySelector('attributes divisions')
         if (divisionsEl) {
           currentDivisions = parseInt(divisionsEl.textContent, 10) || currentDivisions
         }
-        const measureNotes = parseMeasure(measure, measureNumber, currentDivisions, {
-          partId,
-          partIndex,
-          measureIndex,
-          measureKey,
-        })
-        for (const note of measureNotes) {
-          if (note.isRest) restCount++
-          else pitchedNoteCount++
-        }
+        const measureNotes = parseMeasure(measure, measureNumber, currentDivisions)
         notes.push(...measureNotes)
       }
-
-      partSummaries.push({
-        partId,
-        partIndex,
-        measureCount: measures.length,
-        pitchedNoteCount,
-        restCount,
-      })
     }
 
-    return {
-      notes,
-      parts: partSummaries,
-      primaryPartId: selectPrimaryPartId(partSummaries),
-    }
+    return { notes }
   } catch (err) {
     return { notes: [], error: err.message || 'MusicXML parse hatası' }
   }
 }
 
 // Parse a single measure
-function parseMeasure(measureEl, measureNumber, divisions, context = {}) {
+function parseMeasure(measureEl, measureNumber, divisions) {
   const notes = []
-  const directChildren = [...(measureEl.children || [])]
-  const directMusicChildren = directChildren.filter((child) => {
-    const tag = child.tagName || child.tag
-    return tag === 'note' || tag === 'backup' || tag === 'forward'
-  })
-  // Some legacy Node test shims do not preserve direct-child structure.
-  // The browser path uses ordered direct children; the fallback preserves
-  // the former flat-note behavior for those shims.
-  const measureChildren = directMusicChildren.some(
-    (child) => (child.tagName || child.tag) === 'note'
-  )
-    ? directMusicChildren
-    : [...measureEl.querySelectorAll('note')]
-  let cursorDivisions = 0
-  let lastNonChordStartDivisions = 0
-  const hasValidDivisions = Number.isFinite(divisions) && divisions > 0
+  const noteEls = measureEl.querySelectorAll('note')
+  let measureBeats = 0
 
-  for (const child of measureChildren) {
-    const tag = child.tagName || child.tag
-
-    if (tag === 'note') {
-      const isChordNote = child.querySelector('chord') !== null
-      const startDivisions = isChordNote ? lastNonChordStartDivisions : cursorDivisions
-      const startBeat = hasValidDivisions ? startDivisions / divisions : 0
-      const noteData = parseNote(child, measureNumber, startBeat, divisions, context)
-      if (noteData) {
-        notes.push(noteData)
-        if (!noteData.isChordNote && !noteData.isGrace) {
-          lastNonChordStartDivisions = cursorDivisions
-          const durationDivisions = Number.isFinite(noteData.durationValue)
-            ? noteData.durationValue
-            : noteData.beats * (hasValidDivisions ? divisions : 1)
-          cursorDivisions += Math.max(0, durationDivisions)
-        }
-      }
-      continue
-    }
-
-    if (tag === 'backup' || tag === 'forward') {
-      const durationEl = child.querySelector('duration')
-      const durationValue = durationEl ? parseInt(durationEl.textContent, 10) : 0
-      if (!Number.isFinite(durationValue) || durationValue < 0) continue
-      cursorDivisions += tag === 'backup' ? -durationValue : durationValue
-      cursorDivisions = Math.max(0, cursorDivisions)
+  for (const noteEl of noteEls) {
+    const noteData = parseNote(noteEl, measureNumber, measureBeats, divisions)
+    if (noteData) {
+      notes.push(noteData)
+      measureBeats += noteData.beats
     }
   }
 
@@ -125,10 +61,9 @@ function parseMeasure(measureEl, measureNumber, divisions, context = {}) {
 }
 
 // Parse a single note element
-function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
+function parseNote(noteEl, measure, startBeat, divisions) {
   const durationEl = noteEl.querySelector('duration')
   const durationValue = durationEl ? parseInt(durationEl.textContent, 10) : null
-  const isGrace = noteEl.querySelector('grace') !== null
 
   // Voice
   const voiceEl = noteEl.querySelector('voice')
@@ -171,15 +106,13 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
     const dotCount = noteEl.querySelectorAll('dot').length
     const dottedBeats = applyDots(baseBeats, dotCount)
     // For rests, prefer duration/divisions when available
-    const beats = isGrace ? 0 : resolveNoteBeats(durationValue, divisions, dottedBeats)
+    const beats = resolveNoteBeats(durationValue, divisions, dottedBeats)
     return {
       isRest: true,
-      isGrace,
       isChordNote,
       measure,
-      ...context,
       startBeat,
-      duration: beatsToDurationId(isGrace ? dottedBeats : beats),
+      duration: beatsToDurationId(beats),
       beats,
       durationValue,
       divisions,
@@ -236,8 +169,8 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
   const dottedBeats = applyDots(baseBeats, dotCount)
 
   // Canonical beat resolution: prefer duration/divisions, fall back to type+dot
-  const beats = isGrace ? 0 : resolveNoteBeats(durationValue, divisions, dottedBeats)
-  const durationId = beatsToDurationId(isGrace ? dottedBeats : beats)
+  const beats = resolveNoteBeats(durationValue, divisions, dottedBeats)
+  const durationId = beatsToDurationId(beats)
 
   // Map string number to letter
   const stringLetter = getStringLetter(stringNum)
@@ -254,8 +187,6 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
 
   return {
     measure,
-    ...context,
-    isGrace,
     isChordNote,
     string: stringLetter,
     fret,
@@ -279,25 +210,6 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
     confidence: 0.85,
     confidenceReason: technical ? 'MusicXML teknik bilgi' : 'MusicXML perdeden hesaplandı',
   }
-}
-
-function parseMeasureNumber(rawNumber, fallback) {
-  const parsed = parseInt(rawNumber, 10)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function createMeasureKey(partId, measureIndex) {
-  return `${partId}:${measureIndex}`
-}
-
-function selectPrimaryPartId(parts) {
-  if (!parts || parts.length === 0) return null
-  return [...parts]
-    .sort((a, b) =>
-      (b.pitchedNoteCount - a.pitchedNoteCount) ||
-      (b.measureCount - a.measureCount) ||
-      (a.partIndex - b.partIndex)
-    )[0].partId
 }
 
 // Canonical beat resolution for the parser.
@@ -421,29 +333,16 @@ export function parseMusicXmlWithStructure(musicXmlString) {
     const divisionsByMeasure = []
     const measureMetadata = []
     const measureEvents = []
-    const partSummaries = []
 
     const parts = doc.querySelectorAll('part')
 
-    for (let partIndex = 0; partIndex < parts.length; partIndex++) {
-      const part = parts[partIndex]
-      const partId = part.getAttribute('id') || `P${partIndex + 1}`
+    for (const part of parts) {
       const measures = part.querySelectorAll('measure')
       let measureNumber = 0
       let currentDivisions = null
-      let pitchedNoteCount = 0
-      let restCount = 0
 
-      for (let measureIndex = 0; measureIndex < measures.length; measureIndex++) {
-        const measure = measures[measureIndex]
-        measureNumber = parseMeasureNumber(measure.getAttribute('number'), measureNumber + 1)
-        const measureKey = createMeasureKey(partId, measureIndex)
-        const measureContext = {
-          partId,
-          partIndex,
-          measureIndex,
-          measureKey,
-        }
+      for (const measure of measures) {
+        measureNumber = parseInt(measure.getAttribute('number')) || (measureNumber + 1)
 
         // ── Divisions ──
         const attrsEl = measure.querySelector('attributes')
@@ -453,11 +352,7 @@ export function parseMusicXmlWithStructure(musicXmlString) {
             currentDivisions = parseInt(divEl.textContent, 10) || currentDivisions
           }
         }
-        divisionsByMeasure.push({
-          measureNumber,
-          ...measureContext,
-          divisions: currentDivisions,
-        })
+        divisionsByMeasure.push({ measureNumber, divisions: currentDivisions })
 
         // ── Time signatures ──
         const timeEls = measure.querySelectorAll('time')
@@ -468,7 +363,6 @@ export function parseMusicXmlWithStructure(musicXmlString) {
           if (beatsEl && beatTypeEl) {
             const ts = {
               measureNumber,
-              ...measureContext,
               beats: parseInt(beatsEl.textContent, 10) || 4,
               beatType: parseInt(beatTypeEl.textContent, 10) || 4,
             }
@@ -483,7 +377,6 @@ export function parseMusicXmlWithStructure(musicXmlString) {
         const width = measure.getAttribute('width')
         measureMetadata.push({
           measureNumber,
-          ...measureContext,
           implicit,
           nonControlling,
           width: width || null,
@@ -497,7 +390,6 @@ export function parseMusicXmlWithStructure(musicXmlString) {
         if (attributesEl) {
           measureEvents.push({
             measureNumber,
-            ...measureContext,
             sequenceIndex,
             type: 'attributes',
           })
@@ -509,17 +401,13 @@ export function parseMusicXmlWithStructure(musicXmlString) {
         for (const child of measureChildren) {
           const tag = child.tagName || child.tag
           if (tag === 'note') {
-            const noteData = parseNote(child, measureNumber, 0, currentDivisions, measureContext)
+            const noteData = parseNote(child, measureNumber, 0, currentDivisions)
             if (noteData) {
               notes.push(noteData)
-              if (noteData.isRest) restCount++
-              else pitchedNoteCount++
               measureEvents.push({
                 measureNumber,
-                ...measureContext,
                 sequenceIndex,
                 type: 'note',
-                isGrace: noteData.isGrace || false,
                 isChordNote: noteData.isChordNote || false,
                 isRest: noteData.isRest || false,
                 voice: noteData.voice,
@@ -535,7 +423,6 @@ export function parseMusicXmlWithStructure(musicXmlString) {
             const durationDivisions = durEl ? parseInt(durEl.textContent, 10) : 0
             measureEvents.push({
               measureNumber,
-              ...measureContext,
               sequenceIndex,
               type: 'backup',
               durationDivisions,
@@ -546,7 +433,6 @@ export function parseMusicXmlWithStructure(musicXmlString) {
             const durationDivisions = durEl ? parseInt(durEl.textContent, 10) : 0
             measureEvents.push({
               measureNumber,
-              ...measureContext,
               sequenceIndex,
               type: 'forward',
               durationDivisions,
@@ -555,20 +441,10 @@ export function parseMusicXmlWithStructure(musicXmlString) {
           }
         }
       }
-
-      partSummaries.push({
-        partId,
-        partIndex,
-        measureCount: measures.length,
-        pitchedNoteCount,
-        restCount,
-      })
     }
 
     return {
       notes,
-      parts: partSummaries,
-      primaryPartId: selectPrimaryPartId(partSummaries),
       timeSignatures,
       divisionsByMeasure,
       measureMetadata,
