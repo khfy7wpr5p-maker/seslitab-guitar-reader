@@ -177,6 +177,38 @@ export function generateTurkishRhythmicText(notes) {
 }
 
 /**
+ * Simplified formatter for the Rhythmic HTML output.
+ * Shows only guitar position and note name — no duration, beat, or tie text.
+ * Internal note objects (duration, beats, dotCount, tie flags, etc.) are
+ * never modified; this function only controls the visible HTML string.
+ * @param {NoteObject} note
+ * @returns {string}
+ */
+function formatNoteAsHtmlText(note) {
+  if (note.isRest) {
+    return 'sus'
+  }
+
+  const parts = []
+
+  if (note.stringLetter && note.fret !== undefined && note.fret !== null) {
+    const telName = STRING_NAMES[note.stringLetter] || `${note.stringLetter} tel`
+    const perdeText = fretToText(note.fret)
+    parts.push(`${telName} tel ${perdeText}`)
+  }
+
+  let noteNameText = note.noteName || ''
+  if (!noteNameText && note.stringLetter) {
+    noteNameText = noteName(note.stringLetter, note.fret)
+  }
+  if (noteNameText) {
+    parts.push(`${noteNameText} notası`)
+  }
+
+  return parts.join(', ')
+}
+
+/**
  * Generate Turkish rhythmic text with HTML formatting
  * @param {NoteObject[]} notes - Array of NoteObject
  * @returns {string} HTML formatted output
@@ -207,7 +239,7 @@ export function generateTurkishRhythmicHtml(notes) {
     htmlParts.push(`<h3 class="measure-title">Ölçü ${measureNum}</h3>`)
 
     for (const note of measureNotes) {
-      const noteText = formatNoteAsText(note)
+      const noteText = formatNoteAsHtmlText(note)
       const lowConf = (note.confidence || 0) < 0.5
       const confTag = lowConf ? '<span class="conf-tag">kontrol gerekiyor</span>' : ''
       const noteClass = lowConf ? 'note-line note-low' : 'note-line'
