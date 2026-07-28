@@ -119,9 +119,20 @@ export function parseMusicXmlToNotes(musicXmlString) {
       measureNumber: n.measure,
       startBeat: n.startBeat,
       beats: n.beats,
+      durationValue: n.durationValue,
+      divisions: n.divisions,
+      dotCount: n.dotCount,
       confidence: n.confidence,
       confidenceReason: n.confidenceReason,
       isRest: n.isRest,
+      voice: n.voice,
+      staff: n.staff,
+      step: n.step,
+      alter: n.alter,
+      octave: n.octave,
+      tieStart: n.tieStart,
+      tieStop: n.tieStop,
+      tieContinue: n.tieContinue,
     })
   )
 

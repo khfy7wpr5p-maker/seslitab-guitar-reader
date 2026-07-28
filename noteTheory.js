@@ -241,6 +241,7 @@ export function midiToOctave(midi) {
  */
 
 // Duration type to beats mapping (auto-calculated)
+// Includes dotted variants so createNote never falls back to 1 for a dotted duration.
 const DURATION_TO_BEATS = {
   whole: 4,
   half: 2,
@@ -248,6 +249,40 @@ const DURATION_TO_BEATS = {
   eighth: 0.5,
   sixteenth: 0.25,
   thirtySecond: 0.125,
+  'dotted-half': 3,
+  'dotted-quarter': 1.5,
+  'dotted-eighth': 0.75,
+  'dotted-sixteenth': 0.375,
+}
+
+/**
+ * Canonical beat resolver shared by rhythmic text and playback.
+ * Priority:
+ *   1. valid precomputed note.beats (>0)
+ *   2. durationValue / effectiveDivisions (both finite, >0)
+ *   3. duration-type + dotCount lookup
+ *   4. invalid → 0 (never silently 1)
+ * @param {NoteObject} note
+ * @returns {number}
+ */
+export function resolveBeats(note) {
+  if (note && typeof note.beats === 'number' && note.beats > 0) {
+    return note.beats
+  }
+  if (
+    note &&
+    typeof note.durationValue === 'number' && Number.isFinite(note.durationValue) && note.durationValue > 0 &&
+    typeof note.divisions === 'number' && Number.isFinite(note.divisions) && note.divisions > 0
+  ) {
+    return note.durationValue / note.divisions
+  }
+  if (note) {
+    const base = DURATION_TO_BEATS[note.duration] ?? DURATION_TO_BEATS[note.restType]
+    if (typeof base === 'number' && base > 0) {
+      return applyDots(base, note.dotCount || 0)
+    }
+  }
+  return 0
 }
 
 /**
@@ -265,8 +300,10 @@ export function createNote(data = {}) {
     // --- Duration ---
     duration: data.duration ?? 'quarter',                       // Nota süresi ID ('whole', 'half', 'quarter', 'eighth', 'sixteenth', 'thirtySecond')
     durationName: '',                                            // Nota süresi adı (auto: 'Birlik', 'İkilik', 'Dörtlük', 'Sekizlik', 'Onaltılık', 'Otuzikilik')
-    beats: 0,                                                    // Kaç vuruş tuttuğu (auto-calculated)
+    beats: data.beats ?? 0,                                     // Kaç vuruş tuttuğu (parser may pre-compute)
     dotCount: data.dotCount ?? 0,                               // Noktalı nota bilgisi (0, 1, 2)
+    durationValue: data.durationValue ?? null,                 // MusicXML <duration> raw value
+    divisions: data.divisions ?? null,                          // Effective MusicXML <divisions> for this note
 
     // --- Pitch ---
     noteName: data.noteName ?? '',                              // Nota adı ('Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si')
@@ -284,6 +321,9 @@ export function createNote(data = {}) {
     // --- MusicXML / Score Info ---
     voice: data.voice ?? 1,                                      // Voice (çok sesli müzikte)
     staff: data.staff ?? 1,                                      // Staff (staff 1 = TAB, staff 2 = standard notation)
+    step: data.step ?? null,                                    // Pitch step (C, D, E, ...)
+    alter: data.alter ?? null,                                  // Chromatic alteration (-1, 0, 1)
+    octave: data.octave ?? 4,                                   // Octave number
 
     // --- Articulations & Expressions ---
     tie: data.tie ?? null,                                       // Bağ (Tie): { start: boolean, end: boolean }
@@ -313,6 +353,11 @@ export function createNote(data = {}) {
     confidence: data.confidence ?? 0.5,                          // Güven puanı (0.0 - 1.0)
     confidenceReason: data.confidenceReason ?? '',              // Neden düşük yüksek güven
 
+    // --- Tie metadata (for tied notes across measures) ---
+    tieStart: data.tieStart ?? false,                           // Uzatma bağı başlangıcı
+    tieStop: data.tieStop ?? false,                             // Uzatma bağı sonu
+    tieContinue: data.tieContinue ?? false,                     // Uzatma bağı devamı (start+stop same note)
+
     // --- Page (for PDF) ---
     page: data.page ?? 1,                                        // Sayfa numarası
 
@@ -322,9 +367,9 @@ export function createNote(data = {}) {
 
   // === AUTO-CALCULATED FIELDS ===
 
-  // Calculate beats from duration
-  const baseBeats = DURATION_TO_BEATS[note.duration] ?? 1
-  note.beats = applyDots(baseBeats, note.dotCount)
+  // Canonical beat resolution: prefer explicit beats, then duration/divisions,
+  // then type+dot lookup. Never silently fall back to 1.
+  note.beats = resolveBeats(note)
 
   // Update duration ID if dotted
   if (note.dotCount > 0) {
@@ -377,7 +422,8 @@ export function createNote(data = {}) {
   if (note.isRest && note.restType) {
     note.duration = note.restType
     note.durationName = durationName(note.restType)
-    note.beats = DURATION_TO_BEATS[note.restType] ?? 1
+    // Use canonical resolver for rests too — never silently fall back to 1.
+    note.beats = resolveBeats(note)
   }
 
   return note
@@ -479,6 +525,97 @@ export function compareNotesByTime(a, b) {
  */
 export function sortNotesByTime(notes) {
   return [...notes].sort(compareNotesByTime)
+}
+
+// =============================================================================
+// TIE CHAINS
+// =============================================================================
+
+/**
+ * Build tie chains from a list of notes that carry tie metadata.
+ *
+ * A tie chain groups consecutive notes with the same pitch (step + alter +
+ * octave), voice, and staff, where the first note has tieStart and subsequent
+ * notes have tieContinue and/or tieStop. The chain produces a single sounding
+ * event whose total beats is the sum of all member beats.
+ *
+ * Rules:
+ *   - tieStart creates one sounding event (one attack).
+ *   - tieContinue / tieStop add their beats to that event (no new attack).
+ *   - tieStop closes the chain.
+ *   - Rests are never included.
+ *   - Same pitch in different voices or staves does not merge.
+ *   - Slurs are not ties and are ignored by this function.
+ *
+ * @param {NoteObject[]} notes — notes with tieStart/tieContinue/tieStop flags
+ * @returns {{ attacks: NoteObject[], chains: NoteObject[][] }}
+ *   attacks: notes that start a sound (untied notes + tie-start notes)
+ *   chains: array of chains, each chain is an array of member notes
+ */
+export function buildTieChains(notes) {
+  if (!notes || notes.length === 0) return { attacks: [], chains: [] }
+
+  const attacks = []
+  const chains = []
+  const openChains = new Map()
+
+  for (const note of notes) {
+    if (note.isRest) {
+      attacks.push(note)
+      continue
+    }
+
+    const key = tieKey(note)
+
+    if (note.tieStart && !note.tieStop) {
+      const chain = [note]
+      chains.push(chain)
+      openChains.set(key, chain)
+      attacks.push(note)
+    } else if (note.tieStart && note.tieStop) {
+      const chain = [note]
+      chains.push(chain)
+      attacks.push(note)
+    } else if (note.tieStop) {
+      const chain = openChains.get(key)
+      if (chain) {
+        chain.push(note)
+        openChains.delete(key)
+      } else {
+        attacks.push(note)
+      }
+    } else if (note.tieContinue) {
+      const chain = openChains.get(key)
+      if (chain) {
+        chain.push(note)
+      } else {
+        attacks.push(note)
+      }
+    } else {
+      attacks.push(note)
+    }
+  }
+
+  return { attacks, chains }
+}
+
+/**
+ * Compute the total beats for a tie chain (sum of member beats).
+ * @param {NoteObject[]} chain
+ * @returns {number}
+ */
+export function tieChainBeats(chain) {
+  if (!chain || chain.length === 0) return 0
+  return chain.reduce((sum, n) => sum + (resolveBeats(n) || 0), 0)
+}
+
+function tieKey(note) {
+  const step = note.step ?? ''
+  const alter = note.alter ?? 0
+  const octave = note.octave ?? 0
+  const voice = note.voice ?? 1
+  const staff = note.staff ?? 1
+  return `${step}|${alter}|${octave}|${voice}|${staff}`
 }
 
 // =============================================================================

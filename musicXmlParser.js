@@ -19,18 +19,22 @@ export function parseMusicXml(musicXmlString) {
     }
 
     const notes = []
-    const measures = doc.querySelectorAll('measure')
-    let measureNumber = 0
-    let currentDivisions = null
+    const parts = doc.querySelectorAll('part')
 
-    for (const measure of measures) {
-      measureNumber = parseInt(measure.getAttribute('number')) || (measureNumber + 1)
-      const divisionsEl = measure.querySelector('attributes divisions')
-      if (divisionsEl) {
-        currentDivisions = parseInt(divisionsEl.textContent, 10) || currentDivisions
+    for (const part of parts) {
+      const measures = part.querySelectorAll('measure')
+      let measureNumber = 0
+      let currentDivisions = null
+
+      for (const measure of measures) {
+        measureNumber = parseInt(measure.getAttribute('number')) || (measureNumber + 1)
+        const divisionsEl = measure.querySelector('attributes divisions')
+        if (divisionsEl) {
+          currentDivisions = parseInt(divisionsEl.textContent, 10) || currentDivisions
+        }
+        const measureNotes = parseMeasure(measure, measureNumber, currentDivisions)
+        notes.push(...measureNotes)
       }
-      const measureNotes = parseMeasure(measure, measureNumber, currentDivisions)
-      notes.push(...measureNotes)
     }
 
     return { notes }
@@ -44,7 +48,6 @@ function parseMeasure(measureEl, measureNumber, divisions) {
   const notes = []
   const noteEls = measureEl.querySelectorAll('note')
   let measureBeats = 0
-  const measureStartBeat = 0 // Reset per measure for measure-relative positions
 
   for (const noteEl of noteEls) {
     const noteData = parseNote(noteEl, measureNumber, measureBeats, divisions)
@@ -62,6 +65,33 @@ function parseNote(noteEl, measure, startBeat, divisions) {
   const durationEl = noteEl.querySelector('duration')
   const durationValue = durationEl ? parseInt(durationEl.textContent, 10) : null
 
+  // Voice
+  const voiceEl = noteEl.querySelector('voice')
+  const voice = voiceEl ? parseInt(voiceEl.textContent, 10) || 1 : 1
+
+  // Staff
+  const staffEl = noteEl.querySelector('staff')
+  const staff = staffEl ? parseInt(staffEl.textContent, 10) || 1 : 1
+
+  // Tie detection: <tie type="start|stop"/> and <notations><tied type="start|stop"/></notations>
+  // Slurs (<slur>) are NOT ties and must be ignored.
+  let tieStart = false
+  let tieStop = false
+
+  const tieEls = noteEl.querySelectorAll(':scope > tie')
+  for (const t of tieEls) {
+    const type = t.getAttribute('type')
+    if (type === 'start') tieStart = true
+    if (type === 'stop') tieStop = true
+  }
+
+  const tiedEls = noteEl.querySelectorAll('notations tied')
+  for (const t of tiedEls) {
+    const type = t.getAttribute('type')
+    if (type === 'start') tieStart = true
+    if (type === 'stop') tieStop = true
+  }
+
   // Check if this is a rest
   const rest = noteEl.querySelector('rest')
   if (rest) {
@@ -69,7 +99,9 @@ function parseNote(noteEl, measure, startBeat, divisions) {
     const durationText = type ? type.textContent : 'quarter'
     const baseBeats = getDurationBeats(durationText)
     const dotCount = noteEl.querySelectorAll('dot').length
-    const beats = applyDots(baseBeats, dotCount)
+    const dottedBeats = applyDots(baseBeats, dotCount)
+    // For rests, prefer duration/divisions when available
+    const beats = resolveNoteBeats(durationValue, divisions, dottedBeats)
     return {
       isRest: true,
       measure,
@@ -78,6 +110,9 @@ function parseNote(noteEl, measure, startBeat, divisions) {
       beats,
       durationValue,
       divisions,
+      dotCount,
+      voice,
+      staff,
       confidence: 0.9,
       confidenceReason: 'Sus işareti',
     }
@@ -118,12 +153,15 @@ function parseNote(noteEl, measure, startBeat, divisions) {
   // Get duration
   const typeEl = noteEl.querySelector('type')
   const durationText = typeEl ? typeEl.textContent : 'quarter'
-  const beats = getDurationBeats(durationText)
+  const baseBeats = getDurationBeats(durationText)
 
   // Check for dots
   const dotCount = noteEl.querySelectorAll('dot').length
-  const dottedBeats = applyDots(beats, dotCount)
-  const durationId = beatsToDurationId(dottedBeats)
+  const dottedBeats = applyDots(baseBeats, dotCount)
+
+  // Canonical beat resolution: prefer duration/divisions, fall back to type+dot
+  const beats = resolveNoteBeats(durationValue, divisions, dottedBeats)
+  const durationId = beatsToDurationId(beats)
 
   // Map string number to letter
   const stringLetter = getStringLetter(stringNum)
@@ -131,6 +169,10 @@ function parseNote(noteEl, measure, startBeat, divisions) {
 
   // Calculate frequency
   const freq = noteFrequency(stringLetter, fret)
+
+  // Determine tie continuation (start but not stop = pure start;
+  // stop but not start = pure stop; both = start+stop in same note)
+  const tieContinue = tieStart && tieStop
 
   return {
     measure,
@@ -140,13 +182,37 @@ function parseNote(noteEl, measure, startBeat, divisions) {
     frequency: freq,
     midi: noteToMidi(stringLetter, fret),
     duration: durationId,
-    beats: dottedBeats,
+    beats,
     durationValue,
     divisions,
+    dotCount,
     startBeat,
+    voice,
+    staff,
+    step,
+    alter,
+    octave,
+    tieStart,
+    tieStop,
+    tieContinue,
     confidence: 0.85,
     confidenceReason: technical ? 'MusicXML teknik bilgi' : 'MusicXML perdeden hesaplandı',
   }
+}
+
+// Canonical beat resolution for the parser.
+// Priority: duration/divisions > type+dot > 0 (never silently 1)
+function resolveNoteBeats(durationValue, divisions, fallbackBeats) {
+  if (
+    typeof durationValue === 'number' && Number.isFinite(durationValue) && durationValue > 0 &&
+    typeof divisions === 'number' && Number.isFinite(divisions) && divisions > 0
+  ) {
+    return durationValue / divisions
+  }
+  if (typeof fallbackBeats === 'number' && fallbackBeats > 0) {
+    return fallbackBeats
+  }
+  return 0
 }
 
 // Convert duration type text to beats
@@ -167,7 +233,7 @@ function getDurationBeats(typeText) {
     '32nd-note': 0.125,
   }
   const normalized = typeText.toLowerCase().trim()
-  return durations[normalized] || 1
+  return durations[normalized] || 0
 }
 
 // Apply dots to duration

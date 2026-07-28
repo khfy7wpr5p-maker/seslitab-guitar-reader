@@ -2,6 +2,8 @@
 //
 // Works with NoteObject[] from noteTheory.js (root module) and plain text.
 
+import { resolveBeats, buildTieChains, tieChainBeats } from '../../noteTheory.js'
+
 let audioCtx = null
 
 function getAudioCtx() {
@@ -66,13 +68,30 @@ export function playRhythm(notes, speed = 1, onNote = null) {
     const beatSeconds = 60 / tempo
     let currentTime = ctx.currentTime + 0.1
 
-    notes.forEach((note, i) => {
+    // Build tie chains so tied notes produce one continuous sound
+    // instead of separate attacks. buildTieChains returns attacks (notes
+    // that start a sound) and chains (groups of tied notes).
+    const { attacks } = buildTieChains(notes)
+
+    // Map each note to its chain (if any) so we can compute total duration
+    const chainMap = new Map()
+    const { chains } = buildTieChains(notes)
+    for (const chain of chains) {
+      for (const member of chain) {
+        chainMap.set(member, chain)
+      }
+    }
+
+    attacks.forEach((note, i) => {
+      const chain = chainMap.get(note)
+      const beats = chain ? tieChainBeats(chain) : resolveBeats(note)
+
       if (!note.frequency || note.isRest) {
-        currentTime += (note.beats || 1) * beatSeconds / speed
+        currentTime += beats * beatSeconds / speed
         return
       }
 
-      const duration = (note.beats || 1) * beatSeconds / speed
+      const duration = beats * beatSeconds / speed
       const startTime = currentTime
 
       const osc = ctx.createOscillator()
@@ -98,7 +117,7 @@ export function playRhythm(notes, speed = 1, onNote = null) {
       }
 
       // If this is NOT a chord member, advance time. Chord members share startBeat.
-      if (!note.isChord || i === notes.length - 1 || notes[i + 1]?.startBeat !== note.startBeat) {
+      if (!note.isChord || i === attacks.length - 1 || attacks[i + 1]?.startBeat !== note.startBeat) {
         currentTime += duration
       }
     })

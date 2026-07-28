@@ -9,6 +9,7 @@ import {
   durationBeatsText,
   noteName,
   ACCIDENTALS,
+  resolveBeats,
 } from './noteTheory.js'
 
 import { fretToText } from './tabParser.js'
@@ -62,24 +63,13 @@ export function beatsToTurkishText(beats) {
 
 /**
  * Resolve the normalized beat value for a note or rest.
- * Prefers note.beats when already calculated by the parser.
- * Falls back to duration / divisions when beats is missing.
- * Never rounds, ceils, floors, or silently falls back to 1.
+ * Delegates to the canonical resolveBeats in noteTheory.js so that
+ * rhythmic text and playback share one source of truth.
  * @param {NoteObject} note
  * @returns {number}
  */
-function resolveBeats(note) {
-  if (typeof note.beats === 'number' && note.beats > 0) {
-    return note.beats
-  }
-  if (typeof note.durationValue === 'number' && typeof note.divisions === 'number' && note.divisions > 0) {
-    return note.durationValue / note.divisions
-  }
-  const fromType = durationBeats(note.duration)
-  if (typeof fromType === 'number' && fromType > 0) {
-    return fromType
-  }
-  return note.beats || 0
+function resolveBeatsLocal(note) {
+  return resolveBeats(note)
 }
 
 /**
@@ -91,7 +81,7 @@ export function formatNoteAsText(note) {
   // Handle rests
   if (note.isRest) {
     const restLabel = durationLabel(note.duration || note.restType || 'quarter')
-    const beatsVal = resolveBeats(note)
+    const beatsVal = resolveBeatsLocal(note)
     const beatsText = beatsToTurkishText(beatsVal)
     return `${restLabel}, sus, ${beatsText}`
   }
@@ -126,9 +116,18 @@ export function formatNoteAsText(note) {
   parts.push(durLabel)
 
   // Beat count
-  const beatsVal = resolveBeats(note)
+  const beatsVal = resolveBeatsLocal(note)
   const beatsText = beatsToTurkishText(beatsVal)
   parts.push(beatsText)
+
+  // Tie information (accessible announcement)
+  if (note.tieStart && note.tieStop) {
+    parts.push('uzatma bağı devamı')
+  } else if (note.tieStart) {
+    parts.push('uzatma bağı başlangıcı')
+  } else if (note.tieStop) {
+    parts.push('uzatma bağı sonu')
+  }
 
   return parts.join(', ')
 }
