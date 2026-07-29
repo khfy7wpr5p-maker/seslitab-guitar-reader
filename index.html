@@ -152,9 +152,17 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
           </div>
         </div>
         <div class="card-body">
+          <div
+            class="omr-quality-notice"
+            id="omr-quality-notice"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></div>
           <div class="result-tabs" role="tablist" aria-label="Çıktı görünümü seç">
             <button class="tab-btn active" role="tab" aria-selected="true" data-tab="rhythmic">Ritimli Metin</button>
             <button class="tab-btn" role="tab" aria-selected="false" data-tab="html">Ritimli HTML</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="timed-tab">Eşit Aralıklı TAB</button>
             <button class="tab-btn" role="tab" aria-selected="false" data-tab="notes">Nota Kartları</button>
             <button class="tab-btn" role="tab" aria-selected="false" data-tab="xml">MusicXML Ham Çıktı</button>
           </div>
@@ -167,6 +175,15 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
           <div class="tab-content" id="tab-html" role="tabpanel" hidden>
             <div class="rhythm-warning" id="rhythm-warning-html" hidden></div>
             <div class="rhythmic-html" id="rhythmic-html-output" aria-label="Ritmik HTML çıktısı"></div>
+          </div>
+
+          <div class="tab-content" id="tab-timed-tab" role="tabpanel" hidden>
+            <div class="rhythm-warning" id="rhythm-warning-timed-tab" hidden></div>
+            <p class="timed-tab-help">
+              Her yatay aralık aynı müzik süresini gösterir. Aynı sütundaki perdeler birlikte çalınır.
+              Eğik çizgiyle ayrılan perdeler aynı telde eşzamanlı konum belirsizliği olduğunu gösterir.
+            </p>
+            <div id="timed-tab-output"></div>
           </div>
 
           <div class="tab-content" id="tab-notes" role="tabpanel" hidden>
