@@ -132,7 +132,6 @@ export function parseMusicXmlToNotes(musicXmlString) {
       durationValue: n.durationValue,
       divisions: n.divisions,
       dotCount: n.dotCount,
-      beams: n.beams,
       confidence: n.confidence,
       confidenceReason: n.confidenceReason,
       isRest: n.isRest,
