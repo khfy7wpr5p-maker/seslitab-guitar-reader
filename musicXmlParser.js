@@ -129,6 +129,7 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
   const durationEl = noteEl.querySelector('duration')
   const durationValue = durationEl ? parseInt(durationEl.textContent, 10) : null
   const isGrace = noteEl.querySelector('grace') !== null
+  const beams = parseBeamElements(noteEl)
 
   // Voice
   const voiceEl = noteEl.querySelector('voice')
@@ -184,6 +185,7 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
       durationValue,
       divisions,
       dotCount,
+      beams,
       voice,
       staff,
       confidence: 0.9,
@@ -267,6 +269,7 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
     durationValue,
     divisions,
     dotCount,
+    beams,
     startBeat,
     voice,
     staff,
@@ -279,6 +282,30 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
     confidence: 0.85,
     confidenceReason: technical ? 'MusicXML teknik bilgi' : 'MusicXML perdeden hesaplandı',
   }
+}
+
+function parseBeamElements(noteEl) {
+  const validValues = new Set([
+    'begin',
+    'continue',
+    'end',
+    'forward hook',
+    'backward hook',
+  ])
+
+  return Array.from(noteEl.querySelectorAll('beam'))
+    .map((beamEl) => {
+      const number = parseInt(beamEl.getAttribute('number') || '1', 10)
+      const value = String(beamEl.textContent || '').trim().toLowerCase()
+      return { number, value }
+    })
+    .filter(
+      (beam) =>
+        Number.isInteger(beam.number) &&
+        beam.number >= 1 &&
+        beam.number <= 3 &&
+        validValues.has(beam.value)
+    )
 }
 
 function parseMeasureNumber(rawNumber, fallback) {
