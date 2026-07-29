@@ -1,0 +1,27 @@
+SesliTab OMR Kalite Kapısı — GitHub yükleme
+
+1. Bu ZIP dosyasını bilgisayarınızda ayıklayın.
+2. Ayıklanan klasörün İÇİNDEKİ index.html, src ve tests öğelerini seçin.
+3. GitHub projesinin ana sayfasında Add file > Upload files seçin.
+4. Seçtiğiniz öğeleri yükleme alanına sürükleyin.
+5. Commit mesajı:
+
+   Add safe OMR playback quality gate
+
+6. Commit directly to the main branch seçili kalsın ve Commit changes düğmesine basın.
+7. Bolt açıldığında Update codebase with external changes seçeneğini çalıştırın.
+8. Terminalde npm test çalıştırın. Beklenen sonuç:
+
+   tests 492
+   pass 492
+   fail 0
+   cancelled 0
+
+9. Sonra Render otomatik deploy durumunu kontrol edin.
+
+Beklenen uygulama davranışı:
+- Sweet Child gibi güvenilmez OMR sonuçlarında otomatik çalma durur.
+- MusicXML ve OMR indirme düğmeleri çalışmaya devam eder.
+- Kullanıcı isterse “Yine de çal” ile bilinçli olarak devam edebilir.
+- Gözden geçirilmesi gereken fakat kullanılabilir sonuçlar uyarı verir ve çalınabilir.
+- Doğrudan yüklenen temiz MusicXML dosyalarının mevcut çalışma biçimi değişmez.

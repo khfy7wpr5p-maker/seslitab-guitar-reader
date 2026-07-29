@@ -152,6 +152,15 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
           </div>
         </div>
         <div class="card-body">
+          <div class="omr-quality-gate" id="omr-quality-gate" hidden role="alert" aria-live="assertive">
+            <h3 id="omr-quality-title">OMR kalite uyarısı</h3>
+            <p id="omr-quality-summary"></p>
+            <ul id="omr-quality-reasons"></ul>
+            <button class="btn btn-secondary btn-sm" id="omr-quality-continue-btn" hidden>
+              Yine de çal
+            </button>
+          </div>
+
           <div class="result-tabs" role="tablist" aria-label="Çıktı görünümü seç">
             <button class="tab-btn active" role="tab" aria-selected="true" data-tab="rhythmic">Ritimli Metin</button>
             <button class="tab-btn" role="tab" aria-selected="false" data-tab="html">Ritimli HTML</button>
