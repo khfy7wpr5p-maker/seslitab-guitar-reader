@@ -182,6 +182,14 @@ async function readOutputFile(outputDir, file) {
 
 function runAudiveris(command, args, timeoutMs, abortSignal) {
   return new Promise((resolve, reject) => {
+    // AbortSignal does not replay an abort event to listeners that are added
+    // after it has already been aborted. Avoid starting Audiveris in that
+    // state, otherwise callers can wait until the full timeout expires.
+    if (abortSignal?.aborted) {
+      reject(safeError('CANCELED', 'İşlem iptal edildi.'))
+      return
+    }
+
     let child
     let settled = false
     let timedOut = false
@@ -278,6 +286,13 @@ function mapSpawnError(err) {
 }
 
 async function spawnWithTimeout(spawnFn, command, args, timeoutMs, abortController, job) {
+  // Cancellation can happen while the temporary input/output files are being
+  // prepared. In that case the signal is already aborted before spawnFn gets
+  // a chance to register its listener, so stop before launching the process.
+  if (job.canceled || abortController.signal.aborted) {
+    throw safeError('CANCELED', 'İşlem iptal edildi.')
+  }
+
   let timedOut = false
   const timeoutHandle = setTimeout(() => { timedOut = true; abortController.abort() }, timeoutMs)
 

@@ -457,6 +457,26 @@ describe('AudiverisProvider timeout and cancellation', () => {
     assert.equal(an.error.code, 'CANCELED')
   })
 
+  test('25a. Cancellation before process start does not launch Audiveris', async () => {
+    let spawnCalled = false
+    const customSpawn = () => {
+      spawnCalled = true
+      return Promise.reject(new Error('must not be called'))
+    }
+    const p = makeProvider({ timeoutMs: 30000 }, { spawn: customSpawn })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    const analyzePromise = p.analyzePdf(up.providerJobId)
+
+    // analyzePdf sets its AbortController before the first filesystem await,
+    // making this a deterministic pre-spawn cancellation.
+    await p.cancelJob(up.providerJobId)
+    const an = await analyzePromise
+
+    assert.equal(an.success, false)
+    assert.equal(an.error.code, 'CANCELED')
+    assert.equal(spawnCalled, false)
+  })
+
   test('26. Canceled jobs cannot later become completed', async () => {
     const customSpawn = (_cmd, _args, _timeout, abortSignal) => {
       return new Promise((_, reject) => {
@@ -514,8 +534,11 @@ describe('AudiverisProvider temp file cleanup', () => {
 
   test('30. Temp files cleaned after cancellation', async () => {
     let capturedDir
+    let markSpawnStarted
+    const spawnStarted = new Promise((resolve) => { markSpawnStarted = resolve })
     const customSpawn = (_cmd, args, _timeout, abortSignal) => {
       capturedDir = path.dirname(args[args.indexOf('-output') + 1])
+      markSpawnStarted()
       return new Promise((_, reject) => {
         if (abortSignal) abortSignal.addEventListener('abort', () => reject(new Error('aborted')))
       })
@@ -523,7 +546,8 @@ describe('AudiverisProvider temp file cleanup', () => {
     const p = makeProvider({ timeoutMs: 30000 }, { spawn: customSpawn })
     const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
     const analyzePromise = p.analyzePdf(up.providerJobId)
-    setTimeout(() => p.cancelJob(up.providerJobId), 10)
+    await spawnStarted
+    await p.cancelJob(up.providerJobId)
     await analyzePromise
     const exists = await fs.access(capturedDir).then(() => true).catch(() => false)
     assert.equal(exists, false, 'Temp dir should be cleaned after cancel')
