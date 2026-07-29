@@ -34,7 +34,6 @@ import {
   validateMusicXmlFile,
   musicXmlHasRhythm,
 } from './services/musicXmlFile.js'
-import { assessMusicXmlQuality } from './services/omrQualityGate.js'
 import { normalizeTabInput } from '../tabParser.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -491,13 +490,11 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
     musicXmlString = xmlString
     $('xml-output').textContent = xmlString
     showMusicXmlDownloadButton()
-    showOmrQualityNotice(assessMusicXmlQuality(xmlString).notice)
   } else {
     // TAB mode — no MusicXML
     musicXmlString = '(TAB modunda MusicXML çıktısı yoktur)'
     $('xml-output').textContent = musicXmlString
     hideMusicXmlDownloadButton()
-    hideOmrQualityNotice()
   }
 
   // Rhythm warning
@@ -626,7 +623,6 @@ function resetApp() {
   hideMusicXmlError()
   hideTabError()
   hideMockNotice()
-  hideOmrQualityNotice()
   hideMusicXmlDownloadButton()
   hideOmrDownloadButton()
   announce('Uygulama sıfırlandı')
@@ -770,22 +766,6 @@ function hideMockNotice() {
   const el = $('mock-notice')
   if (!el) return
   el.hidden = true
-}
-
-function showOmrQualityNotice(notice) {
-  const el = $('omr-quality-notice')
-  if (!el || !notice) return
-  el.className = `omr-quality-notice quality-${notice.level || 'warning'}`
-  el.textContent = notice.message
-  el.hidden = false
-  announce(notice.message)
-}
-
-function hideOmrQualityNotice() {
-  const el = $('omr-quality-notice')
-  if (!el) return
-  el.hidden = true
-  el.textContent = ''
 }
 
 // ── MusicXML download ─────────────────────────────────────────
