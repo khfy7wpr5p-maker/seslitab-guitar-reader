@@ -332,7 +332,8 @@ export function createNote(data = {}) {
 
     // --- MusicXML / Score Info ---
     voice: data.voice ?? 1,                                      // Voice (çok sesli müzikte)
-    staff: data.staff ?? 1,                                      // Staff (staff 1 = TAB, staff 2 = standard notation)
+    staff: data.staff ?? 1,
+    beams: Array.isArray(data.beams) ? data.beams.map((beam) => ({ ...beam })) : [],// Staff (staff 1 = TAB, staff 2 = standard notation)
     step: data.step ?? null,                                    // Pitch step (C, D, E, ...)
     alter: data.alter ?? null,                                  // Chromatic alteration (-1, 0, 1)
     octave: data.octave ?? 4,                                   // Octave number
