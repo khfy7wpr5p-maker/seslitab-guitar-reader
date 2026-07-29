@@ -84,6 +84,7 @@ export function buildTimedTabLayout(notes, options = {}) {
       ...stringInfo,
       cells: Array.from({ length: slotCount }, () => []),
     }))
+    const placedEntries = []
     let invalidPositionCount = 0
     let collisionCellCount = 0
 
@@ -97,6 +98,7 @@ export function buildTimedTabLayout(notes, options = {}) {
       const slotIndex = Math.min(Math.max(rawSlot, 0), slotCount - 1)
       const cell = rows[entry.stringNumber - 1].cells[slotIndex]
 
+      placedEntries.push({ ...entry, slotIndex })
       cell.push({
         fret: entry.fret,
         voice: entry.voice,
@@ -121,6 +123,13 @@ export function buildTimedTabLayout(notes, options = {}) {
       )
     }
 
+    const rhythmRows = buildRhythmRows(
+      placedEntries,
+      slotCount,
+      group.measureNumber,
+      measureWarnings
+    )
+
     const measure = {
       measureKey: group.measureKey,
       measureNumber: group.measureNumber,
@@ -130,6 +139,7 @@ export function buildTimedTabLayout(notes, options = {}) {
       slotCount,
       measureEndBeat,
       rows,
+      rhythmRows,
       pitchedNoteCount: pitchedNotes.length,
       placedNoteCount: rows.reduce(
         (count, row) =>
@@ -178,9 +188,80 @@ function renderMeasure(measure) {
       </p>
       ${warningText}
       <div class="timed-tab-visual" aria-hidden="true">
+        ${renderRhythmRows(measure)}
         ${measure.rows.map((row) => renderRow(row, measure)).join('')}
       </div>
     </section>
+  `
+}
+
+function renderRhythmRows(measure) {
+  if (!measure.rhythmRows.length) {
+    return `
+      <div class="timed-tab-rhythm-spacer">
+        <span></span>
+        <span>Ritim işareti bulunamadı</span>
+      </div>
+    `
+  }
+
+  const showVoiceLabels = measure.rhythmRows.length > 1
+  return `
+    <div class="timed-tab-rhythm">
+      ${measure.rhythmRows.map((rhythmRow) => `
+        <div class="timed-tab-rhythm-row">
+          <span class="timed-tab-rhythm-label">${showVoiceLabels ? `V${escapeHtml(rhythmRow.voice)}` : ''}</span>
+          <div
+            class="timed-tab-rhythm-cells"
+            style="--tab-slot-count:${measure.slotCount}"
+          >
+            ${rhythmRow.cells.map(renderRhythmCell).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderRhythmCell(event) {
+  if (!event) return '<span class="timed-tab-rhythm-cell"></span>'
+
+  const stem = event.hasStem
+    ? '<span class="timed-tab-stem"></span>'
+    : ''
+  const beams = event.beamSegments
+    .map(
+      (segment) => `
+        <span
+          class="timed-tab-beam level-${segment.level}"
+          style="--tab-beam-span:${segment.span}"
+        ></span>
+      `
+    )
+    .join('')
+  const hooks = event.beamHooks
+    .map(
+      (hook) => `
+        <span
+          class="timed-tab-beam-hook ${hook.direction} level-${hook.level}"
+        ></span>
+      `
+    )
+    .join('')
+  const flags = Array.from(
+    { length: event.fallbackFlagCount },
+    (_, index) => `<span class="timed-tab-flag level-${index + 1}"></span>`
+  ).join('')
+  const dot = event.dotCount > 0
+    ? `<span class="timed-tab-rhythm-dot">${'•'.repeat(Math.min(event.dotCount, 2))}</span>`
+    : ''
+
+  return `
+    <span class="timed-tab-rhythm-cell has-event">
+      <span class="timed-tab-rhythm-mark">
+        ${stem}${beams}${hooks}${flags}${dot}
+      </span>
+    </span>
   `
 }
 
@@ -216,6 +297,140 @@ function renderCell(cell, index, gridStepBeats) {
       <span class="timed-tab-fret">${escapeHtml(frets)}</span>
     </span>
   `
+}
+
+function buildRhythmRows(entries, slotCount, measureNumber, measureWarnings) {
+  const voices = new Map()
+  let ambiguousDurationCount = 0
+  let ambiguousBeamCount = 0
+
+  for (const entry of entries) {
+    if (entry.isGrace) continue
+    const voice = String(entry.voice ?? 1)
+    if (!voices.has(voice)) voices.set(voice, new Map())
+    const slots = voices.get(voice)
+    if (!slots.has(entry.slotIndex)) slots.set(entry.slotIndex, [])
+    slots.get(entry.slotIndex).push(entry)
+  }
+
+  const rhythmRows = [...voices.entries()]
+    .sort(([voiceA], [voiceB]) => compareVoices(voiceA, voiceB))
+    .map(([voice, slotGroups]) => {
+      const events = [...slotGroups.entries()]
+        .sort(([slotA], [slotB]) => slotA - slotB)
+        .map(([slotIndex, groupEntries]) => {
+          const durationKeys = new Set(
+            groupEntries.map((entry) => `${entry.duration}|${entry.beats}`)
+          )
+          const mergedBeams = mergeBeamStates(groupEntries)
+          const durationAmbiguous = durationKeys.size > 1
+          if (durationAmbiguous) ambiguousDurationCount++
+          if (mergedBeams.ambiguous) ambiguousBeamCount++
+
+          const first = groupEntries[0]
+          const beamLevel = durationAmbiguous
+            ? 0
+            : getDurationBeamLevel(first.duration, first.beats)
+          const beamHooks = [...mergedBeams.states.entries()]
+            .filter(([, value]) =>
+              value === 'forward hook' || value === 'backward hook'
+            )
+            .map(([level, value]) => ({
+              level,
+              direction: value === 'backward hook' ? 'backward' : 'forward',
+            }))
+
+          return {
+            slotIndex,
+            duration: first.duration,
+            beats: first.beats,
+            dotCount: first.dotCount,
+            hasStem: !String(first.duration).toLowerCase().includes('whole'),
+            beamStates: mergedBeams.states,
+            beamLevel,
+            fallbackFlagCount:
+              !durationAmbiguous && mergedBeams.states.size === 0 ? beamLevel : 0,
+            beamSegments: [],
+            beamHooks,
+          }
+        })
+
+      for (let index = 0; index < events.length - 1; index++) {
+        const event = events[index]
+        const nextEvent = events[index + 1]
+        for (const [level, value] of event.beamStates) {
+          const nextValue = nextEvent.beamStates.get(level)
+          if (
+            (value === 'begin' || value === 'continue') &&
+            (nextValue === 'continue' || nextValue === 'end')
+          ) {
+            event.beamSegments.push({
+              level,
+              span: nextEvent.slotIndex - event.slotIndex,
+            })
+          }
+        }
+      }
+
+      const cells = Array.from({ length: slotCount }, () => null)
+      for (const event of events) cells[event.slotIndex] = event
+      return { voice, cells }
+    })
+
+  if (ambiguousDurationCount > 0) {
+    measureWarnings.push(
+      `Ölçü ${measureNumber}: ${ambiguousDurationCount} eşzamanlı konumda farklı süreler bulundu; kiriş bağlantısı çizilmedi`
+    )
+  }
+  if (ambiguousBeamCount > 0) {
+    measureWarnings.push(
+      `Ölçü ${measureNumber}: ${ambiguousBeamCount} konumda çelişkili MusicXML kiriş bilgisi bulundu`
+    )
+  }
+
+  return rhythmRows
+}
+
+function mergeBeamStates(entries) {
+  const states = new Map()
+  const conflictedLevels = new Set()
+
+  for (const entry of entries) {
+    for (const beam of entry.beams) {
+      if (conflictedLevels.has(beam.number)) continue
+      if (states.has(beam.number) && states.get(beam.number) !== beam.value) {
+        conflictedLevels.add(beam.number)
+        states.delete(beam.number)
+        continue
+      }
+      states.set(beam.number, beam.value)
+    }
+  }
+
+  return { states, ambiguous: conflictedLevels.size > 0 }
+}
+
+function getDurationBeamLevel(duration, beats) {
+  const durationId = String(duration || '').toLowerCase()
+  if (durationId.includes('thirtysecond')) return 3
+  if (durationId.includes('sixteenth')) return 2
+  if (durationId.includes('eighth')) return 1
+
+  const numericBeats = Number(beats)
+  if (!Number.isFinite(numericBeats)) return 0
+  if (numericBeats <= 0.2 + EPSILON) return 3
+  if (numericBeats <= 0.4 + EPSILON) return 2
+  if (numericBeats <= 0.8 + EPSILON) return 1
+  return 0
+}
+
+function compareVoices(voiceA, voiceB) {
+  const numericA = Number(voiceA)
+  const numericB = Number(voiceB)
+  if (Number.isFinite(numericA) && Number.isFinite(numericB)) {
+    return numericA - numericB
+  }
+  return voiceA.localeCompare(voiceB)
 }
 
 function groupMeasures(notes) {
@@ -264,9 +479,34 @@ function normalizeTimedNote(note, sourceIndex) {
     isRest: note.isRest === true,
     isGrace: note.isGrace === true,
     voice: note.voice ?? 1,
+    duration: String(note.duration || ''),
+    dotCount: Math.max(0, Math.floor(Number(note.dotCount) || 0)),
+    beams: normalizeBeams(note.beams),
     stringNumber: Number(note.stringNumber),
     fret: Number(note.fret),
   }
+}
+
+function normalizeBeams(beams) {
+  if (!Array.isArray(beams)) return []
+  return beams
+    .map((beam) => ({
+      number: Number(beam?.number),
+      value: String(beam?.value || '').trim().toLowerCase(),
+    }))
+    .filter(
+      (beam) =>
+        Number.isInteger(beam.number) &&
+        beam.number >= 1 &&
+        beam.number <= 3 &&
+        [
+          'begin',
+          'continue',
+          'end',
+          'forward hook',
+          'backward hook',
+        ].includes(beam.value)
+    )
 }
 
 function deriveGridStep(values) {

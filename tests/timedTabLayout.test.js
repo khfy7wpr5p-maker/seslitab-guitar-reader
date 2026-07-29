@@ -27,6 +27,9 @@ function note(overrides = {}) {
     voice: 1,
     isRest: false,
     isGrace: false,
+    duration: 'quarter',
+    dotCount: 0,
+    beams: [],
     ...overrides,
   }
 }
@@ -147,6 +150,80 @@ describe('Equal-time TAB grid', () => {
     assert.ok(layout.measures[0].slotCount <= 96)
     assert.match(layout.warnings.join(' '), /sıkıştırıldı/)
   })
+
+  test('explicit MusicXML beam states connect matching rhythm events', () => {
+    const layout = buildTimedTabLayout([
+      note({
+        startBeat: 0,
+        beats: 0.5,
+        duration: 'eighth',
+        fret: 3,
+        beams: [{ number: 1, value: 'begin' }],
+      }),
+      note({
+        startBeat: 0.5,
+        beats: 0.5,
+        duration: 'eighth',
+        fret: 5,
+        beams: [{ number: 1, value: 'end' }],
+      }),
+    ])
+
+    const rhythmRow = layout.measures[0].rhythmRows[0]
+    assert.deepEqual(rhythmRow.cells[0].beamSegments, [{ level: 1, span: 1 }])
+    assert.equal(rhythmRow.cells[1].beamSegments.length, 0)
+  })
+
+  test('duration fallback uses flags without inventing beam connections', () => {
+    const layout = buildTimedTabLayout([
+      note({ beats: 0.25, duration: 'sixteenth', fret: 3 }),
+      note({ startBeat: 0.25, beats: 0.25, duration: 'sixteenth', fret: 5 }),
+    ])
+
+    const rhythmRow = layout.measures[0].rhythmRows[0]
+    assert.equal(rhythmRow.cells[0].fallbackFlagCount, 2)
+    assert.equal(rhythmRow.cells[1].fallbackFlagCount, 2)
+    assert.equal(rhythmRow.cells[0].beamSegments.length, 0)
+  })
+
+  test('MusicXML beam hooks remain directional and never become invented connections', () => {
+    const layout = buildTimedTabLayout([
+      note({
+        beats: 0.25,
+        duration: 'sixteenth',
+        beams: [{ number: 2, value: 'backward hook' }],
+      }),
+    ])
+
+    const event = layout.measures[0].rhythmRows[0].cells[0]
+    assert.deepEqual(event.beamHooks, [
+      { level: 2, direction: 'backward' },
+    ])
+    assert.equal(event.beamSegments.length, 0)
+    assert.equal(event.fallbackFlagCount, 0)
+  })
+
+  test('conflicting simultaneous beam states stay suppressed after later notes', () => {
+    const layout = buildTimedTabLayout([
+      note({ fret: 3, beams: [{ number: 1, value: 'begin' }] }),
+      note({
+        fret: 5,
+        stringNumber: 2,
+        isChordNote: true,
+        beams: [{ number: 1, value: 'end' }],
+      }),
+      note({
+        fret: 7,
+        stringNumber: 3,
+        isChordNote: true,
+        beams: [{ number: 1, value: 'begin' }],
+      }),
+    ])
+
+    const event = layout.measures[0].rhythmRows[0].cells[0]
+    assert.equal(event.beamStates.size, 0)
+    assert.match(layout.warnings.join(' '), /çelişkili MusicXML kiriş bilgisi/)
+  })
 })
 
 describe('Equal-time TAB HTML', () => {
@@ -161,6 +238,60 @@ describe('Equal-time TAB HTML', () => {
     assert.match(html, /--tab-slot-count:2/)
     assert.match(html, />10</)
     assert.match(html, /Eşit aralıklı gitar TAB görünümü/)
+  })
+
+  test('renders rhythm stems and beams above the string rows', () => {
+    const layout = buildTimedTabLayout([
+      note({
+        startBeat: 0,
+        beats: 0.5,
+        duration: 'eighth',
+        fret: 3,
+        beams: [{ number: 1, value: 'begin' }],
+      }),
+      note({
+        startBeat: 0.5,
+        beats: 0.5,
+        duration: 'eighth',
+        fret: 5,
+        beams: [{ number: 1, value: 'end' }],
+      }),
+    ])
+    const html = renderTimedTabHtml(layout)
+
+    assert.ok(html.indexOf('timed-tab-rhythm') < html.indexOf('timed-tab-row'))
+    assert.match(html, /timed-tab-stem/)
+    assert.match(html, /timed-tab-beam level-1/)
+  })
+
+  test('renders MusicXML hook direction without adding a full beam', () => {
+    const layout = buildTimedTabLayout([
+      note({
+        beats: 0.25,
+        duration: 'sixteenth',
+        beams: [{ number: 2, value: 'forward hook' }],
+      }),
+    ])
+    const html = renderTimedTabHtml(layout)
+
+    assert.match(html, /timed-tab-beam-hook forward level-2/)
+    assert.doesNotMatch(html, /timed-tab-beam level-2/)
+  })
+
+  test('presentation CSS centers frets on strings and prevents collapsed measures', () => {
+    const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+    const styleCss = readFileSync(path.join(repoRoot, 'src', 'style.css'), 'utf8')
+
+    assert.match(styleCss, /--tab-measure-min-width:\s*18rem/)
+    assert.match(
+      styleCss,
+      /\.timed-tab-cell\s*\{[^}]*background:\s*linear-gradient\(to bottom,\s*transparent 48%/s
+    )
+    assert.match(
+      styleCss,
+      /\.timed-tab-fret\s*\{[^}]*top:\s*50%[^}]*transform:\s*translate\(-50%,\s*-50%\)/s
+    )
+    assert.match(styleCss, /\.timed-tab-beam-hook\.backward/)
   })
 
   test('empty layouts return a readable message', () => {
@@ -211,4 +342,47 @@ test('frontend exposes the equal-time TAB result tab without replacing existing 
   assert.match(appJs, /buildTimedTabLayout/)
   assert.match(appJs, /renderTimedTabHtml/)
   assert.match(appJs, /tab-timed-tab/)
+})
+
+test('MusicXML beam metadata reaches the equal-time TAB model unchanged', () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <score-partwise version="4.0">
+      <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+      <part id="P1">
+        <measure number="1">
+          <attributes><divisions>2</divisions></attributes>
+          <note>
+            <pitch><step>E</step><octave>4</octave></pitch>
+            <duration>1</duration><voice>1</voice><type>eighth</type>
+            <notations><technical><string>1</string><fret>0</fret></technical></notations>
+            <beam number="1">begin</beam>
+          </note>
+          <note>
+            <pitch><step>F</step><octave>4</octave></pitch>
+            <duration>1</duration><voice>1</voice><type>eighth</type>
+            <notations><technical><string>1</string><fret>1</fret></technical></notations>
+            <beam number="1">end</beam>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>`
+
+  const parsed = parseMusicXmlToNotes(xml)
+  assert.equal(parsed.error, undefined)
+  assert.deepEqual(parsed.notes[0].beams, [{ number: 1, value: 'begin' }])
+  assert.deepEqual(parsed.notes[1].beams, [{ number: 1, value: 'end' }])
+
+  // The repository's intentionally minimal Node DOM shim does not retain
+  // measure-level <divisions> for this inline XML. Beam transport is verified
+  // above; provide deterministic onsets here to test the visual connection.
+  const layout = buildTimedTabLayout(
+    parsed.notes.map((note, index) => ({
+      ...note,
+      startBeat: index * 0.5,
+    }))
+  )
+  assert.deepEqual(
+    layout.measures[0].rhythmRows[0].cells[0].beamSegments,
+    [{ level: 1, span: 1 }]
+  )
 })
