@@ -1,3 +1,13 @@
+// SesliTab Cloud OMR Gateway — Express HTTP Server
+//
+// Endpoints:
+//   POST   /api/v1/pdf/upload        — multipart/form-data, field "file" = PDF
+//   POST   /api/v1/pdf/analyze       — JSON body: { jobId }
+//   GET    /api/v1/job/:jobId        — poll job status
+//   GET    /api/v1/musicxml/:jobId   — download MusicXML
+//   DELETE /api/v1/job/:jobId        — cancel and delete job
+//   GET    /api/v1/health            — health check
+
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
@@ -8,10 +18,6 @@ import { getProviderName } from './providers/index.js'
 import { runAudiverisPreflight, safePreflightResponse } from './services/audiverisPreflight.js'
 import { startGateway, stopGateway } from './index.js'
 import { toGatewayError, ValidationError } from './utils/errors.js'
-
-import helmet from 'helmet'
-import rateLimit from 'express-rate-limit'
-import { apiKeyMiddleware } from './middleware/auth.js'
 
 import { handleUploadPdf } from './api/uploadPdf.js'
 import { handleAnalyzePdf } from './api/analyzePdf.js'
@@ -42,26 +48,6 @@ let shuttingDown = false
 // TODO: Production'da belirli origin'lere kısıtla (örn. sadece seslitab.cloud).
 app.use(cors({ origin: true, credentials: true }))
 app.use(express.json())
-
-// Security headers
-app.use(helmet())
-
-// Rate limiters
-const writeLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_WRITE_MAX || '6', 10),
-  keyGenerator: (req) => req.apiKey || req.ip,
-  standardHeaders: true,
-  legacyHeaders: false,
-})
-const readLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_READ_MAX || '120', 10),
-  keyGenerator: (req) => req.ip,
-  standardHeaders: true,
-  legacyHeaders: false,
-})
-app.use(['/health', '/api/v1/health'], readLimiter)
 
 // Reject new jobs during shutdown
 app.use('/api/jobs', (req, res, next) => {
@@ -117,7 +103,7 @@ app.get('/api/v1/health', async (_req, res) => {
   sendSuccess(res, { status: 'ok', provider, runtime })
 })
 
-app.post('/api/v1/pdf/upload', apiKeyMiddleware, writeLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/v1/pdf/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return sendError(res, new ValidationError('PDF dosyası zorunludur. "file" alanını gönderin.'))
     const result = await handleUploadPdf({ fileBuffer: req.file.buffer, fileName: req.file.originalname, provider: req.body?.provider })
@@ -125,7 +111,7 @@ app.post('/api/v1/pdf/upload', apiKeyMiddleware, writeLimiter, upload.single('fi
   } catch (e) { sendError(res, e) }
 })
 
-app.post('/api/v1/pdf/analyze', apiKeyMiddleware, writeLimiter, async (req, res) => {
+app.post('/api/v1/pdf/analyze', async (req, res) => {
   try {
     const result = await handleAnalyzePdf({ jobId: req.body?.jobId })
     sendSuccess(res, result.data || result, 202)
@@ -167,7 +153,7 @@ app.delete('/api/v1/job/:jobId', async (req, res) => {
 // --- New /api/jobs endpoints (clean RESTful surface) ---
 
 // POST /api/jobs — upload a PDF and create a job
-app.post('/api/jobs', apiKeyMiddleware, writeLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/jobs', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return sendError(res, new ValidationError('PDF dosyası zorunludur. "file" alanını gönderin.'))
     const result = await handleUploadPdf({ fileBuffer: req.file.buffer, fileName: req.file.originalname, provider: req.body?.provider })
@@ -205,7 +191,7 @@ app.get('/api/jobs/:id/omr', async (req, res) => {
 })
 
 // POST /api/jobs/:id/cancel — cancel a queued/processing job
-app.post('/api/jobs/:id/cancel', apiKeyMiddleware, writeLimiter, async (req, res) => {
+app.post('/api/jobs/:id/cancel', async (req, res) => {
   try {
     const result = await handleCancelJob({ jobId: req.params.id })
     sendSuccess(res, result.data || result)
@@ -213,7 +199,7 @@ app.post('/api/jobs/:id/cancel', apiKeyMiddleware, writeLimiter, async (req, res
 })
 
 // DELETE /api/jobs/:id — remove job and its files
-app.delete('/api/jobs/:id', apiKeyMiddleware, writeLimiter, async (req, res) => {
+app.delete('/api/jobs/:id', async (req, res) => {
   try {
     const result = await handleDeleteJob({ jobId: req.params.id })
     sendSuccess(res, result.data || result)
