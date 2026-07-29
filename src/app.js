@@ -34,10 +34,7 @@ import {
   validateMusicXmlFile,
   musicXmlHasRhythm,
 } from './services/musicXmlFile.js'
-import { evaluateOmrPlaybackSafety } from './services/omrPlaybackQualityGate.js'
-import { validateOmrMeasureDurations } from './services/omrQualityValidator.js'
 import { normalizeTabInput } from '../tabParser.js'
-import { parseMusicXmlWithStructure } from '../musicXmlParser.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -63,8 +60,6 @@ let musicXmlDownloaded = false
 let backendProvider = null
 let selectedPdfFile = null
 let selectedMusicXmlFile = null
-let currentPlaybackGate = null
-let playbackOverrideEnabled = false
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -144,10 +139,6 @@ function init() {
   // OMR project download
   const omrDlBtn = $('omr-download-btn')
   if (omrDlBtn) omrDlBtn.addEventListener('click', handleOmrDownload)
-
-  // Explicit override for an unreliable PDF-to-OMR result.
-  const qualityContinueBtn = $('omr-quality-continue-btn')
-  if (qualityContinueBtn) qualityContinueBtn.addEventListener('click', handleQualityOverride)
 
   // Voice playback
   $('voice-btn').addEventListener('click', toggleVoice)
@@ -285,15 +276,7 @@ async function handleUpload() {
     announce('Dönüştürme tamamlandı')
     if (backendProvider === 'mock') showMockNotice()
     showOmrDownloadButton()
-    const structuredScore = parseMusicXmlWithStructure(result.musicXml)
-    const durationValidation = structuredScore.error
-      ? null
-      : validateOmrMeasureDurations(structuredScore)
-    const qualityGate = evaluateOmrPlaybackSafety(result.musicXml, {
-      sourceName: file.name,
-      durationValidation,
-    })
-    handleAnalysisResult(parseResult.notes, result.musicXml, true, { qualityGate })
+    handleAnalysisResult(parseResult.notes, result.musicXml, true)
   } catch (err) {
     const msg = err.message || 'Dönüştürme başarısız oldu.'
     showPdfError(msg)
@@ -485,7 +468,7 @@ function clearTab() {
 
 // ── Shared result handling ──────────────────────────────────
 
-function handleAnalysisResult(notes, xmlString, hasRhythm, options = {}) {
+function handleAnalysisResult(notes, xmlString, hasRhythm) {
   parsedNotes = notes
   hasRhythmInfo = hasRhythm
 
@@ -532,67 +515,11 @@ function handleAnalysisResult(notes, xmlString, hasRhythm, options = {}) {
   $('results-section').hidden = false
   $('voice-section').hidden = false
   $('rhythm-section').hidden = false
-  applyPlaybackQualityGate(options.qualityGate || null)
 
   // Scroll to results
   setTimeout(() => {
     $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, 300)
-}
-
-function setPlaybackControlsEnabled(enabled) {
-  $('voice-btn').disabled = !enabled || !isSpeechSupported()
-  $('rhythm-btn').disabled = !enabled || !isAudioSupported()
-}
-
-function applyPlaybackQualityGate(gate) {
-  currentPlaybackGate = gate
-  playbackOverrideEnabled = false
-
-  const panel = $('omr-quality-gate')
-  const continueButton = $('omr-quality-continue-btn')
-  if (!panel || !continueButton) return
-
-  panel.classList.remove('unreliable')
-  $('omr-quality-reasons').replaceChildren()
-
-  if (!gate || gate.level === 'reliable') {
-    panel.hidden = true
-    continueButton.hidden = true
-    setPlaybackControlsEnabled(true)
-    return
-  }
-
-  panel.hidden = false
-  const isUnreliable = gate.level === 'unreliable'
-  panel.classList.toggle('unreliable', isUnreliable)
-  $('omr-quality-title').textContent = isUnreliable
-    ? 'OMR sonucu güvenilir değil'
-    : 'OMR sonucu gözden geçirilmeli'
-  $('omr-quality-summary').textContent = isUnreliable
-    ? 'Hatalı nota veya ritim çalmamak için otomatik çalma durduruldu. MusicXML ve OMR dosyalarını yine indirebilirsiniz.'
-    : 'Bazı ölçüler şüpheli görünüyor. Çalmadan önce sonucu dinleyerek kontrol edin.'
-
-  for (const reason of gate.reasons) {
-    const item = document.createElement('li')
-    item.textContent = reason.message
-    $('omr-quality-reasons').appendChild(item)
-  }
-
-  continueButton.hidden = !isUnreliable || !gate.manualOverrideAllowed
-  setPlaybackControlsEnabled(!isUnreliable)
-}
-
-async function handleQualityOverride() {
-  if (!currentPlaybackGate?.manualOverrideAllowed) return
-
-  playbackOverrideEnabled = true
-  setPlaybackControlsEnabled(true)
-  $('omr-quality-continue-btn').hidden = true
-  $('omr-quality-summary').textContent =
-    'Manuel onay verildi. Bu sonuç hatalı olabilir; karşılaştırarak dinleyin.'
-  announce('OMR uyarısına rağmen ritmik çalma başlatılıyor')
-  await toggleRhythm()
 }
 
 // ── Result tab switching ────────────────────────────────────
@@ -669,8 +596,6 @@ function resetApp() {
   musicXmlDownloaded = false
   selectedPdfFile = null
   selectedMusicXmlFile = null
-  currentPlaybackGate = null
-  playbackOverrideEnabled = false
 
   $('file-input').value = ''
   $('drop-zone').hidden = false
@@ -687,7 +612,6 @@ function resetApp() {
   $('results-section').hidden = true
   $('voice-section').hidden = true
   $('rhythm-section').hidden = true
-  $('omr-quality-gate').hidden = true
 
   stopSpeech()
   stopRhythm()
@@ -708,10 +632,6 @@ function resetApp() {
 // ── Voice playback ─────────────────────────────────────────
 
 async function toggleVoice() {
-  if (currentPlaybackGate?.autoPlaybackAllowed === false && !playbackOverrideEnabled) {
-    announce('OMR kalite uyarısı nedeniyle sesli okuma durduruldu')
-    return
-  }
   if (isSpeaking) { stopVoice(); return }
 
   if (isPlaying) stopRhythmPlayback()
@@ -765,10 +685,6 @@ function resetVoiceButtons() {
 // ── Rhythm playback ────────────────────────────────────────
 
 async function toggleRhythm() {
-  if (currentPlaybackGate?.autoPlaybackAllowed === false && !playbackOverrideEnabled) {
-    announce('OMR kalite uyarısı nedeniyle ritmik çalma durduruldu')
-    return
-  }
   if (isPlaying) { stopRhythmPlayback(); return }
 
   if (isSpeaking) stopVoice()

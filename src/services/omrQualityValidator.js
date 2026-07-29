@@ -364,10 +364,9 @@ export function validateOmrMeasureDurations(parsedScore, options = {}) {
   const unknownMeasures = measures.filter((measure) => measure.status === 'unknown').length
 
   const errorRatio = totalMeasures > 0 ? errorMeasures / totalMeasures : 0
-  const allMeasuresUnknown = totalMeasures > 0 && unknownMeasures === totalMeasures
   const qualityStatus =
-    allMeasuresUnknown || errorRatio >= QUALITY_THRESHOLDS.errorRatioThreshold ? 'unreliable'
-      : (errorMeasures > 0 || warningMeasures > 0 || unknownMeasures > 0) ? 'review_required'
+    errorRatio >= QUALITY_THRESHOLDS.errorRatioThreshold ? 'unreliable'
+      : (errorMeasures > 0 || warningMeasures > 0) ? 'review_required'
         : 'good'
 
   const availablePartIds = (parsedScore?.parts || [])

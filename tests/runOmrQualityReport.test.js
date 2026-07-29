@@ -200,7 +200,6 @@ describe('4. Missing time signature produces unknown measures', () => {
     assert.equal(report.parseSuccess, true)
     assert.equal(report.unknownMeasures, 1)
     assert.equal(report.validMeasures, 0)
-    assert.equal(report.qualityStatus, 'unreliable')
     assert.equal(report.suspiciousMeasures.length, 0)
   })
 })

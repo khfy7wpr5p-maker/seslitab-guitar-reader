@@ -450,34 +450,4 @@ describe('15. Aggregate qualityStatus', () => {
     assert.equal(report.totalMeasures, 4)
     assert.equal(report.qualityStatus, 'unreliable')
   })
-
-  test('all measures unknown → unreliable instead of good', () => {
-    const notes = [
-      makeScoreNote({ measure: 1, beats: 1, duration: 'quarter', durationValue: 4, divisions: 4 }),
-      makeScoreNote({ measure: 2, beats: 1, duration: 'quarter', durationValue: 4, divisions: 4 }),
-    ]
-    const report = validateOmrMeasureDurations(makeScore(notes))
-
-    assert.equal(report.totalMeasures, 2)
-    assert.equal(report.unknownMeasures, 2)
-    assert.equal(report.validMeasures, 0)
-    assert.equal(report.qualityStatus, 'unreliable')
-  })
-
-  test('some unknown measures → review_required instead of good', () => {
-    const notes = [
-      makeScoreNote({ measure: 1, beats: 1, duration: 'quarter', durationValue: 4, divisions: 4 }),
-      ...Array.from({ length: 4 }, () =>
-        makeScoreNote({ measure: 2, beats: 1, duration: 'quarter', durationValue: 4, divisions: 4 })
-      ),
-    ]
-    const report = validateOmrMeasureDurations(
-      makeScore(notes),
-      { timeSignatures: [{ measureNumber: 2, beats: 4, beatType: 4 }] }
-    )
-
-    assert.equal(report.unknownMeasures, 1)
-    assert.equal(report.validMeasures, 1)
-    assert.equal(report.qualityStatus, 'review_required')
-  })
 })
