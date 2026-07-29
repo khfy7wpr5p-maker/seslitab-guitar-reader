@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 
 import {
   MAX_MUSIC_XML_FILE_SIZE,
+  buildMusicXmlDownloadName,
+  createMusicXmlDownloadBlob,
   musicXmlHasRhythm,
   validateMusicXmlFile,
 } from '../src/services/musicXmlFile.js'
@@ -55,5 +57,49 @@ describe('MusicXML rhythm detection', () => {
     assert.equal(musicXmlHasRhythm([]), false)
     assert.equal(musicXmlHasRhythm([{ beats: 0 }, { beats: null }]), false)
     assert.equal(musicXmlHasRhythm(null), false)
+  })
+})
+
+describe('MusicXML download', () => {
+  test('PDF source name becomes a .musicxml download', () => {
+    assert.equal(buildMusicXmlDownloadName('fug1001.pdf'), 'fug1001.musicxml')
+  })
+
+  test('existing XML extensions are replaced instead of doubled', () => {
+    assert.equal(buildMusicXmlDownloadName('gesi.xml'), 'gesi.musicxml')
+    assert.equal(buildMusicXmlDownloadName('score.musicxml'), 'score.musicxml')
+  })
+
+  test('Turkish characters are preserved in the download name', () => {
+    assert.equal(
+      buildMusicXmlDownloadName('Fikrimin İnce Gülü.pdf'),
+      'Fikrimin İnce Gülü.musicxml'
+    )
+  })
+
+  test('unsafe Windows filename characters are replaced', () => {
+    assert.equal(
+      buildMusicXmlDownloadName('C:\\scores\\test:score?.pdf'),
+      'test_score_.musicxml'
+    )
+  })
+
+  test('missing source name uses a stable fallback', () => {
+    assert.equal(buildMusicXmlDownloadName(''), 'seslitab.musicxml')
+  })
+
+  test('download blob preserves UTF-8 MusicXML content and MIME type', async () => {
+    const xml = '<?xml version="1.0" encoding="UTF-8"?><score-partwise><credit-words>Gesi Bağları</credit-words></score-partwise>'
+    const blob = createMusicXmlDownloadBlob(xml)
+
+    assert.equal(blob.type, 'application/vnd.recordare.musicxml+xml;charset=utf-8')
+    assert.equal(await blob.text(), xml)
+  })
+
+  test('blank MusicXML cannot be downloaded', () => {
+    assert.throws(
+      () => createMusicXmlDownloadBlob('   '),
+      /MusicXML verisi bulunamadı/
+    )
   })
 })

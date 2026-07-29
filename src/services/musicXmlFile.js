@@ -31,3 +31,28 @@ export function musicXmlHasRhythm(notes) {
     return Number.isFinite(beats) && beats > 0
   })
 }
+
+export function buildMusicXmlDownloadName(sourceName) {
+  const fileName = String(sourceName || '')
+    .split(/[\\/]/)
+    .pop()
+    .trim()
+  const baseName = fileName.replace(/\.(?:musicxml|xml|pdf)$/i, '')
+  const windowsSafeName = baseName
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/[.\s]+$/g, '')
+    .trim()
+
+  return `${windowsSafeName || 'seslitab'}.musicxml`
+}
+
+export function createMusicXmlDownloadBlob(xmlString) {
+  if (typeof xmlString !== 'string' || !xmlString.trim()) {
+    throw new Error('İndirilecek MusicXML verisi bulunamadı.')
+  }
+
+  return new Blob(
+    [xmlString],
+    { type: 'application/vnd.recordare.musicxml+xml;charset=utf-8' }
+  )
+}

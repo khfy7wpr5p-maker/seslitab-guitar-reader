@@ -28,7 +28,12 @@ import {
   isSpeechSupported, isAudioSupported, preloadVoices, bpmToSpeed,
 } from './services/voiceService.js'
 import { getOmrProviderName } from './providers/index.js'
-import { validateMusicXmlFile, musicXmlHasRhythm } from './services/musicXmlFile.js'
+import {
+  buildMusicXmlDownloadName,
+  createMusicXmlDownloadBlob,
+  validateMusicXmlFile,
+  musicXmlHasRhythm,
+} from './services/musicXmlFile.js'
 import { normalizeTabInput } from '../tabParser.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -126,6 +131,10 @@ function init() {
   // Copy & Reset
   $('copy-btn').addEventListener('click', copyRhythmicText)
   $('reset-btn').addEventListener('click', resetApp)
+
+  // MusicXML download
+  const musicXmlDlBtn = $('musicxml-download-btn')
+  if (musicXmlDlBtn) musicXmlDlBtn.addEventListener('click', handleMusicXmlDownload)
 
   // OMR project download
   const omrDlBtn = $('omr-download-btn')
@@ -480,10 +489,12 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
   if (xmlString) {
     musicXmlString = xmlString
     $('xml-output').textContent = xmlString
+    showMusicXmlDownloadButton()
   } else {
     // TAB mode — no MusicXML
     musicXmlString = '(TAB modunda MusicXML çıktısı yoktur)'
     $('xml-output').textContent = musicXmlString
+    hideMusicXmlDownloadButton()
   }
 
   // Rhythm warning
@@ -612,6 +623,7 @@ function resetApp() {
   hideMusicXmlError()
   hideTabError()
   hideMockNotice()
+  hideMusicXmlDownloadButton()
   hideOmrDownloadButton()
   announce('Uygulama sıfırlandı')
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -756,15 +768,77 @@ function hideMockNotice() {
   el.hidden = true
 }
 
+// ── MusicXML download ─────────────────────────────────────────
+
+function syncDownloadAreaVisibility() {
+  const area = $('omr-download-area')
+  if (!area) return
+  const musicXmlVisible = $('musicxml-download-btn')?.hidden === false
+  const omrVisible = $('omr-download-btn')?.hidden === false
+  area.hidden = !musicXmlVisible && !omrVisible
+}
+
+function showMusicXmlDownloadButton() {
+  const btn = $('musicxml-download-btn')
+  if (!btn) return
+  btn.hidden = false
+  const status = $('musicxml-download-status')
+  if (status) { status.hidden = true; status.textContent = '' }
+  syncDownloadAreaVisibility()
+}
+
+function hideMusicXmlDownloadButton() {
+  const btn = $('musicxml-download-btn')
+  if (btn) btn.hidden = true
+  const status = $('musicxml-download-status')
+  if (status) { status.hidden = true; status.textContent = '' }
+  syncDownloadAreaVisibility()
+}
+
+function handleMusicXmlDownload() {
+  const btn = $('musicxml-download-btn')
+  const status = $('musicxml-download-status')
+  if (!btn) return
+
+  btn.disabled = true
+  if (status) { status.hidden = false; status.textContent = 'MusicXML hazırlanıyor…' }
+
+  try {
+    const blob = createMusicXmlDownloadBlob(musicXmlString)
+    const sourceName = selectedPdfFile?.name || selectedMusicXmlFile?.name || 'seslitab'
+    const downloadName = buildMusicXmlDownloadName(sourceName)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = downloadName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    if (status) status.textContent = `${downloadName} indirildi.`
+    announce('MusicXML dosyası indirildi')
+  } catch {
+    if (status) status.textContent = 'MusicXML indirilemedi.'
+    announce('MusicXML indirilemedi')
+  } finally {
+    btn.disabled = false
+  }
+}
+
 // ── OMR project download ──────────────────────────────────────
 
 function showOmrDownloadButton() {
   const btn = $('omr-download-btn')
   if (!btn) return
-  if (backendProvider !== 'audiveris' || !activeJobId) { btn.hidden = true; return }
+  if (backendProvider !== 'audiveris' || !activeJobId) {
+    btn.hidden = true
+    syncDownloadAreaVisibility()
+    return
+  }
   btn.hidden = false
   const status = $('omr-download-status')
   if (status) status.hidden = true
+  syncDownloadAreaVisibility()
 }
 
 function hideOmrDownloadButton() {
@@ -772,6 +846,7 @@ function hideOmrDownloadButton() {
   if (btn) btn.hidden = true
   const status = $('omr-download-status')
   if (status) { status.hidden = true; status.textContent = '' }
+  syncDownloadAreaVisibility()
 }
 
 async function handleOmrDownload() {
