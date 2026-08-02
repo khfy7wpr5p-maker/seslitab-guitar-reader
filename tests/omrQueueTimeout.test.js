@@ -11,13 +11,14 @@ import os from 'node:os'
 import * as jobManager from '../backend/jobs/jobManager.js'
 import * as queue from '../backend/queue/uploadQueue.js'
 import * as statusService from '../backend/services/statusService.js'
+import * as storage from '../backend/storage/musicXmlStorage.js'
 import { GATEWAY_CONFIG } from '../backend/config/gatewayConfig.js'
 import {
   JobQueueTimeoutError,
   JobProcessingTimeoutError,
   ProviderStartFailedError,
 } from '../backend/utils/errors.js'
-import { processJob } from '../backend/workers/omrWorker.js'
+import { processJob, registerRunningOperation, releaseRunningOperation } from '../backend/workers/omrWorker.js'
 import { setOmrProvider, resetOmrProvider } from '../src/providers/index.js'
 import { pollAndDownload } from '../src/services/omrService.js'
 
@@ -25,11 +26,20 @@ import { pollAndDownload } from '../src/services/omrService.js'
 
 const TMP = mkdtempSync(path.join(os.tmpdir(), 'seslitab-omr-timeout-'))
 
+function validPdf() {
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>']
+  let pdf = '%PDF-1.7\n'; const offsets = [0]
+  for (let i = 0; i < objects.length; i++) { offsets.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n` }
+  const xref = Buffer.byteLength(pdf)
+  pdf += `xref\n0 4\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf)
+}
+
 function makePdfPath(jobId) {
   const dir = path.join(TMP, jobId)
   mkdirSync(dir, { recursive: true })
   const p = path.join(dir, 'input.pdf')
-  writeFileSync(p, '%PDF-1.4 fake')
+  writeFileSync(p, validPdf())
   return p
 }
 
@@ -188,7 +198,7 @@ describe('4. JOB_QUEUE_TIMEOUT after configured maximum queue duration', () => {
 })
 
 describe('5. JOB_PROCESSING_TIMEOUT after configured processing duration', () => {
-  test('status service returns JOB_PROCESSING_TIMEOUT when processing exceeded', async () => {
+  test('registered processing operation is confirmed closed before JOB_PROCESSING_TIMEOUT', async () => {
     const jobId = jobManager.generateJobId()
     const job = await createQueuedJob(jobId, 'mock')
     await jobManager.updateStatus(jobId, 'processing')
@@ -196,15 +206,45 @@ describe('5. JOB_PROCESSING_TIMEOUT after configured processing duration', () =>
     job.processingAt = exceeded
     statusService.invalidateCache(jobId)
 
-    await assert.rejects(
-      async () => statusService.getJobStatus(jobId),
-      (err) => {
-        assert.equal(err.code, 'JOB_PROCESSING_TIMEOUT')
-        return true
-      }
-    )
-    const final = await jobManager.getJob(jobId)
-    assert.equal(final.status, 'failed')
+    let confirmTermination
+    let cancellationCalled = false
+    const terminationGate = new Promise((resolve) => { confirmTermination = resolve })
+    const provider = {
+      async cancelJob(providerJobId) {
+        cancellationCalled = true
+        assert.equal(providerJobId, 'timeout_provider_job')
+        await terminationGate
+        return { success: true, terminationConfirmed: true }
+      },
+    }
+    registerRunningOperation(jobId, provider, 'timeout_provider_job')
+    try {
+      const statusPromise = statusService.getJobStatus(jobId)
+      await new Promise((resolve) => setImmediate(resolve))
+      assert.equal(cancellationCalled, true)
+      assert.equal((await jobManager.getJob(jobId)).status, 'processing', 'confirmation öncesi terminal durum yazılmamalı')
+      confirmTermination()
+      await assert.rejects(statusPromise, (err) => err.code === 'JOB_PROCESSING_TIMEOUT')
+      assert.equal((await jobManager.getJob(jobId)).status, 'failed')
+    } finally {
+      releaseRunningOperation(jobId)
+    }
+  })
+
+  test('missing processing ownership returns CANCELLATION_FAILED and preserves storage', async () => {
+    const jobId = jobManager.generateJobId()
+    const job = await createQueuedJob(jobId, 'mock')
+    await jobManager.updateStatus(jobId, 'processing')
+    job.processingAt = new Date(Date.now() - (GATEWAY_CONFIG.maxProcessingSeconds + 10) * 1000).toISOString()
+    await storage.writePdf(jobId, validPdf())
+    statusService.invalidateCache(jobId)
+    try {
+      await assert.rejects(statusService.getJobStatus(jobId), (err) => err.code === 'CANCELLATION_FAILED')
+      assert.equal((await jobManager.getJob(jobId)).status, 'processing', 'ghost processing job falsely timed out olmamalı')
+      assert.equal(await storage.exists(jobId), true, 'tanı kanıtı storage içinde korunmalı')
+    } finally {
+      await storage.deleteJob(jobId)
+    }
   })
 })
 

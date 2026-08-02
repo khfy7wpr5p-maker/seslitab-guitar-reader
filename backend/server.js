@@ -220,9 +220,10 @@ app.use((err, _req, res, _next) => {
 
 // --- Start ---
 
+// Recovery must complete before workers, cleanup, readiness and HTTP accept.
+await startGateway()
 const server = app.listen(PORT, HOST, () => {
   console.log(`[OMR Gateway] HTTP server on ${HOST}:${PORT}`)
-  startGateway()
   console.log(`[OMR Gateway] Endpoints:`)
   console.log(`  POST   /api/v1/pdf/upload`)
   console.log(`  POST   /api/v1/pdf/analyze`)

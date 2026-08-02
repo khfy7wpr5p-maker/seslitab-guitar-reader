@@ -11,8 +11,20 @@ export async function handleAnalyzePdf({ jobId }) {
     if (!jobId) throw new ValidationError('jobId zorunludur.')
     if (!RE.test(jobId)) throw new ValidationError('jobId formatı geçersiz.')
     const r = await jobManager.getJob(jobId)
-    if (['completed', 'processing', 'musicxml_created'].includes(r.status)) throw new JobNotReadyError(jobId, r.status)
-    if (r.status === 'uploaded') { await queue.enqueue({ jobId, provider: r.provider, pdfPath: r.pdfPath, fileName: r.fileName }); await jobManager.updateStatus(jobId, 'queued') }
+    if (['completed', 'processing', 'musicxml_created', 'expired'].includes(r.status)) throw new JobNotReadyError(jobId, r.status)
+    if (r.status === 'failed' && (r.error?.code === 'CANCELLED' || r.retryCount >= r.maxRetries)) throw new JobNotReadyError(jobId, r.status)
+    const entry = { jobId, provider: r.provider, pdfPath: r.pdfPath, fileName: r.fileName }
+    if (r.status === 'uploaded') {
+      await queue.enqueue(entry)
+      await jobManager.updateStatus(jobId, 'queued')
+    } else if (r.status === 'queued') {
+      if (!queue.contains(jobId)) await queue.enqueue(entry)
+    } else if (r.status === 'failed') {
+      await queue.enqueue(entry)
+      await jobManager.markRetryQueued(jobId)
+    } else {
+      throw new JobNotReadyError(jobId, r.status)
+    }
     return successResponse({ jobId, status: 'queued', message: 'Analiz kuyruğa eklendi.' })
   } catch (e) { throw toGatewayError(e) }
 }

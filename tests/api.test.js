@@ -62,8 +62,13 @@ async function request(method, urlPath, { headers = {}, body = null, isForm = fa
   return { status: res.status, headers: res.headers, data }
 }
 
-function makePdf(content = '%PDF-1.4\nfake PDF content for testing\n%%EOF') {
-  return content
+function makePdf() {
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>']
+  let pdf = '%PDF-1.7\n'; const offsets = [0]
+  for (let i = 0; i < objects.length; i++) { offsets.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n` }
+  const xref = Buffer.byteLength(pdf)
+  pdf += `xref\n0 4\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return pdf
 }
 
 async function waitForStatus(jobId, targetStatus, maxAttempts = 30) {

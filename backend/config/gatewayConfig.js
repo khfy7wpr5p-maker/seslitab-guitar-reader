@@ -1,5 +1,7 @@
 // Gateway configuration.
 
+import { parseMaxPdfPages } from '../security/inputValidation.js'
+
 function envPath(name, fallback) {
   const v = process.env[name]
   return (v && v.trim()) || fallback
@@ -13,7 +15,7 @@ function envInt(name, fallback) {
 }
 
 export const GATEWAY_CONFIG = {
-  workerPoolSize: envInt('SESLITAB_WORKER_POOL_SIZE', 4),
+  workerPoolSize: envInt('SESLITAB_WORKER_POOL_SIZE', 1),
   jobTimeoutSeconds: envInt('SESLITAB_JOB_TIMEOUT_SECONDS', 300),
   maxRetries: envInt('SESLITAB_MAX_RETRIES', 3),
   retryBaseSeconds: envInt('SESLITAB_RETRY_BASE_SECONDS', 2),
@@ -32,6 +34,7 @@ export const GATEWAY_CONFIG = {
   completedTtlDays: 7,
   failedTtlDays: 3,
   maxUploadSizeBytes: 10 * 1024 * 1024,
+  maxPdfPages: parseMaxPdfPages(process.env.SESLITAB_MAX_PDF_PAGES, 200),
   defaultProvider: envPath('OMR_PROVIDER', 'mock'),
   // Frontend polling configuration (also used by omrService.js).
   frontend: {

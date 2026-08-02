@@ -217,7 +217,10 @@ describe('Audiveris preflight', () => {
 
   test('18. probeTempWritable fails on non-writable directory', async () => {
     const origTmpdir = process.env.TMPDIR
-    process.env.TMPDIR = '/nonexistent-root-path-12345'
+    const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'seslitab-temp-base-file-'))
+    const tempBaseFile = path.join(fixtureDir, 'not-a-directory')
+    await fs.writeFile(tempBaseFile, 'fixture')
+    process.env.TMPDIR = tempBaseFile
     try {
       const probe = await probeTempWritable()
       assert.equal(probe.ok, false)
@@ -227,6 +230,7 @@ describe('Audiveris preflight', () => {
     } finally {
       if (origTmpdir === undefined) delete process.env.TMPDIR
       else process.env.TMPDIR = origTmpdir
+      await fs.rm(fixtureDir, { recursive: true, force: true })
     }
   })
 
@@ -322,7 +326,10 @@ describe('Audiveris preflight', () => {
 
   test('25. runAudiverisPreflight reports TMP_NOT_WRITABLE with diagnostics when temp is not writable', async () => {
     const origTmpdir = process.env.TMPDIR
-    process.env.TMPDIR = '/nonexistent-root-path-67890'
+    const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'seslitab-temp-base-file-'))
+    const tempBaseFile = path.join(fixtureDir, 'not-a-directory')
+    await fs.writeFile(tempBaseFile, 'fixture')
+    process.env.TMPDIR = tempBaseFile
     try {
       const result = await runAudiverisPreflight({ command: process.execPath, timeoutMs: 110000 })
       assert.equal(result.available, false)
@@ -334,6 +341,7 @@ describe('Audiveris preflight', () => {
     } finally {
       if (origTmpdir === undefined) delete process.env.TMPDIR
       else process.env.TMPDIR = origTmpdir
+      await fs.rm(fixtureDir, { recursive: true, force: true })
     }
   })
 })

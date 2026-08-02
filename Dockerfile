@@ -4,7 +4,7 @@
 # Run:    docker run -p 3001:3001 --env-file .env seslitab-gateway
 #
 # Multi-stage build:
-#   Stage 1 (node-build): official pinned Node 20.18.1 image used only to
+#   Stage 1 (node-build): official pinned Node 24.18.1 image used only to
 #     install production node_modules with npm ci. No NodeSource apt repo,
 #     no remote GPG key download, no curl-to-NodeSource.
 #   Stage 2 (final): Ubuntu 24.04 base with official Audiveris 5.11.0 .deb
@@ -14,9 +14,9 @@
 #     stage 1; the final image never runs a Node package manager.
 
 # ── Stage 1: Node build ──────────────────────────────────────────────
-# Pinned official Node 20.18.1 LTS slim image (Debian 12 / glibc 2.36,
+# Pinned official Node 24.18.1 LTS slim image (Debian 12 / glibc 2.36,
 # forward-compatible with the Ubuntu 24.04 final stage).
-FROM node:20.18.1-bookworm-slim AS node-build
+FROM node:24.18.1-bookworm-slim AS node-build
 
 WORKDIR /build
 
@@ -100,14 +100,14 @@ RUN mkdir -p /app/tmp \
   && chown seslitab:seslitab /app/tmp \
   && chmod 0755 /app/tmp
 
-# Copy the Node.js 20.18.1 runtime binary from the pinned official Node
+# Copy the Node.js 24.18.1 runtime binary from the pinned official Node
 # build stage. No NodeSource apt repository, no remote GPG signing-key
 # download, no curl-to-NodeSource. The binary (built against glibc 2.36)
 # is forward-compatible with Ubuntu 24.04's glibc 2.39.
 COPY --from=node-build /usr/local/bin/node /usr/local/bin/node
 
 # Verify the exact required Node.js runtime version is present.
-RUN node --version | grep -q '^v20\.18\.1$'
+RUN node --version | grep -q '^v24\.18\.1$'
 
 # Copy production node_modules from the Node build stage.
 COPY --from=node-build /build/node_modules /app/node_modules
