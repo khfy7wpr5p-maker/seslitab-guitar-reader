@@ -5,6 +5,7 @@ export const IOmrProvider = {
   async analyzePdf(providerJobId) {},
   async getStatus(providerJobId) {},
   async downloadMusicXML(providerJobId) {},
+  async cancelJob(providerJobId) {},
 }
 
 export function assertProvider(provider, name) {

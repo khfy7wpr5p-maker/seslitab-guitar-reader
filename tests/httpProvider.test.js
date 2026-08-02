@@ -13,12 +13,12 @@ const SAMPLE_TIMewise = `<?xml version="1.0" encoding="UTF-8"?>
 
 const VALID_PDF = Buffer.from('%PDF-1.4\nfake PDF content\n%%EOF')
 
-function makeProvider(opts = {}) {
+function makeProvider(opts = {}, deps = {}) {
   return createHttpOmrProvider({
     apiUrl: opts.apiUrl ?? 'http://mock-omr.local/api',
     apiKey: opts.apiKey ?? '',
     timeoutMs: opts.timeoutMs ?? 120000,
-  })
+  }, deps)
 }
 
 function mockFetch(handler) {
@@ -333,6 +333,42 @@ describe('HttpOmrProvider secret protection', () => {
     assert.ok(!errStr.includes('SUPER_SECRET_KEY_42'), 'API key error mesajında olmamalı')
     assert.ok(!errStr.includes('Bearer'), 'Authorization header error mesajında olmamalı')
     assert.ok(!errStr.includes('Authorization'), 'Authorization kelimesi olmamalı')
+  })
+})
+
+describe('HttpOmrProvider structured cancellation', () => {
+  test('explicit remote completion proof is confirmed', async () => {
+    const p = makeProvider({}, { cancelRemote: async () => ({ terminationConfirmed: true }) })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    const result = await p.cancelJob(up.providerJobId)
+    assert.equal(result.success, true)
+    assert.equal(result.terminationConfirmed, true)
+  })
+
+  test('accepted request without completion proof is unconfirmed', async () => {
+    const p = makeProvider({}, { cancelRemote: async () => ({ accepted: true }) })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    const result = await p.cancelJob(up.providerJobId)
+    assert.equal(result.success, false)
+    assert.equal(result.terminationConfirmed, false)
+  })
+
+  test('remote failure and thrown network failure remain truthful', async () => {
+    for (const cancelRemote of [async () => ({ terminationConfirmed: false, error: { code: 'REMOTE_FAILED', message: 'failed' } }), async () => { throw new Error('network') }]) {
+      const p = makeProvider({}, { cancelRemote })
+      const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+      assert.equal((await p.cancelJob(up.providerJobId)).success, false)
+    }
+  })
+
+  test('repeated confirmed cancellation is deterministic', async () => {
+    let calls = 0
+    const p = makeProvider({}, { cancelRemote: async () => { calls++; return { terminationConfirmed: true } } })
+    const up = await p.uploadPdf(VALID_PDF, 'test.pdf')
+    await p.cancelJob(up.providerJobId)
+    const repeated = await p.cancelJob(up.providerJobId)
+    assert.equal(repeated.alreadyClosed, true)
+    assert.equal(calls, 1)
   })
 })
 

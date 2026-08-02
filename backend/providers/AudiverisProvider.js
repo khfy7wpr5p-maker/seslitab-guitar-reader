@@ -180,103 +180,81 @@ async function readOutputFile(outputDir, file) {
   return content
 }
 
-function runAudiveris(command, args, timeoutMs, abortSignal) {
+function runAudiveris(command, args, timeoutMs, abortSignal, options = {}) {
+  const graceMs = options.gracefulKillDelayMs ?? GRACEFUL_KILL_DELAY
+  const forceWaitMs = options.forceKillWaitMs ?? GRACEFUL_KILL_DELAY
   return new Promise((resolve, reject) => {
-    // AbortSignal does not replay an abort event to listeners that are added
-    // after it has already been aborted. Avoid starting Audiveris in that
-    // state, otherwise callers can wait until the full timeout expires.
-    if (abortSignal?.aborted) {
-      reject(safeError('CANCELED', 'İşlem iptal edildi.'))
-      return
-    }
+    if (abortSignal?.aborted) { reject(safeError('CANCELED', 'İşlem iptal edildi.')); return }
 
     let child
     let settled = false
+    let cancellationRequested = false
     let timedOut = false
-    let timeoutHandle = null
+    let timeoutHandle
+    let forceHandle
+    let forceWaitHandle
+    const stdoutChunks = []; let stdoutLen = 0
+    const stderrChunks = []; let stderrLen = 0
 
-    const stdoutChunks = []
-    let stdoutLen = 0
-    const stderrChunks = []
-    let stderrLen = 0
-
-    function settle(ok, result) {
+    const clearHandles = () => {
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (forceHandle) clearTimeout(forceHandle)
+      if (forceWaitHandle) clearTimeout(forceWaitHandle)
+    }
+    const settle = (ok, value) => {
       if (settled) return
       settled = true
-      if (timeoutHandle) clearTimeout(timeoutHandle)
+      clearHandles()
       if (abortSignal) abortSignal.removeEventListener('abort', onAbort)
-      if (child) {
-        child.removeAllListeners()
-        if (!child.killed && child.exitCode === null) {
-          try { child.kill('SIGKILL') } catch { /* best-effort */ }
+      ok ? resolve(value) : reject(value)
+    }
+    const isClosed = () => child && (child.exitCode !== null || child.signalCode !== null)
+    const sendSignal = (signal) => {
+      if (!child || isClosed()) return true
+      try { return child.kill(signal) !== false } catch { return false }
+    }
+    const requestTermination = (reason) => {
+      if (settled || isClosed()) return
+      cancellationRequested = reason === 'cancel'
+      timedOut = reason === 'timeout'
+      if (!sendSignal('SIGTERM')) {
+        settle(false, safeError('CANCELLATION_FAILED', 'Süreç sonlandırma sinyali gönderilemedi.'))
+        return
+      }
+      forceHandle = setTimeout(() => {
+        if (settled || isClosed()) return
+        if (!sendSignal('SIGKILL')) {
+          settle(false, safeError('CANCELLATION_FAILED', 'Süreç zorla sonlandırılamadı.'))
+          return
         }
-      }
-      ok ? resolve(result) : reject(result)
+        forceWaitHandle = setTimeout(() => {
+          if (!settled && !isClosed()) settle(false, safeError('CANCELLATION_TIMEOUT', 'Sürecin kapandığı doğrulanamadı.'))
+        }, forceWaitMs)
+      }, graceMs)
     }
+    function onAbort() { requestTermination('cancel') }
 
-    function onAbort() {
-      if (settled) return
-      timedOut = false
-      if (child && !child.killed) {
-        try { child.kill('SIGTERM') } catch { /* best-effort */ }
-        setTimeout(() => {
-          if (child && !child.killed && child.exitCode === null) {
-            try { child.kill('SIGKILL') } catch { /* best-effort */ }
-          }
-        }, GRACEFUL_KILL_DELAY)
-      }
-      settle(false, safeError('CANCELED', 'İşlem iptal edildi.'))
-    }
-
-    try {
-      child = spawn(command, args, { shell: false })
-    } catch (e) {
-      settle(false, safeError('SPAWN_ERROR', 'Audiveris süreci başlatılamadı.'))
-      return
-    }
-
+    try { child = spawn(command, args, { shell: false }) }
+    catch { settle(false, safeError('SPAWN_ERROR', 'Audiveris süreci başlatılamadı.')); return }
+    options.onSpawn?.(child)
     child.on('error', (err) => {
       if (settled) return
       if (err.code === 'ENOENT') settle(false, safeError('EXECUTABLE_NOT_FOUND', 'Audiveris çalıştırılabilir dosyası bulunamadı.'))
       else settle(false, safeError('SPAWN_ERROR', 'Audiveris süreci başlatılamadı.'))
     })
-
-    child.stdout.on('data', (chunk) => {
-      if (stdoutLen < MAX_STDOUT) { stdoutChunks.push(chunk); stdoutLen += chunk.length }
-    })
-    child.stderr.on('data', (chunk) => {
-      if (stderrLen < MAX_STDERR) { stderrChunks.push(chunk); stderrLen += chunk.length }
-    })
-
-    child.on('close', (code) => {
+    child.stdout?.on('data', (chunk) => { if (stdoutLen < MAX_STDOUT) { stdoutChunks.push(chunk); stdoutLen += chunk.length } })
+    child.stderr?.on('data', (chunk) => { if (stderrLen < MAX_STDERR) { stderrChunks.push(chunk); stderrLen += chunk.length } })
+    child.on('close', (code, signal) => {
       if (settled) return
+      if (cancellationRequested) { settle(false, safeError('CANCELED', `İşlem iptal edildi (${signal || code}).`)); return }
       if (timedOut) { settle(false, safeError('TIMEOUT', 'Audiveris işlemi zaman aşımına uğradı.')); return }
-      if (code !== 0) {
-        settle(false, safeError('NONZERO_EXIT', 'Audiveris işlemi başarısız oldu.'))
-        return
-      }
-      resolve({ stdout: Buffer.concat(stdoutChunks).toString('utf8'), stderr: Buffer.concat(stderrChunks).toString('utf8') })
+      if (code !== 0) { settle(false, safeError('NONZERO_EXIT', 'Audiveris işlemi başarısız oldu.')); return }
+      settle(true, { stdout: Buffer.concat(stdoutChunks).toString('utf8'), stderr: Buffer.concat(stderrChunks).toString('utf8') })
     })
-
-    if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        if (settled) return
-        timedOut = true
-        if (child && !child.killed) {
-          try { child.kill('SIGTERM') } catch { /* best-effort */ }
-          setTimeout(() => {
-            if (child && !child.killed && child.exitCode === null) {
-              try { child.kill('SIGKILL') } catch { /* best-effort */ }
-            }
-          }, GRACEFUL_KILL_DELAY)
-        }
-      }, timeoutMs)
-    }
-
-    if (abortSignal) abortSignal.addEventListener('abort', onAbort)
+    if (timeoutMs > 0) timeoutHandle = setTimeout(() => requestTermination('timeout'), timeoutMs)
+    if (abortSignal) abortSignal.addEventListener('abort', onAbort, { once: true })
   })
 }
-
 function mapSpawnError(err) {
   if (err.code === 'NONZERO_EXIT') return safeError('NONZERO_EXIT', 'Audiveris işlemi başarısız oldu.')
   if (err.code === 'EXECUTABLE_NOT_FOUND' || err.code === 'ENOENT') return safeError('EXECUTABLE_NOT_FOUND', 'Audiveris çalıştırılabilir dosyası bulunamadı.')
@@ -318,7 +296,7 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
       if (!pdfBuffer?.length) return { success: false, error: 'PDF boş.', retryable: false }
       if (!command) return { success: false, error: safeError('MISSING_CONFIG', 'Audiveris komutu yapılandırılmamış.'), retryable: false }
       const id = `audiveris_${Date.now()}_${++counter}`
-      jobs.set(id, { status: 'uploaded', progress: 0, musicXml: null, fileName: safeFileName(fileName), pdfBuffer, canceled: false, abortController: null, tempDir: null })
+      jobs.set(id, { status: 'uploaded', progress: 0, musicXml: null, fileName: safeFileName(fileName), pdfBuffer, canceled: false, cancellationConfirmed: false, abortController: null, operationPromise: null, tempDir: null })
       return { success: true, providerJobId: id, status: 'uploaded' }
     },
 
@@ -347,7 +325,8 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
 
         let result
         try {
-          result = await spawnWithTimeout(spawnFn, command, args, timeoutMs, abortController, j)
+          j.operationPromise = spawnWithTimeout(spawnFn, command, args, timeoutMs, abortController, j)
+          result = await j.operationPromise
         } catch (err) {
           if (j.canceled) {
             j.status = 'failed'
@@ -413,6 +392,7 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
         const code = err.code || 'TMP_IO_ERROR'
         return { success: false, error: safeError(code, err.message || 'Geçici dosya işlemi başarısız.'), retryable: false }
       } finally {
+        j.operationPromise = null
         if (tempDir) await cleanDir(tempDir)
         j.pdfBuffer = null
       }
@@ -438,17 +418,36 @@ function createAudiverisProvider(config = parseConfig(), deps = {}) {
 
     async cancelJob(id) {
       const j = jobs.get(id)
-      if (!j) return { success: false, error: 'İş bulunamadı.' }
+      if (!j) return { success: false, terminationConfirmed: false, error: { code: 'PROVIDER_JOB_NOT_FOUND', message: 'İş bulunamadı.' } }
+      if (j.cancellationConfirmed) return { success: true, providerJobId: id, status: 'failed', terminationRequested: false, terminationConfirmed: true, alreadyClosed: true }
+      if (j.cancelPromise) return j.cancelPromise
       j.canceled = true
-      if (j.abortController) j.abortController.abort()
-      j.status = 'failed'
-      return { success: true, providerJobId: id, status: 'failed' }
+      j.cancelPromise = (async () => {
+        if (!j.operationPromise) {
+          j.cancellationConfirmed = true
+          j.status = 'failed'
+          return { success: true, providerJobId: id, status: 'failed', terminationRequested: false, terminationConfirmed: true, alreadyClosed: true, noLiveProcess: true }
+        }
+        j.abortController?.abort()
+        try { await j.operationPromise } catch (err) {
+          if (!['CANCELED', 'TIMEOUT'].includes(err?.code)) {
+            return { success: false, providerJobId: id, terminationRequested: true, terminationConfirmed: false, error: { code: err?.code === 'CANCELLATION_TIMEOUT' ? 'CANCELLATION_TIMEOUT' : 'CANCELLATION_FAILED', message: 'Audiveris sürecinin kapandığı doğrulanamadı.' } }
+          }
+        }
+        j.cancellationConfirmed = true
+        j.status = 'failed'
+        return { success: true, providerJobId: id, status: 'failed', terminationRequested: true, terminationConfirmed: true }
+      })()
+      return j.cancelPromise
     },
 
     async deleteJob(id) {
       const j = jobs.get(id)
       if (!j) return { success: false, error: 'İş bulunamadı.' }
-      if (j.abortController) j.abortController.abort()
+      if (j.operationPromise) {
+        const canceled = await provider.cancelJob(id)
+        if (!canceled.success || !canceled.terminationConfirmed) return canceled
+      }
       if (j.tempDir) await cleanDir(j.tempDir)
       j.pdfBuffer = null
       jobs.delete(id)

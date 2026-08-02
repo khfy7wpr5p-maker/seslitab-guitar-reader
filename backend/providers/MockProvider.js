@@ -24,7 +24,7 @@ const mockProvider = {
   async uploadPdf(pdfBuffer, fileName) {
     if (!pdfBuffer?.length) return { success: false, error: 'PDF boş.', retryable: false }
     const id = `mock_${Date.now()}_${++counter}`
-    jobs.set(id, { status: 'uploaded', progress: 0, musicXml: null, fileName })
+    jobs.set(id, { status: 'uploaded', progress: 0, musicXml: null, fileName, canceled: false })
     return { success: true, providerJobId: id, status: 'uploaded' }
   },
   async analyzePdf(id) {
@@ -47,6 +47,14 @@ const mockProvider = {
     const j = jobs.get(id)
     if (!j || !j.musicXml) return { success: false, error: 'MusicXML hazır değil.', retryable: false }
     return { success: true, providerJobId: id, status: 'completed', musicXml: j.musicXml }
+  },
+  async cancelJob(id) {
+    const j = jobs.get(id)
+    if (!j) return { success: false, terminationConfirmed: false, error: { code: 'PROVIDER_JOB_NOT_FOUND', message: 'İş bulunamadı.' } }
+    if (j.canceled) return { success: true, providerJobId: id, status: 'failed', terminationRequested: false, terminationConfirmed: true, alreadyClosed: true, noLiveProcess: true }
+    j.canceled = true
+    j.status = 'failed'
+    return { success: true, providerJobId: id, status: 'failed', terminationRequested: false, terminationConfirmed: true, alreadyClosed: true, noLiveProcess: true }
   },
 }
 

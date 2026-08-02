@@ -3,7 +3,8 @@
 import * as jobManager from '../jobs/jobManager.js'
 import * as storage from '../storage/musicXmlStorage.js'
 import { GATEWAY_CONFIG } from '../config/gatewayConfig.js'
-import { JobNotReadyError, JobQueueTimeoutError, JobProcessingTimeoutError } from '../utils/errors.js'
+import { JobNotReadyError, JobQueueTimeoutError, JobProcessingTimeoutError, CancellationFailedError } from '../utils/errors.js'
+import { cancelRunningJob } from '../workers/omrWorker.js'
 import { logLifecycle } from '../utils/logger.js'
 
 const cache = new Map()
@@ -18,7 +19,7 @@ function ageMs(r, field) {
   return r[field] ? Date.now() - new Date(r[field]).getTime() : 0
 }
 
-async function enforceTimeouts(r) {
+export async function enforceTimeouts(r) {
   if (r.status === 'queued') {
     if (ageMs(r, 'queuedAt') > GATEWAY_CONFIG.maxQueueWaitSeconds * 1000) {
       logLifecycle('job_queue_timeout', { jobId: r.jobId, status: 'queued', provider: r.provider, error: 'JOB_QUEUE_TIMEOUT' })
@@ -30,6 +31,12 @@ async function enforceTimeouts(r) {
   if (r.status === 'processing' || r.status === 'musicxml_created') {
     if (ageMs(r, 'processingAt') > GATEWAY_CONFIG.maxProcessingSeconds * 1000) {
       logLifecycle('job_processing_timeout', { jobId: r.jobId, status: r.status, provider: r.provider, error: 'JOB_PROCESSING_TIMEOUT' })
+      if (r.status === 'processing') {
+        const canceled = await cancelRunningJob(r.jobId)
+        if (!canceled.success || !canceled.terminationConfirmed) {
+          return new CancellationFailedError(canceled.error?.message || 'Zaman aşımındaki işlem sonlandırılamadı.', { jobId: r.jobId })
+        }
+      }
       await jobManager.updateStatus(r.jobId, 'failed', { error: { code: 'JOB_PROCESSING_TIMEOUT', message: 'İşleme çok uzun sürdü.', occurredAt: new Date().toISOString() } })
       invalidateCache(r.jobId)
       return new JobProcessingTimeoutError('İşleme çok uzun sürdü.', { jobId: r.jobId })

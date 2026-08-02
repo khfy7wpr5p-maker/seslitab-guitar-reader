@@ -35,6 +35,16 @@ describe('Server port and binding', () => {
     const serverSrc = readFileSync(path.join(ROOT, 'backend/server.js'), 'utf8')
     assert.ok(serverSrc.includes('0.0.0.0'), 'Server must bind to 0.0.0.0')
   })
+
+  test('2b. Recovery completes before HTTP listen and gateway starts workers before cleanup', () => {
+    const serverSrc = readFileSync(path.join(ROOT, 'backend/server.js'), 'utf8')
+    const indexSrc = readFileSync(path.join(ROOT, 'backend/index.js'), 'utf8')
+    assert.ok(serverSrc.indexOf('await startGateway()') < serverSrc.indexOf('app.listen('))
+    assert.ok(indexSrc.indexOf('recoverJobs') < indexSrc.indexOf('startWorkerPool') || indexSrc.includes('(deps.recoverJobs || recoverJobs)'))
+    const recoveryCall = indexSrc.indexOf('(deps.recoverJobs || recoverJobs)')
+    assert.ok(recoveryCall < indexSrc.indexOf('(deps.startWorkerPool || startWorkerPool)'))
+    assert.ok(indexSrc.indexOf('(deps.startWorkerPool || startWorkerPool)') < indexSrc.indexOf('(deps.startCleanup || startCleanup)'))
+  })
 })
 
 describe('Graceful shutdown', () => {
@@ -229,6 +239,22 @@ describe('Dockerfile security', () => {
       'Must validate type=module at build time')
     assert.ok(dockerfile.includes("'Runtime package.json must contain type=module'"),
       'Must fail the build with a clear message when type is not module')
+  })
+
+  test('17b. Pins exact Node 24 LTS runtime and package engine contract', () => {
+    const dockerfile = readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
+    const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'))
+
+    assert.ok(dockerfile.includes('FROM node:24.18.1-bookworm-slim AS node-build'),
+      'Docker build stage must pin exact Node 24.18.1 Bookworm Slim image')
+    assert.ok(dockerfile.includes("node --version | grep -q '^v24\\.18\\.1$'"),
+      'Docker build must verify exact Node 24.18.1 runtime')
+    assert.ok(!dockerfile.includes('node:20.18.1'),
+      'Dockerfile must not retain the end-of-life Node 20.18.1 image')
+    assert.equal(pkg.engines?.node, '>=24.0.0 <25')
+    assert.equal(lock.packages?.['']?.engines?.node, pkg.engines.node,
+      'Lockfile root engine contract must match package.json')
   })
 })
 

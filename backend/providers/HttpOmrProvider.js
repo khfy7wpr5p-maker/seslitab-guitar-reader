@@ -4,6 +4,7 @@
 // The provider is server-side only; API keys never reach the frontend.
 
 import { assertProvider } from './IOmrProvider.js'
+import { sanitizePdfFilename } from '../security/inputValidation.js'
 
 const SAMPLE_PARTWISE = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
@@ -36,9 +37,10 @@ function safeError(category, message) {
 }
 
 function buildMultipart(pdfBuffer, fileName, boundary) {
+  const safeFileName = sanitizePdfFilename(fileName)
   const parts = []
   parts.push(`--${boundary}\r\n`)
-  parts.push(`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n`)
+  parts.push(`Content-Disposition: form-data; name="file"; filename="${safeFileName}"\r\n`)
   parts.push(`Content-Type: application/pdf\r\n\r\n`)
   const prefix = parts.join('')
   const suffix = `\r\n--${boundary}--\r\n`
@@ -71,7 +73,7 @@ function mapHttpError(status) {
   return safeError('UNKNOWN_HTTP', `Uzak OMR hizmeti bilinmeyen HTTP hatası (${status}).`)
 }
 
-function createHttpOmrProvider(config = parseConfig()) {
+function createHttpOmrProvider(config = parseConfig(), deps = {}) {
   const { apiUrl, apiKey, timeoutMs } = config
   const jobs = new Map()
   let counter = 0
@@ -155,11 +157,28 @@ function createHttpOmrProvider(config = parseConfig()) {
 
     async cancelJob(id) {
       const j = jobs.get(id)
-      if (!j) return { success: false, error: 'İş bulunamadı.' }
+      if (!j) return { success: false, terminationConfirmed: false, error: { code: 'PROVIDER_JOB_NOT_FOUND', message: 'İş bulunamadı.' } }
+      if (j.cancellationConfirmed) return { success: true, providerJobId: id, status: 'failed', terminationRequested: false, terminationConfirmed: true, alreadyClosed: true }
+      if (j.cancelPromise) return j.cancelPromise
       j.canceled = true
       if (j.controller) j.controller.abort()
-      j.status = 'failed'
-      return { success: true, providerJobId: id, status: 'failed' }
+      j.cancelPromise = (async () => {
+        if (typeof deps.cancelRemote !== 'function') {
+          return { success: false, providerJobId: id, terminationRequested: true, terminationConfirmed: false, error: { code: 'CANCELLATION_FAILED', message: 'Uzak sağlayıcı iptalin tamamlandığını doğrulamadı.' } }
+        }
+        try {
+          const remote = await deps.cancelRemote({ providerJobId: id })
+          if (remote?.terminationConfirmed !== true) {
+            return { success: false, providerJobId: id, terminationRequested: true, terminationConfirmed: false, error: { code: remote?.error?.code || 'CANCELLATION_FAILED', message: remote?.error?.message || 'Uzak sağlayıcı iptalin tamamlandığını doğrulamadı.' } }
+          }
+          j.cancellationConfirmed = true
+          j.status = 'failed'
+          return { success: true, providerJobId: id, status: 'failed', terminationRequested: true, terminationConfirmed: true }
+        } catch {
+          return { success: false, providerJobId: id, terminationRequested: true, terminationConfirmed: false, error: { code: 'CANCELLATION_FAILED', message: 'Uzak sağlayıcı iptal isteği başarısız oldu.' } }
+        }
+      })()
+      return j.cancelPromise
     },
 
     async deleteJob(id) {
