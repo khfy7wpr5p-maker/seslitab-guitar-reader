@@ -5,6 +5,7 @@
 
 import { assertProvider } from './IOmrProvider.js'
 import { sanitizePdfFilename } from '../security/inputValidation.js'
+import { inspectMusicXml } from '../../musicXmlSecurity.js'
 
 const SAMPLE_PARTWISE = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
@@ -48,21 +49,19 @@ function buildMultipart(pdfBuffer, fileName, boundary) {
 }
 
 function validateMusicXml(xml) {
-  if (!xml || !xml.trim()) return { ok: false, error: safeError('EMPTY_RESPONSE', 'Uzak OMR hizmeti boş yanıt döndürdü.') }
-  const trimmed = xml.trim()
-  if (trimmed.startsWith('<html') || /<html[\s>]/i.test(trimmed.slice(0, 500))) {
-    return { ok: false, error: safeError('HTML_RESPONSE', 'Uzak OMR hizmeti HTML hata sayfası döndürdü.') }
+  const validation = inspectMusicXml(xml)
+
+  if (!validation.ok) {
+    return {
+      ok: false,
+      error: safeError(validation.code, validation.message),
+    }
   }
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    return { ok: false, error: safeError('JSON_RESPONSE', 'Uzak OMR hizmeti JSON hata yanıtı döndürdü.') }
+
+  return {
+    ok: true,
+    rootName: validation.rootName,
   }
-  if (!trimmed.startsWith('<?xml') && !trimmed.startsWith('<')) {
-    return { ok: false, error: safeError('INVALID_XML', 'Uzak OMR hizmeti geçersiz XML döndürdü.') }
-  }
-  if (!/<score-partwise[\s>]/i.test(trimmed) && !/<score-timewise[\s>]/i.test(trimmed)) {
-    return { ok: false, error: safeError('NON_MUSICXML', 'Uzak OMR hizmeti MusicXML olmayan XML döndürdü.') }
-  }
-  return { ok: true }
 }
 
 function mapHttpError(status) {

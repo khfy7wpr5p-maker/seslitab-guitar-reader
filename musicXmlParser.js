@@ -7,12 +7,26 @@ import {
   beatsToDurationId, noteToMidi, midiToFrequency,
 } from './noteTheory.js'
 
+import { inspectMusicXml } from './musicXmlSecurity.js'
+
 // Parse MusicXML string and return array of notes
 // Returns: { notes: [...], error?: string }
 export function parseMusicXml(musicXmlString) {
+  const security = inspectMusicXml(musicXmlString)
+
+  if (!security.ok) {
+    return {
+      notes: [],
+      error: security.message,
+    }
+  }
+
   try {
     const parser = new DOMParser()
-    const doc = parser.parseFromString(musicXmlString, 'application/xml')
+    const doc = parser.parseFromString(
+      security.xmlForParsing,
+      'application/xml'
+    )
     const parseError = doc.querySelector('parsererror')
     if (parseError) {
       return { notes: [], error: 'Geçersiz MusicXML formatı' }
@@ -66,8 +80,11 @@ export function parseMusicXml(musicXmlString) {
       parts: partSummaries,
       primaryPartId: selectPrimaryPartId(partSummaries),
     }
-  } catch (err) {
-    return { notes: [], error: err.message || 'MusicXML parse hatası' }
+  } catch {
+    return {
+      notes: [],
+      error: 'MusicXML güvenli biçimde ayrıştırılamadı.',
+    }
   }
 }
 
@@ -408,9 +425,21 @@ function pitchToGuitarPosition(step, alter, octave) {
 //   }
 
 export function parseMusicXmlWithStructure(musicXmlString) {
+  const security = inspectMusicXml(musicXmlString)
+
+  if (!security.ok) {
+    return {
+      notes: [],
+      error: security.message,
+    }
+  }
+
   try {
     const parser = new DOMParser()
-    const doc = parser.parseFromString(musicXmlString, 'application/xml')
+    const doc = parser.parseFromString(
+      security.xmlForParsing,
+      'application/xml'
+    )
     const parseError = doc.querySelector('parsererror')
     if (parseError) {
       return { notes: [], error: 'Geçersiz MusicXML formatı' }
@@ -574,7 +603,10 @@ export function parseMusicXmlWithStructure(musicXmlString) {
       measureMetadata,
       measureEvents,
     }
-  } catch (err) {
-    return { notes: [], error: err.message || 'MusicXML parse hatası' }
+  } catch {
+    return {
+      notes: [],
+      error: 'MusicXML güvenli biçimde ayrıştırılamadı.',
+    }
   }
 }
