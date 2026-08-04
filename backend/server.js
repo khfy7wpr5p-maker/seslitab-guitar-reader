@@ -18,6 +18,8 @@ import { getProviderName } from './providers/index.js'
 import { runAudiverisPreflight, safePreflightResponse } from './services/audiverisPreflight.js'
 import { startGateway, stopGateway } from './index.js'
 import { toGatewayError, ValidationError } from './utils/errors.js'
+import { createCorsOptions } from './security/corsPolicy.js'
+import { createFixedWindowRateLimiter } from './security/rateLimitPolicy.js'
 
 import { handleUploadPdf } from './api/uploadPdf.js'
 import { handleAnalyzePdf } from './api/analyzePdf.js'
@@ -42,11 +44,22 @@ await ensureRuntimeDirs()
 
 const app = express()
 
+// Render forwards requests through internal reverse proxies.
+// Trust only local/private proxy networks instead of trusting arbitrary
+// forwarded headers from every source.
+app.set('trust proxy', [
+  'loopback',
+  'linklocal',
+  'uniquelocal',
+])
+
 let shuttingDown = false
 
-// CORS — allow all origins in development.
-// TODO: Production'da belirli origin'lere kısıtla (örn. sadece seslitab.cloud).
-app.use(cors({ origin: true, credentials: true }))
+// Exact-origin CORS allowlist.
+// Production permits only the published SesliTab frontend.
+// Requests without an Origin header remain available for health checks
+// and server-to-server tools.
+app.use(cors(createCorsOptions(GATEWAY_CONFIG.allowedOrigins)))
 app.use(express.json())
 
 // Reject new jobs during shutdown
@@ -103,7 +116,22 @@ app.get('/api/v1/health', async (_req, res) => {
   sendSuccess(res, { status: 'ok', provider, runtime })
 })
 
-app.post('/api/v1/pdf/upload', upload.single('file'), async (req, res) => {
+// Health endpoints above remain exempt from API limits.
+const apiRateLimiter = createFixedWindowRateLimiter({
+  windowMs: GATEWAY_CONFIG.rateLimit.windowMs,
+  maxRequests: GATEWAY_CONFIG.rateLimit.apiMaxRequests,
+  maxEntries: GATEWAY_CONFIG.rateLimit.maxEntries,
+})
+
+const jobRateLimiter = createFixedWindowRateLimiter({
+  windowMs: GATEWAY_CONFIG.rateLimit.windowMs,
+  maxRequests: GATEWAY_CONFIG.rateLimit.jobMaxRequests,
+  maxEntries: GATEWAY_CONFIG.rateLimit.maxEntries,
+})
+
+app.use('/api', apiRateLimiter)
+
+app.post('/api/v1/pdf/upload', jobRateLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return sendError(res, new ValidationError('PDF dosyası zorunludur. "file" alanını gönderin.'))
     const result = await handleUploadPdf({ fileBuffer: req.file.buffer, fileName: req.file.originalname, provider: req.body?.provider })
@@ -111,7 +139,7 @@ app.post('/api/v1/pdf/upload', upload.single('file'), async (req, res) => {
   } catch (e) { sendError(res, e) }
 })
 
-app.post('/api/v1/pdf/analyze', async (req, res) => {
+app.post('/api/v1/pdf/analyze', jobRateLimiter, async (req, res) => {
   try {
     const result = await handleAnalyzePdf({ jobId: req.body?.jobId })
     sendSuccess(res, result.data || result, 202)
@@ -153,7 +181,7 @@ app.delete('/api/v1/job/:jobId', async (req, res) => {
 // --- New /api/jobs endpoints (clean RESTful surface) ---
 
 // POST /api/jobs — upload a PDF and create a job
-app.post('/api/jobs', upload.single('file'), async (req, res) => {
+app.post('/api/jobs', jobRateLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return sendError(res, new ValidationError('PDF dosyası zorunludur. "file" alanını gönderin.'))
     const result = await handleUploadPdf({ fileBuffer: req.file.buffer, fileName: req.file.originalname, provider: req.body?.provider })

@@ -1,6 +1,7 @@
 // Gateway configuration.
 
 import { parseMaxPdfPages } from '../security/inputValidation.js'
+import { parseAllowedOrigins } from '../security/corsPolicy.js'
 
 function envPath(name, fallback) {
   const v = process.env[name]
@@ -35,6 +36,28 @@ export const GATEWAY_CONFIG = {
   failedTtlDays: 3,
   maxUploadSizeBytes: 10 * 1024 * 1024,
   maxPdfPages: parseMaxPdfPages(process.env.SESLITAB_MAX_PDF_PAGES, 200),
+  allowedOrigins: parseAllowedOrigins(
+    process.env.SESLITAB_ALLOWED_ORIGINS,
+    process.env.NODE_ENV,
+  ),
+  rateLimit: {
+    windowMs: envInt(
+      'SESLITAB_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    ),
+    apiMaxRequests: envInt(
+      'SESLITAB_API_RATE_LIMIT_MAX',
+      1800,
+    ),
+    jobMaxRequests: envInt(
+      'SESLITAB_JOB_RATE_LIMIT_MAX',
+      20,
+    ),
+    maxEntries: envInt(
+      'SESLITAB_RATE_LIMIT_MAX_ENTRIES',
+      10000,
+    ),
+  },
   defaultProvider: envPath('OMR_PROVIDER', 'mock'),
   // Frontend polling configuration (also used by omrService.js).
   frontend: {
