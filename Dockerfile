@@ -115,6 +115,9 @@ COPY --from=node-build /build/node_modules /app/node_modules
 # Copy backend source
 COPY backend/ ./backend/
 
+# Shared MusicXML security module imported by backend providers.
+COPY musicXmlSecurity.js /app/musicXmlSecurity.js
+
 # Copy the root package.json so Node resolves "type": "module" for the
 # ES module backend source. Without this, Node defaults to CommonJS and
 # /app/backend/server.js fails with "Cannot use import statement outside
