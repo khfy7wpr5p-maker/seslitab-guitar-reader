@@ -77,13 +77,62 @@ describe('Persistent storage configuration', () => {
 })
 
 describe('Health endpoint safety', () => {
-  test('7. Health response does not expose paths', () => {
-    const preflightSrc = readFileSync(path.join(ROOT, 'backend/services/audiverisPreflight.js'), 'utf8')
-    const serverSrc = readFileSync(path.join(ROOT, 'backend/server.js'), 'utf8')
-    // safePreflightResponse must only expose code, not message or paths
-    assert.ok(preflightSrc.includes('safePreflightResponse'), 'Must use safePreflightResponse')
-    assert.ok(preflightSrc.includes('error: result.available ? undefined'), 'Must not expose error when available')
-    assert.ok(!preflightSrc.includes('command') || preflightSrc.includes('safePreflightResponse'), 'No raw command in response')
+  test('7. Health response exposes only safe runtime status', () => {
+    const preflightSrc = readFileSync(
+      path.join(
+        ROOT,
+        'backend/services/audiverisPreflight.js',
+      ),
+      'utf8',
+    )
+
+    const start = preflightSrc.indexOf(
+      'function safePreflightResponse',
+    )
+    const end = preflightSrc.indexOf(
+      'function clearPreflightCache',
+      start,
+    )
+
+    assert.ok(start >= 0, 'Must define safePreflightResponse')
+    assert.ok(end > start, 'Must isolate safe response boundary')
+
+    const safeSection = preflightSrc.slice(start, end)
+
+    for (const publicField of [
+      'audiverisAvailable',
+      'versionCheck',
+      'tempWritable',
+      'storageWritable',
+    ]) {
+      assert.ok(
+        safeSection.includes(publicField),
+        `Must expose safe field: ${publicField}`,
+      )
+    }
+
+    assert.ok(
+      safeSection.includes(
+        "code: result.error?.code || 'RUNTIME_UNAVAILABLE'",
+      ),
+      'Unavailable runtime may expose only a stable error code',
+    )
+
+    for (const forbidden of [
+      'audiverisCommand',
+      'versionOutput',
+      'tempDir',
+      'storageDir',
+      'tempProbeError',
+      'storageProbeError',
+      'message: result.error',
+    ]) {
+      assert.equal(
+        safeSection.includes(forbidden),
+        false,
+        `Must not expose internal field: ${forbidden}`,
+      )
+    }
   })
 
   test('8. Health response does not expose environment variables', () => {

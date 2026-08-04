@@ -309,21 +309,23 @@ async function runAudiverisPreflight(config = parseConfig()) {
 }
 
 function safePreflightResponse(result) {
-  return {
-    audiverisAvailable: result.available,
-    audiverisCommand: result.audiverisCommand,
-    exists: result.exists ?? false,
-    executable: result.executable ?? false,
-    versionCheck: result.versionCheck ?? false,
-    versionOutput: result.versionOutput ?? '',
-    tempDir: result.tempDir,
-    tempWritable: result.tempWritable ?? false,
-    tempProbeError: result.tempProbeError,
-    storageDir: result.storageDir,
-    storageWritable: result.storageWritable ?? false,
-    storageProbeError: result.storageProbeError,
-    error: result.available ? undefined : { code: result.error.code, message: result.error.message },
+  // The full preflight result is useful for server-side diagnostics,
+  // but command paths, directories, process output and detailed error
+  // messages must never cross the public health-response boundary.
+  const response = {
+    audiverisAvailable: result.available === true,
+    versionCheck: result.versionCheck === true,
+    tempWritable: result.tempWritable === true,
+    storageWritable: result.storageWritable === true,
   }
+
+  if (!result.available) {
+    response.error = {
+      code: result.error?.code || 'RUNTIME_UNAVAILABLE',
+    }
+  }
+
+  return response
 }
 
 function clearPreflightCache() {
