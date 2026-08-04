@@ -644,3 +644,847 @@ export function demoAnalysis() {
     createNote({ stringLetter: 'e', fret: 0, duration: 'half', measureNumber: 1, startBeat: 2 }),
   ]
 }
+
+// =============================================================================
+// BEGIN PACKAGE 2A-1A CANONICAL FOUNDATION
+// =============================================================================
+
+export const CANONICAL_NOTE_SCHEMA_VERSION = 1
+
+export const CANONICAL_NOTE_FIELDS = Object.freeze([
+  'partId',
+  'partIndex',
+  'measureIndex',
+  'measureNumber',
+  'measureKey',
+  'startBeat',
+  'voice',
+  'staff',
+  'duration',
+  'beats',
+  'durationValue',
+  'divisions',
+  'dotCount',
+  'isRest',
+  'isGrace',
+  'isChordNote',
+  'step',
+  'alter',
+  'octave',
+  'midi',
+  'frequency',
+  'noteName',
+  'stringLetter',
+  'stringNumber',
+  'fret',
+  'tieStart',
+  'tieStop',
+  'tieContinue',
+  'tuplet',
+  'beam',
+  'confidence',
+  'confidenceReason',
+  'sourceVerificationState',
+  '_raw',
+])
+
+const CANONICAL_STEP_TO_PC = Object.freeze({
+  C: 0,
+  D: 2,
+  E: 4,
+  F: 5,
+  G: 7,
+  A: 9,
+  B: 11,
+})
+
+const CANONICAL_EPSILON = 1e-9
+const CANONICAL_FREQUENCY_TOLERANCE_CENTS = 1
+
+function canonicalHas(value) {
+  return (
+    value !== undefined &&
+    value !== null &&
+    value !== ''
+  )
+}
+
+function canonicalInteger(value) {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value)
+      ? value
+      : null
+  }
+
+  if (
+    typeof value !== 'string' ||
+    !/^-?\d+$/.test(value.trim())
+  ) {
+    return null
+  }
+
+  const parsed = Number(value.trim())
+
+  return Number.isSafeInteger(parsed)
+    ? parsed
+    : null
+}
+
+function canonicalNumber(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
+      ? value
+      : null
+  }
+
+  if (
+    typeof value !== 'string' ||
+    value.trim() === ''
+  ) {
+    return null
+  }
+
+  const parsed = Number(value.trim())
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : null
+}
+
+function canonicalPitchFailure(reason) {
+  return {
+    valid: false,
+    reason,
+    source: 'invalid',
+    isRest: false,
+    midi: null,
+    frequency: null,
+    noteName: '',
+    octave: null,
+    step: null,
+    alter: null,
+    stringLetter: null,
+    stringNumber: null,
+    fret: null,
+  }
+}
+
+function canonicalTimeFailure(
+  reason,
+  startBeat = 0,
+) {
+  return {
+    valid: false,
+    reason,
+    source: 'invalid',
+    beats: null,
+    startBeat,
+    endBeat: null,
+    duration: null,
+    durationValue: null,
+    divisions: null,
+    dotCount: 0,
+    isRest: false,
+    isGrace: false,
+    isChordNote: false,
+  }
+}
+
+function canonicalDurationFromType(data) {
+  const duration = canonicalHas(data.duration)
+    ? String(data.duration).trim()
+    : canonicalHas(data.restType)
+      ? String(data.restType).trim()
+      : null
+
+  if (!duration) {
+    return {
+      present: false,
+      valid: true,
+    }
+  }
+
+  if (
+    canonicalHas(data.duration) &&
+    canonicalHas(data.restType) &&
+    String(data.duration).trim() !==
+      String(data.restType).trim()
+  ) {
+    return {
+      present: true,
+      valid: false,
+      reason: 'duration-rest-type-conflict',
+    }
+  }
+
+  const descriptor = DURATION_TYPES[duration]
+
+  if (!descriptor) {
+    return {
+      present: true,
+      valid: false,
+      reason: 'unknown-duration',
+    }
+  }
+
+  const suppliedDotCount =
+    canonicalHas(data.dotCount)
+      ? canonicalInteger(data.dotCount)
+      : 0
+
+  if (
+    suppliedDotCount === null ||
+    suppliedDotCount < 0 ||
+    suppliedDotCount > 4
+  ) {
+    return {
+      present: true,
+      valid: false,
+      reason: 'invalid-dot-count',
+    }
+  }
+
+  const alreadyDotted =
+    duration.startsWith('dotted-')
+
+  if (
+    alreadyDotted &&
+    suppliedDotCount > 1
+  ) {
+    return {
+      present: true,
+      valid: false,
+      reason: 'ambiguous-dotted-duration',
+    }
+  }
+
+  const dotCount = alreadyDotted
+    ? 1
+    : suppliedDotCount
+
+  return {
+    present: true,
+    valid: true,
+    source: 'duration-type',
+    duration,
+    dotCount,
+    beats: alreadyDotted
+      ? descriptor.beats
+      : applyDots(
+          descriptor.beats,
+          dotCount,
+        ),
+  }
+}
+
+// END PACKAGE 2A-1A CANONICAL FOUNDATION
+
+// =============================================================================
+// BEGIN PACKAGE 2A-1A CANONICAL PITCH RESOLVER
+// =============================================================================
+
+/**
+ * Resolve one authoritative pitch without mutating the input.
+ *
+ * Supported authoritative representations:
+ * - MIDI note number
+ * - Written pitch: step + alter + octave
+ * - Guitar position: string + fret
+ *
+ * When more than one representation is supplied, they must agree.
+ *
+ * @param {Object} data
+ * @returns {Object}
+ */
+export function resolveCanonicalPitch(data = {}) {
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    Array.isArray(data)
+  ) {
+    return canonicalPitchFailure('invalid-input')
+  }
+
+  const stringNumberWasSupplied =
+    canonicalHas(data.stringNumber)
+
+  const parsedStringNumber =
+    stringNumberWasSupplied
+      ? canonicalInteger(data.stringNumber)
+      : null
+
+  if (
+    stringNumberWasSupplied &&
+    parsedStringNumber === null
+  ) {
+    return canonicalPitchFailure(
+      'invalid-string-number',
+    )
+  }
+
+  const hasStringNumber =
+    stringNumberWasSupplied &&
+    parsedStringNumber !== 0
+
+  const restHasPitch =
+    canonicalHas(data.midi) ||
+    canonicalHas(data.frequency) ||
+    canonicalHas(data.noteName) ||
+    canonicalHas(data.step) ||
+    canonicalHas(data.alter) ||
+    canonicalHas(data.stringLetter) ||
+    hasStringNumber
+
+  if (data.isRest === true) {
+    if (restHasPitch) {
+      return canonicalPitchFailure(
+        'rest-has-pitch',
+      )
+    }
+
+    return {
+      valid: true,
+      reason: null,
+      source: 'rest',
+      isRest: true,
+      midi: null,
+      frequency: null,
+      noteName: '',
+      octave: null,
+      step: null,
+      alter: null,
+      stringLetter: null,
+      stringNumber: null,
+      fret: null,
+    }
+  }
+
+  const candidates = []
+
+  let writtenCandidate = null
+  let guitarCandidate = null
+
+  if (canonicalHas(data.midi)) {
+    const midi = canonicalInteger(data.midi)
+
+    if (
+      midi === null ||
+      midi < 0 ||
+      midi > 127
+    ) {
+      return canonicalPitchFailure(
+        'invalid-midi',
+      )
+    }
+
+    candidates.push({
+      source: 'midi',
+      midi,
+    })
+  }
+
+  const writtenPitchPresent =
+    canonicalHas(data.step) ||
+    canonicalHas(data.alter)
+
+  if (writtenPitchPresent) {
+    const step =
+      typeof data.step === 'string'
+        ? data.step.trim().toUpperCase()
+        : ''
+
+    const octave =
+      canonicalInteger(data.octave)
+
+    const alter =
+      canonicalHas(data.alter)
+        ? canonicalInteger(data.alter)
+        : 0
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        CANONICAL_STEP_TO_PC,
+        step,
+      )
+    ) {
+      return canonicalPitchFailure(
+        'invalid-step',
+      )
+    }
+
+    if (
+      octave === null ||
+      octave < -1 ||
+      octave > 9
+    ) {
+      return canonicalPitchFailure(
+        'invalid-octave',
+      )
+    }
+
+    if (
+      alter === null ||
+      alter < -2 ||
+      alter > 2
+    ) {
+      return canonicalPitchFailure(
+        'invalid-alter',
+      )
+    }
+
+    const midi =
+      ((octave + 1) * 12) +
+      CANONICAL_STEP_TO_PC[step] +
+      alter
+
+    if (midi < 0 || midi > 127) {
+      return canonicalPitchFailure(
+        'written-pitch-out-of-range',
+      )
+    }
+
+    writtenCandidate = {
+      source: 'written',
+      midi,
+      step,
+      alter,
+      octave,
+    }
+
+    candidates.push(writtenCandidate)
+  }
+
+  const stringLetterPresent =
+    canonicalHas(data.stringLetter)
+
+  const guitarPitchPresent =
+    stringLetterPresent ||
+    hasStringNumber
+
+  if (guitarPitchPresent) {
+    const suppliedLetter =
+      stringLetterPresent
+        ? String(data.stringLetter).trim()
+        : null
+
+    if (
+      suppliedLetter !== null &&
+      !Object.prototype.hasOwnProperty.call(
+        STRING_NUMBER,
+        suppliedLetter,
+      )
+    ) {
+      return canonicalPitchFailure(
+        'invalid-string-letter',
+      )
+    }
+
+    if (
+      hasStringNumber &&
+      (
+        parsedStringNumber < 1 ||
+        parsedStringNumber > 6
+      )
+    ) {
+      return canonicalPitchFailure(
+        'invalid-string-number',
+      )
+    }
+
+    const numberDerivedLetter =
+      hasStringNumber
+        ? STRING_LETTER[
+            parsedStringNumber - 1
+          ]
+        : null
+
+    if (
+      suppliedLetter !== null &&
+      numberDerivedLetter !== null &&
+      suppliedLetter !== numberDerivedLetter
+    ) {
+      return canonicalPitchFailure(
+        'string-identity-conflict',
+      )
+    }
+
+    const stringLetter =
+      suppliedLetter ??
+      numberDerivedLetter
+
+    const stringNumber =
+      STRING_NUMBER[stringLetter]
+
+    const fret =
+      canonicalHas(data.fret)
+        ? canonicalInteger(data.fret)
+        : 0
+
+    if (
+      fret === null ||
+      fret < 0 ||
+      fret > 24
+    ) {
+      return canonicalPitchFailure(
+        'invalid-fret',
+      )
+    }
+
+    const midi = noteToMidi(
+      stringLetter,
+      fret,
+    )
+
+    if (
+      midi === null ||
+      midi < 0 ||
+      midi > 127
+    ) {
+      return canonicalPitchFailure(
+        'guitar-pitch-out-of-range',
+      )
+    }
+
+    guitarCandidate = {
+      source: 'guitar',
+      midi,
+      stringLetter,
+      stringNumber,
+      fret,
+    }
+
+    candidates.push(guitarCandidate)
+  }
+
+  if (candidates.length === 0) {
+    return canonicalPitchFailure(
+      'missing-pitch',
+    )
+  }
+
+  const midi = candidates[0].midi
+
+  const hasConflict = candidates.some(
+    (candidate) =>
+      candidate.midi !== midi,
+  )
+
+  if (hasConflict) {
+    return canonicalPitchFailure(
+      'pitch-conflict',
+    )
+  }
+
+  const frequency = midiToFrequency(midi)
+
+  if (canonicalHas(data.frequency)) {
+    const providedFrequency =
+      canonicalNumber(data.frequency)
+
+    if (
+      providedFrequency === null ||
+      providedFrequency <= 0
+    ) {
+      return canonicalPitchFailure(
+        'invalid-frequency',
+      )
+    }
+
+    const centsDifference =
+      1200 *
+      Math.log2(
+        providedFrequency / frequency,
+      )
+
+    if (
+      !Number.isFinite(centsDifference) ||
+      Math.abs(centsDifference) >
+        CANONICAL_FREQUENCY_TOLERANCE_CENTS
+    ) {
+      return canonicalPitchFailure(
+        'frequency-conflict',
+      )
+    }
+  }
+
+  return {
+    valid: true,
+    reason: null,
+    source: candidates
+      .map((candidate) => candidate.source)
+      .join('+'),
+    isRest: false,
+    midi,
+    frequency,
+    noteName: midiToNoteName(midi),
+    octave:
+      writtenCandidate?.octave ??
+      midiToOctave(midi),
+    step: writtenCandidate?.step ?? null,
+    alter: writtenCandidate?.alter ?? null,
+    stringLetter:
+      guitarCandidate?.stringLetter ?? null,
+    stringNumber:
+      guitarCandidate?.stringNumber ?? null,
+    fret: guitarCandidate?.fret ?? null,
+  }
+}
+
+// END PACKAGE 2A-1A CANONICAL PITCH RESOLVER
+
+// =============================================================================
+// BEGIN PACKAGE 2A-1A CANONICAL TIME RESOLVER
+// =============================================================================
+
+/**
+ * Resolve one authoritative onset and duration without mutating the input.
+ *
+ * Supported duration representations:
+ * - Explicit beats
+ * - MusicXML durationValue / divisions
+ * - Duration type with dotCount
+ *
+ * Supplied representations must agree. Grace notes always have
+ * zero performed duration.
+ *
+ * @param {Object} data
+ * @returns {Object}
+ */
+export function resolveCanonicalTime(data = {}) {
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    Array.isArray(data)
+  ) {
+    return canonicalTimeFailure('invalid-input')
+  }
+
+  const startBeat = canonicalHas(data.startBeat)
+    ? canonicalNumber(data.startBeat)
+    : 0
+
+  if (
+    startBeat === null ||
+    startBeat < 0
+  ) {
+    return canonicalTimeFailure(
+      'invalid-start-beat',
+    )
+  }
+
+  const durationType =
+    canonicalDurationFromType(data)
+
+  if (!durationType.valid) {
+    return canonicalTimeFailure(
+      durationType.reason,
+      startBeat,
+    )
+  }
+
+  const beatsWasSupplied =
+    canonicalHas(data.beats)
+
+  const beatsValue = beatsWasSupplied
+    ? canonicalNumber(data.beats)
+    : null
+
+  if (
+    beatsWasSupplied &&
+    (
+      beatsValue === null ||
+      beatsValue < 0
+    )
+  ) {
+    return canonicalTimeFailure(
+      'invalid-beats',
+      startBeat,
+    )
+  }
+
+  const durationValueWasSupplied =
+    canonicalHas(data.durationValue)
+
+  const divisionsWasSupplied =
+    canonicalHas(data.divisions)
+
+  if (
+    durationValueWasSupplied !==
+    divisionsWasSupplied
+  ) {
+    return canonicalTimeFailure(
+      'duration-metadata-incomplete',
+      startBeat,
+    )
+  }
+
+  const durationValue =
+    durationValueWasSupplied
+      ? canonicalNumber(data.durationValue)
+      : null
+
+  const divisions =
+    divisionsWasSupplied
+      ? canonicalNumber(data.divisions)
+      : null
+
+  if (
+    durationValueWasSupplied &&
+    (
+      durationValue === null ||
+      durationValue < 0
+    )
+  ) {
+    return canonicalTimeFailure(
+      'invalid-duration-value',
+      startBeat,
+    )
+  }
+
+  if (
+    divisionsWasSupplied &&
+    (
+      divisions === null ||
+      divisions <= 0
+    )
+  ) {
+    return canonicalTimeFailure(
+      'invalid-divisions',
+      startBeat,
+    )
+  }
+
+  if (data.isGrace === true) {
+    if (
+      beatsValue !== null &&
+      beatsValue > 0
+    ) {
+      return canonicalTimeFailure(
+        'grace-note-has-beats',
+        startBeat,
+      )
+    }
+
+    if (
+      durationValue !== null &&
+      durationValue > 0
+    ) {
+      return canonicalTimeFailure(
+        'grace-note-has-duration',
+        startBeat,
+      )
+    }
+
+    return {
+      valid: true,
+      reason: null,
+      source: 'grace',
+      beats: 0,
+      startBeat,
+      endBeat: startBeat,
+      duration: durationType.present
+        ? durationType.duration
+        : null,
+      durationValue,
+      divisions,
+      dotCount: durationType.present
+        ? durationType.dotCount
+        : 0,
+      isRest: data.isRest === true,
+      isGrace: true,
+      isChordNote:
+        data.isChordNote === true,
+    }
+  }
+
+  const candidates = []
+
+  if (beatsWasSupplied) {
+    if (beatsValue === 0) {
+      return canonicalTimeFailure(
+        'invalid-beats',
+        startBeat,
+      )
+    }
+
+    candidates.push({
+      source: 'beats',
+      beats: beatsValue,
+    })
+  }
+
+  if (durationValueWasSupplied) {
+    if (durationValue === 0) {
+      return canonicalTimeFailure(
+        'invalid-duration-value',
+        startBeat,
+      )
+    }
+
+    candidates.push({
+      source: 'duration-divisions',
+      beats: durationValue / divisions,
+    })
+  }
+
+  if (durationType.present) {
+    candidates.push(durationType)
+  }
+
+  if (candidates.length === 0) {
+    return canonicalTimeFailure(
+      'missing-duration',
+      startBeat,
+    )
+  }
+
+  const beats = candidates[0].beats
+
+  if (
+    !Number.isFinite(beats) ||
+    beats <= 0
+  ) {
+    return canonicalTimeFailure(
+      'invalid-duration',
+      startBeat,
+    )
+  }
+
+  const hasConflict = candidates.some(
+    (candidate) =>
+      Math.abs(candidate.beats - beats) >
+      CANONICAL_EPSILON,
+  )
+
+  if (hasConflict) {
+    return canonicalTimeFailure(
+      'duration-conflict',
+      startBeat,
+    )
+  }
+
+  return {
+    valid: true,
+    reason: null,
+    source: candidates
+      .map((candidate) => candidate.source)
+      .join('+'),
+    beats,
+    startBeat,
+    endBeat: startBeat + beats,
+    duration: durationType.present
+      ? durationType.duration
+      : null,
+    durationValue,
+    divisions,
+    dotCount: durationType.present
+      ? durationType.dotCount
+      : 0,
+    isRest: data.isRest === true,
+    isGrace: false,
+    isChordNote:
+      data.isChordNote === true,
+  }
+}
+
+// END PACKAGE 2A-1A CANONICAL TIME RESOLVER
