@@ -1488,3 +1488,377 @@ export function resolveCanonicalTime(data = {}) {
 }
 
 // END PACKAGE 2A-1A CANONICAL TIME RESOLVER
+
+// =============================================================================
+// BEGIN PACKAGE 2A-1B2 CANONICAL CONSUMPTION POLICY
+// =============================================================================
+
+export const CANONICAL_VERIFICATION_STATUS =
+  Object.freeze({
+    VERIFIED: 'verified',
+    PARTIAL: 'partial',
+    INVALID: 'invalid',
+    UNVERIFIED: 'unverified',
+  })
+
+export const CANONICAL_CONSUMPTION_DECISION =
+  Object.freeze({
+    ACCEPT: 'accept',
+    REVIEW: 'review',
+    BLOCK: 'block',
+    LEGACY: 'legacy',
+  })
+
+const CANONICAL_POLICY_STATUS_VALUES =
+  Object.freeze([
+    CANONICAL_VERIFICATION_STATUS.VERIFIED,
+    CANONICAL_VERIFICATION_STATUS.PARTIAL,
+    CANONICAL_VERIFICATION_STATUS.INVALID,
+  ])
+
+function canonicalPolicyResult({
+  applicable,
+  schemaVersion,
+  status,
+  decision,
+  allowed,
+  definitive,
+  requiresReview,
+  reason,
+  pitchValid,
+  timeValid,
+}) {
+  return Object.freeze({
+    applicable,
+    schemaVersion,
+    status,
+    decision,
+    allowed,
+    definitive,
+    requiresReview,
+    reason,
+    pitchValid,
+    timeValid,
+  })
+}
+
+function canonicalPolicyFailure(
+  reason,
+  {
+    schemaVersion = null,
+    pitchValid = null,
+    timeValid = null,
+  } = {},
+) {
+  return canonicalPolicyResult({
+    applicable: true,
+    schemaVersion,
+    status:
+      CANONICAL_VERIFICATION_STATUS.INVALID,
+    decision:
+      CANONICAL_CONSUMPTION_DECISION.BLOCK,
+    allowed: false,
+    definitive: false,
+    requiresReview: true,
+    reason,
+    pitchValid,
+    timeValid,
+  })
+}
+
+function canonicalPolicyComponent(
+  component,
+  componentName,
+) {
+  if (
+    !component ||
+    typeof component !== 'object' ||
+    Array.isArray(component)
+  ) {
+    return {
+      valid: false,
+      reason:
+        `${componentName}-verification-missing`,
+    }
+  }
+
+  if (typeof component.valid !== 'boolean') {
+    return {
+      valid: false,
+      reason:
+        `${componentName}-validity-missing`,
+    }
+  }
+
+  if (
+    !CANONICAL_POLICY_STATUS_VALUES.includes(
+      component.status,
+    )
+  ) {
+    return {
+      valid: false,
+      reason:
+        `${componentName}-status-invalid`,
+    }
+  }
+
+  const statusImpliesValidity =
+    component.status !==
+    CANONICAL_VERIFICATION_STATUS.INVALID
+
+  if (
+    component.valid !==
+    statusImpliesValidity
+  ) {
+    return {
+      valid: false,
+      reason:
+        `${componentName}-status-conflict`,
+    }
+  }
+
+  return {
+    valid: true,
+    componentValid: component.valid,
+    status: component.status,
+  }
+}
+
+/**
+ * Resolve one shared, read-only consumption decision for a NoteObject.
+ *
+ * Policy:
+ * - verified: usable as definitive canonical data
+ * - partial: usable, but must remain visibly reviewable
+ * - invalid: blocked; never silently repaired
+ * - metadata absent: legacy behavior remains usable, but is not definitive
+ *
+ * The function never mutates the note or its verification metadata.
+ *
+ * @param {Object} note
+ * @returns {Object}
+ */
+export function resolveCanonicalConsumptionPolicy(
+  note = {},
+) {
+  if (
+    !note ||
+    typeof note !== 'object' ||
+    Array.isArray(note)
+  ) {
+    return canonicalPolicyFailure(
+      'invalid-note',
+    )
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      note,
+      'sourceVerificationState',
+    ) ||
+    note.sourceVerificationState ===
+      undefined ||
+    note.sourceVerificationState ===
+      null
+  ) {
+    return canonicalPolicyResult({
+      applicable: false,
+      schemaVersion: null,
+      status:
+        CANONICAL_VERIFICATION_STATUS
+          .UNVERIFIED,
+      decision:
+        CANONICAL_CONSUMPTION_DECISION
+          .LEGACY,
+      allowed: true,
+      definitive: false,
+      requiresReview: true,
+      reason:
+        'verification-metadata-absent',
+      pitchValid: null,
+      timeValid: null,
+    })
+  }
+
+  const state =
+    note.sourceVerificationState
+
+  if (
+    typeof state !== 'object' ||
+    Array.isArray(state)
+  ) {
+    return canonicalPolicyFailure(
+      'verification-metadata-invalid',
+    )
+  }
+
+  const schemaVersion =
+    state.schemaVersion
+
+  if (
+    schemaVersion !==
+    CANONICAL_NOTE_SCHEMA_VERSION
+  ) {
+    return canonicalPolicyFailure(
+      'verification-schema-unsupported',
+      {
+        schemaVersion:
+          Number.isSafeInteger(schemaVersion)
+            ? schemaVersion
+            : null,
+      },
+    )
+  }
+
+  if (
+    !CANONICAL_POLICY_STATUS_VALUES.includes(
+      state.status,
+    )
+  ) {
+    return canonicalPolicyFailure(
+      'verification-status-invalid',
+      {
+        schemaVersion,
+      },
+    )
+  }
+
+  const pitch =
+    canonicalPolicyComponent(
+      state.pitch,
+      'pitch',
+    )
+
+  if (!pitch.valid) {
+    return canonicalPolicyFailure(
+      pitch.reason,
+      {
+        schemaVersion,
+      },
+    )
+  }
+
+  const time =
+    canonicalPolicyComponent(
+      state.time,
+      'time',
+    )
+
+  if (!time.valid) {
+    return canonicalPolicyFailure(
+      time.reason,
+      {
+        schemaVersion,
+        pitchValid:
+          pitch.componentValid,
+      },
+    )
+  }
+
+  const derivedStatus =
+    !pitch.componentValid ||
+    !time.componentValid
+      ? CANONICAL_VERIFICATION_STATUS
+          .INVALID
+      : (
+          pitch.status ===
+            CANONICAL_VERIFICATION_STATUS
+              .VERIFIED &&
+          time.status ===
+            CANONICAL_VERIFICATION_STATUS
+              .VERIFIED
+        )
+        ? CANONICAL_VERIFICATION_STATUS
+            .VERIFIED
+        : CANONICAL_VERIFICATION_STATUS
+            .PARTIAL
+
+  if (state.status !== derivedStatus) {
+    return canonicalPolicyFailure(
+      'verification-status-conflict',
+      {
+        schemaVersion,
+        pitchValid:
+          pitch.componentValid,
+        timeValid:
+          time.componentValid,
+      },
+    )
+  }
+
+  if (
+    derivedStatus ===
+    CANONICAL_VERIFICATION_STATUS.VERIFIED
+  ) {
+    return canonicalPolicyResult({
+      applicable: true,
+      schemaVersion,
+      status: derivedStatus,
+      decision:
+        CANONICAL_CONSUMPTION_DECISION
+          .ACCEPT,
+      allowed: true,
+      definitive: true,
+      requiresReview: false,
+      reason: null,
+      pitchValid: true,
+      timeValid: true,
+    })
+  }
+
+  if (
+    derivedStatus ===
+    CANONICAL_VERIFICATION_STATUS.PARTIAL
+  ) {
+    return canonicalPolicyResult({
+      applicable: true,
+      schemaVersion,
+      status: derivedStatus,
+      decision:
+        CANONICAL_CONSUMPTION_DECISION
+          .REVIEW,
+      allowed: true,
+      definitive: false,
+      requiresReview: true,
+      reason:
+        'canonical-verification-partial',
+      pitchValid: true,
+      timeValid: true,
+    })
+  }
+
+  return canonicalPolicyResult({
+    applicable: true,
+    schemaVersion,
+    status: derivedStatus,
+    decision:
+      CANONICAL_CONSUMPTION_DECISION.BLOCK,
+    allowed: false,
+    definitive: false,
+    requiresReview: true,
+    reason:
+      'canonical-verification-invalid',
+    pitchValid:
+      pitch.componentValid,
+    timeValid:
+      time.componentValid,
+  })
+}
+
+export function canConsumeCanonicalNote(
+  note = {},
+) {
+  return resolveCanonicalConsumptionPolicy(
+    note,
+  ).allowed
+}
+
+export function isCanonicalNoteDefinitive(
+  note = {},
+) {
+  return resolveCanonicalConsumptionPolicy(
+    note,
+  ).definitive
+}
+
+// END PACKAGE 2A-1B2 CANONICAL CONSUMPTION POLICY
