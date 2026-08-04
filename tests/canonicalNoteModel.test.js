@@ -39,6 +39,11 @@ describe('canonical note contract', () => {
       'voice',
       'staff',
       'tieContinue',
+      'tuplet',
+      'beam',
+      'confidenceReason',
+      'sourceVerificationState',
+      '_raw',
     ]) {
       assert.equal(
         CANONICAL_NOTE_FIELDS.includes(field),
@@ -192,6 +197,35 @@ describe('resolveCanonicalPitch', () => {
     }
   })
 
+  test('preserves written octave across an enharmonic boundary', () => {
+    const result = resolveCanonicalPitch({
+      step: 'B',
+      alter: 1,
+      octave: 4,
+    })
+
+    assert.equal(result.valid, true)
+    assert.equal(result.midi, 72)
+    assert.equal(result.noteName, 'Do')
+    assert.equal(result.step, 'B')
+    assert.equal(result.alter, 1)
+    assert.equal(result.octave, 4)
+  })
+
+  test('rejects implicit guitar octave transposition', () => {
+    const result = resolveCanonicalPitch({
+      midi: 64,
+      step: 'E',
+      alter: 0,
+      octave: 4,
+      stringLetter: 'D',
+      fret: 2,
+    })
+
+    assert.equal(result.valid, false)
+    assert.equal(result.reason, 'pitch-conflict')
+  })
+
   test('does not mutate its input', () => {
     const input = {
       midi: 69,
@@ -259,6 +293,17 @@ describe('resolveCanonicalTime', () => {
       result.source,
       'duration-type',
     )
+    assert.equal(result.beats, 1.5)
+    assert.equal(result.dotCount, 1)
+  })
+
+  test('normalizes a dotted duration identifier to one dot', () => {
+    const result = resolveCanonicalTime({
+      duration: 'dotted-quarter',
+    })
+
+    assert.equal(result.valid, true)
+    assert.equal(result.duration, 'dotted-quarter')
     assert.equal(result.beats, 1.5)
     assert.equal(result.dotCount, 1)
   })

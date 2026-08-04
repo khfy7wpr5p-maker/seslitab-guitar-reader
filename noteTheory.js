@@ -680,7 +680,12 @@ export const CANONICAL_NOTE_FIELDS = Object.freeze([
   'tieStart',
   'tieStop',
   'tieContinue',
+  'tuplet',
+  'beam',
   'confidence',
+  'confidenceReason',
+  'sourceVerificationState',
+  '_raw',
 ])
 
 const CANONICAL_STEP_TO_PC = Object.freeze({
@@ -822,14 +827,15 @@ function canonicalDurationFromType(data) {
     }
   }
 
-  const dotCount = canonicalHas(data.dotCount)
-    ? canonicalInteger(data.dotCount)
-    : 0
+  const suppliedDotCount =
+    canonicalHas(data.dotCount)
+      ? canonicalInteger(data.dotCount)
+      : 0
 
   if (
-    dotCount === null ||
-    dotCount < 0 ||
-    dotCount > 4
+    suppliedDotCount === null ||
+    suppliedDotCount < 0 ||
+    suppliedDotCount > 4
   ) {
     return {
       present: true,
@@ -841,13 +847,20 @@ function canonicalDurationFromType(data) {
   const alreadyDotted =
     duration.startsWith('dotted-')
 
-  if (alreadyDotted && dotCount > 1) {
+  if (
+    alreadyDotted &&
+    suppliedDotCount > 1
+  ) {
     return {
       present: true,
       valid: false,
       reason: 'ambiguous-dotted-duration',
     }
   }
+
+  const dotCount = alreadyDotted
+    ? 1
+    : suppliedDotCount
 
   return {
     present: true,
@@ -1204,7 +1217,9 @@ export function resolveCanonicalPitch(data = {}) {
     midi,
     frequency,
     noteName: midiToNoteName(midi),
-    octave: midiToOctave(midi),
+    octave:
+      writtenCandidate?.octave ??
+      midiToOctave(midi),
     step: writtenCandidate?.step ?? null,
     alter: writtenCandidate?.alter ?? null,
     stringLetter:
