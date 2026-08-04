@@ -35,12 +35,25 @@ describe('Audiveris preflight', () => {
   })
 
   test('1. Audiveris runtime available', async () => {
-    const result = { available: true, audiverisCommand: '/opt/audiveris/bin/Audiveris', exists: true, executable: true, versionCheck: true, versionOutput: 'Audiveris 5.11.0' }
-    const safe = safePreflightResponse(result)
-    assert.equal(safe.audiverisAvailable, true)
-    assert.equal(safe.versionCheck, true)
-    assert.equal(safe.versionOutput, 'Audiveris 5.11.0')
-    assert.equal(safe.error, undefined)
+    const result = {
+      available: true,
+      audiverisCommand: '/opt/audiveris/bin/Audiveris',
+      exists: true,
+      executable: true,
+      versionCheck: true,
+      versionOutput: 'Audiveris 5.11.0',
+      tempDir: '/app/tmp',
+      tempWritable: true,
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: true,
+    }
+
+    assert.deepEqual(safePreflightResponse(result), {
+      audiverisAvailable: true,
+      versionCheck: true,
+      tempWritable: true,
+      storageWritable: true,
+    })
   })
 
   test('2. Audiveris executable unavailable', async () => {
@@ -77,45 +90,103 @@ describe('Audiveris preflight', () => {
       exists: false,
       executable: false,
       versionCheck: false,
-      versionOutput: '',
-      error: { code: 'EXECUTABLE_NOT_FOUND', message: '/usr/local/bin/audiveris not found', stack: 'at ...' },
+      versionOutput: 'OS: private-runtime-details',
+      tempDir: '/app/private/tmp',
+      tempWritable: false,
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: false,
+      tempProbeError: {
+        testedPath: '/app/private/tmp/probe',
+        syscall: 'EACCES',
+        message: 'permission denied',
+      },
+      error: {
+        code: 'EXECUTABLE_NOT_FOUND',
+        message: '/usr/local/bin/audiveris not found',
+        stack: 'at private/server/file.js',
+      },
     }
+
     const safe = safePreflightResponse(result)
-    assert.equal(safe.audiverisAvailable, false)
-    assert.equal(safe.versionCheck, false)
-    assert.equal(safe.error.code, 'EXECUTABLE_NOT_FOUND')
-    assert.equal(safe.error.stack, undefined, 'Stack must not be exposed')
+
+    assert.deepEqual(safe, {
+      audiverisAvailable: false,
+      versionCheck: false,
+      tempWritable: false,
+      storageWritable: false,
+      error: {
+        code: 'EXECUTABLE_NOT_FOUND',
+      },
+    })
+
+    const json = JSON.stringify(safe)
+
+    for (const forbidden of [
+      '/opt/audiveris',
+      '/app/private',
+      '/var/lib/seslitab',
+      '/usr/local/bin',
+      'private-runtime-details',
+      'permission denied',
+      'private/server/file.js',
+    ]) {
+      assert.equal(json.includes(forbidden), false)
+    }
   })
 
-  test('6. Absolute paths are not exposed beyond audiverisCommand', () => {
-    const result = {
+  test('6. Absolute paths are not exposed by safe health response', () => {
+    const safe = safePreflightResponse({
       available: false,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: false,
       executable: false,
       versionCheck: false,
       versionOutput: '',
-      error: { code: 'EXECUTABLE_NOT_FOUND', message: 'Audiveris çalıştırılabilir dosyası bulunamadı.' },
-    }
-    const safe = safePreflightResponse(result)
+      tempDir: '/app/tmp',
+      tempWritable: false,
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: false,
+      error: {
+        code: 'EXECUTABLE_NOT_FOUND',
+        message: '/home/private/audiveris not found',
+      },
+    })
+
     const json = JSON.stringify(safe)
-    assert.ok(!json.includes('/home/'), 'No home paths in safe response')
+
+    assert.doesNotMatch(json, /\/opt\//)
+    assert.doesNotMatch(json, /\/app\//)
+    assert.doesNotMatch(json, /\/var\//)
+    assert.doesNotMatch(json, /\/home\//)
   })
 
-  test('7. Process output is not exposed beyond versionOutput', () => {
-    const result = {
+  test('7. Process and version output are not exposed', () => {
+    const safe = safePreflightResponse({
       available: false,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
-      exists: false,
-      executable: false,
+      exists: true,
+      executable: true,
       versionCheck: false,
-      versionOutput: '',
-      error: { code: 'SPAWN_ERROR', message: 'Audiveris süreci başlatılamadı.', stdout: 'Java exception...', stderr: 'Error: ...' },
-    }
-    const safe = safePreflightResponse(result)
+      versionOutput: 'OS: Linux; Java VM: private',
+      tempWritable: true,
+      storageWritable: false,
+      storageProbeError: {
+        testedPath: '/private/storage/probe',
+        syscall: 'EACCES',
+        message: 'permission denied',
+      },
+      error: {
+        code: 'SPAWN_ERROR',
+        message: 'Java exception: private output',
+      },
+    })
+
     const json = JSON.stringify(safe)
-    assert.ok(!json.includes('Java exception'), 'No stdout in safe response')
-    assert.ok(!json.includes('Error:'), 'No stderr in safe response')
+
+    assert.doesNotMatch(json, /Linux/)
+    assert.doesNotMatch(json, /Java/)
+    assert.doesNotMatch(json, /permission denied/)
+    assert.doesNotMatch(json, /private output/)
   })
 
   test('8. MockProvider remains default', async () => {
@@ -157,23 +228,31 @@ describe('Audiveris preflight', () => {
     assert.equal(result.executable, false)
   })
 
-  test('13. safePreflightResponse exposes version check fields', () => {
-    const result = {
+  test('13. safePreflightResponse exposes only public status fields', () => {
+    const safe = safePreflightResponse({
       available: true,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: true,
       executable: true,
       versionCheck: true,
       versionOutput: 'Audiveris 5.11.0',
-    }
-    const safe = safePreflightResponse(result)
+      tempDir: '/app/tmp',
+      tempWritable: true,
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: true,
+    })
+
+    assert.deepEqual(Object.keys(safe).sort(), [
+      'audiverisAvailable',
+      'storageWritable',
+      'tempWritable',
+      'versionCheck',
+    ])
+
     assert.equal(safe.audiverisAvailable, true)
-    assert.equal(safe.audiverisCommand, '/opt/audiveris/bin/Audiveris')
-    assert.equal(safe.exists, true)
-    assert.equal(safe.executable, true)
     assert.equal(safe.versionCheck, true)
-    assert.equal(safe.versionOutput, 'Audiveris 5.11.0')
-    assert.equal(safe.error, undefined)
+    assert.equal(safe.tempWritable, true)
+    assert.equal(safe.storageWritable, true)
   })
 
   test('14. runBatchVersion reports failure for non-Audiveris command', async () => {
@@ -281,8 +360,8 @@ describe('Audiveris preflight', () => {
     }
   })
 
-  test('23. safePreflightResponse includes tempDir and tempWritable on success', () => {
-    const result = {
+  test('23. safePreflightResponse exposes temp status without its path', () => {
+    const safe = safePreflightResponse({
       available: true,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: true,
@@ -291,16 +370,17 @@ describe('Audiveris preflight', () => {
       versionOutput: 'Audiveris 5.11.0',
       tempDir: '/app/tmp',
       tempWritable: true,
-    }
-    const safe = safePreflightResponse(result)
-    assert.equal(safe.tempDir, '/app/tmp')
+      storageDir: '/var/lib/seslitab/musicxml',
+      storageWritable: true,
+    })
+
     assert.equal(safe.tempWritable, true)
-    assert.equal(safe.tempProbeError, undefined)
-    assert.equal(safe.error, undefined)
+    assert.equal('tempDir' in safe, false)
+    assert.equal('tempProbeError' in safe, false)
   })
 
-  test('24. safePreflightResponse includes tempProbeError on failure', () => {
-    const result = {
+  test('24. temp probe failure exposes only safe status and code', () => {
+    const safe = safePreflightResponse({
       available: false,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: true,
@@ -309,19 +389,27 @@ describe('Audiveris preflight', () => {
       versionOutput: '',
       tempDir: '/app/tmp',
       tempWritable: false,
+      storageWritable: false,
       tempProbeError: {
         testedPath: '/app/tmp/seslitab_preflight_123',
         syscall: 'EACCES',
         message: 'permission denied',
       },
-      error: { code: 'TMP_NOT_WRITABLE', message: 'Geçici dizin yazılabilir değil.' },
-    }
-    const safe = safePreflightResponse(result)
-    assert.equal(safe.audiverisAvailable, false)
-    assert.equal(safe.tempWritable, false)
-    assert.equal(safe.tempProbeError.testedPath, '/app/tmp/seslitab_preflight_123')
-    assert.equal(safe.tempProbeError.syscall, 'EACCES')
-    assert.equal(safe.error.code, 'TMP_NOT_WRITABLE')
+      error: {
+        code: 'TMP_NOT_WRITABLE',
+        message: 'Geçici dizin yazılabilir değil.',
+      },
+    })
+
+    assert.deepEqual(safe, {
+      audiverisAvailable: false,
+      versionCheck: false,
+      tempWritable: false,
+      storageWritable: false,
+      error: {
+        code: 'TMP_NOT_WRITABLE',
+      },
+    })
   })
 
   test('25. runAudiverisPreflight reports TMP_NOT_WRITABLE with diagnostics when temp is not writable', async () => {
@@ -411,8 +499,8 @@ describe('Storage writability probe', () => {
     }
   })
 
-  test('31. safePreflightResponse includes storageDir and storageWritable on success', () => {
-    const result = {
+  test('31. safePreflightResponse exposes storage status without its path', () => {
+    const safe = safePreflightResponse({
       available: true,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: true,
@@ -423,16 +511,15 @@ describe('Storage writability probe', () => {
       tempWritable: true,
       storageDir: '/var/lib/seslitab/musicxml',
       storageWritable: true,
-    }
-    const safe = safePreflightResponse(result)
-    assert.equal(safe.storageDir, '/var/lib/seslitab/musicxml')
+    })
+
     assert.equal(safe.storageWritable, true)
-    assert.equal(safe.storageProbeError, undefined)
-    assert.equal(safe.error, undefined)
+    assert.equal('storageDir' in safe, false)
+    assert.equal('storageProbeError' in safe, false)
   })
 
-  test('32. safePreflightResponse includes storageProbeError on failure', () => {
-    const result = {
+  test('32. storage probe failure exposes only safe status and code', () => {
+    const safe = safePreflightResponse({
       available: false,
       audiverisCommand: '/opt/audiveris/bin/Audiveris',
       exists: true,
@@ -444,18 +531,26 @@ describe('Storage writability probe', () => {
       storageDir: '/var/lib/seslitab/musicxml',
       storageWritable: false,
       storageProbeError: {
-        testedPath: '/var/lib/seslitab/musicxml/seslitab_storage_probe_123',
+        testedPath:
+          '/var/lib/seslitab/musicxml/seslitab_storage_probe_123',
         syscall: 'EACCES',
         message: 'permission denied',
       },
-      error: { code: 'STORAGE_NOT_WRITABLE', message: 'Depolama dizini yazılabilir değil.' },
-    }
-    const safe = safePreflightResponse(result)
-    assert.equal(safe.audiverisAvailable, false)
-    assert.equal(safe.storageWritable, false)
-    assert.equal(safe.storageProbeError.testedPath, '/var/lib/seslitab/musicxml/seslitab_storage_probe_123')
-    assert.equal(safe.storageProbeError.syscall, 'EACCES')
-    assert.equal(safe.error.code, 'STORAGE_NOT_WRITABLE')
+      error: {
+        code: 'STORAGE_NOT_WRITABLE',
+        message: 'Depolama dizini yazılabilir değil.',
+      },
+    })
+
+    assert.deepEqual(safe, {
+      audiverisAvailable: false,
+      versionCheck: false,
+      tempWritable: true,
+      storageWritable: false,
+      error: {
+        code: 'STORAGE_NOT_WRITABLE',
+      },
+    })
   })
 
   test('33. runAudiverisPreflight reports STORAGE_NOT_WRITABLE with diagnostics when storage is not writable', async () => {
