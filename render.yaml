@@ -21,6 +21,16 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SESLITAB_ALLOWED_ORIGINS
+        value: "https://seslitab-guitar-tab-bg2n.bolt.host"
+      - key: SESLITAB_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: SESLITAB_API_RATE_LIMIT_MAX
+        value: "1800"
+      - key: SESLITAB_JOB_RATE_LIMIT_MAX
+        value: "20"
+      - key: SESLITAB_RATE_LIMIT_MAX_ENTRIES
+        value: "10000"
       - key: OMR_PROVIDER
         value: audiveris
       - key: AUDIVERIS_COMMAND

@@ -80,7 +80,12 @@ export class InternalError extends GatewayError {
 
 export function toGatewayError(err) {
   if (err instanceof GatewayError) return err
-  return new InternalError(err?.message || 'Beklenmeyen sunucu hatası.')
+
+  // Unknown exceptions may contain internal paths, provider output,
+  // environment details or other implementation information.
+  // Preserve those details only in server-side diagnostics; never
+  // return the raw exception message to an API client.
+  return new InternalError('Beklenmeyen sunucu hatası.')
 }
 
 export function successResponse(data = {}) {
