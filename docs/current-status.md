@@ -1,9 +1,9 @@
 # SesliTab Current Status
 
-Last documentation review: 2026-08-05  
-Implementation baseline reviewed: `e8e11183f2e4773fe1fc9a62c0f26851b84691cd`
+Last documentation review: 2026-08-06  
+Implementation baseline reviewed: `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`
 
-This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, or production build.
+This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build, or GitHub Actions result.
 
 ## Verified Foundations
 
@@ -44,6 +44,43 @@ The repository currently contains foundations for:
 - Audiveris `.omr` download when available
 
 The current playback system uses Web Audio. It does not yet represent a completed real MIDI export package.
+
+## Plan 0R — CI Baseline Status
+
+Plan 0R-A is being prepared on branch `chore/plan-0r-ci-baseline` from main commit `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`.
+
+Workflow changes:
+
+- Added `.github/workflows/ci.yml`.
+- Updated `.github/workflows/e2e-render-omr.yml` to use Node.js 24.
+- Updated the Render health assertions to the public safe runtime fields actually emitted by the backend.
+- Added read-only `contents: read` workflow permissions.
+
+The general CI workflow runs, in order:
+
+```bash
+npm ci
+npm test
+npm run build
+```
+
+Local validation in a temporary clone of the working branch produced:
+
+- `npm ci`: passed.
+- `npm test`: 662 tests passed, 0 failed, 0 skipped, 0 cancelled.
+- `npm run build`: passed with Vite 8.2.0.
+
+GitHub Actions validation is still pending until the Draft PR creates a real pull-request workflow run. The real check name and final workflow result must be recorded before Plan 0R-A is marked completed.
+
+The existing Audiveris–Render integration was preserved:
+
+- No endpoint changed.
+- `RENDER_BASE_URL` did not change.
+- Upload, polling, MusicXML download, cleanup, and parser-validation flow did not change.
+- `backend/**`, `Dockerfile`, `render.yaml`, application code, tests, dependencies, and production configuration did not change.
+- No deployment was performed.
+
+Plan 0R-B branch protection has not been applied. It requires a successful CI merge to main, confirmation of the real required check name, and separate approval.
 
 ## Partially Implemented or Not Fully Verified
 
@@ -86,23 +123,12 @@ Therefore:
 - Treat `docs/project-charter.md` as authoritative for product and safety rules.
 - Report every documentation/code mismatch explicitly.
 
-## Verification Status of This Documentation Change
+## Current Change Boundaries
 
-This branch changes Markdown documentation only.
+The Plan 0R branch is restricted to:
 
-- No application source code was changed.
-- No dependency was added or updated.
-- No test suite was run for this documentation-only update.
-- No production build was run for this documentation-only update.
-- No merge or deployment was performed.
+- `.github/workflows/**`
+- `docs/current-status.md`
+- `docs/package-status.md`
 
-## Required Next Step Before Coding
-
-Run a fresh read-only package audit and confirm:
-
-1. Current branch and commit
-2. Clean working tree
-3. Current test count and results
-4. Current production build result
-5. Exact status of package prerequisites
-6. Only one recommended next implementation package
+No application source code, backend code, test file, dependency, deployment configuration, production setting, merge, or deployment is included.
