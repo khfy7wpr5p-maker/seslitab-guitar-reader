@@ -58,7 +58,8 @@ jobs:
       - name: Download official Audiveris example PDF
         run: |
           set -euo pipefail
-          URL="https://raw.githubusercontent.com/Audiveris/audiveris/master/data/examples/Dichterliebe01.pdf"
+          SOURCE_REF="5.10.2"
+          URL="https://raw.githubusercontent.com/Audiveris/audiveris/${SOURCE_REF}/data/examples/Dichterliebe01.pdf"
           echo "=== Downloading $URL ==="
           curl -sS --fail --location --retry 3 --retry-delay 5 \
             -o /tmp/dichterliebe-full.pdf "$URL"
@@ -76,6 +77,8 @@ jobs:
             echo "::error::PDF signature mismatch. Expected %PDF, got '$SIG'"
             exit 1
           fi
+          printf '%s\n' "$SOURCE_REF" > /tmp/audiveris-source-ref.txt
+          printf '%s\n' "$URL" > /tmp/audiveris-source-url.txt
           echo "PDF download verified."
 
       # ── D. Extract page 1 ─────────────────────────────────────────
@@ -267,7 +270,19 @@ jobs:
           node scripts/validateE2eMusicXml.mjs /tmp/output.musicxml
           echo "Parser validation passed."
 
-      # ── I. Cleanup (always) ───────────────────────────────────────
+      # ── I. Record golden evidence hashes ──────────────────────────
+      - name: Record golden evidence SHA-256 manifest
+        run: |
+          set -euo pipefail
+          sha256sum \
+            /tmp/dichterliebe-full.pdf \
+            /tmp/dichterliebe-page-1.pdf \
+            /tmp/output.musicxml \
+            > /tmp/golden-sha256.txt
+          echo "=== Golden evidence SHA-256 ==="
+          cat /tmp/golden-sha256.txt
+
+      # ── J. Cleanup (always) ───────────────────────────────────────
       - name: Cleanup test job
         if: always()
         run: |
@@ -284,13 +299,18 @@ jobs:
           cat /tmp/cleanup-response.json 2>/dev/null || echo "(no response body)"
           echo
 
-      # ── J. Upload diagnostics ─────────────────────────────────────
+      # ── K. Upload diagnostics and Plan 0 golden evidence ──────────
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-render-omr-diagnostics
           path: |
+            /tmp/audiveris-source-ref.txt
+            /tmp/audiveris-source-url.txt
+            /tmp/dichterliebe-full.pdf
+            /tmp/dichterliebe-page-1.pdf
+            /tmp/golden-sha256.txt
             /tmp/health.json
             /tmp/upload-response.json
             /tmp/upload-headers.txt
