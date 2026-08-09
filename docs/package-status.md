@@ -1,15 +1,15 @@
 # SesliTab Package Status
 
-Last documentation review: 2026-08-06  
-Implementation baseline reviewed: `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`
+Last documentation review: 2026-08-09  
+Implementation baseline reviewed: `62d7782fc770f807b237ecc54789beb972b658e5`
 
 This table is an orientation snapshot, not completion evidence. A package may be marked **Completed** only after its acceptance criteria, focused tests, full regression suite, production build, and required GitHub workflow evidence have been freshly verified.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
-| 0R-A — Verified CI baseline | Partially implemented | Branch `chore/plan-0r-ci-baseline` adds general CI and updates Render E2E compatibility. Temporary-clone validation passed: `npm ci`, 662/662 tests, and production build. Draft PR and final GitHub Actions evidence are still pending. |
-| 0R-B — Main branch protection | Not started | Main is currently unprotected and has no required checks. Apply only after Plan 0R-A is merged, the real CI check name is confirmed, and separate approval is given. |
-| 0 — Safe baseline | Not verified | Plan 0R is establishing the repository-wide CI baseline; final GitHub workflow evidence is not yet complete. |
+| 0R-A — Verified CI baseline | Completed | PR #14 merged the CI baseline to `main` at `62d7782fc770f807b237ecc54789beb972b658e5`. Local branch validation recorded `npm ci`, 662/662 tests, and production build passing. GitHub Actions run `31156531809` on the merged main SHA completed successfully; required job `test-and-build`, dependency installation, tests, and production build all passed. |
+| 0R-B — Main branch protection | Completed | `main` is protected by classic branch protection. PRs are required; required approvals are `0`; stale approvals are dismissed on new commits; latest-push approval and Code Owner review are not required; `test-and-build`, up-to-date branches, and conversation resolution are required; administrator/custom-role bypass is disabled; force pushes and deletions are disabled. No named user, team, or app review-bypass actor was visible in the verified configuration. |
+| 0 — Safe baseline | Not verified | Plan 0R CI and main-protection evidence is complete, but Package 0 recovery-point and golden-reference acceptance criteria have not been freshly verified as a separate package. |
 | 1A — Queue, retry, restart, cancellation | Partially implemented | Queue, job manager, worker, persistence, recovery, retry and cancel foundations exist; full real-process cancellation and duplicate/ghost-job criteria require fresh verification. |
 | 1B — File, XML and API security | Partially implemented | Upload limits, PDF checks, XML security, CORS, rate limiting and safe health output have foundations; all required security tests were not freshly verified here. |
 | 2A — Canonical note and time model | Partially implemented | Canonical pitch, time, verification metadata and consumption-policy foundations exist; every consumer is not yet proven to use them consistently. |
@@ -37,26 +37,56 @@ This table is an orientation snapshot, not completion evidence. A package may be
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | A responsive web foundation exists; iPhone VoiceOver, audio lifecycle, privacy and productisation criteria are not verified. |
 
-## Plan 0R-A Evidence
+## Plan 0R Evidence
 
-- Baseline main SHA: `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`
-- Working branch: `chore/plan-0r-ci-baseline`
-- Changed workflow files:
+### Plan 0R-A
+
+- Pre-merge baseline main SHA: `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`
+- Implementation branch: `chore/plan-0r-ci-baseline`
+- Merge PR: #14
+- Verified merged main SHA: `62d7782fc770f807b237ecc54789beb972b658e5`
+- Workflow files delivered by Plan 0R-A:
   - `.github/workflows/ci.yml`
   - `.github/workflows/e2e-render-omr.yml`
-- Documentation files:
-  - `docs/current-status.md`
-  - `docs/package-status.md`
 - Node.js: 24
-- `npm ci`: passed in a temporary clone
-- `npm test`: 662 passed, 0 failed, 0 skipped, 0 cancelled
-- `npm run build`: passed
-- GitHub Actions: pending Draft PR
-- Branch protection: not changed
-- Merge: not performed
+- Temporary-clone `npm ci`: passed
+- Temporary-clone `npm test`: 662 passed, 0 failed, 0 skipped, 0 cancelled
+- Temporary-clone `npm run build`: passed
+- GitHub Actions workflow: `CI`
+- GitHub Actions run ID: `31156531809`
+- GitHub Actions event: `push`
+- GitHub Actions conclusion: `success`
+- Required job: `test-and-build`
+- GitHub-hosted dependency installation: passed
+- GitHub-hosted tests: passed
+- GitHub-hosted production build: passed
 - Deploy: not performed
 
-The existing Audiveris–Render integration, endpoints, base URL, production configuration, and runtime flow were not changed.
+The existing Audiveris–Render integration, endpoints, base URL, production configuration, and runtime flow were not changed by Plan 0R-A.
+
+### Plan 0R-B
+
+- Protected branch: `main`
+- Protection source: classic branch protection
+- Repository rulesets: none returned
+- Effective rulesets for `main`: none returned
+- Pull request before merge: required
+- Required approving reviews: `0`
+- Dismiss stale approvals after new commits: enabled
+- Code Owner review: disabled
+- Approval of most recent reviewable push: disabled
+- Required status checks: enabled
+- Required status check: `test-and-build`
+- Branch must be up to date before merge: enabled
+- Conversation resolution before merge: enabled
+- `Do not allow bypassing the above settings`: enabled
+- Named user/team/app review-bypass actor: none visible in the verified protection configuration
+- Force pushes: disabled
+- Branch deletion: disabled
+
+The connected GitHub integration and `gh api` detailed branch-protection query both returned HTTP 403 for the protection-detail endpoint. The missing review-count and bypass/admin-enforcement fields were therefore verified read-only through the GitHub branch-protection settings UI without saving or changing any setting.
+
+Required approvals remain `0`. This prevents an approval-only deadlock for a single-developer repository, while also meaning that a second human review is not a mandatory merge requirement.
 
 ## Interpretation Rules
 
