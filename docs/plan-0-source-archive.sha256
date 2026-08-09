@@ -1,0 +1,7 @@
+# Plan 0 Safe Baseline source archive integrity record
+# Generated locally with git archive from the exact tested source commit.
+# Release/publish was not performed.
+# Archive filename: seslitab-guitar-reader-plan0-6485ff1.zip
+# Exact source commit: 6485ff117f4559a1a7571994d312a85c1983480e
+# Archive validation: unzip -t PASS; no compressed-data errors detected.
+578835c78285cd2cf2b18ad2917b1e9aca6ee9bc2aaa232b9d569cc6c2c2b42a  seslitab-guitar-reader-plan0-6485ff1.zip
