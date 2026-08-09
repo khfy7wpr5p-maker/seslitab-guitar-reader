@@ -1,4 +1,4 @@
-name: E2E — Real OMR via Render API
+name: Plan 0 — CC0 Golden Reference OMR
 
 on:
   workflow_dispatch:
@@ -7,11 +7,15 @@ permissions:
   contents: read
 
 jobs:
-  e2e-render-omr:
+  plan0-golden-reference:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       RENDER_BASE_URL: https://seslitab-omr.onrender.com
+      GOLDEN_DIR: tests/fixtures/golden-reference/plan0-cc0-4measure
+      SOURCE_PDF: tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-source.pdf
+      EXPECTED_XML: tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-expected.musicxml
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,270 +23,297 @@ jobs:
         with:
           node-version: 24
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      # ── B. Health check ──────────────────────────────────────────
-      - name: Verify production health endpoint
-        id: health
+      - name: Verify approved fixture SHA-256
         run: |
           set -euo pipefail
-          echo "=== Fetching /health ==="
+          cd "$GOLDEN_DIR"
+          sha256sum -c plan0-cc0-4measure-sha256.txt
+
+      - name: Verify source PDF
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_PDF"
+          SIZE=$(stat -c%s "$SOURCE_PDF")
+          SIG=$(head -c 4 "$SOURCE_PDF")
+          echo "source_size=$SIZE"
+          echo "source_signature=$SIG"
+          [ "$SIZE" -gt 1024 ]
+          [ "$SIG" = "%PDF" ]
+
+      - name: Verify production health endpoint
+        run: |
+          set -euo pipefail
           curl -sS --fail-with-body --retry 3 --retry-delay 5 \
             "${RENDER_BASE_URL}/health" -o /tmp/health.json
-          echo "--- health.json ---"
           cat /tmp/health.json
-          echo
-          echo "=== Assertions ==="
-          STATUS=$(jq -r '.data.status' /tmp/health.json)
-          PROVIDER=$(jq -r '.data.provider' /tmp/health.json)
-          AVAIL=$(jq -r '.data.runtime.audiverisAvailable' /tmp/health.json)
-          VCHECK=$(jq -r '.data.runtime.versionCheck' /tmp/health.json)
-          TMP_W=$(jq -r '.data.runtime.tempWritable' /tmp/health.json)
-          STORAGE_W=$(jq -r '.data.runtime.storageWritable' /tmp/health.json)
-          echo "status=$STATUS provider=$PROVIDER audiverisAvailable=$AVAIL versionCheck=$VCHECK tempWritable=$TMP_W storageWritable=$STORAGE_W"
-          FAIL=0
-          [ "$STATUS" = "ok" ] || { echo "::error::data.status != ok (got $STATUS)"; FAIL=1; }
-          [ "$PROVIDER" = "audiveris" ] || { echo "::error::data.provider != audiveris (got $PROVIDER)"; FAIL=1; }
-          [ "$AVAIL" = "true" ] || { echo "::error::audiverisAvailable != true (got $AVAIL)"; FAIL=1; }
-          [ "$VCHECK" = "true" ] || { echo "::error::versionCheck != true (got $VCHECK)"; FAIL=1; }
-          [ "$TMP_W" = "true" ] || { echo "::error::tempWritable != true (got $TMP_W)"; FAIL=1; }
-          [ "$STORAGE_W" = "true" ] || { echo "::error::storageWritable != true (got $STORAGE_W)"; FAIL=1; }
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::Health check failed. Complete response:"
-            cat /tmp/health.json
-            exit 1
-          fi
-          echo "Health check passed."
+          jq -e '
+            .success == true and
+            .data.status == "ok" and
+            .data.provider == "audiveris" and
+            .data.runtime.audiverisAvailable == true and
+            .data.runtime.versionCheck == true and
+            .data.runtime.tempWritable == true and
+            .data.runtime.storageWritable == true
+          ' /tmp/health.json >/dev/null
 
-      # ── C. Download official Audiveris example PDF ───────────────
-      - name: Download official Audiveris example PDF
-        run: |
-          set -euo pipefail
-          SOURCE_REF="5.10.2"
-          URL="https://raw.githubusercontent.com/Audiveris/audiveris/${SOURCE_REF}/data/examples/SchbAvMaSample.pdf"
-          echo "=== Downloading $URL ==="
-          curl -sS --fail --location --retry 3 --retry-delay 5 \
-            -o /tmp/dichterliebe-full.pdf "$URL"
-          echo "Download complete."
-          ls -lh /tmp/dichterliebe-full.pdf
-          SIZE=$(stat -c%s /tmp/dichterliebe-full.pdf)
-          echo "File size: $SIZE bytes"
-          if [ "$SIZE" -le 10240 ]; then
-            echo "::error::File is too small (<= 10 KB): $SIZE bytes"
-            exit 1
-          fi
-          SIG=$(head -c 4 /tmp/dichterliebe-full.pdf)
-          echo "First 4 bytes: '$SIG'"
-          if [ "$SIG" != "%PDF" ]; then
-            echo "::error::PDF signature mismatch. Expected %PDF, got '$SIG'"
-            exit 1
-          fi
-          printf '%s\n' "$SOURCE_REF" > /tmp/audiveris-source-ref.txt
-          printf '%s\n' "$URL" > /tmp/audiveris-source-url.txt
-          echo "PDF download verified."
-
-      # ── D. Extract page 1 ─────────────────────────────────────────
-      - name: Install pdftk for page extraction
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq pdftk
-
-      - name: Extract page 1 into a new PDF
-        run: |
-          set -euo pipefail
-          echo "=== Extracting page 1 ==="
-          pdftk /tmp/dichterliebe-full.pdf cat 1 output /tmp/dichterliebe-page-1.pdf
-          echo "Extraction complete."
-          ls -lh /tmp/dichterliebe-page-1.pdf
-          SIZE=$(stat -c%s /tmp/dichterliebe-page-1.pdf)
-          echo "Page-1 file size: $SIZE bytes"
-          if [ "$SIZE" -le 5120 ]; then
-            echo "::error::Extracted file is too small (<= 5 KB): $SIZE bytes"
-            exit 1
-          fi
-          SIG=$(head -c 4 /tmp/dichterliebe-page-1.pdf)
-          echo "First 4 bytes: '$SIG'"
-          if [ "$SIG" != "%PDF" ]; then
-            echo "::error::Extracted PDF signature mismatch. Expected %PDF, got '$SIG'"
-            exit 1
-          fi
-          echo "Page extraction verified."
-
-      # ── E. Upload one-page PDF ────────────────────────────────────
-      - name: Upload PDF to Render OMR API
+      - name: Upload approved PDF to Render OMR API
         id: upload
         run: |
           set -euo pipefail
-          echo "=== Uploading /tmp/dichterliebe-page-1.pdf ==="
           HTTP_CODE=$(curl -sS -o /tmp/upload-response.json -w "%{http_code}" \
             -D /tmp/upload-headers.txt \
             -X POST "${RENDER_BASE_URL}/api/v1/pdf/upload" \
-            -F "file=@/tmp/dichterliebe-page-1.pdf" \
+            -F "file=@${SOURCE_PDF}" \
             -F "provider=audiveris")
-          echo "--- HTTP status: $HTTP_CODE ---"
-          echo "--- Upload headers ---"
-          cat /tmp/upload-headers.txt
-          echo "--- Upload response JSON ---"
           cat /tmp/upload-response.json
-          echo
-          if [ "$HTTP_CODE" != "201" ]; then
-            echo "::error::Upload failed with HTTP $HTTP_CODE (expected 201)"
-            exit 1
-          fi
-          SUCCESS=$(jq -r '.success' /tmp/upload-response.json)
+          [ "$HTTP_CODE" = "201" ]
+          jq -e '.success == true and .data.provider == "audiveris"' /tmp/upload-response.json >/dev/null
           JOB_ID=$(jq -r '.data.jobId' /tmp/upload-response.json)
-          JOB_PROVIDER=$(jq -r '.data.provider' /tmp/upload-response.json)
-          JOB_STATUS=$(jq -r '.data.status' /tmp/upload-response.json)
-          echo "success=$SUCCESS jobId=$JOB_ID provider=$JOB_PROVIDER status=$JOB_STATUS"
-          if [ "$SUCCESS" != "true" ]; then
-            echo "::error::Upload success != true"
-            exit 1
-          fi
-          if [ -z "$JOB_ID" ] || [ "$JOB_ID" = "null" ]; then
-            echo "::error::Upload returned empty jobId"
-            exit 1
-          fi
-          if [ "$JOB_PROVIDER" != "audiveris" ]; then
-            echo "::error::Upload provider != audiveris (got $JOB_PROVIDER)"
-            exit 1
-          fi
-          case "$JOB_STATUS" in
-            uploaded|queued|processing) echo "Initial status OK: $JOB_STATUS" ;;
-            *) echo "::error::Unexpected initial status: $JOB_STATUS"; exit 1 ;;
-          esac
+          [ -n "$JOB_ID" ] && [ "$JOB_ID" != "null" ]
           echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
 
-      # ── F. Poll job status ────────────────────────────────────────
       - name: Poll job status until terminal
         id: poll
         run: |
           set -euo pipefail
           JOB_ID="${{ steps.upload.outputs.job_id }}"
-          echo "=== Polling status for job $JOB_ID ==="
           : > /tmp/polling-log.txt
-          FINAL_STATUS=""
           for i in $(seq 1 36); do
             curl -sS -o "/tmp/status-$i.json" \
               "${RENDER_BASE_URL}/api/v1/job/$JOB_ID"
             STATUS=$(jq -r '.data.status' "/tmp/status-$i.json")
-            if [ -z "$STATUS" ] || [ "$STATUS" = "null" ]; then
-              echo "::error::Malformed status response: .data.status is null or missing. Complete response:"
-              cat "/tmp/status-$i.json"
-              echo
-              exit 1
-            fi
             PROGRESS=$(jq -r '.data.progress // "n/a"' "/tmp/status-$i.json")
-            UPDATED=$(jq -r '.data.updatedAt // "n/a"' "/tmp/status-$i.json")
-            LINE="Poll #$i: status=$STATUS progress=$PROGRESS updatedAt=$UPDATED"
+            LINE="Poll #$i: status=$STATUS progress=$PROGRESS"
             echo "$LINE"
             echo "$LINE" >> /tmp/polling-log.txt
-            FINAL_STATUS="$STATUS"
             case "$STATUS" in
               completed)
-                echo "Job reached terminal state: $STATUS"
                 echo "final_status=$STATUS" >> "$GITHUB_OUTPUT"
                 exit 0
                 ;;
-              musicxml_created)
-                echo "Job reached intermediate state: $STATUS — continuing to poll"
-                ;;
               failed|expired)
-                echo "::error::Job reached $STATUS. Complete status response:"
+                echo "::error::OMR job reached $STATUS"
                 cat "/tmp/status-$i.json"
-                echo
-                ERR_CODE=$(jq -r '.data.error.code // "none"' "/tmp/status-$i.json")
-                ERR_MSG=$(jq -r '.data.error.message // "none"' "/tmp/status-$i.json")
-                echo "error.code=$ERR_CODE"
-                echo "error.message=$ERR_MSG"
-                echo "error.details:"
-                jq '.data.error.details // {}' "/tmp/status-$i.json"
                 exit 1
                 ;;
             esac
             sleep 5
           done
-          echo "::error::Polling timed out after 180 seconds. Final status: $FINAL_STATUS"
-          echo "=== Final complete status JSON ==="
-          cat "/tmp/status-36.json" 2>/dev/null || echo "(no final status file)"
+          echo "::error::OMR polling timed out"
           exit 1
 
-      # ── G. Download raw MusicXML ──────────────────────────────────
       - name: Download raw MusicXML
         run: |
           set -euo pipefail
           JOB_ID="${{ steps.upload.outputs.job_id }}"
-          echo "=== Downloading raw MusicXML for job $JOB_ID ==="
           HTTP_CODE=$(curl -sS -o /tmp/output.musicxml -w "%{http_code}" \
             -D /tmp/download-headers.txt \
             "${RENDER_BASE_URL}/api/jobs/$JOB_ID/musicxml")
-          echo "--- HTTP status: $HTTP_CODE ---"
-          echo "--- Download headers ---"
-          cat /tmp/download-headers.txt
-          echo "--- File info ---"
-          ls -lh /tmp/output.musicxml
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Download failed with HTTP $HTTP_CODE (expected 200)"
-            cat /tmp/output.musicxml
-            exit 1
-          fi
-          CT=$(grep -i '^content-type:' /tmp/download-headers.txt | head -1 | tr -d '\r')
-          echo "Content-Type: $CT"
-          if ! echo "$CT" | grep -qi 'application/xml\|text/xml'; then
-            echo "::error::Content-Type does not contain application/xml or text/xml"
-            exit 1
-          fi
+          [ "$HTTP_CODE" = "200" ]
           SIZE=$(stat -c%s /tmp/output.musicxml)
-          echo "File size: $SIZE bytes"
-          if [ "$SIZE" -le 500 ]; then
-            echo "::error::MusicXML file is too small (<= 500 bytes): $SIZE"
-            exit 1
-          fi
-          if ! grep -Eq '<score-(partwise|timewise)([[:space:]>])' /tmp/output.musicxml; then
-            echo "::error::MusicXML does not contain <score-partwise or <score-timewise root element"
-            echo "--- Diagnostics ---"
-            echo "Content-Type: $CT"
-            echo "File size: $SIZE bytes"
-            echo "First 500 bytes:"
-            head -c 500 /tmp/output.musicxml
-            echo
-            echo "First XML element:"
-            grep -m1 -o '<[a-zA-Z][^>]*>' /tmp/output.musicxml || echo "(no XML element found)"
-            exit 1
-          fi
-          MEASURE_COUNT=$(grep -o '<measure ' /tmp/output.musicxml | wc -l)
-          NOTE_COUNT=$(grep -o '<note ' /tmp/output.musicxml | wc -l)
-          echo "Structural checks: measures=$MEASURE_COUNT notes=$NOTE_COUNT"
-          if [ "$MEASURE_COUNT" -lt 1 ]; then
-            echo "::error::No <measure> elements found"
-            exit 1
-          fi
-          if [ "$NOTE_COUNT" -lt 1 ]; then
-            echo "::error::No <note> elements found"
-            exit 1
-          fi
-          echo "Raw MusicXML download verified."
+          [ "$SIZE" -gt 500 ]
+          grep -Eq '<score-(partwise|timewise)([[:space:]>])' /tmp/output.musicxml
+          echo "raw_musicxml_size=$SIZE"
 
-      # ── H. Validate with real parser ──────────────────────────────
-      - name: Validate MusicXML with real SesliTab parser
+      - name: Validate raw MusicXML with real SesliTab parser
         run: |
           set -euo pipefail
-          echo "=== Running real MusicXML parser ==="
-          node scripts/validateE2eMusicXml.mjs /tmp/output.musicxml
-          echo "Parser validation passed."
+          node scripts/validateE2eMusicXml.mjs /tmp/output.musicxml \
+            | tee /tmp/parser-validation.txt
 
-      # ── I. Record golden evidence hashes ──────────────────────────
-      - name: Record golden evidence SHA-256 manifest
+      - name: Compare OMR output with approved expected MusicXML
         run: |
           set -euo pipefail
-          sha256sum \
-            /tmp/dichterliebe-full.pdf \
-            /tmp/dichterliebe-page-1.pdf \
-            /tmp/output.musicxml \
-            > /tmp/golden-sha256.txt
-          echo "=== Golden evidence SHA-256 ==="
-          cat /tmp/golden-sha256.txt
+          python3 - "$EXPECTED_XML" /tmp/output.musicxml <<'PY' | tee /tmp/semantic-comparison.txt
+          import json
+          import sys
+          import xml.etree.ElementTree as ET
 
-      # ── J. Cleanup (always) ───────────────────────────────────────
+          expected_path, actual_path = sys.argv[1], sys.argv[2]
+          report = {
+              "expected": expected_path,
+              "actual": actual_path,
+              "match": False,
+          }
+
+          def local(tag):
+              return tag.rsplit("}", 1)[-1]
+
+          def direct_children(element, name):
+              return [child for child in list(element) if local(child.tag) == name]
+
+          def first_direct(element, name):
+              items = direct_children(element, name)
+              return items[0] if items else None
+
+          def first_desc(element, name):
+              for item in element.iter():
+                  if local(item.tag) == name:
+                      return item
+              return None
+
+          def text_of(element, name):
+              child = first_desc(element, name)
+              return child.text.strip() if child is not None and child.text else None
+
+          TYPE_BEATS = {
+              "whole": 4.0,
+              "half": 2.0,
+              "quarter": 1.0,
+              "eighth": 0.5,
+              "16th": 0.25,
+              "32nd": 0.125,
+          }
+
+          def parse_score(path):
+              root = ET.parse(path).getroot()
+              if local(root.tag) != "score-partwise":
+                  raise ValueError(f"{path}: expected score-partwise root, got {local(root.tag)}")
+
+              parts = direct_children(root, "part")
+              if len(parts) != 1:
+                  raise ValueError(f"{path}: expected exactly 1 part, got {len(parts)}")
+
+              measures = direct_children(parts[0], "measure")
+              divisions = None
+              notes = []
+              time_signature = None
+              clef = None
+
+              for measure_index, measure in enumerate(measures, start=1):
+                  attributes = first_direct(measure, "attributes")
+                  if attributes is not None:
+                      div = first_direct(attributes, "divisions")
+                      if div is not None and div.text:
+                          divisions = int(div.text.strip())
+
+                      time_el = first_direct(attributes, "time")
+                      if time_el is not None:
+                          beats = text_of(time_el, "beats")
+                          beat_type = text_of(time_el, "beat-type")
+                          if beats and beat_type:
+                              time_signature = [beats, beat_type]
+
+                      clef_el = first_direct(attributes, "clef")
+                      if clef_el is not None:
+                          sign = text_of(clef_el, "sign")
+                          line = text_of(clef_el, "line")
+                          if sign and line:
+                              clef = [sign, line]
+
+                  if direct_children(measure, "backup") or direct_children(measure, "forward"):
+                      raise ValueError(f"{path}: unexpected backup/forward in measure {measure_index}")
+
+                  measure_number = measure.attrib.get("number", str(measure_index))
+
+                  for note in direct_children(measure, "note"):
+                      if first_direct(note, "grace") is not None:
+                          raise ValueError(f"{path}: unexpected grace note in measure {measure_number}")
+                      if first_direct(note, "chord") is not None:
+                          raise ValueError(f"{path}: unexpected chord note in measure {measure_number}")
+                      if first_direct(note, "rest") is not None:
+                          raise ValueError(f"{path}: unexpected rest in measure {measure_number}")
+
+                      pitch = first_direct(note, "pitch")
+                      if pitch is None:
+                          raise ValueError(f"{path}: note without pitch in measure {measure_number}")
+
+                      step = text_of(pitch, "step")
+                      octave = text_of(pitch, "octave")
+                      alter_text = text_of(pitch, "alter")
+                      alter = int(alter_text) if alter_text is not None else 0
+
+                      duration_el = first_direct(note, "duration")
+                      type_el = first_direct(note, "type")
+                      note_type = type_el.text.strip() if type_el is not None and type_el.text else None
+
+                      beats_value = None
+                      if duration_el is not None and duration_el.text and divisions:
+                          beats_value = int(duration_el.text.strip()) / divisions
+                      elif note_type in TYPE_BEATS:
+                          beats_value = TYPE_BEATS[note_type]
+
+                      if beats_value is None:
+                          raise ValueError(
+                              f"{path}: cannot resolve duration in measure {measure_number}"
+                          )
+
+                      notes.append({
+                          "measure": str(measure_number),
+                          "step": step,
+                          "alter": alter,
+                          "octave": int(octave),
+                          "beats": round(float(beats_value), 6),
+                      })
+
+              return {
+                  "part_count": 1,
+                  "measure_count": len(measures),
+                  "time_signature": time_signature,
+                  "clef": clef,
+                  "notes": notes,
+              }
+
+          try:
+              expected = parse_score(expected_path)
+              actual = parse_score(actual_path)
+              report["expected_summary"] = expected
+              report["actual_summary"] = actual
+
+              if expected["measure_count"] != 4:
+                  raise ValueError(
+                      f"approved expected fixture must have 4 measures, got {expected['measure_count']}"
+                  )
+              if len(expected["notes"]) != 16:
+                  raise ValueError(
+                      f"approved expected fixture must have 16 pitched notes, got {len(expected['notes'])}"
+                  )
+
+              mismatches = []
+              for field in ("part_count", "measure_count", "time_signature", "clef", "notes"):
+                  if expected[field] != actual[field]:
+                      mismatches.append(field)
+
+              report["mismatches"] = mismatches
+              report["match"] = not mismatches
+
+              with open("/tmp/semantic-comparison.json", "w", encoding="utf-8") as fh:
+                  json.dump(report, fh, ensure_ascii=False, indent=2)
+
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+
+              if mismatches:
+                  print(
+                      "Golden semantic comparison failed: "
+                      + ", ".join(mismatches),
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          except Exception as exc:
+              report["error"] = str(exc)
+              with open("/tmp/semantic-comparison.json", "w", encoding="utf-8") as fh:
+                  json.dump(report, fh, ensure_ascii=False, indent=2)
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+              print(f"Golden semantic comparison error: {exc}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Record evidence SHA-256
+        if: always()
+        run: |
+          set -euo pipefail
+          : > /tmp/golden-evidence-sha256.txt
+          sha256sum "$SOURCE_PDF" >> /tmp/golden-evidence-sha256.txt
+          sha256sum "$EXPECTED_XML" >> /tmp/golden-evidence-sha256.txt
+          if [ -f /tmp/output.musicxml ]; then
+            sha256sum /tmp/output.musicxml >> /tmp/golden-evidence-sha256.txt
+          fi
+          cat /tmp/golden-evidence-sha256.txt
+
       - name: Cleanup test job
         if: always()
         run: |
@@ -291,26 +322,20 @@ jobs:
             echo "No job ID was created; skipping cleanup."
             exit 0
           fi
-          echo "=== Deleting job $JOB_ID ==="
           HTTP_CODE=$(curl -sS -o /tmp/cleanup-response.json -w "%{http_code}" \
             -X DELETE "${RENDER_BASE_URL}/api/v1/job/$JOB_ID" || true)
-          echo "Cleanup HTTP status: $HTTP_CODE"
-          echo "Cleanup response:"
-          cat /tmp/cleanup-response.json 2>/dev/null || echo "(no response body)"
-          echo
+          echo "cleanup_http_status=$HTTP_CODE"
+          cat /tmp/cleanup-response.json 2>/dev/null || true
 
-      # ── K. Upload diagnostics and Plan 0 golden evidence ──────────
-      - name: Upload diagnostics
+      - name: Upload Plan 0 golden evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-render-omr-diagnostics
+          name: plan0-cc0-golden-reference-evidence
           path: |
-            /tmp/audiveris-source-ref.txt
-            /tmp/audiveris-source-url.txt
-            /tmp/dichterliebe-full.pdf
-            /tmp/dichterliebe-page-1.pdf
-            /tmp/golden-sha256.txt
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-source.pdf
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-expected.musicxml
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-sha256.txt
             /tmp/health.json
             /tmp/upload-response.json
             /tmp/upload-headers.txt
@@ -318,6 +343,10 @@ jobs:
             /tmp/polling-log.txt
             /tmp/download-headers.txt
             /tmp/output.musicxml
+            /tmp/parser-validation.txt
+            /tmp/semantic-comparison.txt
+            /tmp/semantic-comparison.json
+            /tmp/golden-evidence-sha256.txt
             /tmp/cleanup-response.json
           if-no-files-found: ignore
           retention-days: 14
