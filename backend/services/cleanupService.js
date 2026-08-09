@@ -10,13 +10,35 @@ let timer = null
 export function startCleanup() { if (timer) return; timer = setInterval(() => runCleanup().catch((e) => console.error('[Cleanup]', e.message)), GATEWAY_CONFIG.cleanupIntervalSeconds * 1000); console.log(`[Cleanup] Started — interval: ${GATEWAY_CONFIG.cleanupIntervalSeconds}s`) }
 export function stopCleanup() { if (timer) { clearInterval(timer); timer = null; console.log('[Cleanup] Stopped.') } }
 
+function terminalRetentionDeadline(m) {
+  if (m.status !== 'completed' && m.status !== 'failed') return null
+  const terminalAt = m.status === 'completed' ? m.completedAt : m.updatedAt
+  const ttlDays = m.status === 'completed' ? GATEWAY_CONFIG.completedTtlDays : GATEWAY_CONFIG.failedTtlDays
+  const terminalMs = typeof terminalAt === 'string' ? Date.parse(terminalAt) : NaN
+  if (!Number.isFinite(terminalMs) || !Number.isFinite(ttlDays) || ttlDays <= 0) return null
+  const baselineDeadlineMs = terminalMs + ttlDays * 86400000
+  const explicitDeadlineMs = typeof m.retentionUntil === 'string' ? Date.parse(m.retentionUntil) : NaN
+  const effectiveDeadlineMs = Number.isFinite(explicitDeadlineMs) ? Math.max(baselineDeadlineMs, explicitDeadlineMs) : baselineDeadlineMs
+  return Number.isFinite(effectiveDeadlineMs) ? new Date(effectiveDeadlineMs).toISOString() : null
+}
+
 export async function runCleanup({ storageApi = storage, jobManagerApi = jobManager, queueApi = queue, activeCheck = isJobActive } = {}) {
   if (!jobManagerApi.isRecoveryComplete()) return { cleaned: [], protected: [], skipped: 'RECOVERY_INCOMPLETE' }
   const cleaned = []; const protectedDirs = []
   for (const id of await storageApi.listJobs()) {
     const read = await storageApi.readMetadata(id)
     if (!read.ok) { protectedDirs.push({ jobId: id, code: read.code }); continue }
-    const m = read.metadata
+    let m = read.metadata
+
+    const terminalDeadline = terminalRetentionDeadline(m)
+    const terminalRetentionPassed = terminalDeadline !== null && Date.parse(terminalDeadline) <= Date.now()
+    const terminalEligible = terminalRetentionPassed && m.retentionClass === 'runtime' && m.teacherApproved !== true && m.protected !== true && !activeCheck(id) && !queueApi.contains(id)
+    if (terminalEligible) {
+      const known = jobManagerApi.snapshot().find((j) => j.jobId === id)
+      if (!known || known.status !== m.status) { protectedDirs.push({ jobId: id, code: 'UNCERTAIN_OWNERSHIP' }); continue }
+      m = await jobManagerApi.updateStatus(id, 'expired', { retentionUntil: terminalDeadline, cleanupEligible: true })
+    }
+
     const retentionPassed = typeof m.retentionUntil === 'string' && Number.isFinite(Date.parse(m.retentionUntil)) && Date.parse(m.retentionUntil) <= Date.now()
     const eligible = m.status === 'expired' && retentionPassed && m.cleanupEligible === true && m.retentionClass === 'runtime' && m.teacherApproved !== true && m.protected !== true && !activeCheck(id) && !queueApi.contains(id)
     if (!eligible) continue
