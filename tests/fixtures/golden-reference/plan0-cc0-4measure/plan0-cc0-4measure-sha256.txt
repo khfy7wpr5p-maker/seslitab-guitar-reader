@@ -1,0 +1,2 @@
+c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed  plan0-cc0-4measure-source.pdf
+a728bf04c4e381fddf500e3e7b95191929ef71ac7e0e17e99cccf9d595a6652b  plan0-cc0-4measure-expected.musicxml
