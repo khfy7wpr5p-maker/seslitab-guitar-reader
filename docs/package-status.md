@@ -94,6 +94,7 @@ Required approvals remain `0`. This prevents an approval-only deadlock for a sin
 - Short baseline SHA: `c4f68bfe`
 - Baseline commit message: `Merge PR #15: Docs: record verified Plan 0R status`
 - Baseline commit date: `2026-08-09T04:41:07Z`
+- Approval state: Plan 0-B implementation and PR #16 merge were explicitly approved by the repository owner on 2026-08-09.
 - Recovery branch: `recovery/plan-0-c4f68bfe`
 - Recovery branch target: `c4f68bfef70b22bd864b2736d2e8d31cd10d036b`
 - Annotated tag: `plan-0-baseline-c4f68bfe`
