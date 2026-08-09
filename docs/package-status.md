@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-09  
-Implementation baseline reviewed: `c4f68bfef70b22bd864b2736d2e8d31cd10d036b`
+Implementation baseline reviewed: `c2056f03f17fa282804b199e4582a94cca058f5d`
 
 This table is an orientation snapshot, not completion evidence. A package may be marked **Completed** only after its acceptance criteria, focused tests, full regression suite, production build, and required GitHub workflow evidence have been freshly verified.
 
@@ -9,7 +9,7 @@ This table is an orientation snapshot, not completion evidence. A package may be
 |---|---|---|
 | 0R-A — Verified CI baseline | Completed | PR #14 merged the CI baseline to `main` at `62d7782fc770f807b237ecc54789beb972b658e5`. Local branch validation recorded `npm ci`, 662/662 tests, and production build passing. GitHub Actions run `31156531809` on the merged main SHA completed successfully; required job `test-and-build`, dependency installation, tests, and production build all passed. |
 | 0R-B — Main branch protection | Completed | `main` is protected by classic branch protection. PRs are required; required approvals are `0`; stale approvals are dismissed on new commits; latest-push approval and Code Owner review are not required; `test-and-build`, up-to-date branches, and conversation resolution are required; administrator/custom-role bypass is disabled; force pushes and deletions are disabled. No named user, team, or app review-bypass actor was visible in the verified configuration. |
-| 0 — Safe baseline | Partially implemented | Baseline commit `c4f68bfef70b22bd864b2736d2e8d31cd10d036b` is now pinned by recovery branch `recovery/plan-0-c4f68bfe` and annotated tag `plan-0-baseline-c4f68bfe`. The tag is annotated but unsigned. GitHub-hosted CI on the same commit passed 662/662 tests and the production build. No release/ZIP artifact or SHA-256 archive record exists yet. Existing real-OMR MusicXML fixtures are regression inputs, but the complete source-PDF/image → OMR → teacher-approved MusicXML golden-reference chain, license/source evidence, teacher approval, and golden manifest/hash records remain incomplete. |
+| 0 — Safe baseline | Partially implemented | The technical baseline/recovery/CI gate is closed: the verified baseline is pinned by recovery branch `recovery/plan-0-c4f68bfe` and annotated tag `plan-0-baseline-c4f68bfe`; PR #16 merged the recovery evidence; post-merge `main` CI run `31297821848` passed on `c2056f03f17fa282804b199e4582a94cca058f5d`. Golden-reference evidence remains a separate deferred verification task: the complete source-PDF/image → OMR → teacher-approved MusicXML chain, license/source evidence, teacher approval, and golden manifest/hash records are not yet complete. |
 | 1A — Queue, retry, restart, cancellation | Partially implemented | Queue, job manager, worker, persistence, recovery, retry and cancel foundations exist; full real-process cancellation and duplicate/ghost-job criteria require fresh verification. |
 | 1B — File, XML and API security | Partially implemented | Upload limits, PDF checks, XML security, CORS, rate limiting and safe health output have foundations; all required security tests were not freshly verified here. |
 | 2A — Canonical note and time model | Partially implemented | Canonical pitch, time, verification metadata and consumption-policy foundations exist; every consumer is not yet proven to use them consistently. |
@@ -126,7 +126,21 @@ The recovery refs identify source-code state only. They do not roll back Render 
 
 A safe source recovery should create a new working branch from the verified recovery tag or branch, use the normal pull-request path, require the current CI gate, and obtain separate merge approval. Do not use force-push, direct protected-branch rewriting, or destructive reset as the normal recovery procedure.
 
-Package 0 remains incomplete until its golden-reference acceptance criteria and any separately approved archive/integrity requirements are satisfied. Creating the recovery branch and annotated tag does not by itself mean that Plan 0 is complete.
+## Plan 0 Technical Closure Decision
+
+- Decision date: 2026-08-09
+- Decision approval: explicitly approved by the repository owner.
+- Verified current `main` after PR #16: `c2056f03f17fa282804b199e4582a94cca058f5d`.
+- Post-merge CI run: `31297821848`, event `push`, conclusion `success`.
+- Required `test-and-build` job: dependency installation, tests, and production build all passed.
+- Technical baseline/recovery/CI work is therefore closed and does not require another real-OMR E2E rerun before proceeding to the next development package.
+- The attempted evidence-preservation workflow run `31298570846` failed before OMR execution because the Render `/health` endpoint returned HTTP 503; PDF download, OMR, MusicXML validation, and SHA-256 manifest steps were skipped. This failed run is not golden-reference evidence.
+- Branch `chore/plan-0-golden-reference-closure` is not approved for merge as part of this closure decision and remains separate; it is not deleted by this decision.
+- Golden-reference, teacher-verification, source/license, manifest/SHA-256, expected TTS, and expected Guitar TAB evidence remain open as a separate verification/data package. Existing real-OMR fixtures must not be relabelled as teacher-approved golden references without evidence.
+- The known dependency-audit warning (`1 high severity vulnerability`) remains an open risk and is not fixed or hidden by this decision.
+- No deployment, runtime/backend change, release, ZIP publication, recovery-ref change, or branch deletion is part of this technical closure.
+
+Under the strict package-level status semantics above, Package 0 remains **Partially implemented** because the golden-reference evidence package is still incomplete. The explicit owner decision nevertheless closes the **technical baseline/recovery/CI prerequisite** so that a later package may be audited and proposed without rerunning the failed Render E2E solely for Plan 0 closure.
 
 ## Interpretation Rules
 
@@ -147,4 +161,4 @@ Update this file only after a fresh package audit or completed package report. E
 - Remaining risks
 - Approval state
 
-Do not move to a later package solely because an earlier package is marked partially implemented.
+Do not move to a later package solely because an earlier package is marked partially implemented; any prerequisite exception must be explicit, evidence-backed, and owner-approved.
