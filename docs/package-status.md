@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-09  
-Implementation baseline reviewed: `62d7782fc770f807b237ecc54789beb972b658e5`
+Implementation baseline reviewed: `c4f68bfef70b22bd864b2736d2e8d31cd10d036b`
 
 This table is an orientation snapshot, not completion evidence. A package may be marked **Completed** only after its acceptance criteria, focused tests, full regression suite, production build, and required GitHub workflow evidence have been freshly verified.
 
@@ -9,7 +9,7 @@ This table is an orientation snapshot, not completion evidence. A package may be
 |---|---|---|
 | 0R-A — Verified CI baseline | Completed | PR #14 merged the CI baseline to `main` at `62d7782fc770f807b237ecc54789beb972b658e5`. Local branch validation recorded `npm ci`, 662/662 tests, and production build passing. GitHub Actions run `31156531809` on the merged main SHA completed successfully; required job `test-and-build`, dependency installation, tests, and production build all passed. |
 | 0R-B — Main branch protection | Completed | `main` is protected by classic branch protection. PRs are required; required approvals are `0`; stale approvals are dismissed on new commits; latest-push approval and Code Owner review are not required; `test-and-build`, up-to-date branches, and conversation resolution are required; administrator/custom-role bypass is disabled; force pushes and deletions are disabled. No named user, team, or app review-bypass actor was visible in the verified configuration. |
-| 0 — Safe baseline | Not verified | Plan 0R CI and main-protection evidence is complete, but Package 0 recovery-point and golden-reference acceptance criteria have not been freshly verified as a separate package. |
+| 0 — Safe baseline | Partially implemented | Baseline commit `c4f68bfef70b22bd864b2736d2e8d31cd10d036b` is now pinned by recovery branch `recovery/plan-0-c4f68bfe` and annotated tag `plan-0-baseline-c4f68bfe`. The tag is annotated but unsigned. GitHub-hosted CI on the same commit passed 662/662 tests and the production build. No release/ZIP artifact or SHA-256 archive record exists yet. Existing real-OMR MusicXML fixtures are regression inputs, but the complete source-PDF/image → OMR → teacher-approved MusicXML golden-reference chain, license/source evidence, teacher approval, and golden manifest/hash records remain incomplete. |
 | 1A — Queue, retry, restart, cancellation | Partially implemented | Queue, job manager, worker, persistence, recovery, retry and cancel foundations exist; full real-process cancellation and duplicate/ghost-job criteria require fresh verification. |
 | 1B — File, XML and API security | Partially implemented | Upload limits, PDF checks, XML security, CORS, rate limiting and safe health output have foundations; all required security tests were not freshly verified here. |
 | 2A — Canonical note and time model | Partially implemented | Canonical pitch, time, verification metadata and consumption-policy foundations exist; every consumer is not yet proven to use them consistently. |
@@ -87,6 +87,46 @@ The existing Audiveris–Render integration, endpoints, base URL, production con
 The connected GitHub integration and `gh api` detailed branch-protection query both returned HTTP 403 for the protection-detail endpoint. The missing review-count and bypass/admin-enforcement fields were therefore verified read-only through the GitHub branch-protection settings UI without saving or changing any setting.
 
 Required approvals remain `0`. This prevents an approval-only deadlock for a single-developer repository, while also meaning that a second human review is not a mandatory merge requirement.
+
+## Plan 0-B Evidence
+
+- Exact baseline commit: `c4f68bfef70b22bd864b2736d2e8d31cd10d036b`
+- Short baseline SHA: `c4f68bfe`
+- Baseline commit message: `Merge PR #15: Docs: record verified Plan 0R status`
+- Baseline commit date: `2026-08-09T04:41:07Z`
+- Approval state: Plan 0-B implementation and PR #16 merge were explicitly approved by the repository owner on 2026-08-09.
+- Recovery branch: `recovery/plan-0-c4f68bfe`
+- Recovery branch target: `c4f68bfef70b22bd864b2736d2e8d31cd10d036b`
+- Annotated tag: `plan-0-baseline-c4f68bfe`
+- Annotated tag object SHA: `1dab88e64cde50e408c7797bb6bdc5f65b0b8621`
+- Annotated tag target commit: `c4f68bfef70b22bd864b2736d2e8d31cd10d036b`
+- Tag verification: unsigned (`verification.reason: unsigned`)
+- GitHub Actions workflow: `CI`
+- GitHub Actions run ID: `31295090134`
+- GitHub Actions event: `push`
+- Required job: `test-and-build`
+- GitHub-hosted tests on the exact baseline commit: 662 passed, 0 failed, 0 skipped, 0 cancelled
+- GitHub-hosted production build on the exact baseline commit: passed
+- Dependency installation: `npm ci` passed
+- Known dependency-audit warning in the same runner output: 1 high severity vulnerability
+- `package-lock.json`: present on the baseline commit
+- Release: not created
+- Independent source ZIP/release artifact: not created
+- SHA-256 archive record: not created
+- Source PDF golden reference in repository: missing
+- Source PNG/JPG golden reference in repository: missing
+- OMR input artifact golden reference: missing
+- Teacher-approved MusicXML evidence: missing
+- Golden-reference manifest and SHA-256 records: missing
+- TTS golden expected result: missing
+- Guitar TAB golden expected result: missing
+- Existing `tests/fixtures/real-omr/*-clean.xml` files remain useful regression inputs but are not classified as complete teacher-approved golden references because source/license/teacher-approval evidence is incomplete.
+
+The recovery refs identify source-code state only. They do not roll back Render dashboard environment state, platform-provided variables, persistent `/var/lib/seslitab` data, user files, or production deployment state.
+
+A safe source recovery should create a new working branch from the verified recovery tag or branch, use the normal pull-request path, require the current CI gate, and obtain separate merge approval. Do not use force-push, direct protected-branch rewriting, or destructive reset as the normal recovery procedure.
+
+Package 0 remains incomplete until its golden-reference acceptance criteria and any separately approved archive/integrity requirements are satisfied. Creating the recovery branch and annotated tag does not by itself mean that Plan 0 is complete.
 
 ## Interpretation Rules
 
