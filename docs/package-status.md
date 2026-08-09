@@ -172,7 +172,7 @@ The recovery refs identify source-code state only. They do not roll back Render 
 
 A safe source recovery should create a new working branch from the verified recovery tag or branch, use the normal pull-request path, require the current CI gate, and obtain separate merge approval. Do not use force-push, direct protected-branch rewriting, or destructive reset as the normal recovery procedure.
 
-Package 0 remains incomplete until its golden-reference OMR comparison acceptance criterion and any separately approved archive/integrity requirements are satisfied. Creating the recovery refs or recording the approved reference pair does not by itself mean that Plan 0 is complete.
+Package 0 remains partially implemented because TTS and Guitar TAB golden expected results and the separately approved release/ZIP source-archive SHA-256 record remain missing. Creating the recovery refs or recording the approved reference pair does not by itself mean that Plan 0 is complete.
 
 ## Interpretation Rules
 
