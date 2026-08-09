@@ -1,0 +1,352 @@
+name: Plan 0 — CC0 Golden Reference OMR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan0-golden-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RENDER_BASE_URL: https://seslitab-omr.onrender.com
+      GOLDEN_DIR: tests/fixtures/golden-reference/plan0-cc0-4measure
+      SOURCE_PDF: tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-source.pdf
+      EXPECTED_XML: tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-expected.musicxml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify approved fixture SHA-256
+        run: |
+          set -euo pipefail
+          cd "$GOLDEN_DIR"
+          sha256sum -c plan0-cc0-4measure-sha256.txt
+
+      - name: Verify source PDF
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_PDF"
+          SIZE=$(stat -c%s "$SOURCE_PDF")
+          SIG=$(head -c 4 "$SOURCE_PDF")
+          echo "source_size=$SIZE"
+          echo "source_signature=$SIG"
+          [ "$SIZE" -gt 1024 ]
+          [ "$SIG" = "%PDF" ]
+
+      - name: Verify production health endpoint
+        run: |
+          set -euo pipefail
+          curl -sS --fail-with-body --retry 3 --retry-delay 5 \
+            "${RENDER_BASE_URL}/health" -o /tmp/health.json
+          cat /tmp/health.json
+          jq -e '
+            .success == true and
+            .data.status == "ok" and
+            .data.provider == "audiveris" and
+            .data.runtime.audiverisAvailable == true and
+            .data.runtime.versionCheck == true and
+            .data.runtime.tempWritable == true and
+            .data.runtime.storageWritable == true
+          ' /tmp/health.json >/dev/null
+
+      - name: Upload approved PDF to Render OMR API
+        id: upload
+        run: |
+          set -euo pipefail
+          HTTP_CODE=$(curl -sS -o /tmp/upload-response.json -w "%{http_code}" \
+            -D /tmp/upload-headers.txt \
+            -X POST "${RENDER_BASE_URL}/api/v1/pdf/upload" \
+            -F "file=@${SOURCE_PDF}" \
+            -F "provider=audiveris")
+          cat /tmp/upload-response.json
+          [ "$HTTP_CODE" = "201" ]
+          jq -e '.success == true and .data.provider == "audiveris"' /tmp/upload-response.json >/dev/null
+          JOB_ID=$(jq -r '.data.jobId' /tmp/upload-response.json)
+          [ -n "$JOB_ID" ] && [ "$JOB_ID" != "null" ]
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Poll job status until terminal
+        id: poll
+        run: |
+          set -euo pipefail
+          JOB_ID="${{ steps.upload.outputs.job_id }}"
+          : > /tmp/polling-log.txt
+          for i in $(seq 1 36); do
+            curl -sS -o "/tmp/status-$i.json" \
+              "${RENDER_BASE_URL}/api/v1/job/$JOB_ID"
+            STATUS=$(jq -r '.data.status' "/tmp/status-$i.json")
+            PROGRESS=$(jq -r '.data.progress // "n/a"' "/tmp/status-$i.json")
+            LINE="Poll #$i: status=$STATUS progress=$PROGRESS"
+            echo "$LINE"
+            echo "$LINE" >> /tmp/polling-log.txt
+            case "$STATUS" in
+              completed)
+                echo "final_status=$STATUS" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              failed|expired)
+                echo "::error::OMR job reached $STATUS"
+                cat "/tmp/status-$i.json"
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "::error::OMR polling timed out"
+          exit 1
+
+      - name: Download raw MusicXML
+        run: |
+          set -euo pipefail
+          JOB_ID="${{ steps.upload.outputs.job_id }}"
+          HTTP_CODE=$(curl -sS -o /tmp/output.musicxml -w "%{http_code}" \
+            -D /tmp/download-headers.txt \
+            "${RENDER_BASE_URL}/api/jobs/$JOB_ID/musicxml")
+          [ "$HTTP_CODE" = "200" ]
+          SIZE=$(stat -c%s /tmp/output.musicxml)
+          [ "$SIZE" -gt 500 ]
+          grep -Eq '<score-(partwise|timewise)([[:space:]>])' /tmp/output.musicxml
+          echo "raw_musicxml_size=$SIZE"
+
+      - name: Validate raw MusicXML with real SesliTab parser
+        run: |
+          set -euo pipefail
+          node scripts/validateE2eMusicXml.mjs /tmp/output.musicxml \
+            | tee /tmp/parser-validation.txt
+
+      - name: Compare OMR output with approved expected MusicXML
+        run: |
+          set -euo pipefail
+          python3 - "$EXPECTED_XML" /tmp/output.musicxml <<'PY' | tee /tmp/semantic-comparison.txt
+          import json
+          import sys
+          import xml.etree.ElementTree as ET
+
+          expected_path, actual_path = sys.argv[1], sys.argv[2]
+          report = {
+              "expected": expected_path,
+              "actual": actual_path,
+              "match": False,
+          }
+
+          def local(tag):
+              return tag.rsplit("}", 1)[-1]
+
+          def direct_children(element, name):
+              return [child for child in list(element) if local(child.tag) == name]
+
+          def first_direct(element, name):
+              items = direct_children(element, name)
+              return items[0] if items else None
+
+          def first_desc(element, name):
+              for item in element.iter():
+                  if local(item.tag) == name:
+                      return item
+              return None
+
+          def text_of(element, name):
+              child = first_desc(element, name)
+              return child.text.strip() if child is not None and child.text else None
+
+          TYPE_BEATS = {
+              "whole": 4.0,
+              "half": 2.0,
+              "quarter": 1.0,
+              "eighth": 0.5,
+              "16th": 0.25,
+              "32nd": 0.125,
+          }
+
+          def parse_score(path):
+              root = ET.parse(path).getroot()
+              if local(root.tag) != "score-partwise":
+                  raise ValueError(f"{path}: expected score-partwise root, got {local(root.tag)}")
+
+              parts = direct_children(root, "part")
+              if len(parts) != 1:
+                  raise ValueError(f"{path}: expected exactly 1 part, got {len(parts)}")
+
+              measures = direct_children(parts[0], "measure")
+              divisions = None
+              notes = []
+              time_signature = None
+              clef = None
+
+              for measure_index, measure in enumerate(measures, start=1):
+                  attributes = first_direct(measure, "attributes")
+                  if attributes is not None:
+                      div = first_direct(attributes, "divisions")
+                      if div is not None and div.text:
+                          divisions = int(div.text.strip())
+
+                      time_el = first_direct(attributes, "time")
+                      if time_el is not None:
+                          beats = text_of(time_el, "beats")
+                          beat_type = text_of(time_el, "beat-type")
+                          if beats and beat_type:
+                              time_signature = [beats, beat_type]
+
+                      clef_el = first_direct(attributes, "clef")
+                      if clef_el is not None:
+                          sign = text_of(clef_el, "sign")
+                          line = text_of(clef_el, "line")
+                          if sign and line:
+                              clef = [sign, line]
+
+                  if direct_children(measure, "backup") or direct_children(measure, "forward"):
+                      raise ValueError(f"{path}: unexpected backup/forward in measure {measure_index}")
+
+                  measure_number = measure.attrib.get("number", str(measure_index))
+
+                  for note in direct_children(measure, "note"):
+                      if first_direct(note, "grace") is not None:
+                          raise ValueError(f"{path}: unexpected grace note in measure {measure_number}")
+                      if first_direct(note, "chord") is not None:
+                          raise ValueError(f"{path}: unexpected chord note in measure {measure_number}")
+                      if first_direct(note, "rest") is not None:
+                          raise ValueError(f"{path}: unexpected rest in measure {measure_number}")
+
+                      pitch = first_direct(note, "pitch")
+                      if pitch is None:
+                          raise ValueError(f"{path}: note without pitch in measure {measure_number}")
+
+                      step = text_of(pitch, "step")
+                      octave = text_of(pitch, "octave")
+                      alter_text = text_of(pitch, "alter")
+                      alter = int(alter_text) if alter_text is not None else 0
+
+                      duration_el = first_direct(note, "duration")
+                      type_el = first_direct(note, "type")
+                      note_type = type_el.text.strip() if type_el is not None and type_el.text else None
+
+                      beats_value = None
+                      if duration_el is not None and duration_el.text and divisions:
+                          beats_value = int(duration_el.text.strip()) / divisions
+                      elif note_type in TYPE_BEATS:
+                          beats_value = TYPE_BEATS[note_type]
+
+                      if beats_value is None:
+                          raise ValueError(
+                              f"{path}: cannot resolve duration in measure {measure_number}"
+                          )
+
+                      notes.append({
+                          "measure": str(measure_number),
+                          "step": step,
+                          "alter": alter,
+                          "octave": int(octave),
+                          "beats": round(float(beats_value), 6),
+                      })
+
+              return {
+                  "part_count": 1,
+                  "measure_count": len(measures),
+                  "time_signature": time_signature,
+                  "clef": clef,
+                  "notes": notes,
+              }
+
+          try:
+              expected = parse_score(expected_path)
+              actual = parse_score(actual_path)
+              report["expected_summary"] = expected
+              report["actual_summary"] = actual
+
+              if expected["measure_count"] != 4:
+                  raise ValueError(
+                      f"approved expected fixture must have 4 measures, got {expected['measure_count']}"
+                  )
+              if len(expected["notes"]) != 16:
+                  raise ValueError(
+                      f"approved expected fixture must have 16 pitched notes, got {len(expected['notes'])}"
+                  )
+
+              mismatches = []
+              for field in ("part_count", "measure_count", "time_signature", "clef", "notes"):
+                  if expected[field] != actual[field]:
+                      mismatches.append(field)
+
+              report["mismatches"] = mismatches
+              report["match"] = not mismatches
+
+              with open("/tmp/semantic-comparison.json", "w", encoding="utf-8") as fh:
+                  json.dump(report, fh, ensure_ascii=False, indent=2)
+
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+
+              if mismatches:
+                  print(
+                      "Golden semantic comparison failed: "
+                      + ", ".join(mismatches),
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          except Exception as exc:
+              report["error"] = str(exc)
+              with open("/tmp/semantic-comparison.json", "w", encoding="utf-8") as fh:
+                  json.dump(report, fh, ensure_ascii=False, indent=2)
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+              print(f"Golden semantic comparison error: {exc}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Record evidence SHA-256
+        if: always()
+        run: |
+          set -euo pipefail
+          : > /tmp/golden-evidence-sha256.txt
+          sha256sum "$SOURCE_PDF" >> /tmp/golden-evidence-sha256.txt
+          sha256sum "$EXPECTED_XML" >> /tmp/golden-evidence-sha256.txt
+          if [ -f /tmp/output.musicxml ]; then
+            sha256sum /tmp/output.musicxml >> /tmp/golden-evidence-sha256.txt
+          fi
+          cat /tmp/golden-evidence-sha256.txt
+
+      - name: Cleanup test job
+        if: always()
+        run: |
+          JOB_ID="${{ steps.upload.outputs.job_id }}"
+          if [ -z "$JOB_ID" ]; then
+            echo "No job ID was created; skipping cleanup."
+            exit 0
+          fi
+          HTTP_CODE=$(curl -sS -o /tmp/cleanup-response.json -w "%{http_code}" \
+            -X DELETE "${RENDER_BASE_URL}/api/v1/job/$JOB_ID" || true)
+          echo "cleanup_http_status=$HTTP_CODE"
+          cat /tmp/cleanup-response.json 2>/dev/null || true
+
+      - name: Upload Plan 0 golden evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan0-cc0-golden-reference-evidence
+          path: |
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-source.pdf
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-expected.musicxml
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-sha256.txt
+            /tmp/health.json
+            /tmp/upload-response.json
+            /tmp/upload-headers.txt
+            /tmp/status-*.json
+            /tmp/polling-log.txt
+            /tmp/download-headers.txt
+            /tmp/output.musicxml
+            /tmp/parser-validation.txt
+            /tmp/semantic-comparison.txt
+            /tmp/semantic-comparison.json
+            /tmp/golden-evidence-sha256.txt
+            /tmp/cleanup-response.json
+          if-no-files-found: ignore
+          retention-days: 14
