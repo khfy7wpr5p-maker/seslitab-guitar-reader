@@ -1,0 +1,6 @@
+# Plan 0 Safe Baseline approved golden outputs
+# Approval authority: repository owner/user
+# Approval date: 2026-08-09
+# Source musical truth: plan0-cc0-4measure expected MusicXML
+36a97fda209d3af3152ebc5ffd6fe4d9308d562063c51d213956fbcb05fad798  expected-tts.txt
+5609e2054e1c584205314466877f832d8ed4f3c11a394f7db4eb931eec068733  expected-guitar-tab.json
