@@ -140,7 +140,7 @@ The approved reference is intentionally minimal and auditable:
 - Measure 3: E5, D5, C5, B4
 - Measure 4: A4, G4, F4, E4
 - Source PDF SHA-256: `c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed`
-- Expected MusicXML SHA-256: `a728bf04c4e381fddf500e3e7b95191929ef71ac7e0e17e99cccf9d595a6652b`
+- Expected MusicXML SHA-256: `7004b4ac37711cca340c63e2f2436dd70e0f630f4e891cb311caff159b5d9d94`
 - Approval state: musical PDF–MusicXML equivalence and CC0-1.0 use explicitly approved on 2026-08-09.
 
 This reference defines the expected musical truth. It does not claim that Audiveris has already reproduced that truth. The next acceptance step is a controlled real-OMR comparison of the source PDF against the approved expected MusicXML.
