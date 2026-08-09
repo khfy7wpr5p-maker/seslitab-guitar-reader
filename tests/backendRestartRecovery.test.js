@@ -79,6 +79,33 @@ test('cleanup deletes only exact eligible expired runtime data and is idempotent
   assert.deepEqual(first.cleaned, [eligible]); assert.deepEqual(second.cleaned, []); assert.equal(await store.exists(eligible), false); assert.equal(await store.exists(ineligible), true)
 })
 
+test('cleanup promotes ordinary terminal runtime jobs only after the effective retention deadline', async () => {
+  const completed = await seed(28, 'completed', { completedAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', xml: '<score-partwise>done</score-partwise>' })
+  const failed = await seed(29, 'failed', { updatedAt: '2026-01-01T00:00:00.000Z', error: { code: 'X', message: 'x' } })
+  const deferred = await seed(30, 'completed', { completedAt: '2026-01-01T00:00:00.000Z', retentionUntil: '2999-01-01T00:00:00.000Z' })
+  const teacher = await seed(31, 'completed', { completedAt: '2026-01-01T00:00:00.000Z', retentionClass: 'teacher_approved', teacherApproved: true })
+  const protectedId = await seed(32, 'failed', { updatedAt: '2026-01-01T00:00:00.000Z', retentionClass: 'protected', protected: true, error: { code: 'X', message: 'x' } })
+  await jobManager.recoverJobs({ storageApi: store, queueApi: queue })
+  const transitions = []
+  const jobManagerApi = {
+    isRecoveryComplete: jobManager.isRecoveryComplete,
+    snapshot: jobManager.snapshot,
+    deleteJobRecord: jobManager.deleteJobRecord,
+    async updateStatus(jobId, status, extra) { transitions.push({ jobId, status, extra }); return jobManager.updateStatus(jobId, status, extra) },
+  }
+  const result = await runCleanup({ storageApi: store, jobManagerApi, queueApi: queue, activeCheck: () => false })
+  assert.deepEqual([...result.cleaned].sort(), [completed, failed].sort())
+  assert.equal(await store.exists(completed), false); assert.equal(await store.exists(failed), false)
+  for (const jobId of [deferred, teacher, protectedId]) assert.equal(await store.exists(jobId), true)
+  assert.deepEqual(transitions.map((t) => t.jobId).sort(), [completed, failed].sort())
+  for (const transition of transitions) {
+    assert.equal(transition.status, 'expired')
+    assert.equal(transition.extra.cleanupEligible, true)
+    assert.equal(typeof transition.extra.retentionUntil, 'string')
+    assert.equal(Date.parse(transition.extra.retentionUntil) <= Date.now(), true)
+  }
+})
+
 test('recovery failure preserves directories and never marks recovery complete', async () => {
   const jobId = await seed(27, 'queued')
   const failingQueue = { async enqueue() { throw new Error('queue failed') } }
