@@ -1,7 +1,7 @@
 # SesliTab Current Status
 
-Last documentation review: 2026-08-06  
-Implementation baseline reviewed: `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`
+Last documentation review: 2026-08-09  
+Implementation baseline reviewed: `62d7782fc770f807b237ecc54789beb972b658e5`
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build, or GitHub Actions result.
 
@@ -45,11 +45,15 @@ The repository currently contains foundations for:
 
 The current playback system uses Web Audio. It does not yet represent a completed real MIDI export package.
 
-## Plan 0R — CI Baseline Status
+## Plan 0R — CI and Main Protection Status
 
-Plan 0R-A is being prepared on branch `chore/plan-0r-ci-baseline` from main commit `a4ff5ac376e684f06c7375b1bf4c0c6cdf9368d6`.
+Plan 0R-A and Plan 0R-B have been verified against the current `main` baseline.
 
-Workflow changes:
+### Plan 0R-A — Verified CI baseline
+
+PR #14 merged the CI baseline to `main` at commit `62d7782fc770f807b237ecc54789beb972b658e5`.
+
+Workflow changes included:
 
 - Added `.github/workflows/ci.yml`.
 - Updated `.github/workflows/e2e-render-omr.yml` to use Node.js 24.
@@ -64,23 +68,57 @@ npm test
 npm run build
 ```
 
-Local validation in a temporary clone of the working branch produced:
+Local validation recorded on the Plan 0R-A branch before merge:
 
 - `npm ci`: passed.
 - `npm test`: 662 tests passed, 0 failed, 0 skipped, 0 cancelled.
 - `npm run build`: passed with Vite 8.2.0.
 
-GitHub Actions validation is still pending until the Draft PR creates a real pull-request workflow run. The real check name and final workflow result must be recorded before Plan 0R-A is marked completed.
+GitHub-hosted validation on the merged `main` commit is also complete:
+
+- Workflow: `CI`
+- Run ID: `31156531809`
+- Event: `push`
+- Head SHA: `62d7782fc770f807b237ecc54789beb972b658e5`
+- Conclusion: `success`
+- Required job: `test-and-build`
+- `Install dependencies`: passed
+- `Run tests`: passed
+- `Build production bundle`: passed
 
 The existing Audiveris–Render integration was preserved:
 
 - No endpoint changed.
 - `RENDER_BASE_URL` did not change.
 - Upload, polling, MusicXML download, cleanup, and parser-validation flow did not change.
-- `backend/**`, `Dockerfile`, `render.yaml`, application code, tests, dependencies, and production configuration did not change.
+- `backend/**`, `Dockerfile`, `render.yaml`, application code, tests, dependencies, and production configuration did not change as part of Plan 0R-A.
 - No deployment was performed.
 
-Plan 0R-B branch protection has not been applied. It requires a successful CI merge to main, confirmation of the real required check name, and separate approval.
+### Plan 0R-B — Main branch protection
+
+`main` is protected by a classic branch protection rule. Repository rulesets and effective rulesets for `main` were read as empty, so no repository or organization ruleset is currently combined with the classic rule.
+
+The missing branch-protection fields were verified read-only in the GitHub settings UI because the connected integration and `gh api` protection-detail request both returned HTTP 403 for the detailed branch-protection endpoint.
+
+Verified effective settings:
+
+- `Require a pull request before merging`: enabled.
+- `Require approvals`: disabled, therefore required approving review count is `0`.
+- `Dismiss stale pull request approvals when new commits are pushed`: enabled.
+- `Require review from Code Owners`: disabled.
+- `Require approval of the most recent reviewable push`: disabled.
+- `Require status checks to pass before merging`: enabled.
+- Required status check: `test-and-build`.
+- `Require branches to be up to date before merging`: enabled.
+- `Require conversation resolution before merging`: enabled.
+- `Do not allow bypassing the above settings`: enabled, so the rule applies to administrators and custom roles with branch-protection bypass permission.
+- No named user, team, or GitHub App review-bypass actor was visible in the verified protection configuration.
+- `Allow force pushes`: disabled.
+- `Allow deletions`: disabled.
+
+Required approvals are intentionally `0`: this avoids an approval-only deadlock in a single-developer repository, but it also means a second human review is not a mandatory merge condition. CI, pull-request routing, conversation resolution, branch freshness, and administrator enforcement remain the active mandatory protections.
+
+No branch protection or repository setting was changed during this verification.
 
 ## Partially Implemented or Not Fully Verified
 
@@ -125,10 +163,9 @@ Therefore:
 
 ## Current Change Boundaries
 
-The Plan 0R branch is restricted to:
+The Plan 0R status-convergence documentation package is restricted to:
 
-- `.github/workflows/**`
 - `docs/current-status.md`
 - `docs/package-status.md`
 
-No application source code, backend code, test file, dependency, deployment configuration, production setting, merge, or deployment is included.
+No application source code, backend code, test file, workflow, dependency, deployment configuration, production setting, branch-protection setting, merge, or deployment is included.
