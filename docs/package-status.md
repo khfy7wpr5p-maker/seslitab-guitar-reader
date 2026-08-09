@@ -1,7 +1,8 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-09  
-Implementation baseline reviewed: `6485ff117f4559a1a7571994d312a85c1983480e`
+Implementation baseline reviewed: `6485ff117f4559a1a7571994d312a85c1983480e`  
+Plan 0 closure merged-main verified: `4945d5b3ae5b0e1a61138f58673047ae3dba3e2d`
 
 This table is an orientation snapshot, not completion evidence. A package may be marked **Completed** only after its acceptance criteria, focused tests, full regression suite, production build, and required GitHub workflow evidence have been freshly verified.
 
@@ -9,7 +10,7 @@ This table is an orientation snapshot, not completion evidence. A package may be
 |---|---|---|
 | 0R-A — Verified CI baseline | Completed | PR #14 merged the CI baseline to `main` at `62d7782fc770f807b237ecc54789beb972b658e5`. Local branch validation recorded `npm ci`, 662/662 tests, and production build passing. GitHub Actions run `31156531809` on the merged main SHA completed successfully; required job `test-and-build`, dependency installation, tests, and production build all passed. |
 | 0R-B — Main branch protection | Completed | `main` is protected by classic branch protection. PRs are required; required approvals are `0`; stale approvals are dismissed on new commits; latest-push approval and Code Owner review are not required; `test-and-build`, up-to-date branches, and conversation resolution are required; administrator/custom-role bypass is disabled; force pushes and deletions are disabled. No named user, team, or app review-bypass actor was visible in the verified configuration. |
-| 0 — Safe baseline | Partially implemented | Recovery refs and both approved golden-reference evidence chains are preserved. Approved TTS and Guitar TAB golden outputs are now recorded under `tests/fixtures/golden-reference/plan0-safe-baseline-outputs/` with SHA-256 protection and a dedicated regression test. Focused golden tests passed 3/3; the full local regression suite passed 665/665; the production build passed; `git diff --check origin/main...HEAD` passed; the working tree was clean. An independent source ZIP was generated from exact tested commit `6485ff117f4559a1a7571994d312a85c1983480e`, SHA-256 `578835c78285cd2cf2b18ad2917b1e9aca6ee9bc2aaa232b9d569cc6c2c2b42a`, and `unzip -t` reported no compressed-data errors. The archive record is stored in `docs/plan-0-source-archive.sha256`. Final status remains partial only because this document's Completion rule requires fresh GitHub PR workflow evidence and merged-main workflow evidence; those have not yet been produced for this closure head. |
+| 0 — Safe baseline | Completed | Recovery refs and both approved golden-reference evidence chains are preserved. Approved TTS and Guitar TAB golden outputs are SHA-256 protected and regression-tested. Focused golden tests passed 3/3; the full local regression suite passed 665/665; production build passed; diff integrity and clean working tree were verified. The independent source ZIP for exact tested commit `6485ff117f4559a1a7571994d312a85c1983480e` has SHA-256 `578835c78285cd2cf2b18ad2917b1e9aca6ee9bc2aaa232b9d569cc6c2c2b42a` and passed `unzip -t`. PR #19 head `39613c590f980f67a6386250b6994363be7a378d` passed GitHub Actions run `31327857090`; required job `test-and-build` passed. PR #19 was separately approved and merged as `4945d5b3ae5b0e1a61138f58673047ae3dba3e2d`; post-merge `main` run `31327991805` and required job `test-and-build` both passed. Plan 0 acceptance and closure gates are therefore complete. |
 | 1A — Queue, retry, restart, cancellation | Partially implemented | Queue, job manager, worker, persistence, recovery, retry and cancel foundations exist; full real-process cancellation and duplicate/ghost-job criteria require fresh verification. |
 | 1B — File, XML and API security | Partially implemented | Upload limits, PDF checks, XML security, CORS, rate limiting and safe health output have foundations; all required security tests were not freshly verified here. |
 | 2A — Canonical note and time model | Partially implemented | Canonical pitch, time, verification metadata and consumption-policy foundations exist; every consumer is not yet proven to use them consistently. |
@@ -194,13 +195,20 @@ This evidence satisfies the Plan 0 real-OMR golden-reference comparison requirem
 - Source archive integrity: `unzip -t` passed; no compressed-data errors detected
 - Source archive record: `docs/plan-0-source-archive.sha256`
 - Release/publish: not performed
-- Remaining closure gate: fresh GitHub pull-request workflow and merged-main workflow evidence for the final closure head
+- Closure PR: #19
+- Closure PR head: `39613c590f980f67a6386250b6994363be7a378d`
+- Closure PR GitHub Actions run: `31327857090` — completed/success
+- Closure PR required job `test-and-build`: completed/success
+- Closure merge commit: `4945d5b3ae5b0e1a61138f58673047ae3dba3e2d`
+- Post-merge `main` GitHub Actions run: `31327991805` — completed/success
+- Post-merge required job `test-and-build`: completed/success
+- Remaining Plan 0 closure gate: none
 
 The recovery refs identify source-code state only. They do not roll back Render dashboard environment state, platform-provided variables, persistent `/var/lib/seslitab` data, user files, or production deployment state.
 
 A safe source recovery should create a new working branch from the verified recovery tag or branch, use the normal pull-request path, require the current CI gate, and obtain separate merge approval. Do not use force-push, direct protected-branch rewriting, or destructive reset as the normal recovery procedure.
 
-All local technical Plan 0 Safe Baseline acceptance evidence and the independent source-archive record are now present. Package 0 remains **Partially implemented** only because this document's Completion rule requires fresh GitHub workflow evidence. After the final closure head passes the required pull-request workflow, is separately approved for merge, and the merged `main` passes the required post-merge workflow, the status may be changed to **Completed**.
+All Plan 0 Safe Baseline acceptance evidence is present: approved golden references, approved TTS and Guitar TAB golden outputs, SHA-256 integrity records, local focused/full regression evidence, production build evidence, independent source-archive evidence, successful PR CI, separately approved merge, and successful post-merge `main` CI. Package 0 is **Completed**.
 
 ## Interpretation Rules
 
