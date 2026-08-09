@@ -9,7 +9,7 @@ This table is an orientation snapshot, not completion evidence. A package may be
 |---|---|---|
 | 0R-A — Verified CI baseline | Completed | PR #14 merged the CI baseline to `main` at `62d7782fc770f807b237ecc54789beb972b658e5`. Local branch validation recorded `npm ci`, 662/662 tests, and production build passing. GitHub Actions run `31156531809` on the merged main SHA completed successfully; required job `test-and-build`, dependency installation, tests, and production build all passed. |
 | 0R-B — Main branch protection | Completed | `main` is protected by classic branch protection. PRs are required; required approvals are `0`; stale approvals are dismissed on new commits; latest-push approval and Code Owner review are not required; `test-and-build`, up-to-date branches, and conversation resolution are required; administrator/custom-role bypass is disabled; force pushes and deletions are disabled. No named user, team, or app review-bypass actor was visible in the verified configuration. |
-| 0 — Safe baseline | Partially implemented | Baseline commit `c4f68bfef70b22bd864b2736d2e8d31cd10d036b` is now pinned by recovery branch `recovery/plan-0-c4f68bfe` and annotated tag `plan-0-baseline-c4f68bfe`. The tag is annotated but unsigned. GitHub-hosted CI on the same commit passed 662/662 tests and the production build. No release/ZIP artifact or SHA-256 archive record exists yet. Existing real-OMR MusicXML fixtures are regression inputs, but the complete source-PDF/image → OMR → teacher-approved MusicXML golden-reference chain, license/source evidence, teacher approval, and golden manifest/hash records remain incomplete. |
+| 0 — Safe baseline | Partially implemented | Baseline commit `c4f68bfef70b22bd864b2736d2e8d31cd10d036b` is pinned by recovery branch `recovery/plan-0-c4f68bfe` and annotated tag `plan-0-baseline-c4f68bfe`. The tag is annotated but unsigned. GitHub-hosted CI on the baseline passed 662/662 tests and the production build. A four-measure single-staff PDF–MusicXML reference pair has now been musically approved by the repository owner/reviewer for CC0-1.0 use, with SHA-256 integrity records under `tests/fixtures/golden-reference/plan0-cc0-4measure/`. A separate owner-approved 3/8 real Audiveris evidence chain now satisfies the Plan 0 real-OMR golden-reference acceptance criterion. TTS and Guitar TAB golden expected results and the separately approved release/ZIP source-archive SHA-256 record remain missing; Package 0 therefore remains partially implemented. |
 | 1A — Queue, retry, restart, cancellation | Partially implemented | Queue, job manager, worker, persistence, recovery, retry and cancel foundations exist; full real-process cancellation and duplicate/ghost-job criteria require fresh verification. |
 | 1B — File, XML and API security | Partially implemented | Upload limits, PDF checks, XML security, CORS, rate limiting and safe health output have foundations; all required security tests were not freshly verified here. |
 | 2A — Canonical note and time model | Partially implemented | Canonical pitch, time, verification metadata and consumption-policy foundations exist; every consumer is not yet proven to use them consistently. |
@@ -113,20 +113,66 @@ Required approvals remain `0`. This prevents an approval-only deadlock for a sin
 - Release: not created
 - Independent source ZIP/release artifact: not created
 - SHA-256 archive record: not created
-- Source PDF golden reference in repository: missing
-- Source PNG/JPG golden reference in repository: missing
-- OMR input artifact golden reference: missing
-- Teacher-approved MusicXML evidence: missing
-- Golden-reference manifest and SHA-256 records: missing
+- Source PDF golden reference in repository: `tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-source.pdf`
+- Source PNG/JPG golden reference in repository: not required for this PDF-backed golden-reference case
+- OMR input artifact golden reference: the source PDF above is the approved OMR input
+- Musically approved expected MusicXML: `tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-expected.musicxml`
+- Golden-reference SHA-256 manifest: `tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-sha256.txt`
+- Golden-reference license declaration: repository owner approved this original four-measure exercise for CC0-1.0 use on 2026-08-09
+- Musical approval: repository owner/reviewer explicitly confirmed the four-measure PDF–MusicXML match on 2026-08-09
+- Golden-reference branch before this record: `44484f7b4d0a05ff5e7652809f999276c058a1e3`
+- Real OMR comparison against the earlier four-measure expected MusicXML: historical attempt did not pass; Plan 0 real-OMR acceptance is satisfied separately by the owner-approved 3/8 evidence chain.
 - TTS golden expected result: missing
 - Guitar TAB golden expected result: missing
-- Existing `tests/fixtures/real-omr/*-clean.xml` files remain useful regression inputs but are not classified as complete teacher-approved golden references because source/license/teacher-approval evidence is incomplete.
+- Existing `tests/fixtures/real-omr/*-clean.xml` files remain useful regression inputs but are not classified as complete teacher-approved golden references because their source/license/teacher-approval evidence is incomplete.
+
+### Plan 0 CC0 Four-Measure Golden Reference
+
+The approved reference is intentionally minimal and auditable:
+
+- one staff
+- treble clef
+- 4/4 meter
+- four measures
+- quarter notes only
+- Measure 1: E4, F4, G4, A4
+- Measure 2: B4, C5, D5, E5
+- Measure 3: E5, D5, C5, B4
+- Measure 4: A4, G4, F4, E4
+- Source PDF SHA-256: `c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed`
+- Expected MusicXML SHA-256: `7004b4ac37711cca340c63e2f2436dd70e0f630f4e891cb311caff159b5d9d94`
+- Approval state: musical PDF–MusicXML equivalence and CC0-1.0 use explicitly approved on 2026-08-09.
+
+This reference defines the expected musical truth. It does not claim that Audiveris has already reproduced that truth. The next acceptance step is a controlled real-OMR comparison of the source PDF against the approved expected MusicXML.
+
+### Plan 0 Owner-Approved 3/8 Real OMR Golden Reference
+
+A second reference now provides the real Audiveris evidence chain required by the Plan 0 OMR comparison criterion:
+
+- Evidence directory: `tests/fixtures/golden-reference/plan0-owner-approved-3-8/`
+- Source PDF: `source.pdf`
+- Audiveris OMR artifact: `project.omr`
+- Approved MusicXML: `expected.musicxml`
+- Integrity manifest: `sha256.txt`
+- Approval record: `APPROVAL.md`
+- Audiveris version recorded in the evidence: 5.11.0
+- Source PDF SHA-256: `df4b8ea20b6420ebdf6b3e1d625016090105fed0c2f60a4e03874d3c3be2b9b9`
+- MusicXML SHA-256: `009dd2fd4439a4138ed62cd0e0945a5611add8db38c58c7b0f90429ccd9970f6`
+- OMR SHA-256: `7424e684825b51e8fd31596c94acd5ef008a84fbaecb5c0524222aaec8f8a21a`
+- Manifest verification: `source.pdf: OK`, `expected.musicxml: OK`, `project.omr: OK`
+- Musical approval: repository owner/user explicitly approved the PDF-MusicXML equivalence on 2026-08-09.
+- The incomplete opening measure (pickup/anacrusis) is intentional and approved.
+- Tie recognition is explicitly included in the musical approval.
+- License/use approval: repository owner/user confirmed sufficient rights and approved this exercise for SesliTab golden-reference use under CC0-1.0 on 2026-08-09.
+- Real Audiveris OMR evidence chain: PASS.
+
+This evidence satisfies the Plan 0 real-OMR golden-reference comparison requirement for this approved fixture. The earlier four-measure reference remains preserved as historical expected-truth evidence and is not reclassified as a successful Audiveris reproduction.
 
 The recovery refs identify source-code state only. They do not roll back Render dashboard environment state, platform-provided variables, persistent `/var/lib/seslitab` data, user files, or production deployment state.
 
 A safe source recovery should create a new working branch from the verified recovery tag or branch, use the normal pull-request path, require the current CI gate, and obtain separate merge approval. Do not use force-push, direct protected-branch rewriting, or destructive reset as the normal recovery procedure.
 
-Package 0 remains incomplete until its golden-reference acceptance criteria and any separately approved archive/integrity requirements are satisfied. Creating the recovery branch and annotated tag does not by itself mean that Plan 0 is complete.
+Package 0 remains partially implemented because TTS and Guitar TAB golden expected results and the separately approved release/ZIP source-archive SHA-256 record remain missing. Creating the recovery refs or recording the approved reference pair does not by itself mean that Plan 0 is complete.
 
 ## Interpretation Rules
 
