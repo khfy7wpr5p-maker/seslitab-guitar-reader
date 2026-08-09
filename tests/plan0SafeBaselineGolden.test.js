@@ -58,8 +58,8 @@ class MiniDOMParser {
     let match
 
     while ((match = tagRe.exec(xml)) !== null) {
-      if (match[4] !== undefined && match[4].trim()) {
-        stack[stack.length - 1]._text += match[4]
+      if (match[4] !== undefined) {
+        if (match[4].trim()) stack[stack.length - 1]._text += match[4]
         continue
       }
 
