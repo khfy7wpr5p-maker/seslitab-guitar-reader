@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - security/package-1b-multer-remediation
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -37,12 +40,11 @@ jobs:
             exit 1
           fi
 
-      - name: Commit lockfile and remove one-time workflow
+      - name: Commit synchronized lockfile
         shell: bash
         run: |
-          rm .github/workflows/package-1b-lock-refresh.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- package-lock.json .github/workflows/package-1b-lock-refresh.yml
+          git add -- package-lock.json
           git commit -m "chore: synchronize Multer security lockfile"
           git push origin HEAD:security/package-1b-multer-remediation
