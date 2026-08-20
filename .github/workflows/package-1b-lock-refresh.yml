@@ -1,0 +1,48 @@
+name: Package 1B lockfile refresh
+
+on:
+  push:
+    branches:
+      - security/package-1b-multer-remediation
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: security/package-1b-multer-remediation
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Refresh only package lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Enforce lockfile-only generated change
+        shell: bash
+        run: |
+          changed="$(git diff --name-only)"
+          if [ "$changed" != "package-lock.json" ]; then
+            echo "Unexpected generated changes:"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+
+      - name: Commit lockfile and remove one-time workflow
+        shell: bash
+        run: |
+          rm .github/workflows/package-1b-lock-refresh.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- package-lock.json .github/workflows/package-1b-lock-refresh.yml
+          git commit -m "chore: synchronize Multer security lockfile"
+          git push origin HEAD:security/package-1b-multer-remediation
