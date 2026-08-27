@@ -1,6 +1,6 @@
 # Package 3 — Playback and measure interaction contract
 
-Status: In progress — 3A, 3B and 3C merged; 3D under verification.
+Status: In progress — 3A through 3D merged; 3E under verification.
 
 ## Safety invariants
 
@@ -9,7 +9,7 @@ Status: In progress — 3A, 3B and 3C merged; 3D under verification.
 3. The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path and E2E workflow are outside Package 3 scope.
 4. A visible measure number is not a unique identity. Package 3C consumes parser-supplied canonical `measureKey`; it never manufactures canonical identity from the visible number.
 5. TTS and playback for a measure must select the same canonical note objects.
-6. At most one Package 3 playback session may be active. New playback stops the older session before replacement.
+6. At most one browser audio/TTS consumer may remain active across selected-measure and full-score actions; a replacement action preempts the older one.
 7. Pause/resume/stop transitions must be truthful. An unsupported operation must not be represented as successful.
 8. Existing proven Web Audio scheduling is not rewritten merely to expose lifecycle state.
 9. Real MIDI in 3G must be deterministic, generated from canonical timing/pitch evidence, and must not change source note data.
@@ -20,8 +20,8 @@ Status: In progress — 3A, 3B and 3C merged; 3D under verification.
 - 3A — `Müziği Dinle` user-facing wording: merged.
 - 3B — serialized playback state manager: merged.
 - 3C — unique measure identity and selection: merged.
-- 3D — accessible Rhythmic HTML measure controls: current stage.
-- 3E — speak and play one selected measure from the same canonical objects.
+- 3D — accessible Rhythmic HTML measure controls: merged.
+- 3E — speak and play one selected measure from the same canonical objects: current stage.
 - 3F — playback/measure regression package.
 - 3G — deterministic real MIDI timeline and `.mid` export.
 
@@ -53,7 +53,7 @@ Measure identity must:
 
 ## 3D acceptance
 
-Accessible measure controls must:
+Accessible measure controls:
 
 - receive the exact `NoteObject[]` reference already projected to Rhythmic HTML rather than reparsing visible HTML or MusicXML;
 - render controls only for groups accepted by the Package 3C canonical `measureKey` policy;
@@ -63,7 +63,24 @@ Accessible measure controls must:
 - revalidate canonical selection before committing the selected key;
 - announce a successful selection through the existing live region;
 - keep the pre-existing Rhythmic HTML string unchanged;
-- clear Package 3 selection state when the application is reset;
-- not trigger TTS or audio playback in this stage.
+- clear Package 3 selection state when the application is reset.
 
-The handoff bridge stores only references and a selected key. It contains no parser, quality, OMR, TTS or playback logic. Package 3E must revalidate the selected key against the exact current note array before any consumer runs.
+## 3E acceptance
+
+Selected-measure TTS/playback must:
+
+- resolve Package 2D quality policy against the exact full canonical `NoteObject[]` identity before any selected sub-array is consumed;
+- require `QUALITY_GATE_DECISION.ACCEPT`; REVIEW/BLOCK produces no TTS/audio operation;
+- re-resolve the selected `measureKey` against the exact current array after gate acceptance;
+- pass only the selected group's exact original `NoteObject` references to TTS or playback;
+- generate TTS text from that same selected group and play that same selected group;
+- fail closed for stale/missing keys without guessing from visible measure number;
+- make selected TTS/playback mutually exclusive by stopping current speech/rhythm before replacement;
+- provide native selected-measure speak, listen and stop controls;
+- keep selected-measure actions disabled until a canonical measure is selected;
+- preempt a selected-measure operation before an existing full-score voice/rhythm button starts, using capture-phase UI coordination rather than rewriting the audio scheduler;
+- suppress stale completion announcements after an operation was preempted;
+- leave the proven Web Audio scheduling implementation unchanged;
+- leave Audiveris/OMR/provider/worker/gateway/E2E and deployment configuration unchanged.
+
+The Package 3 handoff bridge stores only exact references and a selected key; it never receives or manufactures Package 2D verification state. This prevents a detached selected-measure array from silently inheriting the full score's quality report.
