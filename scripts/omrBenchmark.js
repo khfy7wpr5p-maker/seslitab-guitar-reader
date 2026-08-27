@@ -1,17 +1,42 @@
-// Package 2E — deterministic OMR benchmark contract.
+// Package 2E — deterministic, read-only OMR benchmark contracts.
 //
-// This benchmark measures only evidence that exists in the repository's
-// reviewed real-Audiveris MusicXML regression corpus. It deliberately does not
-// claim recognition accuracy because no aligned musical ground-truth score is
-// part of this package.
+// This module intentionally separates two evidence domains:
+// 1) the existing reviewed real-OMR MusicXML regression corpus, which is useful
+//    for deterministic structural diagnostics but is not musical ground truth;
+// 2) the comparative-variant contract, which records preprocessing/Audiveris
+//    experiment evidence without inventing accuracy when comparison has not run.
+//
+// It never invokes or changes the production OMR pipeline.
 
 import { createHash } from 'node:crypto'
 
 import { parseMusicXmlWithStructure } from '../musicXmlParser.js'
 import { buildMusicXmlQualityErrorReport } from '../src/services/musicXmlQualityReport.js'
+import {
+  OMR_BENCHMARK_GOLDEN_REFERENCES,
+} from './omrBenchmarkFixtureInventory.js'
 
 export const OMR_BENCHMARK_SCHEMA_VERSION = 1
 export const OMR_BENCHMARK_KIND = 'reviewed-output-diagnostic'
+export const OMR_COMPARATIVE_BENCHMARK_KIND = 'comparative-variant-contract'
+
+export const OMR_BENCHMARK_MEASUREMENT_STATE = Object.freeze({
+  MEASURED: 'MEASURED',
+  REVIEW_REQUIRED: 'REVIEW_REQUIRED',
+  NOT_MEASURED: 'NOT_MEASURED',
+  UNKNOWN: 'UNKNOWN',
+})
+
+export const OMR_BENCHMARK_VARIANT_KIND = Object.freeze({
+  ORIGINAL_PDF: 'original_pdf',
+  ORIGINAL_PAGE_IMAGE: 'original_page_image',
+  PNG: 'png',
+  HIGH_QUALITY_JPG: 'high_quality_jpg',
+  DESKEWED_IMAGE: 'deskewed_image',
+  CROPPED_IMAGE: 'cropped_image',
+  ADAPTIVE_BINARIZATION: 'adaptive_binarization',
+  UPSCALE_DENOISE: 'upscale_denoise',
+})
 
 export const REVIEWED_OMR_FIXTURE_NAMES = Object.freeze([
   'django-clean.xml',
@@ -24,18 +49,40 @@ export const REVIEWED_OMR_FIXTURE_NAMES = Object.freeze([
 ])
 
 export const OMR_BENCHMARK_TRUTH_DOMAIN = Object.freeze({
+  scope: 'reviewed-output-diagnostic-only',
   fixtureProvenance: 'reviewed-real-audiveris-musicxml-regression-corpus',
   musicalGroundTruthAvailable: false,
   recognitionAccuracyAvailable: false,
   recognitionAccuracy: null,
   comparisonTarget: 'parser-structural-quality-consistency',
-  limitation: 'No aligned source-score ground truth is included, so note, rhythm, symbol, or page recognition accuracy must not be inferred from this benchmark.',
+  limitation: 'No aligned source-score ground truth is attached to this seven-file regression corpus, so note, rhythm, symbol, or page recognition accuracy must not be inferred from this diagnostic.',
 })
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
   for (const nested of Object.values(value)) deepFreeze(nested)
   return Object.freeze(value)
+}
+
+function cloneDeterministic(value, label = 'benchmark-value') {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError(`${label} must contain only finite numbers.`)
+    return value
+  }
+  if (Array.isArray(value)) return value.map((item, index) => cloneDeterministic(item, `${label}[${index}]`))
+  if (typeof value !== 'object') throw new TypeError(`${label} must contain only JSON-like values.`)
+
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${label} must contain only plain objects.`)
+  }
+
+  const clone = {}
+  for (const key of Object.keys(value).sort()) {
+    clone[key] = cloneDeterministic(value[key], `${label}.${key}`)
+  }
+  return clone
 }
 
 function sha256(text) {
@@ -209,10 +256,131 @@ function aggregateBenchmarks(fixtures) {
   }
 }
 
+function requireNonEmptyString(value, label) {
+  if (typeof value !== 'string' || value.trim() === '') throw new TypeError(`${label} must be a non-empty string.`)
+  return value.trim()
+}
+
+function resolveGoldenReference(goldenReferenceId) {
+  if (goldenReferenceId === null || goldenReferenceId === undefined) return null
+  const id = requireNonEmptyString(goldenReferenceId, 'goldenReferenceId')
+  const reference = OMR_BENCHMARK_GOLDEN_REFERENCES.find((fixture) => fixture.fixtureId === id)
+  if (!reference) throw new Error(`unknown-omr-golden-reference:${id}`)
+  return reference
+}
+
+function notMeasuredMetric() {
+  return {
+    state: OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED,
+    value: null,
+  }
+}
+
+export function createUnmeasuredGoldenComparison(goldenReferenceId = null) {
+  const reference = resolveGoldenReference(goldenReferenceId)
+  const reason = reference
+    ? 'Golden reference is identified, but the Package 2E-A comparator has not measured this variant yet.'
+    : 'No golden MusicXML comparison was supplied; accuracy metrics are not measured.'
+
+  return deepFreeze({
+    state: OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED,
+    reference: reference
+      ? {
+          fixtureId: reference.fixtureId,
+          evidenceState: reference.evidenceState,
+          expectedMusicXml: reference.expectedMusicXml,
+        }
+      : null,
+    missingNotes: notMeasuredMetric(),
+    extraNotes: notMeasuredMetric(),
+    pitchErrors: notMeasuredMetric(),
+    durationErrors: notMeasuredMetric(),
+    voiceErrors: notMeasuredMetric(),
+    fullyCorrectMeasureRate: notMeasuredMetric(),
+    musicalCorrectness: {
+      state: OMR_BENCHMARK_MEASUREMENT_STATE.REVIEW_REQUIRED,
+      value: null,
+    },
+    reason,
+  })
+}
+
+export function createOmrVariantRecord({
+  variantId,
+  variantKind,
+  inputMetadata = {},
+  preprocessingSettings = {},
+  audiverisSettings = {},
+  generatedMusicXml = null,
+  validatorFindings = [],
+  goldenReferenceId = null,
+} = {}) {
+  const normalizedId = requireNonEmptyString(variantId, 'variantId')
+  const allowedKinds = Object.values(OMR_BENCHMARK_VARIANT_KIND)
+  if (!allowedKinds.includes(variantKind)) throw new Error(`unsupported-omr-benchmark-variant:${variantKind}`)
+  if (!Array.isArray(validatorFindings)) throw new TypeError('validatorFindings must be an array.')
+
+  return deepFreeze({
+    variantId: normalizedId,
+    variantKind,
+    inputMetadata: cloneDeterministic(inputMetadata, 'inputMetadata'),
+    preprocessingSettings: cloneDeterministic(preprocessingSettings, 'preprocessingSettings'),
+    audiverisSettings: cloneDeterministic(audiverisSettings, 'audiverisSettings'),
+    generatedMusicXml: cloneDeterministic(generatedMusicXml, 'generatedMusicXml'),
+    validatorFindings: cloneDeterministic(validatorFindings, 'validatorFindings'),
+    comparison: createUnmeasuredGoldenComparison(goldenReferenceId),
+    sourceVerification: {
+      state: OMR_BENCHMARK_MEASUREMENT_STATE.REVIEW_REQUIRED,
+      definitive: false,
+    },
+  })
+}
+
+export function createComparativeOmrBenchmarkReport({
+  benchmarkId,
+  goldenReferenceId = null,
+  variants,
+} = {}) {
+  const normalizedBenchmarkId = requireNonEmptyString(benchmarkId, 'benchmarkId')
+  if (!Array.isArray(variants) || variants.length === 0) {
+    throw new TypeError('variants must be a non-empty array.')
+  }
+
+  const seenIds = new Set()
+  const records = variants.map((variant) => {
+    const record = createOmrVariantRecord({ ...variant, goldenReferenceId })
+    if (seenIds.has(record.variantId)) throw new Error(`duplicate-omr-benchmark-variant:${record.variantId}`)
+    seenIds.add(record.variantId)
+    return record
+  }).sort((a, b) => a.variantId.localeCompare(b.variantId))
+
+  const reference = resolveGoldenReference(goldenReferenceId)
+
+  return deepFreeze({
+    schemaVersion: OMR_BENCHMARK_SCHEMA_VERSION,
+    benchmarkKind: OMR_COMPARATIVE_BENCHMARK_KIND,
+    benchmarkId: normalizedBenchmarkId,
+    goldenReference: reference
+      ? {
+          fixtureId: reference.fixtureId,
+          evidenceState: reference.evidenceState,
+          sourcePdf: reference.sourcePdf,
+          expectedMusicXml: reference.expectedMusicXml,
+        }
+      : null,
+    variants: records,
+    recommendation: {
+      state: OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED,
+      variantId: null,
+      reason: 'Package 2E-A records evidence only. A best complete result cannot be selected until golden comparison metrics are actually measured.',
+    },
+  })
+}
+
 /**
  * Benchmark the exact reviewed real-OMR corpus. Input order does not affect
  * output order or content. Missing, duplicate, or unapproved fixtures fail
- * closed rather than silently changing the benchmark population.
+ * closed rather than silently changing the diagnostic population.
  */
 export function benchmarkReviewedOmrCorpus(entries) {
   const byName = validateCorpusEntries(entries)
