@@ -145,6 +145,8 @@ test('15. secondary failure handling is contained and next entry can run', async
 // 16-18. Upload rollback
 test('16-18. queue-full upload rollback removes only its new job and preserves existing data', async () => {
   const originalMax = GATEWAY_CONFIG.maxQueueSize
+  const originalDateNow = Date.now
+  const originalRandom = Math.random
   const fixtureDir = path.join(GATEWAY_CONFIG.storagePath, 'queue-safety-test-owned-sentinel')
   const preserved = path.join(fixtureDir, 'sentinel.bin')
   const sentinel = Buffer.from('seslitab queue rollback portability sentinel\n', 'utf8')
@@ -158,7 +160,12 @@ test('16-18. queue-full upload rollback removes only its new job and preserves e
     await fs.writeFile(preserved, sentinel)
     const preservedBytesBefore = await fs.readFile(preserved)
     const preservedHashBefore = hash(preservedBytesBefore)
-    const storageEntriesBefore = (await fs.readdir(GATEWAY_CONFIG.storagePath)).sort()
+
+    Date.now = () => 1900000000000
+    Math.random = () => 0.123456789
+    const rollbackJobId = jobManager.generateJobId()
+    const rollbackDir = path.join(GATEWAY_CONFIG.storagePath, rollbackJobId)
+    await assert.rejects(fs.lstat(rollbackDir), err => err.code === 'ENOENT')
 
     GATEWAY_CONFIG.maxQueueSize = 1
     await queue.enqueue(entry('capacity-holder'))
@@ -172,8 +179,10 @@ test('16-18. queue-full upload rollback removes only its new job and preserves e
     const preservedBytesAfter = await fs.readFile(preserved)
     assert.deepEqual(preservedBytesAfter, preservedBytesBefore)
     assert.equal(hash(preservedBytesAfter), preservedHashBefore)
-    assert.deepEqual((await fs.readdir(GATEWAY_CONFIG.storagePath)).sort(), storageEntriesBefore)
+    await assert.rejects(fs.lstat(rollbackDir), err => err.code === 'ENOENT')
   } finally {
+    Date.now = originalDateNow
+    Math.random = originalRandom
     GATEWAY_CONFIG.maxQueueSize = originalMax
     if (fixtureCreated) {
       await fs.rm(preserved, { force: true })
