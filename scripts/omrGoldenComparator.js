@@ -1,24 +1,18 @@
 // Package 2E-B — read-only golden MusicXML comparator.
 //
-// This comparator measures exact musical-event differences against one of the
-// repository's teacher-verified golden MusicXML references. It does not invoke
-// Audiveris, preprocess images, rewrite MusicXML, repair missing data, or merge
-// notes from multiple OMR outputs.
-//
-// Alignment policy is intentionally conservative:
-// 1. physical measures align by partIndex + measureIndex, never visible number;
-// 2. exact event matches are removed first;
-// 3. a remaining pair is classified as pitch/duration/voice error only when
-//    exactly one golden and one generated event occupy the same strict location;
-// 4. multiple unmatched events at the same location are alignment-ambiguous and
-//    detailed error counts become REVIEW_REQUIRED rather than guessed.
+// Safety boundary:
+// - reads only a repository-owned, teacher-verified golden MusicXML;
+// - never invokes or configures Audiveris;
+// - never rewrites MusicXML or repairs/merges musical data;
+// - physical measure identity is partIndex + measureIndex, not visible number;
+// - ambiguous event alignment becomes REVIEW_REQUIRED instead of a guessed error.
 
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseMusicXmlWithStructure } from '../musicXmlParser.js'
+import { parseMusicXml, parseMusicXmlWithStructure } from '../musicXmlParser.js'
 import { OMR_BENCHMARK_MEASUREMENT_STATE } from './omrBenchmark.js'
 import {
   OMR_BENCHMARK_GOLDEN_REFERENCES,
@@ -29,7 +23,7 @@ export const OMR_GOLDEN_COMPARATOR_SCHEMA_VERSION = 1
 export const OMR_GOLDEN_COMPARISON_KIND = 'teacher-verified-golden-musicxml-comparison'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const NUMBER_SCALE = 1e9
+const SCALE = 1e9
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
@@ -41,27 +35,35 @@ function sha256(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex')
 }
 
-function normalizeNumber(value) {
-  if (!Number.isFinite(value)) return null
-  return Math.round(value * NUMBER_SCALE) / NUMBER_SCALE
+function normalizedNumber(value) {
+  return Number.isFinite(value) ? Math.round(value * SCALE) / SCALE : null
 }
 
-function compareNumber(a, b) {
-  return normalizeNumber(a) === normalizeNumber(b)
-}
-
-function parseOrFailure(xml, side) {
+function parseForComparison(xml, side) {
   if (typeof xml !== 'string' || xml.trim() === '') {
     return { ok: false, reason: `${side}_MUSICXML_EMPTY`, parsed: null }
   }
-  const parsed = parseMusicXmlWithStructure(xml)
-  if (!parsed || parsed.error) {
+
+  // parseMusicXml() is the existing production parser that calculates ordered
+  // note onsets through note/backup/forward processing. The structural parser
+  // supplies physical measure metadata only. Package 2E-B does not change either.
+  const canonical = parseMusicXml(xml)
+  const structural = parseMusicXmlWithStructure(xml)
+  if (!canonical || canonical.error || !structural || structural.error) {
     return { ok: false, reason: `${side}_MUSICXML_PARSE_FAILED`, parsed: null }
   }
-  return { ok: true, reason: null, parsed }
+
+  return {
+    ok: true,
+    reason: null,
+    parsed: {
+      notes: canonical.notes || [],
+      measureMetadata: structural.measureMetadata || [],
+    },
+  }
 }
 
-function resolveTeacherVerifiedReference(goldenReferenceId) {
+function resolveReference(goldenReferenceId) {
   if (typeof goldenReferenceId !== 'string' || goldenReferenceId.trim() === '') {
     throw new TypeError('goldenReferenceId must be a non-empty string.')
   }
@@ -75,7 +77,7 @@ function resolveTeacherVerifiedReference(goldenReferenceId) {
   return reference
 }
 
-function eventPitch(event) {
+function pitch(event) {
   if (event?.isRest) return null
   return {
     step: event?.step ?? null,
@@ -84,10 +86,10 @@ function eventPitch(event) {
   }
 }
 
-function eventSemanticShape(event) {
+function semanticEvent(event) {
   return {
-    startBeat: normalizeNumber(event?.startBeat),
-    beats: normalizeNumber(event?.beats),
+    startBeat: normalizedNumber(event?.startBeat),
+    beats: normalizedNumber(event?.beats),
     voice: event?.voice ?? null,
     staff: event?.staff ?? null,
     isRest: Boolean(event?.isRest),
@@ -97,17 +99,17 @@ function eventSemanticShape(event) {
     tieStart: Boolean(event?.tieStart),
     tieStop: Boolean(event?.tieStop),
     tieContinue: Boolean(event?.tieContinue),
-    pitch: eventPitch(event),
+    pitch: pitch(event),
   }
 }
 
-function exactEventKey(event) {
-  return JSON.stringify(eventSemanticShape(event))
+function exactKey(event) {
+  return JSON.stringify(semanticEvent(event))
 }
 
-function strictLocationKey(event) {
+function locationKey(event) {
   return JSON.stringify({
-    startBeat: normalizeNumber(event?.startBeat),
+    startBeat: normalizedNumber(event?.startBeat),
     staff: event?.staff ?? null,
     isRest: Boolean(event?.isRest),
     isGrace: Boolean(event?.isGrace),
@@ -115,89 +117,73 @@ function strictLocationKey(event) {
   })
 }
 
-function measureIdentity(partIndex, measureIndex) {
+function measureKey(partIndex, measureIndex) {
   return `${partIndex}:${measureIndex}`
-}
-
-function measureDescriptor(measure) {
-  return {
-    partIndex: Number.isFinite(measure?.partIndex) ? measure.partIndex : null,
-    measureIndex: Number.isFinite(measure?.measureIndex) ? measure.measureIndex : null,
-    visibleMeasureNumber: measure?.measureNumber ?? measure?.visibleMeasureNumber ?? null,
-  }
 }
 
 function collectMeasures(parsed) {
   const measures = new Map()
-
-  for (const metadata of parsed?.measureMetadata || []) {
-    const descriptor = measureDescriptor(metadata)
-    if (!Number.isFinite(descriptor.partIndex) || !Number.isFinite(descriptor.measureIndex)) continue
-    const key = measureIdentity(descriptor.partIndex, descriptor.measureIndex)
-    if (!measures.has(key)) measures.set(key, { ...descriptor, events: [] })
+  for (const metadata of parsed.measureMetadata || []) {
+    if (!Number.isFinite(metadata?.partIndex) || !Number.isFinite(metadata?.measureIndex)) continue
+    measures.set(measureKey(metadata.partIndex, metadata.measureIndex), {
+      partIndex: metadata.partIndex,
+      measureIndex: metadata.measureIndex,
+      visibleMeasureNumber: metadata.measureNumber ?? null,
+      events: [],
+    })
   }
-
-  for (const note of parsed?.notes || []) {
-    const partIndex = Number.isFinite(note?.partIndex) ? note.partIndex : null
-    const measureIndex = Number.isFinite(note?.measureIndex) ? note.measureIndex : null
-    if (!Number.isFinite(partIndex) || !Number.isFinite(measureIndex)) continue
-    const key = measureIdentity(partIndex, measureIndex)
+  for (const note of parsed.notes || []) {
+    if (!Number.isFinite(note?.partIndex) || !Number.isFinite(note?.measureIndex)) continue
+    const key = measureKey(note.partIndex, note.measureIndex)
     if (!measures.has(key)) {
       measures.set(key, {
-        partIndex,
-        measureIndex,
-        visibleMeasureNumber: note?.measure ?? null,
+        partIndex: note.partIndex,
+        measureIndex: note.measureIndex,
+        visibleMeasureNumber: note.measure ?? null,
         events: [],
       })
     }
     measures.get(key).events.push(note)
   }
-
   return measures
 }
 
-function sortedExactKeys(events) {
-  return events.map(exactEventKey).sort()
+function exactMeasureEqual(a, b) {
+  const left = a.map(exactKey).sort()
+  const right = b.map(exactKey).sort()
+  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
-function exactMeasureEqual(goldenEvents, generatedEvents) {
-  const a = sortedExactKeys(goldenEvents)
-  const b = sortedExactKeys(generatedEvents)
-  if (a.length !== b.length) return false
-  return a.every((value, index) => value === b[index])
-}
-
-function consumeExactMatches(goldenEvents, generatedEvents) {
-  const generatedBuckets = new Map()
+function consumeExact(goldenEvents, generatedEvents) {
+  const buckets = new Map()
   generatedEvents.forEach((event, index) => {
-    const key = exactEventKey(event)
-    if (!generatedBuckets.has(key)) generatedBuckets.set(key, [])
-    generatedBuckets.get(key).push(index)
+    const key = exactKey(event)
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key).push(index)
   })
 
-  const matchedGenerated = new Set()
+  const used = new Set()
   const unmatchedGolden = []
   let exactMatches = 0
-
   for (const event of goldenEvents) {
-    const bucket = generatedBuckets.get(exactEventKey(event))
-    const generatedIndex = bucket?.find((index) => !matchedGenerated.has(index))
-    if (generatedIndex === undefined) {
-      unmatchedGolden.push(event)
-      continue
+    const index = buckets.get(exactKey(event))?.find((candidate) => !used.has(candidate))
+    if (index === undefined) unmatchedGolden.push(event)
+    else {
+      used.add(index)
+      exactMatches++
     }
-    matchedGenerated.add(generatedIndex)
-    exactMatches++
   }
-
-  const unmatchedGenerated = generatedEvents.filter((_, index) => !matchedGenerated.has(index))
-  return { exactMatches, unmatchedGolden, unmatchedGenerated }
+  return {
+    exactMatches,
+    unmatchedGolden,
+    unmatchedGenerated: generatedEvents.filter((_, index) => !used.has(index)),
+  }
 }
 
 function groupByLocation(events) {
   const groups = new Map()
   for (const event of events) {
-    const key = strictLocationKey(event)
+    const key = locationKey(event)
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(event)
   }
@@ -205,89 +191,70 @@ function groupByLocation(events) {
 }
 
 function pitchEqual(a, b) {
-  return JSON.stringify(eventPitch(a)) === JSON.stringify(eventPitch(b))
+  return JSON.stringify(pitch(a)) === JSON.stringify(pitch(b))
 }
 
 function classifyMeasure(golden, generated) {
   const goldenEvents = golden?.events || []
   const generatedEvents = generated?.events || []
   const exactCorrect = exactMeasureEqual(goldenEvents, generatedEvents)
-  const exact = consumeExactMatches(goldenEvents, generatedEvents)
-  const goldenByLocation = groupByLocation(exact.unmatchedGolden)
-  const generatedByLocation = groupByLocation(exact.unmatchedGenerated)
-  const locationKeys = [...new Set([...goldenByLocation.keys(), ...generatedByLocation.keys()])].sort()
+  const unmatched = consumeExact(goldenEvents, generatedEvents)
+  const goldByLocation = groupByLocation(unmatched.unmatchedGolden)
+  const generatedByLocation = groupByLocation(unmatched.unmatchedGenerated)
+  const locations = [...new Set([...goldByLocation.keys(), ...generatedByLocation.keys()])].sort()
 
-  let pitchErrors = 0
-  let durationErrors = 0
-  let voiceErrors = 0
-  let missingNotes = 0
-  let extraNotes = 0
-  let ambiguousLocations = 0
-  let unclassifiedGoldenEvents = 0
-  let unclassifiedGeneratedEvents = 0
-
-  for (const locationKey of locationKeys) {
-    const goldenGroup = goldenByLocation.get(locationKey) || []
-    const generatedGroup = generatedByLocation.get(locationKey) || []
-
-    if (goldenGroup.length === 1 && generatedGroup.length === 1) {
-      const expected = goldenGroup[0]
-      const actual = generatedGroup[0]
-      if (!pitchEqual(expected, actual) && !expected.isRest && !actual.isRest) pitchErrors++
-      if (!compareNumber(expected.beats, actual.beats)) durationErrors++
-      if ((expected.voice ?? null) !== (actual.voice ?? null)) voiceErrors++
-      continue
-    }
-
-    if (goldenGroup.length === 0) {
-      extraNotes += generatedGroup.filter((event) => !event.isRest).length
-      unclassifiedGeneratedEvents += generatedGroup.length
-      continue
-    }
-    if (generatedGroup.length === 0) {
-      missingNotes += goldenGroup.filter((event) => !event.isRest).length
-      unclassifiedGoldenEvents += goldenGroup.length
-      continue
-    }
-
-    ambiguousLocations++
-    unclassifiedGoldenEvents += goldenGroup.length
-    unclassifiedGeneratedEvents += generatedGroup.length
-  }
-
-  return {
+  const result = {
     exactCorrect,
-    exactMatches: exact.exactMatches,
+    exactMatches: unmatched.exactMatches,
     goldenEventCount: goldenEvents.length,
     generatedEventCount: generatedEvents.length,
-    pitchErrors,
-    durationErrors,
-    voiceErrors,
-    missingNotes,
-    extraNotes,
-    ambiguousLocations,
-    unclassifiedGoldenEvents,
-    unclassifiedGeneratedEvents,
+    missingNotes: 0,
+    extraNotes: 0,
+    pitchErrors: 0,
+    durationErrors: 0,
+    voiceErrors: 0,
+    ambiguousLocations: 0,
+    unclassifiedGoldenEvents: 0,
+    unclassifiedGeneratedEvents: 0,
   }
-}
 
-function unknownMetric() {
-  return { state: OMR_BENCHMARK_MEASUREMENT_STATE.UNKNOWN, value: null }
-}
+  for (const location of locations) {
+    const expected = goldByLocation.get(location) || []
+    const actual = generatedByLocation.get(location) || []
 
-function measuredMetric(value) {
-  return { state: OMR_BENCHMARK_MEASUREMENT_STATE.MEASURED, value }
-}
+    if (expected.length === 1 && actual.length === 1) {
+      if (!pitchEqual(expected[0], actual[0]) && !expected[0].isRest && !actual[0].isRest) result.pitchErrors++
+      if (normalizedNumber(expected[0].beats) !== normalizedNumber(actual[0].beats)) result.durationErrors++
+      if ((expected[0].voice ?? null) !== (actual[0].voice ?? null)) result.voiceErrors++
+      continue
+    }
 
-function reviewMetric(observedValue) {
-  return {
-    state: OMR_BENCHMARK_MEASUREMENT_STATE.REVIEW_REQUIRED,
-    value: null,
-    observedValue,
+    if (expected.length === 0) {
+      result.extraNotes += actual.filter((event) => !event.isRest).length
+      result.unclassifiedGeneratedEvents += actual.length
+      continue
+    }
+    if (actual.length === 0) {
+      result.missingNotes += expected.filter((event) => !event.isRest).length
+      result.unclassifiedGoldenEvents += expected.length
+      continue
+    }
+
+    result.ambiguousLocations++
+    result.unclassifiedGoldenEvents += expected.length
+    result.unclassifiedGeneratedEvents += actual.length
   }
+  return result
 }
 
-function failedReport(reference, generatedMusicXml, reason) {
+function metric(state, value, observedValue = undefined) {
+  const result = { state, value }
+  if (observedValue !== undefined) result.observedValue = observedValue
+  return result
+}
+
+function failedReport(reference, generatedMusicXml, reason, goldenMusicXml = null) {
+  const unknown = () => metric(OMR_BENCHMARK_MEASUREMENT_STATE.UNKNOWN, null)
   return deepFreeze({
     schemaVersion: OMR_GOLDEN_COMPARATOR_SCHEMA_VERSION,
     comparisonKind: OMR_GOLDEN_COMPARISON_KIND,
@@ -300,94 +267,85 @@ function failedReport(reference, generatedMusicXml, reason) {
       expectedMusicXml: reference.expectedMusicXml,
     },
     inputSha256: typeof generatedMusicXml === 'string' ? sha256(generatedMusicXml) : null,
-    goldenSha256: null,
+    goldenSha256: typeof goldenMusicXml === 'string' ? sha256(goldenMusicXml) : null,
     metrics: {
-      missingNotes: unknownMetric(),
-      extraNotes: unknownMetric(),
-      pitchErrors: unknownMetric(),
-      durationErrors: unknownMetric(),
-      voiceErrors: unknownMetric(),
-      fullyCorrectMeasureRate: unknownMetric(),
+      missingNotes: unknown(),
+      extraNotes: unknown(),
+      pitchErrors: unknown(),
+      durationErrors: unknown(),
+      voiceErrors: unknown(),
+      fullyCorrectMeasureRate: unknown(),
     },
-    alignment: {
-      state: OMR_BENCHMARK_MEASUREMENT_STATE.UNKNOWN,
-      ambiguousLocations: null,
-    },
+    alignment: { state: OMR_BENCHMARK_MEASUREMENT_STATE.UNKNOWN, ambiguousLocations: null },
     measures: [],
   })
 }
 
 export function compareGeneratedMusicXmlToGolden({ goldenReferenceId, generatedMusicXml } = {}) {
-  const reference = resolveTeacherVerifiedReference(goldenReferenceId)
+  const reference = resolveReference(goldenReferenceId)
   const goldenMusicXml = readFileSync(path.join(repoRoot, reference.expectedMusicXml), 'utf8')
+  const golden = parseForComparison(goldenMusicXml, 'GOLDEN')
+  if (!golden.ok) return failedReport(reference, generatedMusicXml, golden.reason, goldenMusicXml)
+  const generated = parseForComparison(generatedMusicXml, 'GENERATED')
+  if (!generated.ok) return failedReport(reference, generatedMusicXml, generated.reason, goldenMusicXml)
 
-  const goldenParsed = parseOrFailure(goldenMusicXml, 'GOLDEN')
-  if (!goldenParsed.ok) return failedReport(reference, generatedMusicXml, goldenParsed.reason)
+  const goldenMeasures = collectMeasures(golden.parsed)
+  const generatedMeasures = collectMeasures(generated.parsed)
+  const keys = [...new Set([...goldenMeasures.keys(), ...generatedMeasures.keys()])].sort((a, b) => {
+    const [ap, am] = a.split(':').map(Number)
+    const [bp, bm] = b.split(':').map(Number)
+    return (ap - bp) || (am - bm)
+  })
 
-  const generatedParsed = parseOrFailure(generatedMusicXml, 'GENERATED')
-  if (!generatedParsed.ok) return failedReport(reference, generatedMusicXml, generatedParsed.reason)
-
-  const goldenMeasures = collectMeasures(goldenParsed.parsed)
-  const generatedMeasures = collectMeasures(generatedParsed.parsed)
-  const measureKeys = [...new Set([...goldenMeasures.keys(), ...generatedMeasures.keys()])]
-    .sort((a, b) => {
-      const [aPart, aMeasure] = a.split(':').map(Number)
-      const [bPart, bMeasure] = b.split(':').map(Number)
-      return (aPart - bPart) || (aMeasure - bMeasure)
-    })
-
+  const totals = {
+    correctMeasures: 0,
+    missingNotes: 0,
+    extraNotes: 0,
+    pitchErrors: 0,
+    durationErrors: 0,
+    voiceErrors: 0,
+    ambiguousLocations: 0,
+    unclassifiedGoldenEvents: 0,
+    unclassifiedGeneratedEvents: 0,
+  }
   const measures = []
-  let correctMeasures = 0
-  let pitchErrors = 0
-  let durationErrors = 0
-  let voiceErrors = 0
-  let missingNotes = 0
-  let extraNotes = 0
-  let ambiguousLocations = 0
-  let unclassifiedGoldenEvents = 0
-  let unclassifiedGeneratedEvents = 0
 
-  for (const measureKey of measureKeys) {
-    const golden = goldenMeasures.get(measureKey) || null
-    const generated = generatedMeasures.get(measureKey) || null
-    const classified = classifyMeasure(golden, generated)
-    if (classified.exactCorrect) correctMeasures++
-    pitchErrors += classified.pitchErrors
-    durationErrors += classified.durationErrors
-    voiceErrors += classified.voiceErrors
-    missingNotes += classified.missingNotes
-    extraNotes += classified.extraNotes
-    ambiguousLocations += classified.ambiguousLocations
-    unclassifiedGoldenEvents += classified.unclassifiedGoldenEvents
-    unclassifiedGeneratedEvents += classified.unclassifiedGeneratedEvents
+  for (const key of keys) {
+    const goldMeasure = goldenMeasures.get(key) || null
+    const generatedMeasure = generatedMeasures.get(key) || null
+    const result = classifyMeasure(goldMeasure, generatedMeasure)
+    if (result.exactCorrect) totals.correctMeasures++
+    for (const field of [
+      'missingNotes', 'extraNotes', 'pitchErrors', 'durationErrors', 'voiceErrors',
+      'ambiguousLocations', 'unclassifiedGoldenEvents', 'unclassifiedGeneratedEvents',
+    ]) totals[field] += result[field]
 
-    const [partIndex, measureIndex] = measureKey.split(':').map(Number)
+    const [partIndex, measureIndex] = key.split(':').map(Number)
     measures.push({
       measureKey: { partIndex, measureIndex },
-      goldenVisibleMeasureNumber: golden?.visibleMeasureNumber ?? null,
-      generatedVisibleMeasureNumber: generated?.visibleMeasureNumber ?? null,
-      exactCorrect: classified.exactCorrect,
-      goldenEventCount: classified.goldenEventCount,
-      generatedEventCount: classified.generatedEventCount,
-      exactMatches: classified.exactMatches,
-      ambiguousLocations: classified.ambiguousLocations,
+      goldenVisibleMeasureNumber: goldMeasure?.visibleMeasureNumber ?? null,
+      generatedVisibleMeasureNumber: generatedMeasure?.visibleMeasureNumber ?? null,
+      exactCorrect: result.exactCorrect,
+      goldenEventCount: result.goldenEventCount,
+      generatedEventCount: result.generatedEventCount,
+      exactMatches: result.exactMatches,
+      ambiguousLocations: result.ambiguousLocations,
     })
   }
 
-  const detailedState = ambiguousLocations > 0
+  const detailState = totals.ambiguousLocations > 0
     ? OMR_BENCHMARK_MEASUREMENT_STATE.REVIEW_REQUIRED
     : OMR_BENCHMARK_MEASUREMENT_STATE.MEASURED
-  const detailMetric = detailedState === OMR_BENCHMARK_MEASUREMENT_STATE.MEASURED
-    ? measuredMetric
-    : reviewMetric
-  const measureRate = measureKeys.length === 0 ? null : correctMeasures / measureKeys.length
+  const detail = (value) => detailState === OMR_BENCHMARK_MEASUREMENT_STATE.MEASURED
+    ? metric(detailState, value)
+    : metric(detailState, null, value)
 
   return deepFreeze({
     schemaVersion: OMR_GOLDEN_COMPARATOR_SCHEMA_VERSION,
     comparisonKind: OMR_GOLDEN_COMPARISON_KIND,
-    state: detailedState,
+    state: detailState,
     ok: true,
-    reason: ambiguousLocations > 0
+    reason: totals.ambiguousLocations > 0
       ? 'Detailed event-error classification requires review because at least one strict location has multiple unmatched events.'
       : null,
     reference: {
@@ -398,23 +356,23 @@ export function compareGeneratedMusicXmlToGolden({ goldenReferenceId, generatedM
     inputSha256: sha256(generatedMusicXml),
     goldenSha256: sha256(goldenMusicXml),
     metrics: {
-      missingNotes: detailMetric(missingNotes),
-      extraNotes: detailMetric(extraNotes),
-      pitchErrors: detailMetric(pitchErrors),
-      durationErrors: detailMetric(durationErrors),
-      voiceErrors: detailMetric(voiceErrors),
+      missingNotes: detail(totals.missingNotes),
+      extraNotes: detail(totals.extraNotes),
+      pitchErrors: detail(totals.pitchErrors),
+      durationErrors: detail(totals.durationErrors),
+      voiceErrors: detail(totals.voiceErrors),
       fullyCorrectMeasureRate: {
         state: OMR_BENCHMARK_MEASUREMENT_STATE.MEASURED,
-        value: measureRate,
-        correctMeasures,
-        totalMeasures: measureKeys.length,
+        value: keys.length === 0 ? null : totals.correctMeasures / keys.length,
+        correctMeasures: totals.correctMeasures,
+        totalMeasures: keys.length,
       },
     },
     alignment: {
-      state: detailedState,
-      ambiguousLocations,
-      unclassifiedGoldenEvents,
-      unclassifiedGeneratedEvents,
+      state: detailState,
+      ambiguousLocations: totals.ambiguousLocations,
+      unclassifiedGoldenEvents: totals.unclassifiedGoldenEvents,
+      unclassifiedGeneratedEvents: totals.unclassifiedGeneratedEvents,
       policy: 'exact-first-then-singleton-strict-location',
     },
     measures,
