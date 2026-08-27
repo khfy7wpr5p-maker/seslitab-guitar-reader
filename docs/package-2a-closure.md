@@ -30,9 +30,9 @@ The absence of a production canonical Guitar TAB output consumer must remain exp
 
 ## Safety result
 
-- No OMR or Audiveris production path change is required for Package 2A closure.
-- No runtime output behavior change is required for Package 2A closure.
-- No quality-gate bypass is introduced.
+- No OMR or Audiveris production path change was required for Package 2A closure.
+- No runtime output behavior change was required for Package 2A closure.
+- No quality-gate bypass was introduced.
 - Missing or conflicting canonical data remains marked rather than invented.
 - Existing source-verification metadata remains separate from later teacher approval.
 
@@ -53,6 +53,19 @@ Closure candidate head `4fccc520f05988dc8218a45e488bb93e625b3862` passed require
 
 The first closure-candidate CI run failed only because the new Node test omitted the existing DOMParser test-harness bootstrap import. Production code was not changed to correct that harness error; the test was aligned with the existing canonical MusicXML bridge test and the new exact head passed.
 
-## Closure gate
+## Final closure result
 
-Package 2A must remain not-final until this closure PR is merged and the exact merged `main` SHA passes the required post-merge `test-and-build` workflow. Only after that evidence exists may `docs/package-status.md` be changed to `Completed` in a separate documentation-only closure record.
+PR #29 merged to protected `main` as `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`.
+
+Post-merge GitHub Actions run `33068597173`, required job `98504784644` / `test-and-build`, passed on that exact merged SHA:
+
+- `npm ci`: PASS; 120 packages audited; 0 vulnerabilities
+- full regression: 697/697 tests PASS; 211 suites; 0 failed/skipped/cancelled
+- Package 2A canonical consumer flow: 2/2 PASS
+- production Vite build: PASS
+- Audiveris and OMR regression shields: PASS
+- E2E regression: PASS
+- approved Turkish TTS golden output unchanged: PASS
+- approved Guitar TAB position golden output unchanged: PASS
+
+Package 2A closure gate is complete. Remaining work is separately tracked under Package 2B, 2C, 2D, Package 4, and later packages; those items do not reopen Package 2A.
