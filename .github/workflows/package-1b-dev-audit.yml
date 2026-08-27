@@ -1,0 +1,33 @@
+name: Package 1B dev dependency audit
+
+on:
+  push:
+    branches:
+      - security/package-1b-multer-remediation
+    paths:
+      - .github/workflows/package-1b-dev-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-all-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: security/package-1b-multer-remediation
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install exact dependencies
+        run: npm ci --ignore-scripts
+      - name: Report all dependency vulnerabilities
+        shell: bash
+        run: |
+          npm audit --json > audit.json || true
+          node --input-type=module -e "import fs from 'node:fs'; const a=JSON.parse(fs.readFileSync('audit.json','utf8')); console.log(JSON.stringify({metadata:a.metadata?.vulnerabilities ?? {}, vulnerabilities:a.vulnerabilities ?? {}}, null, 2));"
