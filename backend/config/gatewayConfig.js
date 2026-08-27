@@ -58,6 +58,14 @@ export const GATEWAY_CONFIG = {
       10000,
     ),
   },
+  discovery: {
+    // Intentionally no production default. A deployment must explicitly
+    // configure the independent ST Score Discovery Gateway origin.
+    baseUrl: envPath('SESLITAB_DISCOVERY_GATEWAY_URL', ''),
+    timeoutMs: envInt('SESLITAB_DISCOVERY_TIMEOUT_MS', 10000),
+    maxResponseBytes: envInt('SESLITAB_DISCOVERY_MAX_RESPONSE_BYTES', 1024 * 1024),
+    resultLimit: Math.min(envInt('SESLITAB_DISCOVERY_RESULT_LIMIT', 50), 100),
+  },
   defaultProvider: envPath('OMR_PROVIDER', 'mock'),
   // Frontend polling configuration (also used by omrService.js).
   frontend: {
