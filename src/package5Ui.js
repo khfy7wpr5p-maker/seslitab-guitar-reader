@@ -41,6 +41,20 @@ const STRING_LABEL = Object.freeze({
   4: 'Dördüncü tel',
 })
 
+const STRING_NAME = Object.freeze({
+  1: 'E',
+  2: 'A',
+  3: 'D',
+  4: 'G',
+})
+
+const STRING_OPEN_MIDI = Object.freeze({
+  1: 76,
+  2: 69,
+  3: 62,
+  4: 55,
+})
+
 const FINGER_LABEL = Object.freeze({
   0: 'açık tel',
   1: 'birinci parmak',
@@ -48,6 +62,17 @@ const FINGER_LABEL = Object.freeze({
   3: 'üçüncü parmak',
   4: 'dördüncü parmak',
 })
+
+const FINGER_BY_SEMITONE_OFFSET = Object.freeze([
+  0,
+  1, 1,
+  2, 2,
+  3, 3,
+  4,
+])
+
+const BASIC_VIOLIN_POLICY_ID = 'first-position-semitone-zone-v1'
+const BASIC_VIOLIN_PROVENANCE = 'generated-basic-first-position-fingering'
 
 function freezeModel(state, status, text = '') {
   return Object.freeze({
@@ -62,6 +87,49 @@ function validIndex(value) {
   return Number.isInteger(value) && value >= 0
 }
 
+function hasConsistentGeneratedFingering(event) {
+  const fingering = event?.fingering
+  if (!fingering || typeof fingering !== 'object') return false
+
+  const stringNumber = fingering.stringNumber
+  const semitoneOffset = fingering.semitoneOffset
+  const expectedOpenMidi = STRING_OPEN_MIDI[stringNumber]
+
+  if (
+    !Number.isInteger(stringNumber) ||
+    !STRING_LABEL[stringNumber] ||
+    fingering.stringName !== STRING_NAME[stringNumber] ||
+    fingering.position !== 'first' ||
+    fingering.policyId !== BASIC_VIOLIN_POLICY_ID ||
+    event.policyId !== BASIC_VIOLIN_POLICY_ID ||
+    fingering.provenance !== BASIC_VIOLIN_PROVENANCE ||
+    event.provenance !== BASIC_VIOLIN_PROVENANCE ||
+    fingering.teacherApproved !== false ||
+    event.teacherApproved !== false ||
+    !Number.isInteger(expectedOpenMidi) ||
+    fingering.openMidi !== expectedOpenMidi ||
+    !Number.isInteger(semitoneOffset) ||
+    semitoneOffset < 0 ||
+    semitoneOffset >= FINGER_BY_SEMITONE_OFFSET.length ||
+    !Number.isInteger(fingering.fingerNumber) ||
+    fingering.fingerNumber !== FINGER_BY_SEMITONE_OFFSET[semitoneOffset] ||
+    !FINGER_LABEL[fingering.fingerNumber] ||
+    !Number.isInteger(fingering.writtenMidi) ||
+    fingering.writtenMidi !== expectedOpenMidi + semitoneOffset
+  ) {
+    return false
+  }
+
+  if (
+    Number.isInteger(event.note?.midi) &&
+    event.note.midi !== fingering.writtenMidi
+  ) {
+    return false
+  }
+
+  return true
+}
+
 function formatEvent(event, measureKey) {
   if (!event || typeof event !== 'object' || event.measureKey !== measureKey) {
     return null
@@ -71,22 +139,9 @@ function formatEvent(event, measureKey) {
     return event.fingering === null ? 'sus' : null
   }
 
-  const fingering = event.fingering
-  if (
-    !fingering ||
-    typeof fingering !== 'object' ||
-    !Number.isInteger(fingering.stringNumber) ||
-    !Number.isInteger(fingering.fingerNumber) ||
-    !STRING_LABEL[fingering.stringNumber] ||
-    !FINGER_LABEL[fingering.fingerNumber] ||
-    fingering.provenance !== 'generated-basic-first-position-fingering' ||
-    fingering.teacherApproved !== false ||
-    event.teacherApproved !== false ||
-    event.provenance !== 'generated-basic-first-position-fingering'
-  ) {
-    return null
-  }
+  if (!hasConsistentGeneratedFingering(event)) return null
 
+  const fingering = event.fingering
   const position = `${STRING_LABEL[fingering.stringNumber]}, ${FINGER_LABEL[fingering.fingerNumber]}`
   const noteName = typeof event.note?.noteName === 'string'
     ? event.note.noteName.trim()
@@ -106,7 +161,8 @@ export function formatBasicViolinProjectionForUi(projection) {
     typeof projection !== 'object' ||
     projection.state !== 'projected' ||
     projection.teacherApproved !== false ||
-    projection.provenance !== 'generated-basic-first-position-fingering' ||
+    projection.provenance !== BASIC_VIOLIN_PROVENANCE ||
+    projection.policyId !== BASIC_VIOLIN_POLICY_ID ||
     !Array.isArray(projection.measures) ||
     !validIndex(projection.measureCount) ||
     projection.measureCount !== projection.measures.length ||
@@ -117,7 +173,7 @@ export function formatBasicViolinProjectionForUi(projection) {
   }
 
   const lines = []
-  let observedNoteCount = 0
+  const observedNoteIndexes = new Set()
 
   for (const measure of projection.measures) {
     if (
@@ -134,10 +190,18 @@ export function formatBasicViolinProjectionForUi(projection) {
 
     const eventText = []
     for (const event of measure.events) {
+      if (
+        !validIndex(event?.noteIndex) ||
+        event.noteIndex >= projection.noteCount ||
+        observedNoteIndexes.has(event.noteIndex)
+      ) {
+        return null
+      }
+
       const text = formatEvent(event, measure.measureKey)
       if (!text) return null
+      observedNoteIndexes.add(event.noteIndex)
       eventText.push(text)
-      observedNoteCount += 1
     }
 
     const visibleNumber = measure.measureNumber === null || measure.measureNumber === undefined
@@ -149,7 +213,11 @@ export function formatBasicViolinProjectionForUi(projection) {
     )
   }
 
-  if (observedNoteCount !== projection.noteCount) return null
+  if (observedNoteIndexes.size !== projection.noteCount) return null
+  for (let noteIndex = 0; noteIndex < projection.noteCount; noteIndex += 1) {
+    if (!observedNoteIndexes.has(noteIndex)) return null
+  }
+
   return lines.join('\n')
 }
 
