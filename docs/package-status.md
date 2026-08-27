@@ -1,8 +1,9 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-27
-Implementation baseline reviewed: `114b0961ae26679b565c7d39cace0554398aeb05`
+Implementation baseline reviewed: `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`
 Plan 0 closure merged-main verified: `4945d5b3ae5b0e1a61138f58673047ae3dba3e2d`
+Package 2A closure merged-main verified: `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`
 
 This table is an orientation snapshot, not completion evidence. A package may be marked **Completed** only after its acceptance criteria, focused tests, full regression suite, production build, and required GitHub workflow evidence have been freshly verified.
 
@@ -13,7 +14,7 @@ This table is an orientation snapshot, not completion evidence. A package may be
 | 0 — Safe baseline | Completed | Recovery refs and both approved golden-reference evidence chains are preserved. Approved TTS and Guitar TAB golden outputs are SHA-256 protected and regression-tested. Focused golden tests passed 3/3; the full local regression suite passed 665/665; production build passed; diff integrity and clean working tree were verified. The independent source ZIP for exact tested commit `6485ff117f4559a1a7571994d312a85c1983480e` has SHA-256 `578835c78285cd2cf2b18ad2917b1e9aca6ee9bc2aaa232b9d569cc6c2c2b42a` and passed `unzip -t`. PR #19 head `39613c590f980f67a6386250b6994363be7a378d` passed GitHub Actions run `31327857090`; required job `test-and-build` passed. PR #19 was separately approved and merged as `4945d5b3ae5b0e1a61138f58673047ae3dba3e2d`; post-merge `main` run `31327991805` and required job `test-and-build` both passed. Plan 0 acceptance and closure gates are therefore complete. |
 | 1A — Queue, retry, restart, cancellation | Completed | Package 1A acceptance is complete. Fresh verification covered real retry re-enqueue, duplicate/ghost-job prevention, confirmed child-process termination with SIGTERM/SIGKILL escalation, truthful and idempotent cancellation, restart recovery, default worker concurrency 1, and retention-safe cleanup. PR #21 fixed the review-discovered P2 retention lifecycle gap in `backend/services/cleanupService.js` with regression coverage in `tests/backendRestartRecovery.test.js`. Exact PR head `6a03c22d63f789771fd172f5bdf9507e3d69c0fa` passed GitHub Actions run `31331869610`; full tests and production build passed. PR #21 was separately approved and merged as `5510b1254c46ce691877b91e257e531fdcca7012`; post-merge `main` run `31332130115` passed with 666/666 tests, 0 failed/skipped/cancelled, and production build PASS. The Codex P2 review thread was resolved after the fix. Diff integrity was rechecked from the exact GitHub PR diff using `git diff --check` in a temporary local reconstruction and returned 0; connector-only GitHub writes have no persistent uncommitted working tree. Remaining 1A closure gate: none. |
 | 1B — File, XML and API security | Completed | Package 1B acceptance is complete. Fresh verification covers PDF extension and `%PDF` header validation, 10 MB upload limits, 200-page enforcement, safe filename/path-traversal handling, MusicXML/XML validation before parsing, XXE/external-entity/internal-subset/XInclude/xml-stylesheet rejection, exact-origin CORS, bounded rate limiting, safe public error/health responses, and fail-closed multipart handling. PR #23 upgraded Multer to pinned `2.2.0`, restricted multipart requests to one file and one field with bounded parts and no nested fields, preserved valid PDF + provider uploads, and added dedicated multipart security regression coverage. The lockfile was synchronized deterministically and the transitive `nanoid` advisory was remediated to `3.3.18`; exact dependency audit evidence reached 0 vulnerabilities. Exact PR head `35b7fdde9e19a3235b40c136b12925468742ca85` passed required CI with 672/672 tests, 0 failed/skipped/cancelled, and production build PASS. PR #23 was merged as `114b0961ae26679b565c7d39cace0554398aeb05`; post-merge `main` CI run `33060506474` again passed `npm ci` with 0 vulnerabilities, 672/672 tests with 0 failed/skipped/cancelled, and production build PASS. No deployment was performed. Remaining 1B closure gate: none. |
-| 2A — Canonical note and time model | Partially implemented | Canonical pitch, time, verification metadata and consumption-policy foundations exist; every consumer is not yet proven to use them consistently. |
+| 2A — Canonical note and time model | Completed | Versioned canonical pitch/time model, source-verification metadata, preservation rules, shared consumer policy and production-boundary inventory are verified. PRs #26–#29 established preservation, policy, consumer bindings and real canonical MusicXML consumer-flow evidence. PR #29 merged as `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`; exact post-merge `main` run `33068597173` / `test-and-build` passed with 697/697 tests, 211 suites, 0 vulnerabilities and production build PASS. Mandatory consumer blocking remains Package 2D, and production canonical NoteObject → Guitar TAB generation remains Package 4; neither is reclassified as 2A work. Remaining 2A closure gate: none. |
 | 2B — Structural and rhythmic validator | Not verified | Parsing and timing foundations exist, but the complete validator acceptance matrix has not been freshly demonstrated. |
 | 2C — Quality and error report | Partially implemented | Verification states and consumption decisions exist; the complete required error-code report is not verified. |
 | 2D — Quality gate integration | Partially implemented | A shared policy exists, but mandatory enforcement across TTS, playback and Guitar TAB is not fully verified. |
@@ -37,6 +38,26 @@ This table is an orientation snapshot, not completion evidence. A package may be
 | 12 — Teacher-to-student sharing | Not started | No verified approved-revision sharing and authorization system. |
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | A responsive web foundation exists; iPhone VoiceOver, audio lifecycle, privacy and productisation criteria are not verified. |
+
+## Package 2A Closure Evidence
+
+- Closure implementation/evidence PR: #29
+- Closure merge commit: `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`
+- Required post-merge `main` workflow: CI run `33068597173`
+- Required job: `98504784644` / `test-and-build` — completed/success
+- `npm ci`: passed; 120 packages audited; 0 vulnerabilities
+- Full regression: 697 passed, 0 failed, 0 skipped, 0 cancelled; 211 suites
+- Package 2A canonical consumer-flow tests: 2/2 passed
+- Production build: passed with Vite 8.2.0
+- Audiveris and OMR regression shields: passed
+- E2E workflow regression: passed
+- Approved Turkish TTS golden output: unchanged/pass
+- Approved Guitar TAB position golden output: unchanged/pass
+- Runtime production behavior changes in the closure PR: none
+- OMR/Audiveris production changes in the closure PR: none
+- Remaining Package 2A closure gate: none
+
+Package 2A closes only the shared canonical note/time model contract. Mandatory ACCEPT/REVIEW/BLOCK runtime enforcement remains Package 2D. Production canonical NoteObject → Guitar TAB generation remains Package 4 and later TAB work. These boundaries are deliberate and do not reopen Package 2A.
 
 ## Plan 0R Evidence
 
@@ -133,7 +154,7 @@ Required approvals remain `0`. This prevents an approval-only deadlock for a sin
 - Full local regression suite on exact tested source commit: 665 passed, 0 failed, 0 skipped, 0 cancelled
 - Production build: passed with Vite 8.2.0
 - Diff integrity: `git diff --check origin/main...HEAD` passed
-- Working tree after validation: clean
+- Working tree: clean
 - Existing `tests/fixtures/real-omr/*-clean.xml` files remain useful regression inputs but are not classified as complete teacher-approved golden references because their source/license/teacher-approval evidence is incomplete.
 
 ### Plan 0 CC0 Four-Measure Golden Reference
