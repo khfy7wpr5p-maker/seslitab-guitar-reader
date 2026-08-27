@@ -22,7 +22,7 @@ import {
   OMR_BENCHMARK_VARIANT_KIND,
   createOmrVariantRecord,
 } from './omrBenchmark.js'
-import { ensureOmrBenchmarkDomParser } from './omrBenchmarkNodeDom.js'
+import { runWithOmrBenchmarkDomParser } from './omrBenchmarkNodeDom.js'
 import { measureOmrVariantEvidence } from './omrMeasuredVariantEvidence.js'
 
 export const OMR_ISOLATED_BENCHMARK_SCHEMA_VERSION = 1
@@ -109,7 +109,6 @@ function validateVariantSet(variants, goldenReferenceId) {
     ids.add(variantId)
     kinds.add(variant.variantKind)
 
-    // Reuse 2E-A contract validation for settings/provenance and golden identity.
     normalized.push(createOmrVariantRecord({
       variantId,
       variantKind: variant.variantKind,
@@ -139,15 +138,6 @@ async function assertOriginalUnchanged(sourcePath, expectedSha256, expectedByteL
   }
 }
 
-/**
- * Execute exactly one isolated complete eight-variant benchmark experiment.
- *
- * prepareVariant(context) -> { artifactPath } OR { state: NOT_MEASURED, reason }
- * runExperimentalOmr(context) -> { generatedMusicXml } OR { state: NOT_MEASURED, reason }
- *
- * Adapter exceptions fail the whole experiment after temporary cleanup. This
- * avoids presenting a partially executed experiment as a comparable result.
- */
 export async function runIsolatedOmrBenchmarkExperiment({
   benchmarkId,
   sourcePath,
@@ -161,7 +151,6 @@ export async function runIsolatedOmrBenchmarkExperiment({
   if (typeof prepareVariant !== 'function') throw new TypeError('prepareVariant must be a function.')
   if (typeof runExperimentalOmr !== 'function') throw new TypeError('runExperimentalOmr must be a function.')
 
-  // Validate the entire experiment contract before creating workspaces or invoking adapters.
   const normalizedVariants = validateVariantSet(variants, goldenReferenceId)
 
   let sourceInfo
@@ -231,11 +220,7 @@ export async function runIsolatedOmrBenchmarkExperiment({
         throw new Error('experimental-omr-musicxml-required')
       }
 
-      // Benchmark scripts run under Node in CI/diagnostics. Install only the
-      // benchmark-local DOM compatibility before downstream evidence parsing.
-      ensureOmrBenchmarkDomParser()
-
-      const evidence = measureOmrVariantEvidence({
+      const evidence = runWithOmrBenchmarkDomParser(() => measureOmrVariantEvidence({
         variantId: variant.variantId,
         variantKind: variant.variantKind,
         inputMetadata: {
@@ -247,7 +232,7 @@ export async function runIsolatedOmrBenchmarkExperiment({
         audiverisSettings: variant.audiverisSettings,
         generatedMusicXml: omrResult.generatedMusicXml,
         goldenReferenceId,
-      })
+      }))
 
       measuredVariants.push(deepFreeze({
         variantId: variant.variantId,
