@@ -15,9 +15,12 @@ The only accepted input is a Package 4C result with:
 - `provenance: generated-basic`;
 - `sourceFingeringClaimed: false`;
 - complete canonical physical measure identity;
-- contiguous source `noteIndex` order;
+- unique and complete source `noteIndex` coverage;
+- increasing source `noteIndex` order inside each physical measure;
 - valid Package 4B string/fret positions for pitched events;
 - `position: null` for rests.
+
+Package 4C groups events by canonical physical `measureKey`. If source order later revisits an already-seen physical measure, Package 4D therefore accepts the genuine grouped projection as long as every original `noteIndex` is present exactly once and order inside each measure is preserved. It does not require the measure-group iteration itself to be globally contiguous.
 
 A non-projected, incomplete, contradictory or malformed projection returns no partial TAB text.
 
@@ -95,7 +98,8 @@ No TAB text is returned when:
 - policy/provenance claims conflict;
 - note or measure counts conflict;
 - measure identity is missing or duplicated;
-- event order is incomplete or non-contiguous;
+- a source `noteIndex` is invalid, duplicated or missing;
+- source order decreases inside one physical measure;
 - event timing is malformed;
 - rest/position state conflicts;
 - string number and string letter conflict;
@@ -129,7 +133,9 @@ Focused tests cover:
 7. invalid string/fret evidence fail-closed behavior;
 8. count, identity and policy contradiction rejection;
 9. determinism, immutability and no input mutation;
-10. source isolation from production OMR/gateway/gate/parser/UI boundaries.
+10. source isolation from production OMR/gateway/gate/parser/UI boundaries;
+11. a genuine Package 4C projection whose source order revisits a physical measure;
+12. duplicate/out-of-range source `noteIndex` evidence rejection.
 
 ## Next integration boundary
 
