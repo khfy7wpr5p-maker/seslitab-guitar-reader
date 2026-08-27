@@ -1,30 +1,41 @@
 # SesliTab Current Status
 
-Last documentation review: 2026-08-09  
-Implementation baseline reviewed: `62d7782fc770f807b237ecc54789beb972b658e5`
+Last documentation review: 2026-08-27  
+Implementation baseline reviewed: `23f758b6231c282b0d10832820e18007dbaea65f`
+Current package closure: **Package 2E — OMR Benchmark**
+Next package after protected-main closure verification: **Package 3A — Not started**
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build, or GitHub Actions result.
 
 ## Verified Foundations
 
-The repository currently contains foundations for:
+The repository currently contains verified foundations for:
 
-- An accessible web interface
-- PDF upload
-- A Cloud OMR Gateway
+- Accessible web interface foundations
+- PDF upload and validation
+- Cloud OMR Gateway
 - Mock and Audiveris provider adapters
-- Asynchronous job processing
+- Asynchronous OMR job processing
 - Persistent job metadata and restart recovery logic
+- File, multipart, API and MusicXML security boundaries
 - MusicXML parsing
 - Guitar TAB text parsing
-- A shared `NoteObject` model
-- Canonical pitch resolution
-- Canonical timing and duration resolution
+- Shared canonical `NoteObject` pitch/time model
+- Canonical source-verification metadata and consumer policy
+- Structural/rhythmic MusicXML validation
+- Package 2C quality and error reporting
+- Package 2D fail-closed `ACCEPT` / `REVIEW` / `BLOCK` gate
+- Production TTS and rhythmic-playback quality-gate enforcement
+- Package 2E deterministic OMR benchmark/evidence framework
+- Teacher-verified golden MusicXML comparison support
+- Isolated eight-variant experimental benchmark orchestration
+- Evidence-only Pareto recommendation policy
 - Turkish rhythmic text
+- Rhythmic HTML
 - Turkish text-to-speech
 - Web Audio musical playback
 - Docker and Render deployment configuration
-- Automated tests and a production build command
+- Automated tests and production build gate
 
 ## Current Inputs
 
@@ -45,127 +56,97 @@ The repository currently contains foundations for:
 
 The current playback system uses Web Audio. It does not yet represent a completed real MIDI export package.
 
-## Plan 0R — CI and Main Protection Status
+## Package 2A–2E Status
 
-Plan 0R-A and Plan 0R-B have been verified against the current `main` baseline.
+- **2A — Canonical note and time model: Completed.** Closure merge `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`; post-merge CI `33068597173` passed.
+- **2B — Structural and rhythmic validator: Completed.** Closure merge `e2fa6f6947334388d6a08299220d31f6d8462ab1`; post-merge CI `33073348226` passed.
+- **2C — Quality and error report: Completed.** Technical closure merge `8292f82327b6290d182b029e5ba402ae16c31cff`; post-merge CI `33076690354` passed with 756/756 tests and audit 0.
+- **2D — Quality gate integration: Completed.** Technical closure merge `0c9df668ddcb1b16d1d5b4ca6dd1d3839d441d95`; post-merge CI `33082106942` passed with 775/775 tests and audit 0.
+- **2E — OMR benchmark: Completed by this closure package once merged to protected `main` and exact-main CI passes.** Code stages PR #45 through PR #49 are merged. Technical closure baseline `23f758b6231c282b0d10832820e18007dbaea65f`; post-2E-E main CI run `33090396467` / run #109 passed with 839/839 tests, 229 suites, audit 0 vulnerabilities, and production build PASS.
 
-### Plan 0R-A — Verified CI baseline
+Detailed evidence is in:
 
-PR #14 merged the CI baseline to `main` at commit `62d7782fc770f807b237ecc54789beb972b658e5`.
+- `docs/package-2c-closure.md`
+- `docs/package-2d-closure.md`
+- `docs/package-2e-benchmark-contract.md`
+- `docs/package-2e-closure.md`
 
-Workflow changes included:
+## Package 2E Safety Boundary
 
-- Added `.github/workflows/ci.yml`.
-- Updated `.github/workflows/e2e-render-omr.yml` to use Node.js 24.
-- Updated the Render health assertions to the public safe runtime fields actually emitted by the backend.
-- Added read-only `contents: read` workflow permissions.
+Package 2E is an experimental benchmark/evidence framework. Its completion does not claim error-free OMR or a universal accuracy percentage.
 
-The general CI workflow runs, in order:
+Verified rules include:
 
-```bash
-npm ci
-npm test
-npm run build
-```
+- regression-only real-OMR outputs are not silently treated as teacher-approved ground truth;
+- no golden truth means comparison metrics stay `NOT_MEASURED`;
+- ambiguous event correspondence becomes `REVIEW_REQUIRED`;
+- all eight approved variants remain isolated;
+- original source bytes are protected by deterministic SHA-256/byte-length checks;
+- temporary workspaces are cleaned on success and failure;
+- no cross-variant note merging is allowed;
+- no weighted score may invent a benchmark winner;
+- a winner is emitted only under strict complete measured Pareto-dominance evidence;
+- production source verification is never elevated by benchmark structure alone.
 
-Local validation recorded on the Plan 0R-A branch before merge:
+The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path, and E2E workflow were not intentionally changed by Package 2E.
 
-- `npm ci`: passed.
-- `npm test`: 662 tests passed, 0 failed, 0 skipped, 0 cancelled.
-- `npm run build`: passed with Vite 8.2.0.
+## Protected Main and CI
 
-GitHub-hosted validation on the merged `main` commit is also complete:
+`main` is protected. Required status check: `test-and-build`.
 
-- Workflow: `CI`
-- Run ID: `31156531809`
-- Event: `push`
-- Head SHA: `62d7782fc770f807b237ecc54789beb972b658e5`
-- Conclusion: `success`
-- Required job: `test-and-build`
-- `Install dependencies`: passed
-- `Run tests`: passed
-- `Build production bundle`: passed
+Package 2E-E was merged through PR #49 as `23f758b6231c282b0d10832820e18007dbaea65f`. Exact post-merge `main` CI run `33090396467` / run #109 completed successfully:
 
-The existing Audiveris–Render integration was preserved:
+- `npm ci`: PASS
+- 120 packages audited
+- 0 vulnerabilities
+- tests: 839 passed / 839 total
+- suites: 229
+- failed: 0
+- skipped: 0
+- cancelled: 0
+- production build: PASS with Vite 8.2.0
 
-- No endpoint changed.
-- `RENDER_BASE_URL` did not change.
-- Upload, polling, MusicXML download, cleanup, and parser-validation flow did not change.
-- `backend/**`, `Dockerfile`, `render.yaml`, application code, tests, dependencies, and production configuration did not change as part of Plan 0R-A.
-- No deployment was performed.
+This documentation closure must independently pass the same exact-head and post-merge required CI gates before Package 3A may start.
 
-### Plan 0R-B — Main branch protection
+## Remaining Product Areas
 
-`main` is protected by a classic branch protection rule. Repository rulesets and effective rulesets for `main` were read as empty, so no repository or organization ruleset is currently combined with the classic rule.
+The following remain later work and are not reclassified as completed by Package 2E:
 
-The missing branch-protection fields were verified read-only in the GitHub settings UI because the connected integration and `gh api` protection-detail request both returned HTTP 403 for the detailed branch-protection endpoint.
-
-Verified effective settings:
-
-- `Require a pull request before merging`: enabled.
-- `Require approvals`: disabled, therefore required approving review count is `0`.
-- `Dismiss stale pull request approvals when new commits are pushed`: enabled.
-- `Require review from Code Owners`: disabled.
-- `Require approval of the most recent reviewable push`: disabled.
-- `Require status checks to pass before merging`: enabled.
-- Required status check: `test-and-build`.
-- `Require branches to be up to date before merging`: enabled.
-- `Require conversation resolution before merging`: enabled.
-- `Do not allow bypassing the above settings`: enabled, so the rule applies to administrators and custom roles with branch-protection bypass permission.
-- No named user, team, or GitHub App review-bypass actor was visible in the verified protection configuration.
-- `Allow force pushes`: disabled.
-- `Allow deletions`: disabled.
-
-Required approvals are intentionally `0`: this avoids an approval-only deadlock in a single-developer repository, but it also means a second human review is not a mandatory merge condition. CI, pull-request routing, conversation resolution, branch freshness, and administrator enforcement remain the active mandatory protections.
-
-No branch protection or repository setting was changed during this verification.
-
-## Partially Implemented or Not Fully Verified
-
-- End-to-end structural and rhythmic validation
-- Quality and reliability reporting
-- Canonical consumption policy across every output consumer
-- Mandatory quality-gate enforcement for TTS, playback, and Guitar TAB
-- Real cancellation of every running Audiveris process
-- Retry and duplicate-job safety under all failure conditions
-- Multi-part and multi-voice processing
+- Package 3A and later playback/interface work
+- Complete play/pause/resume/stop lifecycle where not yet verified
 - Unique measure selection throughout the interface
-- Safe Guitar TAB position selection
-- Mobile accessibility on real iPhone and VoiceOver devices
-
-## Planned Product Areas
-
-- Teacher correction interface
-- Automatic, teacher-corrected, and teacher-approved revisions
-- Approval invalidation after later edits
+- Rhythmic HTML measure controls
+- One-measure speak/play workflows
+- Real MIDI timeline and optional `.mid` export
+- Production canonical NoteObject → Guitar TAB generation
+- Teacher correction, revision history and approval workflow
 - Secure teacher-to-student sharing
 - Student practice sessions
 - Basic and advanced Guitar TAB engines
-- Real MIDI timeline and optional `.mid` export
 - Violin support
 - MusicXML harmony and chord-name support
 - Accessible tuner
 - Simplified rhythm-training mode
-- Full mobile productisation
-- User authentication, roles, and job ownership
+- Full mobile productisation and device-level VoiceOver verification
+- User authentication, roles and job ownership
 
-## Known Documentation Risks
+## Known Limitations
 
-Some older architecture and API documents describe planned behaviour as if implementation had not started, while the repository now contains a working backend foundation.
+- Structural validity is not proof of musical correctness.
+- Source-unverified OMR must remain non-definitive.
+- Package 2E benchmark capability does not mean a real experiment has established one universally best preprocessing variant.
+- Teacher-supervised review remains part of the product model.
+- Production canonical Guitar TAB generation remains fail-closed until its later package.
+- Real MIDI export is not completed.
+- Mobile accessibility is not fully verified on target hardware.
 
-Other documents include future endpoints or larger upload limits that do not fully match the current Express server.
+## Current Change Boundary
 
-Therefore:
-
-- Treat source code and fresh tests as authoritative for current behaviour.
-- Treat `docs/project-charter.md` as authoritative for product and safety rules.
-- Report every documentation/code mismatch explicitly.
-
-## Current Change Boundaries
-
-The Plan 0R status-convergence documentation package is restricted to:
+The Package 2E closure package is documentation/status reconciliation only:
 
 - `docs/current-status.md`
 - `docs/package-status.md`
+- `docs/package-2e-benchmark-contract.md`
+- `docs/package-2e-closure.md`
 
-No application source code, backend code, test file, workflow, dependency, deployment configuration, production setting, branch-protection setting, merge, or deployment is included.
+No application code, backend code, test code, workflow, dependency, deployment configuration, branch-protection setting, production setting, or production OMR integration is intentionally changed by the closure package. No deployment is performed.
