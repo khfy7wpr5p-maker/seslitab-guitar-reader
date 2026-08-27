@@ -15,6 +15,7 @@ import {
   resolvePlaybackQualityGate,
   resolveQualityGateForConsumer,
   resolveTtsQualityGate,
+  resolveViolinQualityGate,
   unregisterQualityReportForNotes,
 } from '../src/services/qualityGateIntegration.js'
 import { QUALITY_STATE } from '../src/services/qualityErrorReport.js'
@@ -170,6 +171,29 @@ describe('Package 2D quality gate contract', () => {
     assert.equal(review.allowed, false)
   })
 
+  test('Package 5D violin helper blocks while the production consumer boundary is pending', () => {
+    const notes = [note()]
+    const result = resolveViolinQualityGate(notes, { report: report() })
+
+    assert.equal(result.consumerType, CANONICAL_CONSUMER_TYPE.VIOLIN)
+    assert.equal(result.decision, QUALITY_GATE_DECISION.BLOCK)
+    assert.equal(result.reason, QUALITY_GATE_REASON.CONSUMER_BOUNDARY_PENDING)
+    assert.equal(result.allowed, false)
+    assert.equal(result.definitive, false)
+    assert.equal(result.automaticAllowed, false)
+    assert.equal(result.boundary.status, 'pending')
+    assert.equal(result.boundary.enforcementReady, false)
+  })
+
+  test('pending violin boundary blocks before a missing report could be mistaken for review authorization', () => {
+    const notes = [note()]
+    const result = resolveViolinQualityGate(notes)
+
+    assert.equal(result.decision, QUALITY_GATE_DECISION.BLOCK)
+    assert.equal(result.reason, QUALITY_GATE_REASON.CONSUMER_BOUNDARY_PENDING)
+    assert.equal(result.report, null)
+  })
+
   test('report registration is exact-array identity and does not transfer to clones', () => {
     const notes = [note()]
     const clone = [...notes]
@@ -208,11 +232,12 @@ describe('Package 2D quality gate contract', () => {
     assert.throws(() => registerQualityReportForNotes(notes, null), /Quality report/)
   })
 
-  test('consumer-specific helpers resolve the expected mapped types', () => {
+  test('consumer-specific helpers resolve the expected consumer types', () => {
     const notes = [note()]
     const qualityReport = report()
     assert.equal(resolveTtsQualityGate(notes, { report: qualityReport }).consumerType, CANONICAL_CONSUMER_TYPE.TTS)
     assert.equal(resolvePlaybackQualityGate(notes, { report: qualityReport }).consumerType, CANONICAL_CONSUMER_TYPE.PLAYBACK)
     assert.equal(resolveGuitarTabQualityGate(notes, { report: qualityReport }).consumerType, CANONICAL_CONSUMER_TYPE.GUITAR_TAB)
+    assert.equal(resolveViolinQualityGate(notes, { report: qualityReport }).consumerType, CANONICAL_CONSUMER_TYPE.VIOLIN)
   })
 })
