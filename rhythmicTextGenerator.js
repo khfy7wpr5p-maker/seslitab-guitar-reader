@@ -13,6 +13,7 @@ import {
 } from './noteTheory.js'
 
 import { fretToText } from './tabParser.js'
+import { publishPackage3Notes } from './package3MeasureBridge.js'
 
 // Beat count to Turkish text mapping
 const BEATS_TO_TEXT = {
@@ -249,6 +250,9 @@ export function generateTurkishRhythmicHtml(notes) {
     htmlParts.push('</div>')
   }
 
+  // Package 3 UI consumes the same exact NoteObject[] reference as this
+  // existing projection. The visible HTML string remains unchanged.
+  publishPackage3Notes(notes)
   return htmlParts.join('')
 }
 
