@@ -50,8 +50,15 @@ function announce(root, message) {
 function stopSelectedOperation(root, message = '') {
   const state = operationState(root)
   state.token += 1
-  stopSpeech()
-  stopRhythm()
+
+  // This UI module is exercised in Node tests with a minimal DOM. Browser
+  // audio services remain browser-only; do not manufacture a window object or
+  // widen voiceService merely to satisfy the test environment.
+  if (typeof window !== 'undefined') {
+    stopSpeech()
+    stopRhythm()
+  }
+
   const stop = root.getElementById('selected-measure-stop')
   if (stop) stop.disabled = true
   if (message) announce(root, message)
