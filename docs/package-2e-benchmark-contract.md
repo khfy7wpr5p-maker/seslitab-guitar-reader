@@ -1,14 +1,14 @@
 # Package 2E — OMR Benchmark Contract and Evidence Boundary
 
-Status: **In progress — 2E-A through 2E-D merged; 2E-E evidence recommendation under verification**
+Status: **Completed by the Package 2E closure package once merged to protected `main` and exact-main CI passes**
 
 ## Prerequisite
 
-Package 2D is completed by `docs/package-2d-closure.md`. Package 2E is the current package. This document does not authorize Package 3A or any later package until Package 2E closure is merged and exact-main CI is verified.
+Package 2D is completed by `docs/package-2d-closure.md`. Package 2E code stages 2E-A through 2E-E are merged. Package 3A or any later package remains prohibited until `docs/package-2e-closure.md` is present on protected `main` and the exact resulting main SHA passes required `test-and-build` CI.
 
 ## Objective
 
-Package 2E measures how isolated PDF/image preprocessing variants affect OMR output. It is experimental and must not change the production OMR path.
+Package 2E provides a deterministic, fail-closed framework for measuring how isolated PDF/image preprocessing variants affect OMR output. It is experimental and does not change the production OMR path.
 
 The approved comparative input families are:
 
@@ -73,22 +73,13 @@ They may detect parser/validator/regression drift. Recognition accuracy must not
 
 Merged through PR #45.
 
-2E-A established:
-
-- fixture/provenance inventory
-- deterministic benchmark vocabulary and schema
-- explicit `NOT_MEASURED` behavior without golden comparison
-- immutable, isolated variant records
-- deterministic reviewed-output diagnostic reporter
-- fail-closed tests and production-path isolation
+2E-A established fixture/provenance inventory, deterministic benchmark vocabulary/schema, explicit `NOT_MEASURED` behavior without golden comparison, immutable isolated variant records, deterministic reviewed-output diagnostics, fail-closed tests and production-path isolation.
 
 It does not preprocess, invoke production Audiveris, rewrite MusicXML, merge notes across outputs, invent an accuracy percentage, or deploy anything.
 
 ## Package 2E-B — read-only golden MusicXML comparator
 
 Merged through PR #46.
-
-2E-B adds a deterministic comparator for generated MusicXML against repository-owned teacher-verified expected MusicXML.
 
 Alignment policy:
 
@@ -114,12 +105,12 @@ Merged through PR #47.
 
 2E-C connects one generated MusicXML output to immutable benchmark evidence:
 
-- raw generated MusicXML is not retained in the result
-- SHA-256 and byte-length artifact metadata are retained
-- quality findings remain source-unverified unless separately verified
-- golden comparison is measured only against inventoried teacher-verified truth
-- no golden means recognition comparison stays `NOT_MEASURED`
-- malformed evidence fails closed as `UNKNOWN`/`REVIEW_REQUIRED`
+- raw generated MusicXML is not retained in the result;
+- SHA-256 and byte-length artifact metadata are retained;
+- quality findings remain source-unverified unless separately verified;
+- golden comparison is measured only against inventoried teacher-verified truth;
+- no golden means recognition comparison stays `NOT_MEASURED`;
+- malformed evidence fails closed as `UNKNOWN`/`REVIEW_REQUIRED`.
 
 ## Package 2E-D — isolated comparative runner
 
@@ -127,20 +118,30 @@ Merged through PR #48. Post-merge protected main became `3162b2e9a355be6bb8530bc
 
 2E-D establishes:
 
-- exactly all eight approved variant kinds per complete experiment
-- a dedicated temporary workspace for every variant
-- workspace-local prepared artifacts only
-- original source SHA-256 and byte-length checks across adapter boundaries
-- guaranteed `finally` cleanup on success and failure
-- dependency-injected experimental preprocessing/OMR adapters only
-- unavailable capability recorded as `NOT_MEASURED`
-- no golden reference means recognition comparison remains `NOT_MEASURED`
-- deterministic result ordering
-- no temporary path or raw MusicXML exposure in the final runner result
+- exactly all eight approved variant kinds per complete experiment;
+- a dedicated temporary workspace for every variant;
+- workspace-local prepared artifacts only;
+- original source SHA-256 and byte-length checks across adapter boundaries;
+- guaranteed `finally` cleanup on success and failure;
+- dependency-injected experimental preprocessing/OMR adapters only;
+- unavailable capability recorded as `NOT_MEASURED`;
+- no golden reference means recognition comparison remains `NOT_MEASURED`;
+- deterministic result ordering;
+- no temporary path or raw MusicXML exposure in the final runner result.
 
 2E-D does not import or modify the production Audiveris provider, OMR worker/provider, gateway, production MusicXML path, or E2E workflow.
 
 ## Package 2E-E — evidence-only recommendation
+
+Merged through PR #49.
+
+- Exact accepted head: `be16e72480aa38fc146d93be72dd4e8f58af8058`
+- Exact-head CI: run `33090178321` / run #108 — success
+- Merge commit / technical closure baseline: `23f758b6231c282b0d10832820e18007dbaea65f`
+- Exact post-merge `main` CI: run `33090396467` / run #109 — success
+- Full regression: 839/839 tests, 229 suites, 0 failed/skipped/cancelled
+- Dependency audit: 120 packages audited, 0 vulnerabilities
+- Production build: PASS
 
 2E-E may recommend one variant only when:
 
@@ -156,28 +157,29 @@ If evidence is incomplete, malformed, tied, or contains metric trade-offs, the r
 
 ## Full Package 2E acceptance boundary
 
-Package 2E cannot be marked completed until all applicable mandatory behavior is proven, including:
+The closure package records the following as satisfied by code/test evidence:
 
-- variant isolation
-- original-file preservation
-- operation without golden MusicXML
-- no production-pipeline mutation
-- safe temporary-file cleanup
-- deterministic output
-- measured comparison against valid teacher-verified golden evidence where metrics are claimed
-- evidence-only recommendation with fail-closed tie/trade-off handling
-- no cross-output note merging
-- no unsupported accuracy percentage
-- full regression suite PASS
-- dependency audit PASS
-- production build PASS
-- exact PR-head required CI PASS
-- exact post-merge main required CI PASS
-- package status/current status/closure documentation reconciled
+- variant isolation;
+- original-file preservation;
+- operation without golden MusicXML;
+- no production-pipeline mutation;
+- safe temporary-file cleanup;
+- deterministic output;
+- measured comparison against valid teacher-verified golden evidence where metrics are claimed;
+- evidence-only recommendation with fail-closed tie/trade-off handling;
+- no cross-output note merging;
+- no unsupported accuracy percentage;
+- full regression suite PASS;
+- dependency audit PASS;
+- production build PASS;
+- exact PR-head required CI PASS;
+- exact post-merge main required CI PASS.
+
+The remaining administrative closure gate is this documentation/status reconciliation PR itself: exact PR-head CI, protected merge, and exact post-merge main CI.
 
 ## Protected production boundary
 
-The following remain regression-shield-only during Package 2E:
+The following remained regression-shield-only during Package 2E:
 
 - Audiveris provider/runtime/preflight
 - OMR worker
@@ -188,6 +190,12 @@ The following remain regression-shield-only during Package 2E:
 
 Packages 2E-A through 2E-E introduce no intentional production behavior change or deployment.
 
+## Explicit limitations
+
+Package 2E completion closes the benchmark/evidence framework. It does not establish that every real score has been benchmarked, that preprocessing should be wired into production, that Audiveris is error-free, that one variant is universally best, or that a general OMR accuracy percentage exists.
+
+Empirical results must remain tied to explicit teacher-verified golden evidence, and teacher review remains part of the product safety model.
+
 ## Closure sequence
 
-After 2E-E exact-head CI and post-merge exact-main CI succeed, Package 2E receives a dedicated closure/status reconciliation PR. Only after that closure PR is merged and exact-main CI succeeds may Package 3A begin.
+This closure/status reconciliation branch must pass exact-head required CI and merge through the protected PR path. The exact resulting protected `main` SHA must then pass required `test-and-build` CI. Only after that final check is Package 2E unconditionally closed and Package 3A eligible to begin.
