@@ -82,7 +82,7 @@ const upload = multer({
     fileSize: GATEWAY_CONFIG.maxUploadSizeBytes,
     files: 1,
     fields: 1,
-    parts: 2,
+    parts: 3,
     fieldNestingDepth: 0,
   },
   fileFilter: (_req, file, cb) => {
