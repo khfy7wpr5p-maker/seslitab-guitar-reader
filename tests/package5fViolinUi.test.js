@@ -133,32 +133,38 @@ function fakeDocument() {
 function projectedResult(notes, options = {}) {
   const measureKey = options.measureKey ?? 'P1:0'
   const measureNumber = options.measureNumber ?? '1'
-  const events = notes.map((note, index) => ({
-    noteIndex: index,
-    note,
-    measureKey,
-    measureIndex: 0,
-    startBeat: index,
-    beats: 1,
-    voice: 1,
-    staff: 1,
-    isRest: false,
-    isGrace: false,
-    tieStart: false,
-    tieStop: false,
-    policyId: 'first-position-semitone-zone-v1',
-    provenance: 'generated-basic-first-position-fingering',
-    teacherApproved: false,
-    fingering: {
-      stringNumber: 4,
-      stringName: 'G',
-      fingerNumber: index === 0 ? 0 : 1,
-      semitoneOffset: index === 0 ? 0 : 2,
-      position: 'first',
+  const events = notes.map((note, index) => {
+    const semitoneOffset = index === 0 ? 0 : 2
+    return {
+      noteIndex: index,
+      note,
+      measureKey,
+      measureIndex: 0,
+      startBeat: index,
+      beats: 1,
+      voice: 1,
+      staff: 1,
+      isRest: false,
+      isGrace: false,
+      tieStart: false,
+      tieStop: false,
+      policyId: 'first-position-semitone-zone-v1',
       provenance: 'generated-basic-first-position-fingering',
       teacherApproved: false,
-    },
-  }))
+      fingering: {
+        stringNumber: 4,
+        stringName: 'G',
+        openMidi: 55,
+        writtenMidi: 55 + semitoneOffset,
+        fingerNumber: index === 0 ? 0 : 1,
+        semitoneOffset,
+        position: 'first',
+        policyId: 'first-position-semitone-zone-v1',
+        provenance: 'generated-basic-first-position-fingering',
+        teacherApproved: false,
+      },
+    }
+  })
 
   return {
     state: VIOLIN_CONSUMER_STATE.PROJECTED,
@@ -264,9 +270,11 @@ test('Package 5F keeps duplicate displayed measure numbers distinct through phys
   const second = projectedResult([noteB], { measureKey: 'P1:1', measureNumber: '1' }).projection.measures[0]
   second.measureIndex = 1
   second.events[0].measureKey = 'P1:1'
+  second.events[0].noteIndex = 1
 
   const text = formatBasicViolinProjectionForUi({
     state: 'projected',
+    policyId: 'first-position-semitone-zone-v1',
     provenance: 'generated-basic-first-position-fingering',
     teacherApproved: false,
     noteCount: 2,
