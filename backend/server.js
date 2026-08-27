@@ -3,6 +3,7 @@
 // Endpoints:
 //   POST   /api/v1/pdf/upload        — multipart/form-data, field "file" = PDF
 //   POST   /api/v1/pdf/analyze       — JSON body: { jobId }
+//   POST   /api/v1/discovery/search  — provider-neutral score discovery
 //   GET    /api/v1/job/:jobId        — poll job status
 //   GET    /api/v1/musicxml/:jobId   — download MusicXML
 //   DELETE /api/v1/job/:jobId        — cancel and delete job
@@ -28,6 +29,7 @@ import { handleDownloadMusicXml } from './api/downloadMusicXml.js'
 import { handleDownloadOmr } from './api/downloadOmr.js'
 import { handleDeleteJob } from './api/deleteJob.js'
 import { handleCancelJob } from './api/cancelJob.js'
+import { handleSearchDiscovery } from './api/searchDiscovery.js'
 
 const PORT = process.env.PORT || process.env.OMR_GATEWAY_PORT || 3001
 const HOST = '0.0.0.0'
@@ -62,7 +64,7 @@ let shuttingDown = false
 app.use(cors(createCorsOptions(GATEWAY_CONFIG.allowedOrigins)))
 app.use(express.json())
 
-// Reject new jobs during shutdown
+// Reject new jobs/searches during shutdown.
 app.use('/api/jobs', (req, res, next) => {
   if (shuttingDown && (req.method === 'POST' || req.method === 'PUT')) {
     return res.status(503).json({ success: false, error: { code: 'SHUTTING_DOWN', message: 'Sunucu kapanıyor, yeni iş kabul edilmiyor.' } })
@@ -72,6 +74,12 @@ app.use('/api/jobs', (req, res, next) => {
 app.use('/api/v1/pdf', (req, res, next) => {
   if (shuttingDown && (req.method === 'POST' || req.method === 'PUT')) {
     return res.status(503).json({ success: false, error: { code: 'SHUTTING_DOWN', message: 'Sunucu kapanıyor, yeni iş kabul edilmiyor.' } })
+  }
+  next()
+})
+app.use('/api/v1/discovery', (req, res, next) => {
+  if (shuttingDown && (req.method === 'POST' || req.method === 'PUT')) {
+    return res.status(503).json({ success: false, error: { code: 'SHUTTING_DOWN', message: 'Sunucu kapanıyor, yeni arama kabul edilmiyor.' } })
   }
   next()
 })
@@ -136,6 +144,13 @@ const jobRateLimiter = createFixedWindowRateLimiter({
 })
 
 app.use('/api', apiRateLimiter)
+
+app.post('/api/v1/discovery/search', async (req, res) => {
+  try {
+    const result = await handleSearchDiscovery({ body: req.body })
+    sendSuccess(res, result)
+  } catch (e) { sendError(res, e) }
+})
 
 app.post('/api/v1/pdf/upload', jobRateLimiter, upload.single('file'), async (req, res) => {
   try {
@@ -262,6 +277,7 @@ await startGateway()
 const server = app.listen(PORT, HOST, () => {
   console.log(`[OMR Gateway] HTTP server on ${HOST}:${PORT}`)
   console.log(`[OMR Gateway] Endpoints:`)
+  console.log(`  POST   /api/v1/discovery/search`)
   console.log(`  POST   /api/v1/pdf/upload`)
   console.log(`  POST   /api/v1/pdf/analyze`)
   console.log(`  GET    /api/v1/job/:jobId`)
