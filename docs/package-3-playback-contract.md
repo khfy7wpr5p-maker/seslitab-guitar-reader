@@ -9,7 +9,7 @@ Status: In progress — 3A through 3D merged; 3E under verification.
 3. The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path and E2E workflow are outside Package 3 scope.
 4. A visible measure number is not a unique identity. Package 3C consumes parser-supplied canonical `measureKey`; it never manufactures canonical identity from the visible number.
 5. TTS and playback for a measure must select the same canonical note objects.
-6. At most one browser audio/TTS consumer may remain active across selected-measure and full-score actions; a replacement action preempts the older one.
+6. Selected-measure actions are mutually exclusive with each other. Existing full-score controls may preempt a Package 3-owned selected operation, but a selected action must not silently terminate an active full-score lifecycle it does not own; it fails closed until that full-score operation is stopped.
 7. Pause/resume/stop transitions must be truthful. An unsupported operation must not be represented as successful.
 8. Existing proven Web Audio scheduling is not rewritten merely to expose lifecycle state.
 9. Real MIDI in 3G must be deterministic, generated from canonical timing/pitch evidence, and must not change source note data.
@@ -75,11 +75,13 @@ Selected-measure TTS/playback must:
 - pass only the selected group's exact original `NoteObject` references to TTS or playback;
 - generate TTS text from that same selected group and play that same selected group;
 - fail closed for stale/missing keys without guessing from visible measure number;
-- make selected TTS/playback mutually exclusive by stopping current speech/rhythm before replacement;
+- keep selected TTS/playback mutually exclusive by preempting only another Package 3-owned selected operation;
+- never stop shared full-score speech/rhythm merely because a measure was selected;
+- fail closed if a selected action is requested while an existing full-score speech/rhythm operation is active, instead of resolving an app.js lifecycle promise it does not own;
 - provide native selected-measure speak, listen and stop controls;
 - keep selected-measure actions disabled until a canonical measure is selected;
 - preempt a selected-measure operation before an existing full-score voice/rhythm button starts, using capture-phase UI coordination rather than rewriting the audio scheduler;
-- suppress stale completion announcements after an operation was preempted;
+- suppress stale selected-operation completion announcements after that selected operation was preempted;
 - leave the proven Web Audio scheduling implementation unchanged;
 - leave Audiveris/OMR/provider/worker/gateway/E2E and deployment configuration unchanged.
 
