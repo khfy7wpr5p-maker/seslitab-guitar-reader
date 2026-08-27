@@ -3,7 +3,8 @@
 // Measure identity always comes from the parser-supplied canonical measureKey
 // policy in Package 3C. Package 3E adds quality-gated TTS/playback for the
 // selected measure while keeping selected-measure and full-score browser
-// lifecycles explicitly separated.
+// lifecycles explicitly separated. Package 3G adds a quality-gated MIDI export
+// of the exact full canonical NoteObject[] reference.
 
 import {
   clearPackage3Notes,
@@ -12,6 +13,7 @@ import {
   subscribePackage3Measures,
 } from '../package3MeasureBridge.js'
 import { buildMeasureIndex, selectCanonicalMeasure } from './services/measureIdentity.js'
+import { createGatedMidiArtifact } from './services/midiExport.js'
 import {
   playSelectedMeasure,
   speakSelectedMeasure,
@@ -219,6 +221,68 @@ export async function runSelectedMeasureAction(root, consumer) {
   }
 }
 
+export function downloadMidiArtifact(artifact, browser = {}) {
+  if (!artifact?.bytes || !(artifact.bytes instanceof Uint8Array)) return false
+
+  const BlobCtor = browser.Blob ?? globalThis.Blob
+  const URLApi = browser.URL ?? globalThis.URL
+  const documentRef = browser.document ?? globalThis.document
+  if (
+    typeof BlobCtor !== 'function' ||
+    !URLApi ||
+    typeof URLApi.createObjectURL !== 'function' ||
+    typeof URLApi.revokeObjectURL !== 'function' ||
+    !documentRef ||
+    typeof documentRef.createElement !== 'function'
+  ) {
+    return false
+  }
+
+  const url = URLApi.createObjectURL(new BlobCtor([artifact.bytes], { type: artifact.mimeType }))
+  try {
+    const link = documentRef.createElement('a')
+    link.href = url
+    link.download = artifact.fileName
+    if (typeof link.click !== 'function') return false
+    link.click()
+    return true
+  } finally {
+    URLApi.revokeObjectURL(url)
+  }
+}
+
+export function runMidiExport(root, adapters = {}) {
+  const bridge = getPackage3MeasureSnapshot()
+  if (!Array.isArray(bridge.notes) || bridge.notes.length === 0) {
+    announce(root, 'MIDI için doğrulanmış nota verisi bulunamadı.')
+    return false
+  }
+
+  const tempo = Number.parseFloat(root.getElementById('tempo-slider')?.value ?? '120')
+  const createArtifact = adapters.createGatedMidiArtifact ?? createGatedMidiArtifact
+  const download = adapters.downloadMidiArtifact ?? downloadMidiArtifact
+
+  try {
+    const result = createArtifact(bridge.notes, {
+      tempo: Number.isFinite(tempo) && tempo > 0 ? tempo : 120,
+      sourceName: 'seslitab',
+    })
+    if (!result?.ok || !result.artifact) {
+      announce(root, result?.message || 'MIDI dosyası oluşturulamadı.')
+      return false
+    }
+    if (!download(result.artifact)) {
+      announce(root, 'MIDI indirme işlemi başlatılamadı.')
+      return false
+    }
+    announce(root, 'MIDI dosyası hazırlandı.')
+    return true
+  } catch (error) {
+    announce(root, `MIDI dosyası oluşturulamadı: ${error?.message || 'bilinmeyen hata'}`)
+    return false
+  }
+}
+
 function ensureMeasureControls(root) {
   const tab = root.getElementById('tab-html')
   const output = root.getElementById('rhythmic-html-output')
@@ -247,7 +311,7 @@ function ensureMeasureControls(root) {
   actions.id = 'selected-measure-actions'
   actions.className = 'measure-control-actions'
   actions.setAttribute('role', 'group')
-  actions.setAttribute('aria-label', 'Seçili ölçü işlemleri')
+  actions.setAttribute('aria-label', 'Seçili ölçü ve dışa aktarma işlemleri')
 
   const speak = root.createElement('button')
   speak.id = 'selected-measure-speak'
@@ -275,9 +339,19 @@ function ensureMeasureControls(root) {
     stopSelectedOperation(root, 'Seçili ölçü işlemi durduruldu.')
   })
 
+  const midi = root.createElement('button')
+  midi.id = 'midi-export'
+  midi.type = 'button'
+  midi.className = 'btn btn-secondary btn-sm'
+  midi.textContent = '⬇ MIDI indir'
+  midi.setAttribute('aria-label', 'Doğrulanmış müziği MIDI dosyası olarak indir')
+  midi.disabled = true
+  midi.addEventListener('click', () => { runMidiExport(root) })
+
   actions.appendChild(speak)
   actions.appendChild(play)
   actions.appendChild(stop)
+  actions.appendChild(midi)
   region.appendChild(heading)
   region.appendChild(group)
   region.appendChild(actions)
@@ -308,14 +382,17 @@ export function renderMeasureControls(root, bridgeSnapshot) {
   buttonGroup.replaceChildren()
   const speak = root.getElementById('selected-measure-speak')
   const play = root.getElementById('selected-measure-play')
+  const midi = root.getElementById('midi-export')
   const hasSelection = Boolean(bridgeSnapshot?.selectedMeasureKey)
   if (speak) speak.disabled = !hasSelection
   if (play) play.disabled = !hasSelection
+  if (midi) midi.disabled = models.length === 0
 
   if (models.length === 0) {
     region.hidden = true
     if (speak) speak.disabled = true
     if (play) play.disabled = true
+    if (midi) midi.disabled = true
     return true
   }
 
