@@ -33,7 +33,7 @@ test('production discovery gateway configuration requires a credential-free HTTP
   ]) {
     assert.throws(
       () => normalizeDiscoveryGatewayBaseUrl(value, 'production'),
-      /Nota arama servisi/,
+      /nota arama servisi/i,
       value,
     )
   }
