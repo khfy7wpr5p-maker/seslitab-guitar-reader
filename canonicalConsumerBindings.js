@@ -62,11 +62,11 @@ export const CANONICAL_CONSUMER_BOUNDARIES = Object.freeze({
   }),
   [CANONICAL_CONSUMER_TYPE.VIOLIN]: freezeBinding({
     consumerType: CANONICAL_CONSUMER_TYPE.VIOLIN,
-    modulePath: null,
-    exportName: null,
+    modulePath: 'src/services/violinConsumer.js',
+    exportName: 'buildQualityGatedBasicViolin',
     noteInput: 'note-array',
-    status: CANONICAL_CONSUMER_BOUNDARY_STATUS.PENDING,
-    enforcementReady: false,
+    status: CANONICAL_CONSUMER_BOUNDARY_STATUS.MAPPED,
+    enforcementReady: true,
   }),
 })
 
