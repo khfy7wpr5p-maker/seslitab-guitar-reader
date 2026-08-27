@@ -18,6 +18,7 @@ import {
   generateTurkishRhythmicSpokenText,
 } from '../rhythmicTextGenerator.js'
 import { buildRhythmSchedule } from '../src/services/voiceService.js'
+import { buildQualityGatedBasicGuitarTab } from '../src/services/guitarTabConsumer.js'
 
 describe('Package 2A canonical consumer boundary bindings', () => {
   test('inventory is immutable and covers every canonical consumer type exactly once', () => {
@@ -76,20 +77,21 @@ describe('Package 2A canonical consumer boundary bindings', () => {
     assert.equal(typeof buildRhythmSchedule, 'function')
   })
 
-  test('Guitar TAB canonical consumer gap is explicit and fail-closed', () => {
+  test('Guitar TAB boundary maps to the Package 4E quality-gated production consumer', () => {
     const boundary = getCanonicalConsumerBoundary(
       CANONICAL_CONSUMER_TYPE.GUITAR_TAB,
     )
 
-    assert.equal(boundary.status, CANONICAL_CONSUMER_BOUNDARY_STATUS.PENDING)
-    assert.equal(boundary.modulePath, null)
-    assert.equal(boundary.exportName, null)
-    assert.equal(boundary.enforcementReady, false)
-    assert.match(boundary.reason, /No production canonical NoteObject to Guitar TAB consumer/)
-    assert.equal(isCanonicalConsumerBoundaryMapped(CANONICAL_CONSUMER_TYPE.GUITAR_TAB), false)
+    assert.equal(boundary.status, CANONICAL_CONSUMER_BOUNDARY_STATUS.MAPPED)
+    assert.equal(boundary.modulePath, 'src/services/guitarTabConsumer.js')
+    assert.equal(boundary.exportName, 'buildQualityGatedBasicGuitarTab')
+    assert.equal(boundary.noteInput, 'note-array')
+    assert.equal(boundary.enforcementReady, true)
+    assert.equal(typeof buildQualityGatedBasicGuitarTab, 'function')
+    assert.equal(isCanonicalConsumerBoundaryMapped(CANONICAL_CONSUMER_TYPE.GUITAR_TAB), true)
   })
 
-  test('mapped boundaries remain inventory-only and do not claim enforcement readiness', () => {
+  test('legacy mapped boundaries remain inventory-only and do not claim enforcement readiness', () => {
     for (const consumerType of [
       CANONICAL_CONSUMER_TYPE.RHYTHMIC_TEXT,
       CANONICAL_CONSUMER_TYPE.RHYTHMIC_HTML,

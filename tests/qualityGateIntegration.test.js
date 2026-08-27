@@ -69,7 +69,7 @@ describe('Package 2D quality gate contract', () => {
     const notes = [note(), note()]
     const qualityReport = report()
 
-    for (const resolver of [resolveTtsQualityGate, resolvePlaybackQualityGate]) {
+    for (const resolver of [resolveTtsQualityGate, resolvePlaybackQualityGate, resolveGuitarTabQualityGate]) {
       const result = resolver(notes, { report: qualityReport })
       assert.equal(result.decision, QUALITY_GATE_DECISION.ACCEPT)
       assert.equal(result.reason, QUALITY_GATE_REASON.ACCEPT_VERIFIED)
@@ -148,14 +148,26 @@ describe('Package 2D quality gate contract', () => {
     assert.equal(invalidStructure.reason, QUALITY_GATE_REASON.STRUCTURE_NOT_VALID)
   })
 
-  test('Guitar TAB is fail-closed while its production canonical consumer boundary is pending', () => {
+  test('Guitar TAB uses the same mapped fail-closed quality gate contract', () => {
     const notes = [note()]
-    const result = resolveGuitarTabQualityGate(notes, { report: report() })
 
-    assert.equal(result.decision, QUALITY_GATE_DECISION.BLOCK)
-    assert.equal(result.reason, QUALITY_GATE_REASON.CONSUMER_BOUNDARY_PENDING)
-    assert.equal(result.allowed, false)
-    assert.equal(result.boundary.status, 'pending')
+    const accepted = resolveGuitarTabQualityGate(notes, { report: report() })
+    assert.equal(accepted.decision, QUALITY_GATE_DECISION.ACCEPT)
+    assert.equal(accepted.reason, QUALITY_GATE_REASON.ACCEPT_VERIFIED)
+    assert.equal(accepted.allowed, true)
+    assert.equal(accepted.boundary.status, 'mapped')
+
+    const review = resolveGuitarTabQualityGate(notes, {
+      report: report({
+        qualityState: QUALITY_STATE.REVIEW_REQUIRED,
+        sourceVerified: false,
+        reviewRequired: true,
+        automaticPlaybackAllowed: false,
+      }),
+    })
+    assert.equal(review.decision, QUALITY_GATE_DECISION.REVIEW)
+    assert.equal(review.reason, QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED)
+    assert.equal(review.allowed, false)
   })
 
   test('report registration is exact-array identity and does not transfer to clones', () => {
