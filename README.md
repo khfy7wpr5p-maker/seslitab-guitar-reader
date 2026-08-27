@@ -96,6 +96,17 @@ npm run backend:start
 - Never modify the `main` branch directly.
 - Require tests and a production build for every development package.
 
+## License and Commercial Use
+
+SesliTab-owned source code is made available under the **PolyForm Noncommercial License 1.0.0**.
+
+- Noncommercial use is permitted only within the terms of that license.
+- Commercial use is **not granted** and requires a separate written commercial license from the SesliTab rights holder.
+- The SesliTab name and branding are not granted for use as a trademark or product identity.
+- Third-party components remain under their own licenses, including Audiveris under AGPL-3.0.
+
+See [`LICENSE`](LICENSE), [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md), [`TRADEMARKS.md`](TRADEMARKS.md), and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
 ## Status
 
 SesliTab is under active development.
