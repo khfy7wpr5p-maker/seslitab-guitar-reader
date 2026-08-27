@@ -44,13 +44,7 @@ export const SUPPORTED_HARMONY_KIND_SUFFIX = Object.freeze({
 
 const SUPPORTED_DEGREE_TYPES = new Set(['add', 'alter', 'subtract'])
 const VALID_STEPS = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
-const ACCIDENTAL_TOKEN = Object.freeze({
-  '-2': 'bb',
-  '-1': 'b',
-  '0': '',
-  '1': '#',
-  '2': '##',
-})
+const ACCIDENTAL_TOKEN = Object.freeze({ '-2': 'bb', '-1': 'b', '0': '', '1': '#', '2': '##' })
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
@@ -100,14 +94,12 @@ function parseFiniteNumber(raw) {
 }
 
 function parsePositiveInteger(raw) {
-  if (raw == null || raw === '') return null
-  const value = Number(raw)
+  const value = parseFiniteNumber(raw)
   return Number.isInteger(value) && value > 0 ? value : null
 }
 
 function parseNonNegativeInteger(raw) {
-  if (raw == null || raw === '') return null
-  const value = Number(raw)
+  const value = parseFiniteNumber(raw)
   return Number.isInteger(value) && value >= 0 ? value : null
 }
 
@@ -141,22 +133,20 @@ function pitchToken(step, alter) {
 }
 
 function normalizeDegree(input, index, reasons) {
-  const degreeReasons = []
+  const localReasons = []
   const type = typeof input?.type === 'string' ? input.type.trim().toLowerCase() : ''
   const value = parsePositiveInteger(input?.value)
   const alter = parseFiniteNumber(input?.alter)
   const printObject = input?.printObject !== false
 
-  if (!SUPPORTED_DEGREE_TYPES.has(type)) degreeReasons.push('degree-type-unsupported')
-  if (value == null || value > 13) degreeReasons.push('degree-value-unsupported')
+  if (!SUPPORTED_DEGREE_TYPES.has(type)) localReasons.push('degree-type-unsupported')
+  if (value == null || value > 13) localReasons.push('degree-value-unsupported')
   if (alter == null || !Number.isInteger(alter) || alter < -2 || alter > 2) {
-    degreeReasons.push('degree-alter-unsupported')
+    localReasons.push('degree-alter-unsupported')
   }
-  if (type === 'subtract' && alter !== 0) {
-    degreeReasons.push('subtract-degree-must-be-natural')
-  }
+  if (type === 'subtract' && alter !== 0) localReasons.push('subtract-degree-must-be-natural')
 
-  const valid = degreeReasons.length === 0
+  const valid = localReasons.length === 0
   let token = null
   if (valid && printObject) {
     const accidental = ACCIDENTAL_TOKEN[String(alter)]
@@ -165,8 +155,7 @@ function normalizeDegree(input, index, reasons) {
     if (type === 'subtract') token = `no${value}`
   }
 
-  if (!valid) reasons.push(...degreeReasons.map((reason) => `degree-${index}-${reason}`))
-
+  if (!valid) reasons.push(...localReasons.map((reason) => `degree-${index}-${reason}`))
   return {
     type: type || null,
     value,
@@ -192,10 +181,10 @@ export function normalizeHarmonyDescriptor(input = {}) {
   if (functionText) reasons.push('functional-harmony-unsupported')
   if (!kindValue) reasons.push('kind-missing')
 
-  const kindSuffix = kindValue && Object.prototype.hasOwnProperty.call(SUPPORTED_HARMONY_KIND_SUFFIX, kindValue)
-    ? SUPPORTED_HARMONY_KIND_SUFFIX[kindValue]
-    : null
-  if (kindValue && kindSuffix == null) reasons.push('kind-unsupported')
+  const hasSupportedKind = kindValue != null
+    && Object.prototype.hasOwnProperty.call(SUPPORTED_HARMONY_KIND_SUFFIX, kindValue)
+  const kindSuffix = hasSupportedKind ? SUPPORTED_HARMONY_KIND_SUFFIX[kindValue] : null
+  if (kindValue && !hasSupportedKind) reasons.push('kind-unsupported')
 
   let root = null
   if (kindValue === 'none') {
@@ -203,25 +192,17 @@ export function normalizeHarmonyDescriptor(input = {}) {
       reasons.push('no-chord-must-not-have-root')
     }
   } else {
-    const rootStep = normalizeStep(input.rootStep, reasons, 'root')
-    const rootAlter = normalizeAlter(input.rootAlter, reasons, 'root')
-    root = {
-      step: rootStep,
-      alter: rootAlter,
-      token: pitchToken(rootStep, rootAlter),
-    }
+    const step = normalizeStep(input.rootStep, reasons, 'root')
+    const alter = normalizeAlter(input.rootAlter, reasons, 'root')
+    root = { step, alter, token: pitchToken(step, alter) }
   }
 
   let bass = null
   const bassRequested = input.bassStep != null && String(input.bassStep).trim() !== ''
   if (bassRequested) {
-    const bassStep = normalizeStep(input.bassStep, reasons, 'bass')
-    const bassAlter = normalizeAlter(input.bassAlter, reasons, 'bass')
-    bass = {
-      step: bassStep,
-      alter: bassAlter,
-      token: pitchToken(bassStep, bassAlter),
-    }
+    const step = normalizeStep(input.bassStep, reasons, 'bass')
+    const alter = normalizeAlter(input.bassAlter, reasons, 'bass')
+    bass = { step, alter, token: pitchToken(step, alter) }
   } else if (input.bassAlter != null && String(input.bassAlter).trim() !== '') {
     reasons.push('bass-step-missing')
   }
@@ -238,12 +219,9 @@ export function normalizeHarmonyDescriptor(input = {}) {
     if (staff == null) reasons.push('staff-invalid')
   }
 
-  const degreesInput = Array.isArray(input.degrees) ? input.degrees : []
-  const degrees = degreesInput.map((degree, index) => normalizeDegree(degree, index, reasons))
-
-  const state = reasons.length === 0
-    ? HARMONY_PARSE_STATE.PARSED
-    : HARMONY_PARSE_STATE.REVIEW_REQUIRED
+  const degreeInputs = Array.isArray(input.degrees) ? input.degrees : []
+  const degrees = degreeInputs.map((degree, index) => normalizeDegree(degree, index, reasons))
+  const state = reasons.length === 0 ? HARMONY_PARSE_STATE.PARSED : HARMONY_PARSE_STATE.REVIEW_REQUIRED
 
   let symbol = null
   if (state === HARMONY_PARSE_STATE.PARSED) {
@@ -260,11 +238,7 @@ export function normalizeHarmonyDescriptor(input = {}) {
     state,
     symbol,
     root,
-    kind: {
-      value: kindValue,
-      text: kindText,
-      suffix: kindSuffix,
-    },
+    kind: { value: kindValue, text: kindText, suffix: kindSuffix },
     bass,
     inversion,
     degrees,
@@ -280,18 +254,7 @@ function descriptorFromHarmonyElement(harmonyEl) {
   const rootEl = firstDirectChild(harmonyEl, 'root')
   const bassEl = firstDirectChild(harmonyEl, 'bass')
   const kindEl = firstDirectChild(harmonyEl, 'kind')
-  const functionEl = firstDirectChild(harmonyEl, 'function')
-  const inversionEl = firstDirectChild(harmonyEl, 'inversion')
-  const staffEl = firstDirectChild(harmonyEl, 'staff')
-
   const degreeEls = directChildren(harmonyEl, 'degree')
-  const degrees = degreeEls.map((degreeEl) => ({
-    value: textOf(firstDirectChild(degreeEl, 'degree-value')),
-    alter: textOf(firstDirectChild(degreeEl, 'degree-alter')),
-    type: textOf(firstDirectChild(degreeEl, 'degree-type')),
-    printObject: attrOf(degreeEl, 'print-object') !== 'no',
-  }))
-
   return {
     rootStep: textOf(firstDirectChild(rootEl, 'root-step')),
     rootAlter: textOf(firstDirectChild(rootEl, 'root-alter')),
@@ -299,17 +262,20 @@ function descriptorFromHarmonyElement(harmonyEl) {
     kindText: attrOf(kindEl, 'text'),
     bassStep: textOf(firstDirectChild(bassEl, 'bass-step')),
     bassAlter: textOf(firstDirectChild(bassEl, 'bass-alter')),
-    inversion: textOf(inversionEl),
-    staff: textOf(staffEl),
-    functionText: textOf(functionEl),
-    degrees,
+    inversion: textOf(firstDirectChild(harmonyEl, 'inversion')),
+    staff: textOf(firstDirectChild(harmonyEl, 'staff')),
+    functionText: textOf(firstDirectChild(harmonyEl, 'function')),
+    degrees: degreeEls.map((degreeEl) => ({
+      value: textOf(firstDirectChild(degreeEl, 'degree-value')),
+      alter: textOf(firstDirectChild(degreeEl, 'degree-alter')),
+      type: textOf(firstDirectChild(degreeEl, 'degree-type')),
+      printObject: attrOf(degreeEl, 'print-object') !== 'no',
+    })),
   }
 }
 
 function parseDurationFromNote(noteEl) {
-  const isChord = firstDirectChild(noteEl, 'chord') !== null
-  const isGrace = firstDirectChild(noteEl, 'grace') !== null
-  if (isChord || isGrace) return 0
+  if (firstDirectChild(noteEl, 'chord') || firstDirectChild(noteEl, 'grace')) return 0
   const duration = parseFiniteNumber(textOf(firstDirectChild(noteEl, 'duration')))
   return duration != null && duration >= 0 ? duration : null
 }
@@ -325,10 +291,6 @@ function parseVisibleMeasureNumber(rawNumber, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function createMeasureKey(partId, measureIndex) {
-  return `${partId}:${measureIndex}`
-}
-
 function buildPartMeasureSequences(doc) {
   const root = doc?.documentElement
   const rootTag = elementTag(root)
@@ -337,16 +299,14 @@ function buildPartMeasureSequences(doc) {
   }
 
   if (rootTag === 'score-partwise') {
-    const seenPartIds = new Set()
+    const seen = new Set()
     const parts = []
-    const partElements = directChildren(root, 'part')
-    for (let partIndex = 0; partIndex < partElements.length; partIndex++) {
-      const partEl = partElements[partIndex]
+    const elements = directChildren(root, 'part')
+    for (let partIndex = 0; partIndex < elements.length; partIndex++) {
+      const partEl = elements[partIndex]
       const partId = attrOf(partEl, 'id')
-      if (!partId || seenPartIds.has(partId)) {
-        return { ok: false, reason: 'part-identity-invalid', parts: [] }
-      }
-      seenPartIds.add(partId)
+      if (!partId || seen.has(partId)) return { ok: false, reason: 'part-identity-invalid', parts: [] }
+      seen.add(partId)
       parts.push({
         partId,
         partIndex,
@@ -363,8 +323,8 @@ function buildPartMeasureSequences(doc) {
   const byId = new Map()
   let nextPartIndex = 0
   const outerMeasures = directChildren(root, 'measure')
-  for (let outerMeasureIndex = 0; outerMeasureIndex < outerMeasures.length; outerMeasureIndex++) {
-    const outerMeasureEl = outerMeasures[outerMeasureIndex]
+  for (let measureIndex = 0; measureIndex < outerMeasures.length; measureIndex++) {
+    const outerMeasureEl = outerMeasures[measureIndex]
     const seenInMeasure = new Set()
     for (const partEl of directChildren(outerMeasureEl, 'part')) {
       const partId = attrOf(partEl, 'id')
@@ -373,19 +333,9 @@ function buildPartMeasureSequences(doc) {
       }
       seenInMeasure.add(partId)
       if (!byId.has(partId)) {
-        byId.set(partId, {
-          partId,
-          partIndex: nextPartIndex,
-          measures: [],
-        })
-        nextPartIndex++
+        byId.set(partId, { partId, partIndex: nextPartIndex++, measures: [] })
       }
-      const entry = byId.get(partId)
-      entry.measures.push({
-        contentEl: partEl,
-        outerMeasureEl,
-        measureIndex: outerMeasureIndex,
-      })
+      byId.get(partId).measures.push({ contentEl: partEl, outerMeasureEl, measureIndex })
     }
   }
   return { ok: true, parts: [...byId.values()].sort((a, b) => a.partIndex - b.partIndex) }
@@ -397,28 +347,34 @@ function parsePartMeasureSequence(partSequence) {
   let previousMeasureNumber = 0
   let partReviewRequired = false
 
-  for (const measureRecord of partSequence.measures) {
-    const { contentEl, outerMeasureEl, measureIndex } = measureRecord
+  for (const { contentEl, outerMeasureEl, measureIndex } of partSequence.measures) {
     const rawMeasureNumber = attrOf(outerMeasureEl, 'number')
     const measureNumber = parseVisibleMeasureNumber(rawMeasureNumber, previousMeasureNumber + 1)
     previousMeasureNumber = measureNumber
     const measureNumberText = rawMeasureNumber || String(measureNumber)
-    const measureKey = createMeasureKey(partSequence.partId, measureIndex)
+    const measureKey = `${partSequence.partId}:${measureIndex}`
 
-    let cursorDivisions = 0
+    let cursorBeats = 0
     let timelineReliable = true
     let sequenceIndex = 0
+
+    const failTimeline = ({ invalidateDivisions = false } = {}) => {
+      timelineReliable = false
+      partReviewRequired = true
+      if (invalidateDivisions) currentDivisions = null
+    }
 
     for (const child of childrenOf(contentEl)) {
       const tag = elementTag(child)
 
       if (tag === 'attributes') {
-        const divisionsValue = parseFiniteNumber(textOf(firstDirectChild(child, 'divisions')))
-        if (divisionsValue != null) {
-          if (divisionsValue > 0) currentDivisions = divisionsValue
-          else {
-            timelineReliable = false
-            partReviewRequired = true
+        const divisionsEl = firstDirectChild(child, 'divisions')
+        if (divisionsEl) {
+          const divisionsValue = parseFiniteNumber(textOf(divisionsEl))
+          if (divisionsValue == null || divisionsValue <= 0) {
+            failTimeline({ invalidateDivisions: true })
+          } else {
+            currentDivisions = divisionsValue
           }
         }
         sequenceIndex++
@@ -430,25 +386,26 @@ function parsePartMeasureSequence(partSequence) {
         const offsetEl = firstDirectChild(child, 'offset')
         const offsetRaw = textOf(offsetEl)
         let offsetDivisions = 0
-        if (offsetRaw != null) {
+        let offsetValid = true
+        if (offsetEl) {
           const parsedOffset = parseFiniteNumber(offsetRaw)
           if (parsedOffset == null) {
-            timelineReliable = false
-            partReviewRequired = true
+            offsetValid = false
+            failTimeline()
           } else {
             offsetDivisions = parsedOffset
           }
         }
 
-        let startDivisions = timelineReliable ? cursorDivisions + offsetDivisions : null
-        if (startDivisions != null && startDivisions < 0) {
-          startDivisions = null
-          timelineReliable = false
-          partReviewRequired = true
-        }
-        const startBeat = timelineReliable && Number.isFinite(currentDivisions) && currentDivisions > 0
-          ? startDivisions / currentDivisions
+        const divisionsValid = Number.isFinite(currentDivisions) && currentDivisions > 0
+        let startBeat = timelineReliable && offsetValid && divisionsValid
+          ? cursorBeats + (offsetDivisions / currentDivisions)
           : null
+        if (startBeat != null && startBeat < 0) {
+          startBeat = null
+          failTimeline()
+        }
+        const startDivisions = startBeat == null ? null : startBeat * currentDivisions
         const timingState = startBeat == null
           ? HARMONY_TIMING_STATE.REVIEW_REQUIRED
           : HARMONY_TIMING_STATE.MEASURED
@@ -466,8 +423,8 @@ function parsePartMeasureSequence(partSequence) {
           measureIndex,
           measureKey,
           sequenceIndex,
-          divisions: Number.isFinite(currentDivisions) && currentDivisions > 0 ? currentDivisions : null,
-          offsetDivisions: offsetRaw == null ? 0 : offsetDivisions,
+          divisions: divisionsValid ? currentDivisions : null,
+          offsetDivisions: offsetEl ? (offsetValid ? offsetDivisions : null) : 0,
           startDivisions,
           startBeat,
           timingState,
@@ -478,11 +435,15 @@ function parsePartMeasureSequence(partSequence) {
 
       if (tag === 'note') {
         const duration = parseDurationFromNote(child)
+        const isZeroTime = duration === 0 && (firstDirectChild(child, 'chord') || firstDirectChild(child, 'grace'))
         if (duration == null) {
-          timelineReliable = false
-          partReviewRequired = true
-        } else {
-          cursorDivisions += duration
+          failTimeline()
+        } else if (!isZeroTime) {
+          if (!Number.isFinite(currentDivisions) || currentDivisions <= 0) {
+            failTimeline()
+          } else if (timelineReliable) {
+            cursorBeats += duration / currentDivisions
+          }
         }
         sequenceIndex++
         continue
@@ -490,27 +451,20 @@ function parsePartMeasureSequence(partSequence) {
 
       if (tag === 'backup' || tag === 'forward') {
         const duration = parseDurationElement(child)
-        if (duration == null) {
-          timelineReliable = false
-          partReviewRequired = true
+        if (duration == null || !Number.isFinite(currentDivisions) || currentDivisions <= 0) {
+          failTimeline()
         } else if (timelineReliable) {
-          const next = cursorDivisions + (tag === 'backup' ? -duration : duration)
-          if (next < 0) {
-            timelineReliable = false
-            partReviewRequired = true
-          } else {
-            cursorDivisions = next
-          }
+          const deltaBeats = duration / currentDivisions
+          const next = cursorBeats + (tag === 'backup' ? -deltaBeats : deltaBeats)
+          if (next < 0) failTimeline()
+          else cursorBeats = next
         }
         sequenceIndex++
       }
     }
   }
 
-  return {
-    harmonies,
-    partReviewRequired,
-  }
+  return { harmonies, partReviewRequired }
 }
 
 export function extractHarmonyEventsFromDocument(doc) {
@@ -527,7 +481,6 @@ export function extractHarmonyEventsFromDocument(doc) {
   const harmonies = []
   const parts = []
   let reviewRequired = false
-
   for (const partSequence of sequences.parts) {
     const result = parsePartMeasureSequence(partSequence)
     harmonies.push(...result.harmonies)
@@ -570,8 +523,7 @@ export function parseMusicXmlHarmony(musicXmlString) {
   }
 
   try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(security.xmlForParsing, 'application/xml')
+    const doc = new DOMParser().parseFromString(security.xmlForParsing, 'application/xml')
     if (typeof doc?.querySelector === 'function' && doc.querySelector('parsererror')) {
       return deepFreeze({
         state: HARMONY_PARSE_STATE.INVALID,
