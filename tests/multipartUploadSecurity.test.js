@@ -104,7 +104,7 @@ test('Multer 2.2.0 and strict multipart limits are pinned in production configur
   assert.match(serverSource, /fileSize:\s*GATEWAY_CONFIG\.maxUploadSizeBytes/)
   assert.match(serverSource, /files:\s*1/)
   assert.match(serverSource, /fields:\s*1/)
-  assert.match(serverSource, /parts:\s*2/)
+  assert.match(serverSource, /parts:\s*3/)
   assert.match(serverSource, /fieldNestingDepth:\s*0/)
 })
 
