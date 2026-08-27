@@ -50,7 +50,7 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
     }
   })
 
-  test('tuplet, beam and verification metadata survive canonical creation', () => {
+  test('tuplet and beam survive fresh creation while verification is invalidated', () => {
     const sourceVerificationState = verifiedState()
     const tuplet = { actualNotes: 3, normalNotes: 2 }
     const beam = { number: 1, value: 'begin' }
@@ -68,22 +68,50 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
 
     assert.deepEqual(note.tuplet, tuplet)
     assert.deepEqual(note.beam, beam)
-    assert.deepEqual(
-      note.sourceVerificationState,
-      sourceVerificationState,
-    )
+    assert.equal(note.sourceVerificationState, null)
     assert.deepEqual(input, before)
+
+    const policy = resolveCanonicalConsumptionPolicy(note)
+    assert.equal(policy.definitive, false)
+    assert.equal(policy.status, 'unverified')
   })
 
-  test('lossless canonical clone preserves canonical-only metadata', () => {
-    const source = createCanonicalNote({
+  test('rebuilding edited verified data invalidates stale verification', () => {
+    const original = createCanonicalNote({
       stringLetter: 'B',
       fret: 1,
       duration: 'quarter',
-      tuplet: { actualNotes: 5, normalNotes: 4 },
-      beam: { number: 1, value: 'continue' },
-      sourceVerificationState: verifiedState(),
     })
+    const verifiedNote = {
+      ...original,
+      sourceVerificationState: verifiedState(),
+    }
+
+    const rebuilt = createCanonicalNote({
+      ...verifiedNote,
+      fret: 3,
+    })
+
+    assert.equal(rebuilt.fret, 3)
+    assert.equal(rebuilt.sourceVerificationState, null)
+
+    const policy = resolveCanonicalConsumptionPolicy(rebuilt)
+    assert.equal(policy.definitive, false)
+    assert.equal(policy.status, 'unverified')
+    assert.equal(policy.requiresReview, true)
+  })
+
+  test('lossless canonical clone preserves canonical-only metadata', () => {
+    const source = {
+      ...createCanonicalNote({
+        stringLetter: 'B',
+        fret: 1,
+        duration: 'quarter',
+        tuplet: { actualNotes: 5, normalNotes: 4 },
+        beam: { number: 1, value: 'continue' },
+      }),
+      sourceVerificationState: verifiedState(),
+    }
 
     const clone = cloneCanonicalNote(source)
 
@@ -99,12 +127,14 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
   })
 
   test('canonical clone rejects overrides until validated edit semantics exist', () => {
-    const source = createCanonicalNote({
-      stringLetter: 'B',
-      fret: 1,
-      duration: 'quarter',
+    const source = {
+      ...createCanonicalNote({
+        stringLetter: 'B',
+        fret: 1,
+        duration: 'quarter',
+      }),
       sourceVerificationState: verifiedState(),
-    })
+    }
 
     assert.throws(
       () => cloneCanonicalNote(source, { fret: 3 }),
