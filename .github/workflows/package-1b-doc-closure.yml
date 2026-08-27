@@ -28,8 +28,8 @@ jobs:
           from pathlib import Path
           p = Path('docs/package-status.md')
           text = p.read_text(encoding='utf-8')
-          text = text.replace('Last documentation review: 2026-08-09  ', 'Last documentation review: 2026-08-27  ')
-          text = text.replace('Implementation baseline reviewed: `5510b1254c46ce691877b91e257e531fdcca7012`  ', 'Implementation baseline reviewed: `114b0961ae26679b565c7d39cace0554398aeb05`  ')
+          text = text.replace('Last documentation review: 2026-08-09  ', 'Last documentation review: 2026-08-27')
+          text = text.replace('Implementation baseline reviewed: `5510b1254c46ce691877b91e257e531fdcca7012`  ', 'Implementation baseline reviewed: `114b0961ae26679b565c7d39cace0554398aeb05`')
           lines = text.splitlines()
           replacement = '| 1B — File, XML and API security | Completed | Package 1B acceptance is complete. Fresh verification covers PDF extension and `%PDF` header validation, 10 MB upload limits, 200-page enforcement, safe filename/path-traversal handling, MusicXML/XML validation before parsing, XXE/external-entity/internal-subset/XInclude/xml-stylesheet rejection, exact-origin CORS, bounded rate limiting, safe public error/health responses, and fail-closed multipart handling. PR #23 upgraded Multer to pinned `2.2.0`, restricted multipart requests to one file and one field with bounded parts and no nested fields, preserved valid PDF + provider uploads, and added dedicated multipart security regression coverage. The lockfile was synchronized deterministically and the transitive `nanoid` advisory was remediated to `3.3.18`; exact dependency audit evidence reached 0 vulnerabilities. Exact PR head `35b7fdde9e19a3235b40c136b12925468742ca85` passed required CI with 672/672 tests, 0 failed/skipped/cancelled, and production build PASS. PR #23 was merged as `114b0961ae26679b565c7d39cace0554398aeb05`; post-merge `main` CI run `33060506474` again passed `npm ci` with 0 vulnerabilities, 672/672 tests with 0 failed/skipped/cancelled, and production build PASS. No deployment was performed. Remaining 1B closure gate: none. |'
           found = False
