@@ -128,16 +128,14 @@ describe('Package 2D app quality-gate adapter', () => {
 describe('Package 2D production wiring source contract', () => {
   const source = fs.readFileSync(new URL('../src/app.js', import.meta.url), 'utf8')
 
-  test('MusicXML-backed results prepare the gate on the same parsed note array', () => {
-    const prepareIndex = source.indexOf('prepareMusicXmlQualityGate(')
-    const notesIndex = source.indexOf('parsedNotes', prepareIndex)
-    const xmlIndex = source.indexOf('xmlString', notesIndex)
-    const closeIndex = source.indexOf(')', xmlIndex)
+  test('MusicXML-backed results register the exact array assigned to parsedNotes', () => {
+    const handlerIndex = source.indexOf('function handleAnalysisResult(notes, xmlString, hasRhythm)')
+    const assignIndex = source.indexOf('parsedNotes = notes', handlerIndex)
+    const prepareIndex = source.indexOf('prepareMusicXmlQualityGate(notes, xmlString)', handlerIndex)
 
-    assert.ok(prepareIndex >= 0)
-    assert.ok(notesIndex > prepareIndex)
-    assert.ok(xmlIndex > notesIndex)
-    assert.ok(closeIndex > xmlIndex)
+    assert.ok(handlerIndex >= 0)
+    assert.ok(assignIndex > handlerIndex)
+    assert.ok(prepareIndex > assignIndex)
   })
 
   test('TTS resolves the gate before generating spoken text', () => {
