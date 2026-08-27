@@ -6,7 +6,11 @@ import {
   clearPackage3Notes,
   publishPackage3Notes,
 } from '../package3MeasureBridge.js'
-import { initMeasureControls } from '../src/package3Ui.js'
+import {
+  hasActiveFullScoreConsumer,
+  initMeasureControls,
+  runSelectedMeasureAction,
+} from '../src/package3Ui.js'
 
 function note(key, measureIndex) {
   return {
@@ -100,6 +104,50 @@ test('Package 3E action buttons stay disabled until a canonical measure is selec
   assert.equal(play.disabled, false)
   assert.equal(stop.disabled, true)
   assert.equal(root.getElementById('aria-live-region').textContent, 'Ölçü 2 seçildi.')
+})
+
+test('Package 3E measure selection does not stop a shared full-score browser consumer', () => {
+  clearPackage3Notes()
+  const { root } = fakeDocument()
+  initMeasureControls(root)
+  publishPackage3Notes([note('0:0', 0)])
+
+  const originalWindow = globalThis.window
+  let cancelCalls = 0
+  globalThis.window = {
+    speechSynthesis: {
+      cancel() { cancelCalls += 1 },
+    },
+  }
+
+  try {
+    root.getElementById('measure-control-buttons').children[0].click()
+    assert.equal(cancelCalls, 0)
+    assert.equal(root.getElementById('aria-live-region').textContent, 'Ölçü 1 seçildi.')
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window
+    else globalThis.window = originalWindow
+  }
+})
+
+test('Package 3E selected action fails closed while full-score playback is active', async () => {
+  clearPackage3Notes()
+  const { root, rhythm } = fakeDocument()
+  initMeasureControls(root)
+  publishPackage3Notes([note('0:0', 0)])
+  root.getElementById('measure-control-buttons').children[0].click()
+
+  rhythm.className = 'btn playing'
+  assert.equal(hasActiveFullScoreConsumer(root), true)
+
+  const started = await runSelectedMeasureAction(root, 'playback')
+  assert.equal(started, false)
+  assert.equal(rhythm.className, 'btn playing')
+  assert.equal(
+    root.getElementById('aria-live-region').textContent,
+    'Tam parça sesli okuma veya çalma devam ediyor. Önce onu durdurun.',
+  )
+  assert.equal(root.getElementById('selected-measure-stop').disabled, true)
 })
 
 test('Package 3E full-score buttons register capture-phase selected-operation preemption', () => {
