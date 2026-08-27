@@ -46,6 +46,11 @@ function assertReport(report) {
   }
 }
 
+/**
+ * Bind one report to the exact NoteObject[] instance it describes.
+ * WeakMap identity prevents detached/reordered note arrays from silently
+ * inheriting verification state.
+ */
 export function registerQualityReportForNotes(notes, report) {
   assertNotes(notes)
   assertReport(report)
@@ -85,6 +90,21 @@ function decisionResult({
   })
 }
 
+/**
+ * Resolve the mandatory Package 2D gate for a named consumer.
+ *
+ * ACCEPT requires all of the following:
+ * - production boundary is mapped
+ * - no canonical note is blocked or review-only
+ * - Package 2C report exists
+ * - structure is valid
+ * - source is verified
+ * - report does not require review and is not unreliable
+ *
+ * REVIEW never authorizes definitive or automatic consumption.
+ * BLOCK is fail-closed for invalid structure/data or missing production
+ * consumer boundaries.
+ */
 export function resolveQualityGateForConsumer(
   notes,
   consumerType,
