@@ -56,8 +56,6 @@ test('Package 3E REVIEW/BLOCK never starts a selected consumer', async () => {
     measureKey: '0:0',
     gateOverrides: { resolveTtsGate: () => ({ decision: 'REVIEW' }) },
     adapters: {
-      stopRhythm: () => calls.push('stopRhythm'),
-      stopSpeech: () => calls.push('stopSpeech'),
       notesToSpokenText: () => calls.push('text'),
       speakRhythmicText: async () => calls.push('speak'),
     },
@@ -76,8 +74,6 @@ test('Package 3E missing or stale measureKey fails closed after an ACCEPT gate',
     measureKey: '0:99',
     gateOverrides: { resolvePlaybackGate: acceptGate },
     adapters: {
-      stopSpeech: () => calls.push('stopSpeech'),
-      stopRhythm: () => calls.push('stopRhythm'),
       playRhythm: async () => calls.push('play'),
     },
   })
@@ -87,7 +83,7 @@ test('Package 3E missing or stale measureKey fails closed after an ACCEPT gate',
   assert.deepEqual(calls, [])
 })
 
-test('Package 3E TTS stops other consumers and speaks only exact selected NoteObject references', async () => {
+test('Package 3E TTS speaks only exact selected NoteObject references and does not stop shared full-score consumers', async () => {
   const notes = [note('0:0', 0, 60), note('0:1', 1, 62)]
   const calls = []
   let projected = null
@@ -112,8 +108,6 @@ test('Package 3E TTS stops other consumers and speaks only exact selected NoteOb
 
   assert.equal(projected[0], notes[1])
   assert.deepEqual(calls, [
-    'stopRhythm',
-    'stopSpeech',
     'text',
     ['speak', 'ölçü metni', 1.25],
   ])
@@ -121,7 +115,7 @@ test('Package 3E TTS stops other consumers and speaks only exact selected NoteOb
   assert.equal(result.text, 'ölçü metni')
 })
 
-test('Package 3E playback stops other consumers and plays only exact selected NoteObject references', async () => {
+test('Package 3E playback plays only exact selected NoteObject references and does not resolve an older full-score lifecycle', async () => {
   const notes = [note('0:0', 0, 60), note('0:1', 1, 62)]
   const calls = []
   let played = null
@@ -141,7 +135,7 @@ test('Package 3E playback stops other consumers and plays only exact selected No
   })
 
   assert.equal(played[0], notes[0])
-  assert.deepEqual(calls, ['stopSpeech', 'stopRhythm', ['play', 0.75]])
+  assert.deepEqual(calls, [['play', 0.75]])
   assert.equal(result.ok, true)
 })
 
