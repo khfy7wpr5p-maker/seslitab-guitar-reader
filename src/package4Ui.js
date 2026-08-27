@@ -220,21 +220,21 @@ export function renderGuitarTabPanel(root, notes, adapters = {}) {
   return model
 }
 
-export function initPackage4Ui(root = document) {
+export function initPackage4Ui(root = document, adapters = {}) {
   if (!ensureGuitarTabPanel(root)) return false
 
   const oldUnsubscribe = rootSubscriptions.get(root)
   if (oldUnsubscribe) oldUnsubscribe()
 
   const unsubscribe = subscribePackage3Measures((snapshot) => {
-    renderGuitarTabPanel(root, snapshot?.notes ?? null)
+    renderGuitarTabPanel(root, snapshot?.notes ?? null, adapters)
   })
   rootSubscriptions.set(root, unsubscribe)
 
   // Render synchronously even if a caller initializes after notes were already
   // published. The exact published array reference is preserved.
   const current = getPackage3MeasureSnapshot()
-  renderGuitarTabPanel(root, current.notes)
+  renderGuitarTabPanel(root, current.notes, adapters)
   return true
 }
 
