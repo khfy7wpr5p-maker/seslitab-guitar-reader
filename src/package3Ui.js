@@ -2,8 +2,8 @@
 //
 // Measure identity always comes from the parser-supplied canonical measureKey
 // policy in Package 3C. Package 3E adds quality-gated TTS/playback for the
-// selected measure while preserving mutual exclusion with existing full-score
-// browser controls.
+// selected measure while keeping selected-measure and full-score browser
+// lifecycles explicitly separated.
 
 import {
   clearPackage3Notes,
@@ -36,7 +36,7 @@ const selectedOperationState = new WeakMap()
 function operationState(root) {
   let state = selectedOperationState.get(root)
   if (!state) {
-    state = { token: 0 }
+    state = { token: 0, activeConsumer: null }
     selectedOperationState.set(root, state)
   }
   return state
@@ -47,14 +47,33 @@ function announce(root, message) {
   if (live) live.textContent = message
 }
 
+function hasPlayingClass(element) {
+  if (!element) return false
+  if (element.classList && typeof element.classList.contains === 'function') {
+    return element.classList.contains('playing')
+  }
+  return String(element.className || '').split(/\s+/).includes('playing')
+}
+
+export function hasActiveFullScoreConsumer(root) {
+  if (!root || typeof root.getElementById !== 'function') return false
+  return (
+    hasPlayingClass(root.getElementById('voice-btn')) ||
+    hasPlayingClass(root.getElementById('rhythm-btn'))
+  )
+}
+
 function stopSelectedOperation(root, message = '') {
   const state = operationState(root)
   state.token += 1
+  const hadActiveSelectedOperation = state.activeConsumer !== null
+  state.activeConsumer = null
 
-  // This UI module is exercised in Node tests with a minimal DOM. Browser
-  // audio services remain browser-only; do not manufacture a window object or
-  // widen voiceService merely to satisfy the test environment.
-  if (typeof window !== 'undefined') {
+  // The low-level speech/rhythm services are shared with full-score playback.
+  // They may be stopped here only when this UI state proves that Package 3 owns
+  // an active selected-measure operation. Measure selection alone must never
+  // terminate a full-score operation.
+  if (hadActiveSelectedOperation && typeof window !== 'undefined') {
     stopSpeech()
     stopRhythm()
   }
@@ -62,6 +81,7 @@ function stopSelectedOperation(root, message = '') {
   const stop = root.getElementById('selected-measure-stop')
   if (stop) stop.disabled = true
   if (message) announce(root, message)
+  return hadActiveSelectedOperation
 }
 
 export function applyMusicListenLabels(root) {
@@ -128,16 +148,29 @@ export function buildMeasureControlModels(notes, selectedMeasureKey = null) {
   return models
 }
 
-async function runSelectedMeasureAction(root, consumer) {
+export async function runSelectedMeasureAction(root, consumer) {
   const bridge = getPackage3MeasureSnapshot()
   if (!Array.isArray(bridge.notes) || !bridge.selectedMeasureKey) {
     announce(root, 'Önce bir ölçü seçin.')
     return false
   }
 
+  // A selected action does not own app.js full-score lifecycle state. Stopping
+  // the shared low-level service here could make an older full-score promise
+  // report a stale completion. Fail closed until the user stops that operation.
+  if (hasActiveFullScoreConsumer(root)) {
+    announce(root, 'Tam parça sesli okuma veya çalma devam ediyor. Önce onu durdurun.')
+    return false
+  }
+
+  // Replacing one selected-measure action with another is safe because this
+  // module owns both sides of that lifecycle and suppresses stale completions.
+  stopSelectedOperation(root)
+
   const state = operationState(root)
   const token = state.token + 1
   state.token = token
+  state.activeConsumer = consumer
   const stop = root.getElementById('selected-measure-stop')
   if (stop) stop.disabled = false
 
@@ -179,7 +212,10 @@ async function runSelectedMeasureAction(root, consumer) {
     }
     return false
   } finally {
-    if (state.token === token && stop) stop.disabled = true
+    if (state.token === token) {
+      state.activeConsumer = null
+      if (stop) stop.disabled = true
+    }
   }
 }
 
@@ -312,7 +348,8 @@ function bindFullConsumerPreemption(root) {
   if (fullConsumerPreemptionRoots.has(root)) return
 
   // App listeners are registered before Package 3 UI. Capture phase ensures a
-  // selected-measure operation is stopped before a full-score action starts.
+  // Package 3-owned selected operation is stopped before a full-score action
+  // starts. If no selected operation exists, shared audio is left untouched.
   for (const id of ['voice-btn', 'rhythm-btn']) {
     const button = root.getElementById(id)
     if (button && typeof button.addEventListener === 'function') {
