@@ -91,6 +91,19 @@ describe('Package 2A canonical consumer boundary bindings', () => {
     assert.equal(isCanonicalConsumerBoundaryMapped(CANONICAL_CONSUMER_TYPE.GUITAR_TAB), true)
   })
 
+  test('Package 5D registers violin as pending until its quality-gated production consumer exists', () => {
+    const boundary = getCanonicalConsumerBoundary(
+      CANONICAL_CONSUMER_TYPE.VIOLIN,
+    )
+
+    assert.equal(boundary.status, CANONICAL_CONSUMER_BOUNDARY_STATUS.PENDING)
+    assert.equal(boundary.modulePath, null)
+    assert.equal(boundary.exportName, null)
+    assert.equal(boundary.noteInput, 'note-array')
+    assert.equal(boundary.enforcementReady, false)
+    assert.equal(isCanonicalConsumerBoundaryMapped(CANONICAL_CONSUMER_TYPE.VIOLIN), false)
+  })
+
   test('legacy mapped boundaries remain inventory-only and do not claim enforcement readiness', () => {
     for (const consumerType of [
       CANONICAL_CONSUMER_TYPE.RHYTHMIC_TEXT,
