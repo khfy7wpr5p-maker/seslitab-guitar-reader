@@ -10,6 +10,11 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// The repository's diagnostic runner installs the same minimal DOMParser shim
+// used by the existing real-OMR Node regression tests. Browser production has
+// a native DOMParser; this import is test-harness bootstrap only.
+import '../scripts/runOmrQualityReport.js'
+
 import {
   clearPackage3Notes,
   getPackage3MeasureSnapshot,
