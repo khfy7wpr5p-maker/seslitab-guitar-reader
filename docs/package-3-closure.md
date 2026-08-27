@@ -2,7 +2,7 @@
 
 Date: 2026-08-27
 
-Status: **Implementation completed; closure documentation requires its own protected-main merge and exact post-merge CI before this record is authoritative.**
+Status: **Completed and closure-verified on protected main.**
 
 ## Scope closed
 
@@ -18,33 +18,46 @@ Package 3 was delivered as seven small protected-main stages:
 | 3F — real-OMR playback/measure regression shield | #56 | `a03db33bd32028d146788a5d83f4e074a50554a7` | `5f721d3823f1801511281a6edc5104c13ea2b745` | Merged |
 | 3G — deterministic gated `.mid` export | #57 | `d3064075c935b9ffc81b19dc6116a4b2790888c2` | `6c7cfc3193167eca12d92825c56df44ea0455ab1` | Merged |
 
-## Final implementation evidence before documentation closure
+## Implementation evidence
 
-Protected `main` implementation baseline:
+Protected-main implementation baseline:
 
 `6c7cfc3193167eca12d92825c56df44ea0455ab1`
 
 Exact post-3G main workflow:
 
-- workflow: CI run #134
-- workflow id: `33103536812`
-- required job: `test-and-build`
-- job id: `98627244769`
+- CI run #134 / `33103536812`
+- required job `98627244769` / `test-and-build`
 - exact `head_sha`: `6c7cfc3193167eca12d92825c56df44ea0455ab1`
+- conclusion: success
+- 898 / 898 tests passed
+- 229 suites
+- 120 packages audited
+- 0 vulnerabilities
+- Vite 8.2.0 production build: PASS
+
+## Documentation closure evidence
+
+Package 3 documentation/status closure was merged through protected main:
+
+- closure PR: #58
+- accepted head: `a3c5cdab21fa2e28bd8d6561aee802fce7672ad1`
+- closure merge: `02dadf55f22505dc5527478f2f6ddb90c17621ff`
+- exact post-closure main CI: run #136 / `33104428265`
+- required job: `98630345536` / `test-and-build`
+- exact `head_sha`: `02dadf55f22505dc5527478f2f6ddb90c17621ff`
 - conclusion: success
 - tests: 898 / 898 passed
 - suites: 229
-- failed: 0
-- skipped: 0
-- cancelled: 0
+- failed/skipped/cancelled: 0 / 0 / 0
 - dependency audit: 120 packages audited; 0 vulnerabilities
-- production build: PASS with Vite 8.2.0
+- Vite 8.2.0 production build: PASS
 
-The final run includes the Package 3A–3G focused contracts and the existing real-OMR, Audiveris/provider, gateway, security and E2E regression shields.
+Remaining Package 3 closure gate: **none**.
 
 ## Closed behavior
 
-Package 3 now provides verified evidence for:
+Package 3 provides verified evidence for:
 
 - approved `Müziği Dinle` wording and accessible naming;
 - truthful serialized playback session state without rewriting the proven Web Audio scheduler;
@@ -59,7 +72,7 @@ Package 3 now provides verified evidence for:
 
 ## Safety boundary retained
 
-Package 3 did **not** intentionally change:
+Package 3 did not intentionally change:
 
 - Audiveris provider;
 - Audiveris runtime/preflight;
@@ -83,19 +96,6 @@ Package 3 completion does not mean:
 - reviewed real-OMR regression fixtures become musical ground truth;
 - MIDI export proves OMR accuracy;
 - MIDI export infers instrumentation, orchestration, articulation or performance intent;
-- production canonical Guitar TAB generation is complete.
+- later Guitar TAB or teacher-review packages are implicitly completed.
 
 Package 2D quality-gate policy remains authoritative for definitive TTS/playback/MIDI consumption of MusicXML-backed canonical data.
-
-## Closure gate
-
-This document and the status reconciliation are documentation-only. They may mark Package 3 fully closed only after:
-
-1. this docs-only branch passes exact-head required `test-and-build`;
-2. review threads are resolved;
-3. changed-file scope remains documentation-only;
-4. protected `main` freshness is rechecked;
-5. the closure PR merges through protected `main` using its exact accepted head;
-6. the exact resulting `main` SHA passes required post-merge CI.
-
-Only after those conditions are satisfied may Package 4 be treated as the next active package.

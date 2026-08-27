@@ -1,156 +1,191 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-27  
-Implementation baseline reviewed: `6c7cfc3193167eca12d92825c56df44ea0455ab1`
-Current package closure: **Package 3 — implementation complete; documentation closure under verification**
-Next package after this closure reaches protected `main` and exact-main CI passes: **Package 4 — Basic Guitar TAB**
+Implementation baseline reviewed: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
+Current package closure: **Package 4 — Basic Guitar TAB completed, subject to this docs-only closure gate reaching protected `main` and exact-main CI passing.**
+Next roadmap package after closure: **Package 5 — Basic violin**, but implementation may begin only after a fresh architecture-boundary audit.
 
-This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build, or GitHub Actions result.
+This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build or GitHub Actions result.
 
-## Verified Foundations
+## Verified foundations
 
 The repository currently contains verified foundations for:
 
-- Accessible web interface foundations
-- PDF upload and validation
-- Cloud OMR Gateway
-- Mock and Audiveris provider adapters
-- Asynchronous OMR job processing
-- Persistent job metadata and restart recovery logic
-- File, multipart, API and MusicXML security boundaries
-- MusicXML parsing
-- Guitar TAB text parsing
-- Shared canonical `NoteObject` pitch/time model
-- Canonical source-verification metadata and consumer policy
-- Structural/rhythmic MusicXML validation
-- Package 2C quality and error reporting
-- Package 2D fail-closed `ACCEPT` / `REVIEW` / `BLOCK` gate
-- Production TTS and rhythmic-playback quality-gate enforcement
-- Package 2E deterministic OMR benchmark/evidence framework
-- Teacher-verified golden MusicXML comparison support
-- Isolated eight-variant experimental benchmark orchestration
-- Evidence-only Pareto recommendation policy
-- Turkish rhythmic text and Rhythmic HTML
-- Turkish text-to-speech
-- Web Audio musical playback
-- Package 3 canonical measure selection and accessible measure controls
-- Package 3 selected-measure TTS/playback with full-score lifecycle separation
-- Package 3 real-OMR playback/measure regression shields
-- Dependency-free deterministic Standard MIDI File Format 0 export
-- Docker and Render deployment configuration
-- Automated tests and production build gate
+- accessible web interface foundations;
+- PDF upload and validation;
+- Cloud OMR Gateway;
+- mock and Audiveris provider adapters;
+- asynchronous OMR job processing;
+- persistent job metadata and restart recovery;
+- file, multipart, API and MusicXML security boundaries;
+- MusicXML parsing;
+- Guitar TAB text parsing;
+- shared canonical `NoteObject` pitch/time/source-verification model;
+- structural/rhythmic MusicXML validation;
+- Package 2C quality/error reporting;
+- Package 2D fail-closed `ACCEPT` / `REVIEW` / `BLOCK` consumer gate;
+- Package 2E deterministic OMR benchmark/evidence framework;
+- Turkish rhythmic text and Rhythmic HTML;
+- Turkish text-to-speech;
+- Web Audio musical playback;
+- canonical measure selection and accessible measure controls;
+- selected-measure TTS/playback;
+- dependency-free deterministic SMF0 MIDI export;
+- conservative quality-gated Basic Guitar TAB generation;
+- accessible Guitar TAB result UI;
+- Docker/Render configuration;
+- automated test and production-build gates.
 
-## Current Inputs
+## Current inputs
 
 - PDF through the OMR gateway
 - Direct MusicXML upload
 - Guitar TAB text
 
-## Current Outputs
+## Current outputs
 
 - Turkish rhythmic text
 - Rhythmic HTML
 - Note cards
 - Raw MusicXML view
 - Turkish text-to-speech
-- Musical playback
+- Web Audio musical playback
 - MusicXML download
 - Audiveris `.omr` download when available
 - Quality-gated deterministic `.mid` download for accepted canonical MusicXML data
+- Quality-gated deterministic Basic Guitar TAB text for supported accepted canonical MusicXML data
 
-## Package 2A–2E Status
+## Package 3 status
 
-- **2A — Canonical note and time model: Completed.** Closure merge `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`; post-merge CI `33068597173` passed.
-- **2B — Structural and rhythmic validator: Completed.** Closure merge `e2fa6f6947334388d6a08299220d31f6d8462ab1`; post-merge CI `33073348226` passed.
-- **2C — Quality and error report: Completed.** Technical closure merge `8292f82327b6290d182b029e5ba402ae16c31cff`; post-merge CI `33076690354` passed with 756/756 tests and audit 0.
-- **2D — Quality gate integration: Completed.** Technical closure merge `0c9df668ddcb1b16d1d5b4ca6dd1d3839d441d95`; post-merge CI `33082106942` passed with 775/775 tests and audit 0.
-- **2E — OMR benchmark: Completed.** Code PRs #45–#49 and closure PR #50 are merged. Closure merge `f6b808f331a38047f64e82e395a93ed185737813`; exact post-closure main CI run #111 / `33091181422` succeeded. Package 2E remains an evidence framework, not a universal OMR-accuracy claim.
+Package 3 is fully closed.
 
-## Package 3 Status
+- implementation PRs #51–#57 merged;
+- implementation baseline `6c7cfc3193167eca12d92825c56df44ea0455ab1`;
+- exact implementation main CI #134 / `33103536812`: success, 898/898 tests, 229 suites, audit 0, production build PASS;
+- documentation closure PR #58 merged as `02dadf55f22505dc5527478f2f6ddb90c17621ff`;
+- exact closure-main CI #136 / `33104428265`: success, 898/898 tests, 229 suites, audit 0, production build PASS.
 
-Package 3A through 3G are merged:
+Detailed evidence:
 
-- **3A — `Müziği Dinle`: Completed.** PR #51 → merge `b3f9baa09096fcfde16a5158c4163f32aa5ea707`.
-- **3B — Playback state management: Completed.** PR #52 → merge `a2ca794b235529fa63c28c55b5503bf2ba6a66e1`.
-- **3C — Unique canonical measure identity: Completed.** PR #53 → merge `8d683b644a610f5177b4850628da1e509b497073`.
-- **3D — Accessible Rhythmic HTML measure controls: Completed.** PR #54 → merge `0e60c88b90c7b51a14cd3154e6c846aa8f8a886e`.
-- **3E — Selected-measure TTS/playback: Completed.** PR #55 → merge `f379f457c601b6ef71de0ae8d1e652383e151170`.
-- **3F — Playback/measure regression shield: Completed.** PR #56 → merge `5f721d3823f1801511281a6edc5104c13ea2b745`.
-- **3G — Deterministic real MIDI export: Completed implementation.** PR #57 → merge `6c7cfc3193167eca12d92825c56df44ea0455ab1`.
+- `docs/package-3-playback-contract.md`
+- `docs/package-3-closure.md`
 
-Final implementation baseline exact-main CI run #134 / `33103536812` succeeded:
+## Package 4 status
 
-- exact `head_sha`: `6c7cfc3193167eca12d92825c56df44ea0455ab1`
-- required job: `test-and-build`
-- tests: 898 / 898 passed
+Package 4A–4F are merged:
+
+- **4A — Canonical guitar-position candidates:** PR #59 → merge `a16e2c14094b36a5eb3775046637cf5cd1c908de`.
+- **4B — Deterministic basic position policy:** PR #60 → merge `5b2d8f226f8f48e4ba2aedd1dfaec2494e52dd1d`.
+- **4C — Conservative canonical Basic TAB projection:** PR #61 → merge `ae74db26beeb00a3723c10d09f7fc6b078f6c6a4`.
+- **4D — Deterministic ASCII TAB renderer:** PR #62 → merge `b358202372dcde6a6c0296df41061b7c3e8d6fac`.
+- **4E — Quality-gated production Guitar TAB consumer:** PR #63 → merge `aa821251205358d5b99f4805782cbe25f1447759`.
+- **4F — Accessible Guitar TAB result UI:** PR #64 → merge `424653c60ff35326ae137cdf8b72b43eeb7d25e1`.
+
+Final implementation exact-main CI #155 / `33111922206` succeeded:
+
+- exact `head_sha`: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
+- required job: `98656661058` / `test-and-build`
+- tests: 961 / 961 passed
 - suites: 229
 - failed/skipped/cancelled: 0 / 0 / 0
 - 120 packages audited
 - vulnerabilities: 0
 - Vite 8.2.0 production build: PASS
+- transformed modules: 41
 
-Detailed Package 3 evidence is in:
+Detailed Package 4 evidence:
 
-- `docs/package-3-playback-contract.md`
-- `docs/package-3-closure.md`
+- `docs/package-4a-guitar-position-candidates.md`
+- `docs/package-4b-basic-position-policy.md`
+- `docs/package-4c-basic-tab-projection.md`
+- `docs/package-4d-basic-tab-renderer.md`
+- `docs/package-4e-quality-gated-guitar-tab-consumer.md`
+- `docs/package-4f-accessible-guitar-tab-ui.md`
+- `docs/package-4-closure.md`
 
-The Package 3 closure documentation must independently pass exact-head required CI, merge through protected `main`, and pass exact post-merge `main` CI before Package 4 is treated as active.
+## Basic Guitar TAB production flow
 
-## Package 3 Safety Boundary
+```text
+exact canonical NoteObject[]
+  -> Package 2D GUITAR_TAB gate
+  -> 4A candidates
+  -> 4B generated-basic policy
+  -> 4C conservative monophonic projection
+  -> 4D six-line ASCII TAB renderer
+  -> 4E production consumer
+  -> 4F accessible result panel
+```
 
 Verified rules include:
 
-- visible measure numbers never replace canonical parser-supplied `measureKey` identity;
-- selected measure consumers retain exact original `NoteObject` references;
-- Package 2D `ACCEPT` is required before definitive selected TTS/playback or production-facing MIDI export;
-- source-unverified real OMR remains non-definitive;
-- selected operations do not silently terminate a full-score lifecycle they do not own;
-- real-OMR regression fixtures remain regression evidence, not teacher-approved musical truth;
-- MIDI is deterministic SMF Format 0 derived only from canonical pitch/time/measure evidence;
-- MIDI export fails closed rather than inventing missing measures, merging parts or inferring instrumentation;
-- source note data is not mutated by MIDI generation.
+- exact-array quality evidence never transfers to a clone;
+- Package 2D `ACCEPT` is required before definitive Guitar TAB output;
+- `REVIEW` and `BLOCK` emit no generated TAB text;
+- unsupported advanced structures emit no partial TAB;
+- generated basic fingering has explicit generated provenance and is not represented as source technical fingering;
+- canonical physical `measureKey` remains authoritative;
+- accessible result output uses native tab/button semantics, a polite status region and labelled focusable text;
+- generated TAB is written as text, not interpreted HTML.
 
-The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path and E2E workflow were not intentionally changed by Package 3. The existing Web Audio scheduler was not rewritten. No deployment was performed.
+## Package 4 safety boundary
 
-## Protected Main and CI
+Package 4 Basic Guitar TAB is intentionally conservative.
+
+It does not claim support for:
+
+- advanced chord/polyphonic fingering;
+- multiple pitched voices/staves/parts in the Basic TAB projection;
+- pedagogically optimal or teacher-approved fingering;
+- recovery of missing source technical fingering;
+- universal OMR correctness;
+- musical ground truth from structural validity;
+- lossless rhythmic notation in ASCII TAB spacing.
+
+Advanced Guitar TAB remains Package 9.
+
+The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path and E2E workflow were not intentionally changed by Package 4. No external Guitar TAB dependency was added. No deployment was performed.
+
+## Protected main and CI
 
 `main` is protected. Required status check: `test-and-build`.
 
-The latest verified Package 3 implementation main is `6c7cfc3193167eca12d92825c56df44ea0455ab1`. Exact post-merge run #134 / `33103536812` succeeded with 898/898 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
+Latest verified implementation main before this docs closure: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`.
+Exact implementation run #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
 
-## Remaining Product Areas
+## Remaining product areas
 
-The following remain later work and are not reclassified as completed by Package 3:
+The following remain later work and are not reclassified as completed by Package 4:
 
-- Production canonical `NoteObject` → Guitar TAB generation and pedagogical position selection
+- Basic violin
+- MusicXML harmony / chord-symbol parser
+- Chord display and Turkish TTS
 - Teacher correction, revision history and approval workflow
-- Secure teacher-to-student sharing
-- Student practice sessions
-- Advanced Guitar TAB engine
-- Violin support
-- MusicXML harmony and chord-name support
+- Audiveris teacher-approved training dataset
+- Advanced Guitar TAB
+- Advanced violin
 - Accessible tuner
+- Teacher-to-student sharing
 - Simplified rhythm-training mode
 - Full mobile productisation and device-level VoiceOver verification
 - User authentication, roles and job ownership
 
-## Known Limitations
+## Known limitations
 
 - Structural validity is not proof of musical correctness.
 - Source-unverified OMR must remain non-definitive.
-- Package 2E benchmark capability does not mean one universally best preprocessing variant has been established.
+- Package 2E benchmark capability does not establish one universally best preprocessing variant.
 - Teacher-supervised review remains part of the product model.
-- Production canonical Guitar TAB generation remains incomplete and is Package 4 work.
-- Deterministic MIDI export does not infer instrument, orchestration, articulation or teacher approval.
+- Basic Guitar TAB is a deterministic conservative generated view, not teacher-approved advanced fingering.
+- MIDI export does not infer instrumentation, orchestration, articulation or teacher approval.
 - Mobile accessibility is not fully verified on target hardware.
 
-## Current Change Boundary
+## Current change boundary
 
-This Package 3 closure package is documentation/status reconciliation only:
+This Package 4 closure package is documentation/status reconciliation only:
 
 - `docs/current-status.md`
 - `docs/package-status.md`
-- `docs/package-3-playback-contract.md`
 - `docs/package-3-closure.md`
+- `docs/package-4-closure.md`
 
 No application code, backend code, test code, workflow, dependency, deployment configuration, branch-protection setting, production setting or production OMR integration is intentionally changed by this closure package. No deployment is performed.
