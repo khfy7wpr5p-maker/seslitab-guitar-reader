@@ -78,6 +78,7 @@ describe('Package 2A canonical consumer policy contract', () => {
       'tts',
       'playback',
       'guitar-tab',
+      'violin',
     ])
     assert.equal(Object.isFrozen(CANONICAL_CONSUMER_TYPE), true)
     assert.equal(Object.isFrozen(CANONICAL_CONSUMER_TYPES), true)
@@ -165,6 +166,21 @@ describe('Package 2A canonical consumer policy contract', () => {
       result.blocked.map((entry) => entry.note),
       [invalid],
     )
+  })
+
+  test('violin receives the same shared canonical note policy without changing fingering truth', () => {
+    const verified = canonicalNote(CANONICAL_VERIFICATION_STATUS.VERIFIED)
+    const violinPolicy = resolveCanonicalConsumerPolicy(
+      verified,
+      CANONICAL_CONSUMER_TYPE.VIOLIN,
+    )
+    const guitarPolicy = resolveCanonicalConsumerPolicy(
+      verified,
+      CANONICAL_CONSUMER_TYPE.GUITAR_TAB,
+    )
+
+    assert.equal(violinPolicy.consumerType, CANONICAL_CONSUMER_TYPE.VIOLIN)
+    assert.deepEqual(withoutConsumer(violinPolicy), withoutConsumer(guitarPolicy))
   })
 
   test('unsupported consumer types fail closed', () => {
