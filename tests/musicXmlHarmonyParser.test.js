@@ -340,6 +340,39 @@ test('Package 6B parses score-timewise into stable per-part physical measure ide
   assert.deepEqual(result.harmonies.map((item) => item.measureKey), ['P1:0', 'P1:1', 'P2:0', 'P2:1'])
 })
 
+test('Package 6B missing or duplicate part identity fails closed instead of inventing measure keys', () => {
+  const missing = extractHarmonyEventsFromDocument(partwiseDoc([
+    el('part', { children: [measure(1, [attributes(4), harmony()])] }),
+  ]))
+  assert.equal(missing.state, HARMONY_PARSE_STATE.INVALID)
+  assert.equal(missing.reason, 'part-identity-invalid')
+  assert.deepEqual(missing.harmonies, [])
+
+  const duplicate = extractHarmonyEventsFromDocument(partwiseDoc([
+    part('P1', [measure(1, [attributes(4), harmony()])]),
+    part('P1', [measure(1, [attributes(4), harmony({ rootStep: 'G' })])]),
+  ]))
+  assert.equal(duplicate.state, HARMONY_PARSE_STATE.INVALID)
+  assert.equal(duplicate.reason, 'part-identity-invalid')
+})
+
+test('Package 6B negative harmony onset fails timing closed', () => {
+  const doc = partwiseDoc([
+    part('P1', [
+      measure(1, [
+        attributes(4),
+        harmony({ rootStep: 'C', kind: 'major', offset: -1 }),
+      ]),
+    ]),
+  ])
+  const result = extractHarmonyEventsFromDocument(doc)
+  assert.equal(result.state, HARMONY_PARSE_STATE.REVIEW_REQUIRED)
+  assert.equal(result.harmonies[0].symbol, 'C')
+  assert.equal(result.harmonies[0].startDivisions, null)
+  assert.equal(result.harmonies[0].startBeat, null)
+  assert.equal(result.harmonies[0].timingState, HARMONY_TIMING_STATE.REVIEW_REQUIRED)
+})
+
 test('Package 6C harmony element attributes and degrees normalize without presentation/TTS coupling', () => {
   const doc = partwiseDoc([
     part('P1', [
