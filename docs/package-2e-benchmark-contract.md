@@ -1,14 +1,14 @@
 # Package 2E — OMR Benchmark Contract and Evidence Boundary
 
-Status: **In progress — 2E-A merged; 2E-B golden comparator under verification**
+Status: **In progress — 2E-A through 2E-D merged; 2E-E evidence recommendation under verification**
 
 ## Prerequisite
 
-Package 2D is completed by `docs/package-2d-closure.md`. Package 2E is the next package. This document does not authorize Package 3A or any later package.
+Package 2D is completed by `docs/package-2d-closure.md`. Package 2E is the current package. This document does not authorize Package 3A or any later package until Package 2E closure is merged and exact-main CI is verified.
 
 ## Objective
 
-Package 2E measures how isolated PDF/image preprocessing variants affect Audiveris output. It is experimental and must not change the production OMR path.
+Package 2E measures how isolated PDF/image preprocessing variants affect OMR output. It is experimental and must not change the production OMR path.
 
 The approved comparative input families are:
 
@@ -21,7 +21,7 @@ The approved comparative input families are:
 - adaptive binarization
 - careful upscale and denoise
 
-A measured variant record must preserve:
+A measured variant record preserves:
 
 - input metadata
 - preprocessing settings
@@ -57,7 +57,7 @@ If a field has not actually been measured, the result must say `NOT_MEASURED`, `
 
 ### Regression-output diagnostics only
 
-The following files are useful deterministic real-OMR regression outputs but are not complete teacher-approved musical ground truth:
+The following files are deterministic real-OMR regression outputs but are not complete teacher-approved musical ground truth:
 
 - `django-clean.xml`
 - `fikriminincegulu-clean.xml`
@@ -67,78 +67,117 @@ The following files are useful deterministic real-OMR regression outputs but are
 - `samanyolu-clean.xml`
 - `shostywaltz-clean.xml`
 
-They may be used to detect parser/validator/regression drift. Recognition accuracy must not be inferred from them.
+They may detect parser/validator/regression drift. Recognition accuracy must not be inferred from them.
 
-## Package 2E-A — merged safe slice
+## Package 2E-A — benchmark contract and fixture inventory
 
-2E-A is intentionally limited to:
+Merged through PR #45.
+
+2E-A established:
 
 - fixture/provenance inventory
 - deterministic benchmark vocabulary and schema
 - explicit `NOT_MEASURED` behavior without golden comparison
 - immutable, isolated variant records
 - deterministic reviewed-output diagnostic reporter
-- focused tests proving fail-closed behavior and production-path isolation
+- fail-closed tests and production-path isolation
 
-2E-A does **not**:
-
-- preprocess an image
-- invoke a new Audiveris experiment
-- modify Audiveris configuration
-- alter the OMR worker/provider/gateway
-- alter the E2E workflow
-- rewrite MusicXML
-- merge notes from different OMR outputs
-- calculate an OMR accuracy percentage
-- select a best variant without measured comparison evidence
-- deploy anything
-
-2E-A merged through PR #45. Exact post-merge main verification is recorded by GitHub CI; Package 2E remains incomplete.
+It does not preprocess, invoke production Audiveris, rewrite MusicXML, merge notes across outputs, invent an accuracy percentage, or deploy anything.
 
 ## Package 2E-B — read-only golden MusicXML comparator
 
-2E-B adds a deterministic comparator for generated MusicXML against one of the two repository-owned teacher-verified expected MusicXML files.
+Merged through PR #46.
+
+2E-B adds a deterministic comparator for generated MusicXML against repository-owned teacher-verified expected MusicXML.
 
 Alignment policy:
 
 1. Physical measures align by `partIndex + measureIndex`, never by visible measure number.
 2. Exact musical-event matches are removed first.
 3. A remaining event pair is classified as a pitch, duration, or voice error only when exactly one golden event and one generated event occupy the same strict location.
-4. A strict location uses canonical `startBeat`, staff, rest/grace state, and chord-continuation state; it does not use pitch, duration, or voice, so those fields can be measured when pairing is unambiguous.
-5. If multiple unmatched events remain at the same location, detailed error metrics become `REVIEW_REQUIRED` with no definitive numeric value. The comparator does not guess correspondences.
-6. Fully-correct-measure rate is based on exact normalized event equality and remains measurable even when a detailed event correspondence is ambiguous.
-7. The comparator reads the approved golden file from the fixed repository inventory. A caller cannot supply arbitrary MusicXML and label it as ground truth.
+4. A strict location uses canonical `startBeat`, staff, rest/grace state, and chord-continuation state; it excludes pitch, duration, and voice so those fields can be measured when pairing is unambiguous.
+5. Multiple unmatched events at the same location make detailed metrics `REVIEW_REQUIRED`; correspondence is never guessed.
+6. Fully-correct-measure rate uses exact normalized event equality and remains measurable even when detailed event correspondence is ambiguous.
+7. The comparator reads approved golden files from the fixed repository inventory; callers cannot supply arbitrary truth.
 
-Important parser boundary discovered during 2E-B audit:
+Parser boundary discovered during audit:
 
-- `parseMusicXml()` is used for ordered canonical note onsets because it calculates `startBeat` through note/backup/forward processing.
-- `parseMusicXmlWithStructure()` is used only for physical measure metadata in this comparator.
-- Package 2E-B does not change either production parser.
+- `parseMusicXml()` supplies ordered canonical note onsets because it calculates `startBeat` through note/backup/forward processing.
+- `parseMusicXmlWithStructure()` supplies physical measure metadata only.
+- Package 2E does not change either production parser.
 
-2E-B remains measurement infrastructure only. Comparing a golden file to itself proves comparator behavior; it is **not** evidence of Audiveris recognition accuracy.
+Golden self-comparison proves comparator behavior, not Audiveris recognition accuracy.
+
+## Package 2E-C — measured variant evidence
+
+Merged through PR #47.
+
+2E-C connects one generated MusicXML output to immutable benchmark evidence:
+
+- raw generated MusicXML is not retained in the result
+- SHA-256 and byte-length artifact metadata are retained
+- quality findings remain source-unverified unless separately verified
+- golden comparison is measured only against inventoried teacher-verified truth
+- no golden means recognition comparison stays `NOT_MEASURED`
+- malformed evidence fails closed as `UNKNOWN`/`REVIEW_REQUIRED`
+
+## Package 2E-D — isolated comparative runner
+
+Merged through PR #48. Post-merge protected main became `3162b2e9a355be6bb8530bc952dec9aa4bb4e618`; exact-main CI run #106 passed with 827/827 tests, 229 suites, audit 0 vulnerabilities, and production build PASS.
+
+2E-D establishes:
+
+- exactly all eight approved variant kinds per complete experiment
+- a dedicated temporary workspace for every variant
+- workspace-local prepared artifacts only
+- original source SHA-256 and byte-length checks across adapter boundaries
+- guaranteed `finally` cleanup on success and failure
+- dependency-injected experimental preprocessing/OMR adapters only
+- unavailable capability recorded as `NOT_MEASURED`
+- no golden reference means recognition comparison remains `NOT_MEASURED`
+- deterministic result ordering
+- no temporary path or raw MusicXML exposure in the final runner result
+
+2E-D does not import or modify the production Audiveris provider, OMR worker/provider, gateway, production MusicXML path, or E2E workflow.
+
+## Package 2E-E — evidence-only recommendation
+
+2E-E may recommend one variant only when:
+
+1. the complete eight-variant set is present;
+2. a teacher-verified golden reference identity is attached;
+3. every variant execution is measured;
+4. missing notes, extra notes, pitch errors, duration errors, voice errors, and fully-correct-measure rate are all safely measured;
+5. exactly one variant is no worse on every approved metric and strictly better on at least one metric than every other variant.
+
+This is strict Pareto dominance. There is no weighted/composite score.
+
+If evidence is incomplete, malformed, tied, or contains metric trade-offs, the result is `REVIEW_REQUIRED` with no winner. `accuracyPercentage` remains null because fully-correct-measure rate is benchmark evidence, not a general OMR accuracy percentage. A recommendation never promotes production source verification or merges notes from different outputs.
 
 ## Full Package 2E acceptance boundary
 
-Package 2E cannot be marked completed until the isolated comparative runner can prove all applicable mandatory behavior, including:
+Package 2E cannot be marked completed until all applicable mandatory behavior is proven, including:
 
 - variant isolation
 - original-file preservation
 - operation without golden MusicXML
 - no production-pipeline mutation
-- safe temporary-file cleanup when temporary files are introduced
+- safe temporary-file cleanup
 - deterministic output
-- measured comparison against a valid golden reference where comparison metrics are claimed
+- measured comparison against valid teacher-verified golden evidence where metrics are claimed
+- evidence-only recommendation with fail-closed tie/trade-off handling
+- no cross-output note merging
+- no unsupported accuracy percentage
 - full regression suite PASS
 - dependency audit PASS
 - production build PASS
 - exact PR-head required CI PASS
 - exact post-merge main required CI PASS
-
-The final report may recommend the best **complete measured result** only when the evidence supports that recommendation. It must not combine notes from separate OMR outputs.
+- package status/current status/closure documentation reconciled
 
 ## Protected production boundary
 
-The following remain regression-shield-only during Package 2E unless a separate architectural decision is explicitly approved:
+The following remain regression-shield-only during Package 2E:
 
 - Audiveris provider/runtime/preflight
 - OMR worker
@@ -147,8 +186,8 @@ The following remain regression-shield-only during Package 2E unless a separate 
 - production MusicXML OMR path
 - existing E2E workflow
 
-2E-A and 2E-B introduce no dependency and no production behavior change.
+Packages 2E-A through 2E-E introduce no intentional production behavior change or deployment.
 
-## Next safe 2E slice after 2E-B
+## Closure sequence
 
-After 2E-B is merged and verified, the next Package 2E slice should connect the immutable variant record to the comparator result without executing preprocessing or Audiveris yet. Only after that contract is stable should an isolated experimental runner be considered. Any runner must keep temporary variants separate, preserve the original input, clean temporary artifacts safely, and remain completely outside the production OMR pipeline.
+After 2E-E exact-head CI and post-merge exact-main CI succeed, Package 2E receives a dedicated closure/status reconciliation PR. Only after that closure PR is merged and exact-main CI succeeds may Package 3A begin.
