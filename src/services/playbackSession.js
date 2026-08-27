@@ -86,6 +86,13 @@ export function createPlaybackSessionManager(adapter) {
   return Object.freeze({
     getSnapshot: snapshot,
 
+    // Gives callers and tests a deterministic way to observe all transitions
+    // already accepted into the serialized queue. This avoids timing guesses
+    // around adapter callbacks such as natural completion.
+    whenSettled() {
+      return transitionQueue.then(() => snapshot())
+    },
+
     start(payload) {
       return enqueue(async () => {
         if (state !== PLAYBACK_STATES.IDLE) {
