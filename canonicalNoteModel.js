@@ -48,8 +48,11 @@ export function createCanonicalNote(data = {}) {
 
 /**
  * Clone a canonical note without silently dropping canonical-only metadata.
- * Overrides remain explicit and are passed through the same fail-closed
- * contract check as newly created canonical notes.
+ *
+ * Package 2A intentionally keeps this operation lossless only. Musical edits
+ * need a separate validation/invalidation contract; accepting overrides here
+ * could preserve stale derived pitch/time values or stale verified metadata.
+ * Therefore any non-empty override fails closed for now.
  *
  * @param {Object} note
  * @param {Object} overrides
@@ -69,8 +72,21 @@ export function cloneCanonicalNote(
     )
   }
 
-  return createCanonicalNote({
-    ...note,
-    ...overrides,
-  })
+  if (
+    !overrides ||
+    typeof overrides !== 'object' ||
+    Array.isArray(overrides)
+  ) {
+    throw new TypeError(
+      'Canonical NoteObject clone overrides must be an object.',
+    )
+  }
+
+  if (Object.keys(overrides).length > 0) {
+    throw new Error(
+      'Canonical NoteObject clone overrides require validated edit semantics.',
+    )
+  }
+
+  return createCanonicalNote(note)
 }
