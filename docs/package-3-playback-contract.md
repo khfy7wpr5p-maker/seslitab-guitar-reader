@@ -1,6 +1,8 @@
 # Package 3 — Playback and measure interaction contract
 
-Status: In progress — 3A through 3F merged; 3G under verification.
+Status: **Implementation complete — 3A through 3G merged; Package 3 documentation closure under verification.**
+
+Authoritative closure evidence: `docs/package-3-closure.md` once its protected-main closure gate and exact post-merge CI have passed.
 
 ## Safety invariants
 
@@ -12,18 +14,18 @@ Status: In progress — 3A through 3F merged; 3G under verification.
 6. Selected-measure actions are mutually exclusive with each other. Existing full-score controls may preempt a Package 3-owned selected operation, but a selected action must not silently terminate an active full-score lifecycle it does not own; it fails closed until that full-score operation is stopped.
 7. Pause/resume/stop transitions must be truthful. An unsupported operation must not be represented as successful.
 8. Existing proven Web Audio scheduling is not rewritten merely to expose lifecycle state.
-9. Real MIDI in 3G must be deterministic, generated from canonical timing/pitch evidence, must not change source note data, and must not invent missing timing, pitch, measure identity, part identity, instrumentation or verification.
+9. Real MIDI in 3G is deterministic, generated from canonical timing/pitch evidence, does not change source note data, and does not invent missing timing, pitch, measure identity, part identity, instrumentation or verification.
 10. No Package 3 stage performs deployment.
 
 ## Stage map
 
-- 3A — `Müziği Dinle` user-facing wording: merged.
-- 3B — serialized playback state manager: merged.
-- 3C — unique measure identity and selection: merged.
-- 3D — accessible Rhythmic HTML measure controls: merged.
-- 3E — speak and play one selected measure from the same canonical objects: merged.
-- 3F — playback/measure regression package: merged.
-- 3G — deterministic real MIDI timeline and `.mid` export: current stage.
+- 3A — `Müziği Dinle` user-facing wording: merged via PR #51.
+- 3B — serialized playback state manager: merged via PR #52.
+- 3C — unique measure identity and selection: merged via PR #53.
+- 3D — accessible Rhythmic HTML measure controls: merged via PR #54.
+- 3E — speak and play one selected measure from the same canonical objects: merged via PR #55.
+- 3F — playback/measure regression package: merged via PR #56.
+- 3G — deterministic real MIDI timeline and `.mid` export: merged via PR #57.
 
 ## 3B acceptance
 
@@ -89,7 +91,7 @@ The Package 3 handoff bridge stores only exact references and a selected key; it
 
 ## 3F acceptance
 
-The regression package must remain test/documentation only and prove that:
+The regression package is test/documentation only and proves that:
 
 - reviewed real-OMR duplicate visible measure numbers remain separate canonical `measureKey` identities;
 - accessible controls keep those duplicate visible numbers disambiguated by physical identity;
@@ -99,30 +101,30 @@ The regression package must remain test/documentation only and prove that:
 - publishing a new canonical note array invalidates any prior selected measure key;
 - selected-measure schedule generation is deterministic and never mutates source timing data, including grace-note evidence;
 - existing real-OMR measure-identity and playback-fingerprint shields continue to pass unchanged;
-- no production parser, audio scheduler, Audiveris, OMR provider/worker/gateway/E2E, dependency or deployment code is changed by 3F.
+- no production parser, audio scheduler, Audiveris, OMR provider/worker/gateway/E2E, dependency or deployment code was changed by 3F.
 
 Passing these tests is regression evidence only. It does not convert reviewed real-OMR fixtures into teacher-verified musical ground truth or create an OMR accuracy claim.
 
 ## 3G acceptance
 
-The MIDI export package must:
+The MIDI export package:
 
-- generate a real Standard MIDI File byte stream in deterministic SMF Format 0 without adding a third-party MIDI dependency;
-- consume the exact canonical full `NoteObject[]` reference already owned by the application;
-- require the existing Package 2D playback quality gate to return `ACCEPT` before the production-facing export wrapper creates bytes;
-- derive pitch only from canonical integer MIDI values in the valid 0–127 range;
-- derive event timing only from canonical `measureIndex`, `measureKey`, `startBeat` and duration evidence;
-- keep physical measures contiguous by canonical `measureIndex` and fail closed rather than compressing an unknown/missing measure out of the timeline;
-- support exactly one canonical part at a time and fail closed on mixed-part input instead of merging parts;
-- preserve simultaneous chord starts and produce one attack for a valid tie chain with the canonical summed duration;
-- preserve rests as timing evidence without emitting note attacks;
-- reuse the existing short audible grace-note playback approximation rather than silently creating a second grace timing policy;
-- emit a fixed PPQ and explicit tempo meta event, deterministic note ordering, note-off ordering, end-of-track marker and path-safe `.mid` filename;
-- validate MIDI/VLQ/tempo/PPQ/velocity bounds and fail closed on unencodable values;
-- never mutate, repair, clone into a new musical truth, or elevate verification state on source notes;
-- expose a native accessible `MIDI indir` control that operates on the full canonical array, not the selected-measure sub-array;
-- never begin a browser download when the quality gate refuses export;
-- create and revoke browser object URLs safely for successful downloads;
-- leave the Web Audio scheduler, parser, Audiveris, OMR provider/runtime/worker/gateway, production MusicXML path, E2E workflow, dependencies and deployment configuration unchanged.
+- generates a real Standard MIDI File byte stream in deterministic SMF Format 0 without a third-party MIDI dependency;
+- consumes the exact canonical full `NoteObject[]` reference already owned by the application;
+- requires the existing Package 2D playback quality gate to return `ACCEPT` before the production-facing export wrapper creates bytes;
+- derives pitch only from canonical integer MIDI values in the valid 0–127 range;
+- derives event timing only from canonical `measureIndex`, `measureKey`, `startBeat` and duration evidence;
+- keeps physical measures contiguous by canonical `measureIndex` and fails closed rather than compressing an unknown/missing measure out of the timeline;
+- supports exactly one canonical part at a time and fails closed on mixed-part input instead of merging parts;
+- preserves simultaneous chord starts and produces one attack for a valid tie chain with the canonical summed duration;
+- preserves rests as timing evidence without emitting note attacks;
+- reuses the existing short audible grace-note playback approximation rather than silently creating a second grace timing policy;
+- emits a fixed PPQ and explicit tempo meta event, deterministic note ordering, note-off ordering, end-of-track marker and path-safe `.mid` filename;
+- validates MIDI/VLQ/tempo/PPQ/velocity bounds and fails closed on unencodable values;
+- never mutates, repairs, clones into a new musical truth, or elevates verification state on source notes;
+- exposes a native accessible `MIDI indir` control that operates on the full canonical array, not the selected-measure sub-array;
+- never begins a browser download when the quality gate refuses export;
+- creates and revokes browser object URLs safely for successful downloads;
+- leaves the Web Audio scheduler, parser, Audiveris, OMR provider/runtime/worker/gateway, production MusicXML path, E2E workflow, dependencies and deployment configuration unchanged.
 
 A deterministic `.mid` artifact proves only that accepted canonical data can be encoded reproducibly. It is not a new OMR accuracy claim, teacher approval, orchestration inference or instrument-performance interpretation.
