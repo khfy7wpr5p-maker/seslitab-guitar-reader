@@ -1,6 +1,6 @@
 # Package 3 — Playback and measure interaction contract
 
-Status: In progress — 3A through 3D merged; 3E under verification.
+Status: In progress — 3A through 3E merged; 3F under verification.
 
 ## Safety invariants
 
@@ -21,8 +21,8 @@ Status: In progress — 3A through 3D merged; 3E under verification.
 - 3B — serialized playback state manager: merged.
 - 3C — unique measure identity and selection: merged.
 - 3D — accessible Rhythmic HTML measure controls: merged.
-- 3E — speak and play one selected measure from the same canonical objects: current stage.
-- 3F — playback/measure regression package.
+- 3E — speak and play one selected measure from the same canonical objects: merged.
+- 3F — playback/measure regression package: current stage.
 - 3G — deterministic real MIDI timeline and `.mid` export.
 
 ## 3B acceptance
@@ -86,3 +86,19 @@ Selected-measure TTS/playback must:
 - leave Audiveris/OMR/provider/worker/gateway/E2E and deployment configuration unchanged.
 
 The Package 3 handoff bridge stores only exact references and a selected key; it never receives or manufactures Package 2D verification state. This prevents a detached selected-measure array from silently inheriting the full score's quality report.
+
+## 3F acceptance
+
+The regression package must remain test/documentation only and prove that:
+
+- reviewed real-OMR duplicate visible measure numbers remain separate canonical `measureKey` identities;
+- accessible controls keep those duplicate visible numbers disambiguated by physical identity;
+- selected real-OMR measures retain exact original `NoteObject` references;
+- source-unverified real OMR cannot start selected playback without Package 2D ACCEPT evidence;
+- stale canonical keys fail closed and start no audio;
+- publishing a new canonical note array invalidates any prior selected measure key;
+- selected-measure schedule generation is deterministic and never mutates source timing data, including grace-note evidence;
+- existing real-OMR measure-identity and playback-fingerprint shields continue to pass unchanged;
+- no production parser, audio scheduler, Audiveris, OMR provider/worker/gateway/E2E, dependency or deployment code is changed by 3F.
+
+Passing these tests is regression evidence only. It does not convert reviewed real-OMR fixtures into teacher-verified musical ground truth or create an OMR accuracy claim.
