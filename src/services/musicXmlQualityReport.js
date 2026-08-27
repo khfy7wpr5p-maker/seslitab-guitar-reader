@@ -19,8 +19,10 @@ function failure(error) {
  * Parse MusicXML, run Package 2B validation, then build the Package 2C report.
  *
  * Raw MusicXML parser notes do not establish source verification by themselves.
- * Therefore a structurally valid MusicXML score remains source-unverified unless
- * trusted canonical notes are supplied explicitly via options.notes.
+ * This adapter therefore always evaluates the notes produced by the same
+ * MusicXML parse. It does not accept a separate note array that could become
+ * detached from the validated source. A separate trusted-source bridge would
+ * need its own identity/equivalence contract before it could claim verification.
  *
  * @param {string} musicXmlString
  * @param {Object} options
@@ -61,7 +63,6 @@ export function buildMusicXmlQualityErrorReport(musicXmlString, options = {}) {
   try {
     const report = buildQualityErrorReport(structuredScore, {
       structuralResult,
-      notes: Array.isArray(options.notes) ? options.notes : structuredScore.notes,
     })
 
     return Object.freeze({
