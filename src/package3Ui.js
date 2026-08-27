@@ -1,16 +1,26 @@
 // Package 3 — accessible playback/interface controller.
 //
-// Package 3A changes the user-facing playback wording. Package 3D adds
-// keyboard/screen-reader accessible measure selection, but deliberately does
-// not trigger TTS or playback yet. Measure identity always comes from the
-// parser-supplied canonical measureKey policy in Package 3C.
+// Measure identity always comes from the parser-supplied canonical measureKey
+// policy in Package 3C. Package 3E adds quality-gated TTS/playback for the
+// selected measure while preserving mutual exclusion with existing full-score
+// browser controls.
 
 import {
   clearPackage3Notes,
+  getPackage3MeasureSnapshot,
   selectPackage3MeasureKey,
   subscribePackage3Measures,
 } from '../package3MeasureBridge.js'
 import { buildMeasureIndex, selectCanonicalMeasure } from './services/measureIdentity.js'
+import {
+  playSelectedMeasure,
+  speakSelectedMeasure,
+} from './services/selectedMeasureConsumer.js'
+import {
+  bpmToSpeed,
+  stopRhythm,
+  stopSpeech,
+} from './services/voiceService.js'
 
 export const MUSIC_LISTEN_LABELS = Object.freeze({
   heading: 'Müziği Dinle',
@@ -20,6 +30,32 @@ export const MUSIC_LISTEN_LABELS = Object.freeze({
 
 const rootSubscriptions = new WeakMap()
 const resetBoundRoots = new WeakSet()
+const fullConsumerPreemptionRoots = new WeakSet()
+const selectedOperationState = new WeakMap()
+
+function operationState(root) {
+  let state = selectedOperationState.get(root)
+  if (!state) {
+    state = { token: 0 }
+    selectedOperationState.set(root, state)
+  }
+  return state
+}
+
+function announce(root, message) {
+  const live = root.getElementById('aria-live-region')
+  if (live) live.textContent = message
+}
+
+function stopSelectedOperation(root, message = '') {
+  const state = operationState(root)
+  state.token += 1
+  stopSpeech()
+  stopRhythm()
+  const stop = root.getElementById('selected-measure-stop')
+  if (stop) stop.disabled = true
+  if (message) announce(root, message)
+}
 
 export function applyMusicListenLabels(root) {
   if (!root || typeof root.getElementById !== 'function') return false
@@ -85,6 +121,61 @@ export function buildMeasureControlModels(notes, selectedMeasureKey = null) {
   return models
 }
 
+async function runSelectedMeasureAction(root, consumer) {
+  const bridge = getPackage3MeasureSnapshot()
+  if (!Array.isArray(bridge.notes) || !bridge.selectedMeasureKey) {
+    announce(root, 'Önce bir ölçü seçin.')
+    return false
+  }
+
+  const state = operationState(root)
+  const token = state.token + 1
+  state.token = token
+  const stop = root.getElementById('selected-measure-stop')
+  if (stop) stop.disabled = false
+
+  try {
+    let result
+    if (consumer === 'tts') {
+      const rate = Number.parseFloat(root.getElementById('speed-slider')?.value ?? '1')
+      result = await speakSelectedMeasure({
+        notes: bridge.notes,
+        measureKey: bridge.selectedMeasureKey,
+        rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+      })
+    } else {
+      const tempo = Number.parseFloat(root.getElementById('tempo-slider')?.value ?? '120')
+      const speed = bpmToSpeed(Number.isFinite(tempo) && tempo > 0 ? tempo : 120)
+      result = await playSelectedMeasure({
+        notes: bridge.notes,
+        measureKey: bridge.selectedMeasureKey,
+        speed,
+      })
+    }
+
+    if (state.token !== token) return false
+    if (!result.ok) {
+      announce(root, result.message)
+      return false
+    }
+
+    announce(
+      root,
+      consumer === 'tts'
+        ? 'Seçili ölçünün sesli okuması tamamlandı.'
+        : 'Seçili ölçünün çalması tamamlandı.',
+    )
+    return true
+  } catch (error) {
+    if (state.token === token) {
+      announce(root, `Seçili ölçü işlemi başlatılamadı: ${error?.message || 'bilinmeyen hata'}`)
+    }
+    return false
+  } finally {
+    if (state.token === token && stop) stop.disabled = true
+  }
+}
+
 function ensureMeasureControls(root) {
   const tab = root.getElementById('tab-html')
   const output = root.getElementById('rhythmic-html-output')
@@ -109,8 +200,44 @@ function ensureMeasureControls(root) {
   group.setAttribute('role', 'group')
   group.setAttribute('aria-label', 'Çalınacak veya okunacak ölçüyü seç')
 
+  const actions = root.createElement('div')
+  actions.id = 'selected-measure-actions'
+  actions.className = 'measure-control-actions'
+  actions.setAttribute('role', 'group')
+  actions.setAttribute('aria-label', 'Seçili ölçü işlemleri')
+
+  const speak = root.createElement('button')
+  speak.id = 'selected-measure-speak'
+  speak.type = 'button'
+  speak.className = 'btn btn-secondary btn-sm'
+  speak.textContent = '🔊 Seçili ölçüyü sesli oku'
+  speak.disabled = true
+  speak.addEventListener('click', () => { void runSelectedMeasureAction(root, 'tts') })
+
+  const play = root.createElement('button')
+  play.id = 'selected-measure-play'
+  play.type = 'button'
+  play.className = 'btn btn-primary btn-sm'
+  play.textContent = '🎵 Seçili ölçüyü dinle'
+  play.disabled = true
+  play.addEventListener('click', () => { void runSelectedMeasureAction(root, 'playback') })
+
+  const stop = root.createElement('button')
+  stop.id = 'selected-measure-stop'
+  stop.type = 'button'
+  stop.className = 'btn btn-secondary btn-sm'
+  stop.textContent = '⏹ Seçili ölçüyü durdur'
+  stop.disabled = true
+  stop.addEventListener('click', () => {
+    stopSelectedOperation(root, 'Seçili ölçü işlemi durduruldu.')
+  })
+
+  actions.appendChild(speak)
+  actions.appendChild(play)
+  actions.appendChild(stop)
   region.appendChild(heading)
   region.appendChild(group)
+  region.appendChild(actions)
   tab.insertBefore(region, output)
   return region
 }
@@ -136,8 +263,16 @@ export function renderMeasureControls(root, bridgeSnapshot) {
   }
 
   buttonGroup.replaceChildren()
+  const speak = root.getElementById('selected-measure-speak')
+  const play = root.getElementById('selected-measure-play')
+  const hasSelection = Boolean(bridgeSnapshot?.selectedMeasureKey)
+  if (speak) speak.disabled = !hasSelection
+  if (play) play.disabled = !hasSelection
+
   if (models.length === 0) {
     region.hidden = true
+    if (speak) speak.disabled = true
+    if (play) play.disabled = true
     return true
   }
 
@@ -151,19 +286,33 @@ export function renderMeasureControls(root, bridgeSnapshot) {
     button.setAttribute('data-measure-key', model.measureKey)
 
     button.addEventListener('click', () => {
-      // Revalidate against the exact current NoteObject[] before selection.
-      const selected = selectCanonicalMeasure(bridgeSnapshot.notes, model.measureKey)
+      const current = getPackage3MeasureSnapshot()
+      if (current.notes !== bridgeSnapshot.notes) return
+      const selected = selectCanonicalMeasure(current.notes, model.measureKey)
       if (!selected) return
+      stopSelectedOperation(root)
       if (!selectPackage3MeasureKey(model.measureKey)) return
-
-      const live = root.getElementById('aria-live-region')
-      if (live) live.textContent = `${model.visibleLabel} seçildi.`
+      announce(root, `${model.visibleLabel} seçildi.`)
     })
     buttonGroup.appendChild(button)
   }
 
   region.hidden = false
   return true
+}
+
+function bindFullConsumerPreemption(root) {
+  if (fullConsumerPreemptionRoots.has(root)) return
+
+  // App listeners are registered before Package 3 UI. Capture phase ensures a
+  // selected-measure operation is stopped before a full-score action starts.
+  for (const id of ['voice-btn', 'rhythm-btn']) {
+    const button = root.getElementById(id)
+    if (button && typeof button.addEventListener === 'function') {
+      button.addEventListener('click', () => stopSelectedOperation(root), true)
+    }
+  }
+  fullConsumerPreemptionRoots.add(root)
 }
 
 export function initMeasureControls(root) {
@@ -180,10 +329,14 @@ export function initMeasureControls(root) {
 
   const reset = root.getElementById('reset-btn')
   if (reset && typeof reset.addEventListener === 'function' && !resetBoundRoots.has(root)) {
-    reset.addEventListener('click', () => clearPackage3Notes())
+    reset.addEventListener('click', () => {
+      stopSelectedOperation(root)
+      clearPackage3Notes()
+    })
     resetBoundRoots.add(root)
   }
 
+  bindFullConsumerPreemption(root)
   return true
 }
 
