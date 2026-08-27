@@ -107,6 +107,12 @@ SesliTab-owned source code is made available under the **PolyForm Noncommercial 
 
 See [`LICENSE`](LICENSE), [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md), [`TRADEMARKS.md`](TRADEMARKS.md), and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
+## Public / Proprietary Boundary
+
+The public repository intentionally does not promise publication of product-specific blind/low-vision pedagogy, adaptive music-education logic, proprietary guitar-learning recommendations, commercial pricing/entitlement rules, or private teacher-verified/training datasets. These may be implemented as separate private or separately licensed extensions behind narrow public contracts.
+
+See [`docs/proprietary-extension-boundary.md`](docs/proprietary-extension-boundary.md).
+
 ## Status
 
 SesliTab is under active development.
