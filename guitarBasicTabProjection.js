@@ -56,26 +56,28 @@ function terminalProjection(state, reason, blockingNoteIndex = null) {
   })
 }
 
-function isFiniteNonNegative(value) {
-  return Number.isFinite(Number(value)) && Number(value) >= 0
+function isFiniteNonNegativeNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+function isNonNegativeInteger(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
 function physicalPartKey(note) {
-  return `${String(note.partId)}:${String(note.partIndex)}`
+  return `${note.partId}:${note.partIndex}`
 }
 
 function validatePhysicalIdentity(note) {
   return (
     typeof note.measureKey === 'string' &&
     note.measureKey.trim() !== '' &&
-    Number.isInteger(Number(note.measureIndex)) &&
-    Number(note.measureIndex) >= 0 &&
+    isNonNegativeInteger(note.measureIndex) &&
     typeof note.partId === 'string' &&
     note.partId.trim() !== '' &&
-    Number.isInteger(Number(note.partIndex)) &&
-    Number(note.partIndex) >= 0 &&
-    isFiniteNonNegative(note.startBeat) &&
-    isFiniteNonNegative(note.beats)
+    isNonNegativeInteger(note.partIndex) &&
+    isFiniteNonNegativeNumber(note.startBeat) &&
+    isFiniteNonNegativeNumber(note.beats)
   )
 }
 
@@ -117,7 +119,7 @@ function detectAdvancedStructure(notes) {
     // independent polyphony. Other simultaneous pitched attacks require the
     // advanced package.
     if (note.isGrace !== true) {
-      const onsetKey = `${note.measureKey}:${Number(note.startBeat)}`
+      const onsetKey = `${note.measureKey}:${note.startBeat}`
       if (pitchedOnsets.has(onsetKey)) {
         return { reason: 'simultaneous-pitched-events', blockingNoteIndex: index }
       }
@@ -152,7 +154,8 @@ export function projectCanonicalNotesToBasicGuitarTab(notes) {
 
   // Package 4B performs the canonical-shape/pitch check. Physical identity is
   // validated separately because 4C must never group measures by display
-  // number or synthesize a missing measureKey.
+  // number or synthesize a missing measureKey. Values are validated without
+  // numeric coercion so null/blank/boolean/string timing cannot become zero.
   for (let index = 0; index < notes.length; index += 1) {
     const note = notes[index]
     const selection = selectBasicCanonicalGuitarPosition(note)
@@ -213,18 +216,18 @@ export function projectCanonicalNotesToBasicGuitarTab(notes) {
     if (!measure) {
       measure = {
         measureKey: note.measureKey,
-        measureIndex: Number(note.measureIndex),
+        measureIndex: note.measureIndex,
         measureNumber: note.measureNumber ?? null,
         partId: note.partId,
-        partIndex: Number(note.partIndex),
+        partIndex: note.partIndex,
         events: [],
       }
       measureMap.set(note.measureKey, measure)
       measures.push(measure)
     } else if (
-      measure.measureIndex !== Number(note.measureIndex) ||
+      measure.measureIndex !== note.measureIndex ||
       measure.partId !== note.partId ||
-      measure.partIndex !== Number(note.partIndex)
+      measure.partIndex !== note.partIndex
     ) {
       return terminalProjection(
         BASIC_GUITAR_TAB_PROJECTION_STATE.INVALID,
@@ -237,9 +240,9 @@ export function projectCanonicalNotesToBasicGuitarTab(notes) {
       noteIndex: index,
       note,
       measureKey: note.measureKey,
-      measureIndex: Number(note.measureIndex),
-      startBeat: Number(note.startBeat),
-      beats: Number(note.beats),
+      measureIndex: note.measureIndex,
+      startBeat: note.startBeat,
+      beats: note.beats,
       voice: note.voice ?? null,
       staff: note.staff ?? null,
       isRest: note.isRest === true,
