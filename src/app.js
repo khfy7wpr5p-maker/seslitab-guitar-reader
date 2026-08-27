@@ -34,6 +34,13 @@ import {
   validateMusicXmlFile,
   musicXmlHasRhythm,
 } from './services/musicXmlFile.js'
+import {
+  QUALITY_GATE_DECISION,
+  prepareMusicXmlQualityGate,
+  qualityGateUserMessage,
+  resolveAppPlaybackGate,
+  resolveAppTtsGate,
+} from './services/appQualityGate.js'
 import { normalizeTabInput } from '../tabParser.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -60,6 +67,7 @@ let musicXmlDownloaded = false
 let backendProvider = null
 let selectedPdfFile = null
 let selectedMusicXmlFile = null
+let qualityGateActive = false
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -471,6 +479,10 @@ function clearTab() {
 function handleAnalysisResult(notes, xmlString, hasRhythm) {
   parsedNotes = notes
   hasRhythmInfo = hasRhythm
+  qualityGateActive = Boolean(xmlString)
+  if (qualityGateActive) {
+    prepareMusicXmlQualityGate(notes, xmlString)
+  }
 
   // Generate text outputs
   rhythmicTextString = notesToRhythmicText(notes)
@@ -596,6 +608,7 @@ function resetApp() {
   musicXmlDownloaded = false
   selectedPdfFile = null
   selectedMusicXmlFile = null
+  qualityGateActive = false
 
   $('file-input').value = ''
   $('drop-zone').hidden = false
@@ -635,6 +648,18 @@ async function toggleVoice() {
   if (isSpeaking) { stopVoice(); return }
 
   if (isPlaying) stopRhythmPlayback()
+
+  if (qualityGateActive) {
+    const gate = resolveAppTtsGate(parsedNotes)
+    if (gate.decision !== QUALITY_GATE_DECISION.ACCEPT) {
+      const message = qualityGateUserMessage(gate)
+      $('voice-status').hidden = false
+      $('voice-status').textContent = message
+      announce(message)
+      resetVoiceButtons()
+      return
+    }
+  }
 
   isSpeaking = true
   $('voice-btn').classList.add('playing')
@@ -688,6 +713,18 @@ async function toggleRhythm() {
   if (isPlaying) { stopRhythmPlayback(); return }
 
   if (isSpeaking) stopVoice()
+
+  if (qualityGateActive) {
+    const gate = resolveAppPlaybackGate(parsedNotes)
+    if (gate.decision !== QUALITY_GATE_DECISION.ACCEPT) {
+      const message = qualityGateUserMessage(gate)
+      $('rhythm-status').hidden = false
+      $('rhythm-status').textContent = message
+      announce(message)
+      resetRhythmButtons()
+      return
+    }
+  }
 
   isPlaying = true
   $('rhythm-btn').classList.add('playing')
