@@ -78,7 +78,13 @@ app.use('/api/v1/pdf', (req, res, next) => {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: GATEWAY_CONFIG.maxUploadSizeBytes },
+  limits: {
+    fileSize: GATEWAY_CONFIG.maxUploadSizeBytes,
+    files: 1,
+    fields: 1,
+    parts: 3,
+    fieldNestingDepth: 0,
+  },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'application/pdf') cb(null, true)
     else cb(new Error('Sadece PDF dosyaları kabul edilir.'))
@@ -240,9 +246,12 @@ app.use((_req, res) => {
 })
 
 // Error handler
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Dosya boyutu 10 MB sınırını aşıyor.' } })
   if (err.message?.includes('Sadece PDF')) return res.status(415).json({ success: false, error: { code: 'UNSUPPORTED_FILE_TYPE', message: err.message } })
+  if (err instanceof multer.MulterError || req.is('multipart/form-data')) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_MULTIPART', message: 'Geçersiz veya sınırları aşan multipart form isteği.' } })
+  }
   sendError(res, err)
 })
 
