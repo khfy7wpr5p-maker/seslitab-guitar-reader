@@ -1,8 +1,9 @@
 // Package 2A canonical consumer contract for SesliTab.
 //
-// This module does not change any existing TTS, playback, TAB, HTML, or OMR
-// behavior. It gives those consumers one shared, fail-closed way to interpret
-// the canonical NoteObject verification policy before later integration work.
+// This module does not change any existing TTS, playback, TAB, HTML, violin,
+// or OMR behavior. It gives those consumers one shared, fail-closed way to
+// interpret the canonical NoteObject verification policy before later
+// integration work.
 
 import {
   CANONICAL_CONSUMPTION_DECISION,
@@ -15,6 +16,7 @@ export const CANONICAL_CONSUMER_TYPE = Object.freeze({
   TTS: 'tts',
   PLAYBACK: 'playback',
   GUITAR_TAB: 'guitar-tab',
+  VIOLIN: 'violin',
 })
 
 export const CANONICAL_CONSUMER_TYPES = Object.freeze(
