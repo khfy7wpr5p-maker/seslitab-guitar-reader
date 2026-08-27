@@ -88,9 +88,17 @@ export class BenchmarkDOMParser {
   }
 }
 
-export function ensureOmrBenchmarkDomParser() {
-  if (typeof globalThis.DOMParser !== 'function') {
-    globalThis.DOMParser = BenchmarkDOMParser
+// Package 2E evidence parsing is synchronous. Scope the benchmark parser to the
+// exact call so unrelated tests/scripts cannot alter benchmark semantics and the
+// benchmark does not leave global DOM state behind.
+export function runWithOmrBenchmarkDomParser(callback) {
+  if (typeof callback !== 'function') throw new TypeError('callback must be a function.')
+  const previous = globalThis.DOMParser
+  globalThis.DOMParser = BenchmarkDOMParser
+  try {
+    return callback()
+  } finally {
+    if (previous === undefined) delete globalThis.DOMParser
+    else globalThis.DOMParser = previous
   }
-  return globalThis.DOMParser
 }
