@@ -1,6 +1,6 @@
 # Package 3 — Playback and measure interaction contract
 
-Status: In progress — 3A and 3B merged; 3C under verification.
+Status: In progress — 3A, 3B and 3C merged; 3D under verification.
 
 ## Safety invariants
 
@@ -19,8 +19,8 @@ Status: In progress — 3A and 3B merged; 3C under verification.
 
 - 3A — `Müziği Dinle` user-facing wording: merged.
 - 3B — serialized playback state manager: merged.
-- 3C — unique measure identity and selection: current stage.
-- 3D — accessible Rhythmic HTML measure controls.
+- 3C — unique measure identity and selection: merged.
+- 3D — accessible Rhythmic HTML measure controls: current stage.
 - 3E — speak and play one selected measure from the same canonical objects.
 - 3F — playback/measure regression package.
 - 3G — deterministic real MIDI timeline and `.mid` export.
@@ -51,4 +51,19 @@ Measure identity must:
 - fail closed when one canonical key is associated with conflicting physical metadata;
 - remain deterministic and never mutate or freeze caller-owned note objects.
 
-Production UI controls are deferred to 3D; 3C establishes selection truth only.
+## 3D acceptance
+
+Accessible measure controls must:
+
+- receive the exact `NoteObject[]` reference already projected to Rhythmic HTML rather than reparsing visible HTML or MusicXML;
+- render controls only for groups accepted by the Package 3C canonical `measureKey` policy;
+- keep TAB/legacy groups without canonical identity non-selectable;
+- use native `button` controls with an accessible name and `aria-pressed` selection state;
+- disambiguate duplicate visible measure numbers with physical measure metadata in the accessible label;
+- revalidate canonical selection before committing the selected key;
+- announce a successful selection through the existing live region;
+- keep the pre-existing Rhythmic HTML string unchanged;
+- clear Package 3 selection state when the application is reset;
+- not trigger TTS or audio playback in this stage.
+
+The handoff bridge stores only references and a selected key. It contains no parser, quality, OMR, TTS or playback logic. Package 3E must revalidate the selected key against the exact current note array before any consumer runs.
