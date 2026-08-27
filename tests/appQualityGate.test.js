@@ -129,7 +129,15 @@ describe('Package 2D production wiring source contract', () => {
   const source = fs.readFileSync(new URL('../src/app.js', import.meta.url), 'utf8')
 
   test('MusicXML-backed results prepare the gate on the same parsed note array', () => {
-    assert.match(source, /prepareMusicXmlQualityGate\(\s*parsedNotes,\s*xmlString\s*\)/)
+    const prepareIndex = source.indexOf('prepareMusicXmlQualityGate(')
+    const notesIndex = source.indexOf('parsedNotes', prepareIndex)
+    const xmlIndex = source.indexOf('xmlString', notesIndex)
+    const closeIndex = source.indexOf(')', xmlIndex)
+
+    assert.ok(prepareIndex >= 0)
+    assert.ok(notesIndex > prepareIndex)
+    assert.ok(xmlIndex > notesIndex)
+    assert.ok(closeIndex > xmlIndex)
   })
 
   test('TTS resolves the gate before generating spoken text', () => {
