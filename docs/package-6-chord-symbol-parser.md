@@ -54,6 +54,8 @@ Harmony events use the same physical identity convention already used elsewhere 
 
 Visible measure numbers are metadata only and are not used as unique identity.
 
+Missing or duplicate source `partId` evidence fails closed as `INVALID`; Package 6 does not invent replacement part identities. In `score-timewise`, `measureIndex` follows the outer physical measure position so a temporarily absent part does not renumber later physical measures.
+
 Timing follows MusicXML source order with inherited divisions and observes:
 
 - ordinary note duration advances the cursor
@@ -63,7 +65,7 @@ Timing follows MusicXML source order with inherited divisions and observes:
 - `<forward>` moves the cursor forward
 - `<harmony><offset>` shifts the harmony event relative to the current cursor
 
-If divisions or timeline manipulation are not trustworthy, the harmony semantics may remain preserved but timing becomes `REVIEW_REQUIRED`; no onset is invented.
+If divisions or timeline manipulation are not trustworthy, the harmony semantics may remain preserved but timing becomes `REVIEW_REQUIRED`; no onset is invented. A negative computed harmony onset is therefore not emitted as measured timing.
 
 Both `score-partwise` and `score-timewise` physical part/measure layouts are supported.
 
@@ -126,13 +128,15 @@ Package 6 tests cover:
 12. missing divisions timing review
 13. invalid timeline manipulation review
 14. score-timewise identity
-15. kind text, inversion, staff and hidden degree preservation
-16. functional harmony fail-closed behavior
-17. shared XML security before DOM parsing
-18. raw wrapper extraction boundary
-19. empty harmony input without chord invention
-20. deterministic frozen parser result
-21. production-boundary isolation
+15. missing/duplicate part identity fails closed
+16. negative harmony onset fails timing closed
+17. kind text, inversion, staff and hidden degree preservation
+18. functional harmony fail-closed behavior
+19. shared XML security before DOM parsing
+20. raw wrapper extraction boundary
+21. empty harmony input without chord invention
+22. deterministic frozen parser result
+23. production-boundary isolation
 
 ## Safety claims
 
