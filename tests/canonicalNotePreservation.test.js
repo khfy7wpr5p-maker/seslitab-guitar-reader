@@ -75,7 +75,7 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
     assert.deepEqual(input, before)
   })
 
-  test('canonical clone preserves canonical-only metadata and applies explicit overrides', () => {
+  test('lossless canonical clone preserves canonical-only metadata', () => {
     const source = createCanonicalNote({
       stringLetter: 'B',
       fret: 1,
@@ -85,9 +85,10 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
       sourceVerificationState: verifiedState(),
     })
 
-    const clone = cloneCanonicalNote(source, { fret: 3 })
+    const clone = cloneCanonicalNote(source)
 
-    assert.equal(clone.fret, 3)
+    assert.equal(clone.fret, source.fret)
+    assert.equal(clone.midi, source.midi)
     assert.deepEqual(clone.tuplet, source.tuplet)
     assert.deepEqual(clone.beam, source.beam)
     assert.deepEqual(
@@ -95,6 +96,26 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
       source.sourceVerificationState,
     )
     assert.notEqual(clone, source)
+  })
+
+  test('canonical clone rejects overrides until validated edit semantics exist', () => {
+    const source = createCanonicalNote({
+      stringLetter: 'B',
+      fret: 1,
+      duration: 'quarter',
+      sourceVerificationState: verifiedState(),
+    })
+
+    assert.throws(
+      () => cloneCanonicalNote(source, { fret: 3 }),
+      /require validated edit semantics/,
+    )
+
+    assert.equal(source.fret, 1)
+    assert.deepEqual(
+      source.sourceVerificationState,
+      verifiedState(),
+    )
   })
 
   test('missing verification metadata stays unverified and non-definitive', () => {
@@ -121,6 +142,19 @@ describe('Package 2A canonical NoteObject preservation boundary', () => {
       assert.throws(
         () => cloneCanonicalNote(value),
         /requires a note object/,
+      )
+    }
+
+    const source = createCanonicalNote({
+      stringLetter: 'e',
+      fret: 0,
+      duration: 'quarter',
+    })
+
+    for (const overrides of [null, [], 'edit', 1]) {
+      assert.throws(
+        () => cloneCanonicalNote(source, overrides),
+        /overrides must be an object/,
       )
     }
   })
