@@ -12,7 +12,7 @@ Package 2A defines and verifies the shared canonical NoteObject and timing contr
 | Canonical-only metadata survives trusted lossless preservation while edits invalidate stale verification | `canonicalNoteModel.js`, `tests/canonicalNotePreservation.test.js` | PASS |
 | One common consumption decision vocabulary exists for current output classes | `canonicalConsumerPolicy.js`, `tests/canonicalConsumerPolicy.test.js` | PASS |
 | Current production consumer boundaries are explicitly inventoried | `canonicalConsumerBindings.js`, `tests/canonicalConsumerBindings.test.js`, `docs/package-2a-consumer-boundaries.md` | PASS |
-| The same canonical MusicXML NoteObject set feeds rhythmic text, rhythmic HTML, note cards, Turkish TTS text, and rhythm playback without consumer mutation | `tests/canonicalConsumerFlow.test.js` | PASS pending required CI confirmation |
+| The same canonical MusicXML NoteObject set feeds rhythmic text, rhythmic HTML, note cards, Turkish TTS text, and rhythm playback without consumer mutation | `tests/canonicalConsumerFlow.test.js`; exact-head CI run `33068251258` | PASS |
 | Original source evidence remains reviewable | canonical `_raw` source clone and `sourceVerificationState` tests | PASS |
 
 ## Scope boundary
@@ -36,6 +36,23 @@ The absence of a production canonical Guitar TAB output consumer must remain exp
 - Missing or conflicting canonical data remains marked rather than invented.
 - Existing source-verification metadata remains separate from later teacher approval.
 
+## Exact-head closure evidence
+
+Closure candidate head `4fccc520f05988dc8218a45e488bb93e625b3862` passed required GitHub Actions run `33068251258` / `test-and-build`:
+
+- `npm ci`: PASS; 120 packages audited; 0 vulnerabilities
+- full regression: 697/697 tests PASS; 211 suites; 0 failed/skipped/cancelled
+- Package 2A canonical consumer flow: 2/2 PASS
+- production Vite build: PASS
+- Audiveris provider/preflight/error/cancellation/preservation regressions: PASS
+- E2E workflow regression: PASS
+- approved Turkish TTS golden output unchanged: PASS
+- approved Guitar TAB position golden output unchanged: PASS
+- real OMR measure-identity regressions: PASS
+- real OMR playback fingerprints and chord-onset shields: PASS
+
+The first closure-candidate CI run failed only because the new Node test omitted the existing DOMParser test-harness bootstrap import. Production code was not changed to correct that harness error; the test was aligned with the existing canonical MusicXML bridge test and the new exact head passed.
+
 ## Closure gate
 
-Package 2A may be marked `Completed` only after the closure branch passes the required `test-and-build` workflow, full regression suite, dependency audit, and production build on the exact PR head, followed by successful post-merge `main` CI.
+Package 2A must remain not-final until this closure PR is merged and the exact merged `main` SHA passes the required post-merge `test-and-build` workflow. Only after that evidence exists may `docs/package-status.md` be changed to `Completed` in a separate documentation-only closure record.
