@@ -17,15 +17,12 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
-// Installs the repository's existing Node-only DOMParser compatibility layer.
-// The imported diagnostic is read-only and its CLI entry point does not run on import.
-import './runOmrQualityReport.js'
-
 import {
   OMR_BENCHMARK_MEASUREMENT_STATE,
   OMR_BENCHMARK_VARIANT_KIND,
   createOmrVariantRecord,
 } from './omrBenchmark.js'
+import { ensureOmrBenchmarkDomParser } from './omrBenchmarkNodeDom.js'
 import { measureOmrVariantEvidence } from './omrMeasuredVariantEvidence.js'
 
 export const OMR_ISOLATED_BENCHMARK_SCHEMA_VERSION = 1
@@ -233,6 +230,10 @@ export async function runIsolatedOmrBenchmarkExperiment({
       if (typeof omrResult?.generatedMusicXml !== 'string' || omrResult.generatedMusicXml.trim() === '') {
         throw new Error('experimental-omr-musicxml-required')
       }
+
+      // Benchmark scripts run under Node in CI/diagnostics. Install only the
+      // benchmark-local DOM compatibility before downstream evidence parsing.
+      ensureOmrBenchmarkDomParser()
 
       const evidence = measureOmrVariantEvidence({
         variantId: variant.variantId,
