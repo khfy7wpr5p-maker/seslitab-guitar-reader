@@ -197,5 +197,12 @@ test('Package 2E-E source has no production OMR imports, filesystem writes, or s
 
   assert.doesNotMatch(source, /backend\/|src\/services\/omr|AudiverisProvider|gatewayProvider|omrWorker/u)
   assert.doesNotMatch(source, /writeFile|appendFile|rename|copyFile|rm\(/u)
-  assert.doesNotMatch(source, /weight\s*[:=]|compositeScore|accuracyPercentage\s*:\s*[^n]/iu)
+  assert.doesNotMatch(source, /\b(?:weight|weights)\s*[:=]|\bcompositeScore\b/iu)
+
+  const accuracyAssignments = source.match(/accuracyPercentage\s*:\s*[^,\n]+/gu) || []
+  assert.ok(accuracyAssignments.length > 0)
+  assert.equal(
+    accuracyAssignments.every((assignment) => /^accuracyPercentage\s*:\s*null$/u.test(assignment.trim())),
+    true,
+  )
 })
