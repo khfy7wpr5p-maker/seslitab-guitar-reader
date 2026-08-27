@@ -25,7 +25,7 @@ function makeCanonicalNote(overrides = {}) {
     staff: 1,
     isRest: false,
     isChordNote: false,
-    grace: false,
+    isGrace: false,
     tieStart: false,
     tieStop: false,
     step: 'E',
@@ -156,12 +156,12 @@ test('Package 4C multiple parts or multiple pitched staves require advanced hand
   assert.equal(multipleStaves.reason, 'multiple-staves')
 })
 
-test('Package 4C grace note may share the next onset without being mislabeled as independent polyphony', () => {
+test('Package 4C canonical grace note may share the next onset without being mislabeled as independent polyphony', () => {
   const grace = makeCanonicalNote({
     startBeat: 0,
     beats: 0,
     durationValue: 0,
-    grace: true,
+    isGrace: true,
     step: 'D',
   })
   const main = makeCanonicalNote({ startBeat: 0, step: 'E' })
@@ -169,7 +169,7 @@ test('Package 4C grace note may share the next onset without being mislabeled as
   const result = projectCanonicalNotesToBasicGuitarTab([grace, main])
 
   assert.equal(result.state, BASIC_GUITAR_TAB_PROJECTION_STATE.PROJECTED)
-  assert.equal(result.measures[0].events[0].grace, true)
+  assert.equal(result.measures[0].events[0].isGrace, true)
   assert.equal(result.measures[0].events[0].note, grace)
   assert.equal(result.measures[0].events[1].note, main)
 })
@@ -240,4 +240,5 @@ test('Package 4C source has no production OMR/gateway/quality-gate/consumer bind
 
   assert.doesNotMatch(source, /AudiverisProvider|omrWorker|omrProvider|gatewayProvider|omrService/)
   assert.doesNotMatch(source, /canonicalConsumerBindings|qualityGateIntegration/)
+  assert.doesNotMatch(source, /note\.grace\b/)
 })
