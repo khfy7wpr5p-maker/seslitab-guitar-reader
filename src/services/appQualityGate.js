@@ -14,6 +14,8 @@ import {
   resolveTtsQualityGate,
 } from './qualityGateIntegration.js'
 
+export { QUALITY_GATE_DECISION }
+
 export const QUALITY_GATE_USER_MESSAGE = Object.freeze({
   REVIEW: 'Bu nota verisi henüz doğrulanmadı. İnceleme tamamlanmadan kesin sesli okuma veya ritmik çalma başlatılamaz.',
   BLOCK: 'Bu nota verisinde güvenilirliği etkileyen bir sorun bulundu. Sesli okuma veya ritmik çalma güvenlik için durduruldu.',
