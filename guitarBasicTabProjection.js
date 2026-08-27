@@ -112,11 +112,11 @@ function detectAdvancedStructure(notes) {
       return { reason: 'multiple-staves', blockingNoteIndex: index }
     }
 
-    // Grace notes consume zero canonical measure time and may share the next
-    // attack onset without representing independent polyphony. Other pitched
-    // attacks at the same physical onset require the advanced package.
-    const isGrace = note.grace === true
-    if (!isGrace) {
+    // Canonical NoteObject uses isGrace. Grace notes consume zero canonical
+    // measure time and may share the next attack onset without representing
+    // independent polyphony. Other simultaneous pitched attacks require the
+    // advanced package.
+    if (note.isGrace !== true) {
       const onsetKey = `${note.measureKey}:${Number(note.startBeat)}`
       if (pitchedOnsets.has(onsetKey)) {
         return { reason: 'simultaneous-pitched-events', blockingNoteIndex: index }
@@ -243,7 +243,7 @@ export function projectCanonicalNotesToBasicGuitarTab(notes) {
       voice: note.voice ?? null,
       staff: note.staff ?? null,
       isRest: note.isRest === true,
-      grace: note.grace === true,
+      isGrace: note.isGrace === true,
       tieStart: note.tieStart === true,
       tieStop: note.tieStop === true,
       policyId: selection.policyId,
