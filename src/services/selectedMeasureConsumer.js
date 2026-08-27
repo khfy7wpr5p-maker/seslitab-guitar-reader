@@ -4,6 +4,11 @@
 // identity by Package 2D. Therefore the full array is always gated first.
 // Only after ACCEPT do we resolve the selected canonical measureKey and pass
 // its exact original NoteObject references to the requested consumer.
+//
+// Cross-consumer lifecycle coordination intentionally stays in Package 3 UI.
+// This service never stops the shared full-score browser consumers on its own;
+// doing so would let a selected action resolve an older app.js playback promise
+// without also owning that older UI lifecycle.
 
 import { selectCanonicalMeasure } from './measureIdentity.js'
 import {
@@ -16,8 +21,6 @@ import { notesToSpokenText } from './musicEngine.js'
 import {
   playRhythm,
   speakRhythmicText,
-  stopRhythm,
-  stopSpeech,
 } from './voiceService.js'
 
 export const SELECTED_MEASURE_CONSUMER = Object.freeze({
@@ -111,15 +114,8 @@ export async function speakSelectedMeasure({
   })
   if (!resolved.ok) return resolved
 
-  const stopAudio = adapters.stopRhythm ?? stopRhythm
-  const stopVoice = adapters.stopSpeech ?? stopSpeech
   const toSpokenText = adapters.notesToSpokenText ?? notesToSpokenText
   const speak = adapters.speakRhythmicText ?? speakRhythmicText
-
-  // Selected consumers are mutually exclusive. Stop both current browser
-  // consumers before starting the newly requested one.
-  stopAudio()
-  stopVoice()
 
   const text = toSpokenText(resolved.notes)
   await speak(text, rate)
@@ -143,12 +139,8 @@ export async function playSelectedMeasure({
   })
   if (!resolved.ok) return resolved
 
-  const stopVoice = adapters.stopSpeech ?? stopSpeech
-  const stopAudio = adapters.stopRhythm ?? stopRhythm
   const play = adapters.playRhythm ?? playRhythm
 
-  stopVoice()
-  stopAudio()
   await play(resolved.notes, speed, onNote)
   return resolved
 }
