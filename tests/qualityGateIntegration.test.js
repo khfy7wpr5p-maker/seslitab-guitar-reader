@@ -46,10 +46,7 @@ function verificationState(status) {
 }
 
 function note(status = CANONICAL_VERIFICATION_STATUS.VERIFIED) {
-  return {
-    noteName: 'Mi',
-    sourceVerificationState: verificationState(status),
-  }
+  return { noteName: 'Mi', sourceVerificationState: verificationState(status) }
 }
 
 function report(overrides = {}) {
@@ -70,20 +67,25 @@ describe('Package 2D quality gate contract', () => {
     const notes = [note(), note()]
     const qualityReport = report()
 
-    for (const resolver of [resolveTtsQualityGate, resolvePlaybackQualityGate, resolveGuitarTabQualityGate]) {
+    for (const resolver of [
+      resolveTtsQualityGate,
+      resolvePlaybackQualityGate,
+      resolveGuitarTabQualityGate,
+      resolveViolinQualityGate,
+    ]) {
       const result = resolver(notes, { report: qualityReport })
       assert.equal(result.decision, QUALITY_GATE_DECISION.ACCEPT)
       assert.equal(result.reason, QUALITY_GATE_REASON.ACCEPT_VERIFIED)
       assert.equal(result.allowed, true)
       assert.equal(result.definitive, true)
       assert.equal(result.automaticAllowed, true)
+      assert.equal(result.boundary.status, 'mapped')
     }
   })
 
   test('missing quality report is REVIEW and never authorizes definitive consumption', () => {
     const notes = [note()]
     const result = resolveTtsQualityGate(notes)
-
     assert.equal(result.decision, QUALITY_GATE_DECISION.REVIEW)
     assert.equal(result.reason, QUALITY_GATE_REASON.REPORT_MISSING)
     assert.equal(result.allowed, false)
@@ -101,7 +103,6 @@ describe('Package 2D quality gate contract', () => {
         automaticPlaybackAllowed: false,
       }),
     })
-
     assert.equal(result.decision, QUALITY_GATE_DECISION.REVIEW)
     assert.equal(result.reason, QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED)
     assert.equal(result.allowed, false)
@@ -122,7 +123,6 @@ describe('Package 2D quality gate contract', () => {
   test('invalid canonical data is BLOCK before source report can elevate it', () => {
     const notes = [note(CANONICAL_VERIFICATION_STATUS.INVALID)]
     const result = resolvePlaybackQualityGate(notes, { report: report() })
-
     assert.equal(result.decision, QUALITY_GATE_DECISION.BLOCK)
     assert.equal(result.reason, QUALITY_GATE_REASON.CANONICAL_BLOCKED)
     assert.equal(result.allowed, false)
@@ -151,12 +151,10 @@ describe('Package 2D quality gate contract', () => {
 
   test('Guitar TAB uses the same mapped fail-closed quality gate contract', () => {
     const notes = [note()]
-
     const accepted = resolveGuitarTabQualityGate(notes, { report: report() })
     assert.equal(accepted.decision, QUALITY_GATE_DECISION.ACCEPT)
     assert.equal(accepted.reason, QUALITY_GATE_REASON.ACCEPT_VERIFIED)
     assert.equal(accepted.allowed, true)
-    assert.equal(accepted.boundary.status, 'mapped')
 
     const review = resolveGuitarTabQualityGate(notes, {
       report: report({
@@ -171,41 +169,50 @@ describe('Package 2D quality gate contract', () => {
     assert.equal(review.allowed, false)
   })
 
-  test('Package 5D violin helper blocks while the production consumer boundary is pending', () => {
-    const notes = [note()]
-    const result = resolveViolinQualityGate(notes, { report: report() })
+  test('Package 5E violin gate is mapped but still obeys source review and canonical block decisions', () => {
+    const verifiedNotes = [note()]
+    const accepted = resolveViolinQualityGate(verifiedNotes, { report: report() })
+    assert.equal(accepted.consumerType, CANONICAL_CONSUMER_TYPE.VIOLIN)
+    assert.equal(accepted.decision, QUALITY_GATE_DECISION.ACCEPT)
+    assert.equal(accepted.boundary.status, 'mapped')
+    assert.equal(accepted.boundary.enforcementReady, true)
 
-    assert.equal(result.consumerType, CANONICAL_CONSUMER_TYPE.VIOLIN)
-    assert.equal(result.decision, QUALITY_GATE_DECISION.BLOCK)
-    assert.equal(result.reason, QUALITY_GATE_REASON.CONSUMER_BOUNDARY_PENDING)
-    assert.equal(result.allowed, false)
-    assert.equal(result.definitive, false)
-    assert.equal(result.automaticAllowed, false)
-    assert.equal(result.boundary.status, 'pending')
-    assert.equal(result.boundary.enforcementReady, false)
+    const review = resolveViolinQualityGate(verifiedNotes, {
+      report: report({
+        qualityState: QUALITY_STATE.REVIEW_REQUIRED,
+        sourceVerified: false,
+        reviewRequired: true,
+        automaticPlaybackAllowed: false,
+      }),
+    })
+    assert.equal(review.decision, QUALITY_GATE_DECISION.REVIEW)
+    assert.equal(review.reason, QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED)
+    assert.equal(review.allowed, false)
+
+    const blocked = resolveViolinQualityGate(
+      [note(CANONICAL_VERIFICATION_STATUS.INVALID)],
+      { report: report() },
+    )
+    assert.equal(blocked.decision, QUALITY_GATE_DECISION.BLOCK)
+    assert.equal(blocked.reason, QUALITY_GATE_REASON.CANONICAL_BLOCKED)
   })
 
-  test('pending violin boundary blocks before a missing report could be mistaken for review authorization', () => {
-    const notes = [note()]
-    const result = resolveViolinQualityGate(notes)
-
-    assert.equal(result.decision, QUALITY_GATE_DECISION.BLOCK)
-    assert.equal(result.reason, QUALITY_GATE_REASON.CONSUMER_BOUNDARY_PENDING)
-    assert.equal(result.report, null)
+  test('mapped violin boundary without a report remains REVIEW rather than becoming authorized', () => {
+    const result = resolveViolinQualityGate([note()])
+    assert.equal(result.decision, QUALITY_GATE_DECISION.REVIEW)
+    assert.equal(result.reason, QUALITY_GATE_REASON.REPORT_MISSING)
+    assert.equal(result.allowed, false)
   })
 
   test('report registration is exact-array identity and does not transfer to clones', () => {
     const notes = [note()]
     const clone = [...notes]
     const qualityReport = report()
-
     registerQualityReportForNotes(notes, qualityReport)
     assert.equal(getRegisteredQualityReport(notes), qualityReport)
     assert.equal(getRegisteredQualityReport(clone), null)
-
     assert.equal(resolveTtsQualityGate(notes).decision, QUALITY_GATE_DECISION.ACCEPT)
     assert.equal(resolveTtsQualityGate(clone).decision, QUALITY_GATE_DECISION.REVIEW)
-
     assert.equal(unregisterQualityReportForNotes(notes), true)
     assert.equal(getRegisteredQualityReport(notes), null)
   })
@@ -215,9 +222,7 @@ describe('Package 2D quality gate contract', () => {
     const qualityReport = report()
     const beforeNotes = structuredClone(notes)
     const beforeReport = structuredClone(qualityReport)
-
     resolvePlaybackQualityGate(notes, { report: qualityReport })
-
     assert.deepEqual(notes, beforeNotes)
     assert.deepEqual(qualityReport, beforeReport)
   })
