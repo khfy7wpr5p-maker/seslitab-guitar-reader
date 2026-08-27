@@ -13,24 +13,17 @@ function hasOwn(object, field) {
   return Object.prototype.hasOwnProperty.call(object, field)
 }
 
-/**
- * Build a NoteObject that exposes every field in CANONICAL_NOTE_FIELDS.
- *
- * Canonical-only metadata is pass-through data: this function never invents
- * tuplet/beam information and never promotes a note to a verified state.
- * Missing verification metadata remains null and therefore non-definitive
- * under resolveCanonicalConsumptionPolicy().
- *
- * @param {Object} data
- * @returns {Object}
- */
-export function createCanonicalNote(data = {}) {
+function buildCanonicalNote(
+  data,
+  { preserveVerification = false } = {},
+) {
   const note = {
     ...createNote(data),
     tuplet: data.tuplet ?? null,
     beam: data.beam ?? null,
-    sourceVerificationState:
-      data.sourceVerificationState ?? null,
+    sourceVerificationState: preserveVerification
+      ? data.sourceVerificationState ?? null
+      : null,
   }
 
   const missingFields = CANONICAL_NOTE_FIELDS.filter(
@@ -47,12 +40,32 @@ export function createCanonicalNote(data = {}) {
 }
 
 /**
+ * Build a fresh NoteObject that exposes every field in CANONICAL_NOTE_FIELDS.
+ *
+ * Canonical-only musical metadata such as tuplet/beam is preserved. Source
+ * verification is intentionally invalidated on fresh construction because the
+ * caller may have rebuilt or edited canonical pitch/time fields. Carrying an
+ * old `verified` state across that boundary could make stale or conflicting
+ * musical data appear definitive. A fresh canonical note therefore always
+ * returns with sourceVerificationState=null until a trusted verifier assigns a
+ * new state.
+ *
+ * @param {Object} data
+ * @returns {Object}
+ */
+export function createCanonicalNote(data = {}) {
+  return buildCanonicalNote(data)
+}
+
+/**
  * Clone a canonical note without silently dropping canonical-only metadata.
  *
  * Package 2A intentionally keeps this operation lossless only. Musical edits
  * need a separate validation/invalidation contract; accepting overrides here
  * could preserve stale derived pitch/time values or stale verified metadata.
  * Therefore any non-empty override fails closed for now.
+ *
+ * Verification metadata is preserved only for this no-edit clone path.
  *
  * @param {Object} note
  * @param {Object} overrides
@@ -88,5 +101,7 @@ export function cloneCanonicalNote(
     )
   }
 
-  return createCanonicalNote(note)
+  return buildCanonicalNote(note, {
+    preserveVerification: true,
+  })
 }
