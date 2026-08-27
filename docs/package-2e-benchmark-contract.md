@@ -1,6 +1,6 @@
 # Package 2E — OMR Benchmark Contract and Evidence Boundary
 
-Status: **In progress — 2E-A contract/inventory slice only**
+Status: **In progress — 2E-A merged; 2E-B golden comparator under verification**
 
 ## Prerequisite
 
@@ -21,7 +21,7 @@ The approved comparative input families are:
 - adaptive binarization
 - careful upscale and denoise
 
-A future measured variant record must preserve:
+A measured variant record must preserve:
 
 - input metadata
 - preprocessing settings
@@ -69,7 +69,7 @@ The following files are useful deterministic real-OMR regression outputs but are
 
 They may be used to detect parser/validator/regression drift. Recognition accuracy must not be inferred from them.
 
-## Package 2E-A — current safe slice
+## Package 2E-A — merged safe slice
 
 2E-A is intentionally limited to:
 
@@ -92,6 +92,30 @@ They may be used to detect parser/validator/regression drift. Recognition accura
 - calculate an OMR accuracy percentage
 - select a best variant without measured comparison evidence
 - deploy anything
+
+2E-A merged through PR #45. Exact post-merge main verification is recorded by GitHub CI; Package 2E remains incomplete.
+
+## Package 2E-B — read-only golden MusicXML comparator
+
+2E-B adds a deterministic comparator for generated MusicXML against one of the two repository-owned teacher-verified expected MusicXML files.
+
+Alignment policy:
+
+1. Physical measures align by `partIndex + measureIndex`, never by visible measure number.
+2. Exact musical-event matches are removed first.
+3. A remaining event pair is classified as a pitch, duration, or voice error only when exactly one golden event and one generated event occupy the same strict location.
+4. A strict location uses canonical `startBeat`, staff, rest/grace state, and chord-continuation state; it does not use pitch, duration, or voice, so those fields can be measured when pairing is unambiguous.
+5. If multiple unmatched events remain at the same location, detailed error metrics become `REVIEW_REQUIRED` with no definitive numeric value. The comparator does not guess correspondences.
+6. Fully-correct-measure rate is based on exact normalized event equality and remains measurable even when a detailed event correspondence is ambiguous.
+7. The comparator reads the approved golden file from the fixed repository inventory. A caller cannot supply arbitrary MusicXML and label it as ground truth.
+
+Important parser boundary discovered during 2E-B audit:
+
+- `parseMusicXml()` is used for ordered canonical note onsets because it calculates `startBeat` through note/backup/forward processing.
+- `parseMusicXmlWithStructure()` is used only for physical measure metadata in this comparator.
+- Package 2E-B does not change either production parser.
+
+2E-B remains measurement infrastructure only. Comparing a golden file to itself proves comparator behavior; it is **not** evidence of Audiveris recognition accuracy.
 
 ## Full Package 2E acceptance boundary
 
@@ -123,8 +147,8 @@ The following remain regression-shield-only during Package 2E unless a separate 
 - production MusicXML OMR path
 - existing E2E workflow
 
-2E-A introduces no dependency and no production behavior change.
+2E-A and 2E-B introduce no dependency and no production behavior change.
 
-## Next safe 2E slice
+## Next safe 2E slice after 2E-B
 
-After 2E-A is merged and verified, the next Package 2E slice should implement a read-only golden MusicXML comparator with explicit event-alignment rules and tests. It must fail closed where musical alignment is ambiguous rather than inventing note correspondences.
+After 2E-B is merged and verified, the next Package 2E slice should connect the immutable variant record to the comparator result without executing preprocessing or Audiveris yet. Only after that contract is stable should an isolated experimental runner be considered. Any runner must keep temporary variants separate, preserve the original input, clean temporary artifacts safely, and remain completely outside the production OMR pipeline.
