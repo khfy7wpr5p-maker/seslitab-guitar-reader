@@ -107,16 +107,16 @@ test('Package 3B natural completion clears only the matching active session', as
   await manager.start('first')
   const staleEnd = adapter.endings.get(1)
   await manager.start('second')
+
   staleEnd()
-  await Promise.resolve()
-  await Promise.resolve()
-  assert.equal(manager.getSnapshot().sessionId, 2)
-  assert.equal(manager.getSnapshot().state, 'playing')
+  const afterStaleEnd = await manager.whenSettled()
+  assert.equal(afterStaleEnd.sessionId, 2)
+  assert.equal(afterStaleEnd.state, 'playing')
 
   adapter.endings.get(2)()
-  await Promise.resolve()
-  await Promise.resolve()
-  assert.equal(manager.getSnapshot().state, 'idle')
+  const afterCurrentEnd = await manager.whenSettled()
+  assert.equal(afterCurrentEnd.sessionId, 2)
+  assert.equal(afterCurrentEnd.state, 'idle')
 })
 
 test('Package 3B adapter failures do not fabricate a successful state transition', async () => {
