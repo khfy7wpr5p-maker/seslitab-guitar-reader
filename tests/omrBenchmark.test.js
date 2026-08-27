@@ -7,17 +7,27 @@ import { fileURLToPath } from 'node:url'
 import '../scripts/runOmrQualityReport.js'
 import {
   OMR_BENCHMARK_KIND,
+  OMR_BENCHMARK_MEASUREMENT_STATE,
   OMR_BENCHMARK_SCHEMA_VERSION,
   OMR_BENCHMARK_TRUTH_DOMAIN,
+  OMR_BENCHMARK_VARIANT_KIND,
+  OMR_COMPARATIVE_BENCHMARK_KIND,
   REVIEWED_OMR_FIXTURE_NAMES,
   benchmarkReviewedOmrCorpus,
+  createComparativeOmrBenchmarkReport,
+  createOmrVariantRecord,
 } from '../scripts/omrBenchmark.js'
+import {
+  OMR_BENCHMARK_FIXTURE_INVENTORY,
+  OMR_BENCHMARK_GOLDEN_REFERENCES,
+  OMR_BENCHMARK_REGRESSION_OUTPUTS,
+  OMR_FIXTURE_EVIDENCE_STATE,
+  OMR_FIXTURE_ROLE,
+} from '../scripts/omrBenchmarkFixtureInventory.js'
 
-const fixtureDir = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  'fixtures',
-  'real-omr',
-)
+const testDir = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.join(testDir, '..')
+const fixtureDir = path.join(testDir, 'fixtures', 'real-omr')
 
 const expectedMetrics = Object.freeze({
   'django-clean.xml': {
@@ -106,7 +116,28 @@ function corpusEntries() {
   }))
 }
 
-describe('Package 2E reviewed OMR benchmark contract', () => {
+function basicVariant(variantId, variantKind = OMR_BENCHMARK_VARIANT_KIND.ORIGINAL_PDF) {
+  return {
+    variantId,
+    variantKind,
+    inputMetadata: { source: 'fixture.pdf', page: 1 },
+    preprocessingSettings: {},
+    audiverisSettings: { profile: 'default' },
+    generatedMusicXml: null,
+    validatorFindings: [],
+  }
+}
+
+const comparisonMetricNames = [
+  'missingNotes',
+  'extraNotes',
+  'pitchErrors',
+  'durationErrors',
+  'voiceErrors',
+  'fullyCorrectMeasureRate',
+]
+
+describe('Package 2E reviewed OMR benchmark diagnostic', () => {
   test('fixed corpus contains every reviewed real-OMR fixture exactly once', () => {
     assert.deepEqual(REVIEWED_OMR_FIXTURE_NAMES, [
       'django-clean.xml',
@@ -120,12 +151,13 @@ describe('Package 2E reviewed OMR benchmark contract', () => {
     assert.equal(new Set(REVIEWED_OMR_FIXTURE_NAMES).size, 7)
   })
 
-  test('benchmark never fabricates musical ground truth or recognition accuracy', () => {
+  test('diagnostic never fabricates musical ground truth or recognition accuracy', () => {
     const report = benchmarkReviewedOmrCorpus(corpusEntries())
 
     assert.equal(report.schemaVersion, OMR_BENCHMARK_SCHEMA_VERSION)
     assert.equal(report.benchmarkKind, OMR_BENCHMARK_KIND)
     assert.equal(report.truth, OMR_BENCHMARK_TRUTH_DOMAIN)
+    assert.equal(report.truth.scope, 'reviewed-output-diagnostic-only')
     assert.equal(report.truth.musicalGroundTruthAvailable, false)
     assert.equal(report.truth.recognitionAccuracyAvailable, false)
     assert.equal(report.truth.recognitionAccuracy, null)
@@ -143,7 +175,7 @@ describe('Package 2E reviewed OMR benchmark contract', () => {
     assert.ok(report.fixtures.every((fixture) => fixture.truth.recognitionAccuracy === null))
   })
 
-  test('benchmark metrics stay aligned with the reviewed real-OMR regression fingerprints', () => {
+  test('diagnostic metrics stay aligned with reviewed real-OMR regression fingerprints', () => {
     const report = benchmarkReviewedOmrCorpus(corpusEntries())
 
     for (const fixture of report.fixtures) {
@@ -174,7 +206,7 @@ describe('Package 2E reviewed OMR benchmark contract', () => {
     )
   })
 
-  test('input order does not change deterministic benchmark output', () => {
+  test('input order does not change deterministic diagnostic output', () => {
     const entries = corpusEntries()
     const forward = benchmarkReviewedOmrCorpus(entries)
     const reverse = benchmarkReviewedOmrCorpus([...entries].reverse())
@@ -206,7 +238,7 @@ describe('Package 2E reviewed OMR benchmark contract', () => {
     )
   })
 
-  test('empty or malformed reviewed fixture fails closed without partial benchmark output', () => {
+  test('empty or malformed reviewed fixture fails closed without partial output', () => {
     const entries = corpusEntries()
     const empty = entries.map((entry) => ({ ...entry }))
     empty[0].xml = ''
@@ -223,7 +255,7 @@ describe('Package 2E reviewed OMR benchmark contract', () => {
     )
   })
 
-  test('benchmark is read-only and deeply freezes its result contract', () => {
+  test('diagnostic is read-only and deeply freezes its result contract', () => {
     const entries = corpusEntries()
     const before = entries.map((entry) => ({ ...entry }))
     const report = benchmarkReviewedOmrCorpus(entries)
@@ -233,5 +265,169 @@ describe('Package 2E reviewed OMR benchmark contract', () => {
     assert.equal(Object.isFrozen(report.fixtures), true)
     assert.equal(Object.isFrozen(report.fixtures[0].metrics), true)
     assert.equal(Object.isFrozen(report.fixtures[0].quality.findingSummary.byErrorCode), true)
+  })
+})
+
+describe('Package 2E fixture inventory provenance', () => {
+  test('inventory separates two teacher-verified golden references from seven regression-only outputs', () => {
+    assert.equal(OMR_BENCHMARK_FIXTURE_INVENTORY.length, 9)
+    assert.equal(OMR_BENCHMARK_GOLDEN_REFERENCES.length, 2)
+    assert.equal(OMR_BENCHMARK_REGRESSION_OUTPUTS.length, 7)
+
+    assert.ok(OMR_BENCHMARK_GOLDEN_REFERENCES.every(
+      (fixture) => fixture.role === OMR_FIXTURE_ROLE.GOLDEN_REFERENCE &&
+        fixture.evidenceState === OMR_FIXTURE_EVIDENCE_STATE.TEACHER_VERIFIED &&
+        fixture.sourcePdf && fixture.expectedMusicXml,
+    ))
+    assert.ok(OMR_BENCHMARK_REGRESSION_OUTPUTS.every(
+      (fixture) => fixture.role === OMR_FIXTURE_ROLE.REGRESSION_OUTPUT_ONLY &&
+        fixture.evidenceState === OMR_FIXTURE_EVIDENCE_STATE.REVIEW_REQUIRED &&
+        fixture.sourcePdf === null && fixture.expectedMusicXml === null,
+    ))
+  })
+
+  test('every inventoried repository artifact path exists', () => {
+    for (const fixture of OMR_BENCHMARK_FIXTURE_INVENTORY) {
+      for (const key of ['sourcePdf', 'expectedMusicXml', 'omrArtifact', 'approvalRecord', 'integrityManifest', 'regressionMusicXml']) {
+        const relativePath = fixture[key]
+        if (relativePath) assert.doesNotThrow(() => readFileSync(path.join(repoRoot, relativePath)), `${fixture.fixtureId}:${key}`)
+      }
+    }
+  })
+})
+
+describe('Package 2E-A comparative variant contract', () => {
+  test('contract enumerates the approved preprocessing input variants without executing them', () => {
+    assert.deepEqual(Object.values(OMR_BENCHMARK_VARIANT_KIND), [
+      'original_pdf',
+      'original_page_image',
+      'png',
+      'high_quality_jpg',
+      'deskewed_image',
+      'cropped_image',
+      'adaptive_binarization',
+      'upscale_denoise',
+    ])
+  })
+
+  test('operation without golden MusicXML is explicit NOT_MEASURED, never invented accuracy', () => {
+    const report = createComparativeOmrBenchmarkReport({
+      benchmarkId: 'without-golden',
+      variants: [basicVariant('original')],
+    })
+
+    assert.equal(report.benchmarkKind, OMR_COMPARATIVE_BENCHMARK_KIND)
+    assert.equal(report.goldenReference, null)
+    assert.equal(report.recommendation.state, OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED)
+    assert.equal(report.recommendation.variantId, null)
+    const variant = report.variants[0]
+    assert.equal(variant.comparison.state, OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED)
+    assert.equal(variant.comparison.reference, null)
+    for (const metricName of comparisonMetricNames) {
+      assert.deepEqual(variant.comparison[metricName], {
+        state: OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED,
+        value: null,
+      })
+    }
+    assert.equal(variant.comparison.musicalCorrectness.state, OMR_BENCHMARK_MEASUREMENT_STATE.REVIEW_REQUIRED)
+    assert.equal(variant.sourceVerification.definitive, false)
+  })
+
+  test('teacher-verified golden identity may be recorded without pretending comparison already ran', () => {
+    const report = createComparativeOmrBenchmarkReport({
+      benchmarkId: 'approved-reference-not-yet-measured',
+      goldenReferenceId: 'plan0-owner-approved-3-8',
+      variants: [basicVariant('original')],
+    })
+
+    assert.equal(report.goldenReference.fixtureId, 'plan0-owner-approved-3-8')
+    assert.equal(report.goldenReference.evidenceState, OMR_FIXTURE_EVIDENCE_STATE.TEACHER_VERIFIED)
+    assert.equal(report.variants[0].comparison.reference.fixtureId, 'plan0-owner-approved-3-8')
+    assert.equal(report.variants[0].comparison.state, OMR_BENCHMARK_MEASUREMENT_STATE.NOT_MEASURED)
+    assert.equal(report.recommendation.variantId, null)
+  })
+
+  test('variant records are isolated, deterministic and never share mutable experiment state', () => {
+    const sharedMetadata = { nested: { dpi: 300 }, page: 1 }
+    const variants = [
+      { ...basicVariant('png', OMR_BENCHMARK_VARIANT_KIND.PNG), inputMetadata: sharedMetadata },
+      { ...basicVariant('pdf', OMR_BENCHMARK_VARIANT_KIND.ORIGINAL_PDF), inputMetadata: sharedMetadata },
+    ]
+    const forward = createComparativeOmrBenchmarkReport({ benchmarkId: 'isolation', variants })
+    const reverse = createComparativeOmrBenchmarkReport({ benchmarkId: 'isolation', variants: [...variants].reverse() })
+
+    assert.deepEqual(reverse, forward)
+    assert.deepEqual(forward.variants.map((variant) => variant.variantId), ['pdf', 'png'])
+    assert.notEqual(forward.variants[0].inputMetadata, forward.variants[1].inputMetadata)
+    assert.notEqual(forward.variants[0].inputMetadata.nested, forward.variants[1].inputMetadata.nested)
+    assert.equal(Object.isFrozen(forward.variants[0]), true)
+
+    sharedMetadata.nested.dpi = 72
+    assert.equal(forward.variants[0].inputMetadata.nested.dpi, 300)
+    assert.equal(forward.variants[1].inputMetadata.nested.dpi, 300)
+    assert.equal('mergedMusicXml' in forward, false)
+  })
+
+  test('duplicate IDs, unsupported variants, unknown goldens and non-JSON metadata fail closed', () => {
+    assert.throws(
+      () => createComparativeOmrBenchmarkReport({
+        benchmarkId: 'duplicates',
+        variants: [basicVariant('same'), basicVariant('same')],
+      }),
+      /duplicate-omr-benchmark-variant/,
+    )
+    assert.throws(
+      () => createOmrVariantRecord({ ...basicVariant('bad'), variantKind: 'magic-enhance' }),
+      /unsupported-omr-benchmark-variant/,
+    )
+    assert.throws(
+      () => createComparativeOmrBenchmarkReport({
+        benchmarkId: 'unknown-golden',
+        goldenReferenceId: 'not-a-golden',
+        variants: [basicVariant('original')],
+      }),
+      /unknown-omr-golden-reference/,
+    )
+    assert.throws(
+      () => createOmrVariantRecord({
+        ...basicVariant('non-json'),
+        inputMetadata: { unsafe: new Date() },
+      }),
+      /plain objects/,
+    )
+  })
+
+  test('contract operations do not modify original golden PDF or MusicXML bytes', () => {
+    const reference = OMR_BENCHMARK_GOLDEN_REFERENCES.find(
+      (fixture) => fixture.fixtureId === 'plan0-owner-approved-3-8',
+    )
+    const pdfPath = path.join(repoRoot, reference.sourcePdf)
+    const xmlPath = path.join(repoRoot, reference.expectedMusicXml)
+    const beforePdf = readFileSync(pdfPath)
+    const beforeXml = readFileSync(xmlPath)
+
+    createComparativeOmrBenchmarkReport({
+      benchmarkId: 'preservation',
+      goldenReferenceId: reference.fixtureId,
+      variants: [basicVariant('original')],
+    })
+
+    assert.deepEqual(readFileSync(pdfPath), beforePdf)
+    assert.deepEqual(readFileSync(xmlPath), beforeXml)
+  })
+
+  test('2E-A modules have no write-capable filesystem or production OMR imports', () => {
+    const paths = [
+      'scripts/omrBenchmark.js',
+      'scripts/omrBenchmarkFixtureInventory.js',
+      'scripts/runOmrBenchmark.js',
+    ]
+
+    for (const relativePath of paths) {
+      const source = readFileSync(path.join(repoRoot, relativePath), 'utf8')
+      assert.doesNotMatch(source, /from\s+['"]\.\.\/backend\//u, `${relativePath}: backend import`)
+      assert.doesNotMatch(source, /from\s+['"]\.\.\/src\/app\.js/u, `${relativePath}: app import`)
+      assert.doesNotMatch(source, /\b(writeFile|writeFileSync|rm|rmSync|unlink|unlinkSync|rename|renameSync|mkdir|mkdirSync)\b/u, `${relativePath}: write-capable fs API`)
+    }
   })
 })
