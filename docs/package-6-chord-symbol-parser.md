@@ -58,14 +58,17 @@ Missing or duplicate source `partId` evidence fails closed as `INVALID`; Package
 
 Timing follows MusicXML source order with inherited divisions and observes:
 
-- ordinary note duration advances the cursor
+- ordinary note duration advances the beat cursor using the active divisions value
 - `<chord/>` continuation does not advance the cursor
 - grace notes do not advance the cursor
-- `<backup>` moves the cursor backward
-- `<forward>` moves the cursor forward
+- `<backup>` moves the cursor backward using the active divisions value
+- `<forward>` moves the cursor forward using the active divisions value
 - `<harmony><offset>` shifts the harmony event relative to the current cursor
+- a valid divisions change does not reinterpret already accumulated beat position
 
 If divisions or timeline manipulation are not trustworthy, the harmony semantics may remain preserved but timing becomes `REVIEW_REQUIRED`; no onset is invented. A negative computed harmony onset is therefore not emitted as measured timing.
+
+An explicitly present but empty, nonnumeric or non-positive `<divisions>` declaration invalidates inherited divisions instead of silently reusing a stale value. A timed note, backup or forward encountered before a trustworthy divisions value likewise makes that measure timing review-required.
 
 Both `score-partwise` and `score-timewise` physical part/measure layouts are supported.
 
@@ -137,6 +140,9 @@ Package 6 tests cover:
 21. empty harmony input without chord invention
 22. deterministic frozen parser result
 23. production-boundary isolation
+24. mid-measure divisions change preserves accumulated beat position
+25. malformed explicit divisions invalidates stale inherited timing
+26. timed source event without divisions fails timing closed
 
 ## Safety claims
 
