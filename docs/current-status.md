@@ -1,9 +1,9 @@
 # SesliTab Current Status
 
-Last documentation review: 2026-08-27  
-Implementation baseline reviewed: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
-Current package closure: **Package 4 — Basic Guitar TAB completed, subject to this docs-only closure gate reaching protected `main` and exact-main CI passing.**
-Next roadmap package after closure: **Package 5 — Basic violin**, but implementation may begin only after a fresh architecture-boundary audit.
+Last documentation review: 2026-08-28  
+Implementation baseline reviewed: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
+Current package closure: **Package 5 — Basic violin completed at the verified implementation baseline.**
+Next strict roadmap package: **Package 6 — Chord-symbol parser**. Package 6 has not started.
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build or GitHub Actions result.
 
@@ -31,8 +31,8 @@ The repository currently contains verified foundations for:
 - canonical measure selection and accessible measure controls;
 - selected-measure TTS/playback;
 - dependency-free deterministic SMF0 MIDI export;
-- conservative quality-gated Basic Guitar TAB generation;
-- accessible Guitar TAB result UI;
+- conservative quality-gated Basic Guitar TAB generation and accessible result UI;
+- conservative quality-gated Basic Violin first-position guidance and accessible result UI;
 - Docker/Render configuration;
 - automated test and production-build gates.
 
@@ -54,109 +54,108 @@ The repository currently contains verified foundations for:
 - Audiveris `.omr` download when available
 - Quality-gated deterministic `.mid` download for accepted canonical MusicXML data
 - Quality-gated deterministic Basic Guitar TAB text for supported accepted canonical MusicXML data
-
-## Package 3 status
-
-Package 3 is fully closed.
-
-- implementation PRs #51–#57 merged;
-- implementation baseline `6c7cfc3193167eca12d92825c56df44ea0455ab1`;
-- exact implementation main CI #134 / `33103536812`: success, 898/898 tests, 229 suites, audit 0, production build PASS;
-- documentation closure PR #58 merged as `02dadf55f22505dc5527478f2f6ddb90c17621ff`;
-- exact closure-main CI #136 / `33104428265`: success, 898/898 tests, 229 suites, audit 0, production build PASS.
-
-Detailed evidence:
-
-- `docs/package-3-playback-contract.md`
-- `docs/package-3-closure.md`
+- Quality-gated Basic Violin first-position tel/parmak guidance for supported accepted canonical MusicXML data
 
 ## Package 4 status
 
-Package 4A–4F are merged:
+Package 4 — Basic Guitar TAB is completed.
 
-- **4A — Canonical guitar-position candidates:** PR #59 → merge `a16e2c14094b36a5eb3775046637cf5cd1c908de`.
-- **4B — Deterministic basic position policy:** PR #60 → merge `5b2d8f226f8f48e4ba2aedd1dfaec2494e52dd1d`.
-- **4C — Conservative canonical Basic TAB projection:** PR #61 → merge `ae74db26beeb00a3723c10d09f7fc6b078f6c6a4`.
-- **4D — Deterministic ASCII TAB renderer:** PR #62 → merge `b358202372dcde6a6c0296df41061b7c3e8d6fac`.
-- **4E — Quality-gated production Guitar TAB consumer:** PR #63 → merge `aa821251205358d5b99f4805782cbe25f1447759`.
-- **4F — Accessible Guitar TAB result UI:** PR #64 → merge `424653c60ff35326ae137cdf8b72b43eeb7d25e1`.
+Final implementation main: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`.
+Exact-main CI #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 and production build PASS.
 
-Final implementation exact-main CI #155 / `33111922206` succeeded:
+Detailed evidence: `docs/package-4-closure.md` plus Package 4A–4F stage documents.
 
-- exact `head_sha`: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
-- required job: `98656661058` / `test-and-build`
-- tests: 961 / 961 passed
+## Package 5 status
+
+Package 5A–5F are merged:
+
+- **5A — Basic first-position physical string candidates:** PR #66 → merge `1f500cfba2c0a44b8d5ca5fd388f769e8d4cb5da`.
+- **5B — Conservative generated finger-zone policy:** PR #67 → merge `a68121c027fdfb2f96da449179d28cce5e002a20`.
+- **5C — Conservative canonical Basic Violin projection:** PR #68 → merge `9678494c29af6405397670228985e177f19f4ebc`.
+- **5D — Fail-closed canonical VIOLIN quality-gate boundary:** PR #71 → merge `a01793e4d0f00ff83fd8e71979da6ef7eb6a1051`.
+- **5E — Quality-gated production Basic Violin consumer:** PR #72 → merge `e1116b1e1139fb701ee8c5c09a12ec6d9cc4d1b1`.
+- **5F — Accessible Basic Violin result UI:** PR #73 → merge `0465dba0c40e66ad0d8c77ea47b62fbd421209de`.
+
+PR #73 was not merged when two unresolved P2 review findings were present. The feature head was corrected to `1ffb3bf2e5d78f90ac37ea27b4f3e322fe4e833f`, targeted regression tests were added, exact-head CI #176 passed, both review threads were resolved, the branch was confirmed 0-behind and the merge used an expected-head lock.
+
+Final implementation exact-main CI #177 / `33119971061` succeeded:
+
+- exact `head_sha`: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
+- required job: `98684129984` / `test-and-build`
+- tests: 1031 / 1031 passed
 - suites: 229
 - failed/skipped/cancelled: 0 / 0 / 0
 - 120 packages audited
 - vulnerabilities: 0
+- Node: 24.19.0
+- npm: 11.17.0
 - Vite 8.2.0 production build: PASS
-- transformed modules: 41
+- transformed modules: 49
 
-Detailed Package 4 evidence:
+Detailed Package 5 evidence:
 
-- `docs/package-4a-guitar-position-candidates.md`
-- `docs/package-4b-basic-position-policy.md`
-- `docs/package-4c-basic-tab-projection.md`
-- `docs/package-4d-basic-tab-renderer.md`
-- `docs/package-4e-quality-gated-guitar-tab-consumer.md`
-- `docs/package-4f-accessible-guitar-tab-ui.md`
-- `docs/package-4-closure.md`
+- `docs/package-5a-violin-position-candidates.md`
+- `docs/package-5b-basic-violin-fingering-policy.md`
+- `docs/package-5c-conservative-violin-projection.md`
+- Package 5D quality-gate contract/tests
+- `docs/package-5e-quality-gated-violin-consumer.md`
+- `docs/package-5f-accessible-basic-violin-ui.md`
+- `docs/package-5-closure.md`
 
-## Basic Guitar TAB production flow
+## Basic Violin production flow
 
 ```text
 exact canonical NoteObject[]
-  -> Package 2D GUITAR_TAB gate
-  -> 4A candidates
-  -> 4B generated-basic policy
-  -> 4C conservative monophonic projection
-  -> 4D six-line ASCII TAB renderer
-  -> 4E production consumer
-  -> 4F accessible result panel
+  -> Package 2D VIOLIN gate
+  -> 5A first-position physical candidates
+  -> 5B generated finger-zone evidence
+  -> 5C conservative monophonic projection
+  -> 5E production consumer
+  -> 5F accessible result panel
 ```
 
 Verified rules include:
 
-- exact-array quality evidence never transfers to a clone;
-- Package 2D `ACCEPT` is required before definitive Guitar TAB output;
-- `REVIEW` and `BLOCK` emit no generated TAB text;
-- unsupported advanced structures emit no partial TAB;
-- generated basic fingering has explicit generated provenance and is not represented as source technical fingering;
-- canonical physical `measureKey` remains authoritative;
-- accessible result output uses native tab/button semantics, a polite status region and labelled focusable text;
-- generated TAB is written as text, not interpreted HTML.
+- standard violin tuning is represented at concert pitch; guitar octave-transposition logic is not reused;
+- Package 5A enumerates all supported first-position string candidates rather than choosing a pedagogical string;
+- Package 5B maps semitone zones mechanically to generated basic finger numbers and keeps `teacherApproved=false`;
+- D4, A4, E5 and any other supported crossing with multiple physical string candidates remain review-required instead of receiving an invented preferred string;
+- Package 5C emits no partial finalized projection when ambiguity, out-of-range material or advanced structure is encountered;
+- double stops/chords, independent simultaneous pitched attacks and multiple pitched voices/staves/parts are outside Basic Violin;
+- exact-array Package 2D quality evidence never transfers to a clone;
+- definitive violin output requires Package 2D `ACCEPT` plus a complete 5C `PROJECTED` result;
+- source-unverified OMR remains non-definitive;
+- the accessible UI revalidates projection identity, `noteIndex` completeness, policy/provenance and internally consistent string/finger evidence before exposing guidance;
+- generated violin guidance is written as plain text and does not use `innerHTML`.
 
-## Package 4 safety boundary
+## Package 5 safety boundary
 
-Package 4 Basic Guitar TAB is intentionally conservative.
+Package 5 Basic Violin is intentionally conservative.
 
 It does not claim support for:
 
-- advanced chord/polyphonic fingering;
-- multiple pitched voices/staves/parts in the Basic TAB projection;
-- pedagogically optimal or teacher-approved fingering;
-- recovery of missing source technical fingering;
-- universal OMR correctness;
+- teacher-approved or pedagogically optimal fingering;
+- automatic resolution of cross-string pedagogical choices;
+- advanced positions or shifting;
+- double stops, polyphonic violin writing or multi-part/staff material in the basic projection;
 - musical ground truth from structural validity;
-- lossless rhythmic notation in ASCII TAB spacing.
+- universal OMR correctness.
 
-Advanced Guitar TAB remains Package 9.
+Advanced violin remains Package 10.
 
-The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path and E2E workflow were not intentionally changed by Package 4. No external Guitar TAB dependency was added. No deployment was performed.
+The production Audiveris provider/runtime/preflight, OMR worker/provider, gateway, production MusicXML OMR path and E2E workflow were not intentionally changed by Package 5. No external violin dependency was added. No deployment was performed.
 
 ## Protected main and CI
 
 `main` is protected. Required status check: `test-and-build`.
 
-Latest verified implementation main before this docs closure: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`.
-Exact implementation run #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
+Latest verified Package 5 implementation main: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`.
+Exact implementation run #177 / `33119971061` succeeded with 1031/1031 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
 
 ## Remaining product areas
 
-The following remain later work and are not reclassified as completed by Package 4:
+The following remain later work and are not reclassified as completed by Package 5:
 
-- Basic violin
 - MusicXML harmony / chord-symbol parser
 - Chord display and Turkish TTS
 - Teacher correction, revision history and approval workflow
@@ -176,16 +175,16 @@ The following remain later work and are not reclassified as completed by Package
 - Package 2E benchmark capability does not establish one universally best preprocessing variant.
 - Teacher-supervised review remains part of the product model.
 - Basic Guitar TAB is a deterministic conservative generated view, not teacher-approved advanced fingering.
+- Basic Violin is a deterministic conservative first-position generated view, not teacher-approved advanced fingering.
 - MIDI export does not infer instrumentation, orchestration, articulation or teacher approval.
 - Mobile accessibility is not fully verified on target hardware.
 
 ## Current change boundary
 
-This Package 4 closure package is documentation/status reconciliation only:
+This Package 5 closure package is documentation/status reconciliation only:
 
 - `docs/current-status.md`
 - `docs/package-status.md`
-- `docs/package-3-closure.md`
-- `docs/package-4-closure.md`
+- `docs/package-5-closure.md`
 
 No application code, backend code, test code, workflow, dependency, deployment configuration, branch-protection setting, production setting or production OMR integration is intentionally changed by this closure package. No deployment is performed.

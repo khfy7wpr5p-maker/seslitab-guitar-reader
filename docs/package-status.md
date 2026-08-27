@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
-Last documentation review: 2026-08-27
-Implementation baseline reviewed: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
+Last documentation review: 2026-08-28
+Implementation baseline reviewed: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
 
 This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main GitHub workflow evidence are satisfied. Dedicated closure documents remain authoritative for detailed evidence.
 
@@ -15,6 +15,7 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 2E closure: `f6b808f331a38047f64e82e395a93ed185737813`
 - Package 3 documentation closure: `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 / `33104428265` succeeded with 898/898 tests, 229 suites, audit 0 and production build PASS.
 - Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 and production build PASS.
+- Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 / `33119971061` succeeded with 1031/1031 tests, 229 suites, audit 0 and production build PASS.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -35,8 +36,8 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 3E — Speak and play one measure | Completed | PR #55; exact full-array Package 2D gate precedes selected-measure consumption. |
 | 3F — Playback regression package | Completed | PR #56; reviewed real-OMR fixtures remain regression evidence, not ground truth. |
 | 3G — Real MIDI | Completed | PR #57; dependency-free deterministic SMF0 export is quality-gated. Package 3 closure PR #58 merged as `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 succeeded. |
-| 4 — Basic Guitar TAB | Completed | PRs #59–#64 implement candidates → deterministic basic policy → conservative projection → ASCII renderer → Package 2D-gated production consumer → accessible result UI. Final implementation main `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 passed 961/961 tests, 229 suites, audit 0 and build PASS. `docs/package-4-closure.md` is authoritative after this docs-only closure gate reaches protected main and exact-main CI passes. |
-| 5 — Basic violin | Not started | No verified violin string/fingering package. Must receive a fresh architecture-boundary audit before implementation. |
+| 4 — Basic Guitar TAB | Completed | PRs #59–#64 implement candidates → deterministic basic policy → conservative projection → ASCII renderer → Package 2D-gated production consumer → accessible result UI. Final implementation main `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 passed 961/961 tests, 229 suites, audit 0 and build PASS. |
+| 5 — Basic violin | Completed | PRs #66–#68 and #71–#73 implement first-position physical candidates → conservative finger-zone policy → fail-closed projection → Package 2D VIOLIN gate → production consumer → accessible result UI. Final implementation main `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 passed 1031/1031 tests, 229 suites, audit 0 and build PASS. `docs/package-5-closure.md` defines the conservative scope. |
 | 6 — Chord-symbol parser | Not started | No verified MusicXML harmony package. |
 | 7 — Chord display and Turkish TTS | Not started | No verified shared chord display/TTS package. |
 | 8 — Teacher correction and approval | Not started | Teacher correction, revision history and approval remain product requirements. |
@@ -48,40 +49,26 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web foundations exist; device-level VoiceOver/audio/privacy/productisation criteria remain incomplete. |
 
-## Package 3 closure evidence
+## Package 5 closure evidence
 
-Authoritative detail: `docs/package-3-playback-contract.md` and `docs/package-3-closure.md`.
+Authoritative detail: `docs/package-5-closure.md` plus Package 5A–5F stage documents.
 
-- implementation PRs: #51–#57
-- implementation baseline: `6c7cfc3193167eca12d92825c56df44ea0455ab1`
-- implementation exact-main CI #134 / `33103536812`: success; 898/898 tests; 229 suites; audit 0; build PASS
-- docs closure PR: #58
-- docs closure merge: `02dadf55f22505dc5527478f2f6ddb90c17621ff`
-- exact closure-main CI #136 / `33104428265`: success; 898/898 tests; 229 suites; audit 0; build PASS
-- remaining Package 3 closure gate: none
-
-## Package 4 closure evidence
-
-Authoritative detail after this docs closure gate: `docs/package-4-closure.md` plus Package 4A–4F stage documents.
-
-- 4A PR #59 → merge `a16e2c14094b36a5eb3775046637cf5cd1c908de`
-- 4B PR #60 → merge `5b2d8f226f8f48e4ba2aedd1dfaec2494e52dd1d`
-- 4C PR #61 → merge `ae74db26beeb00a3723c10d09f7fc6b078f6c6a4`
-- 4D PR #62 → merge `b358202372dcde6a6c0296df41061b7c3e8d6fac`
-- 4E PR #63 → merge `aa821251205358d5b99f4805782cbe25f1447759`
-- 4F PR #64 → merge `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
-- 4F accepted head: `a0331684eeae1355d22881df2dd5ddb09e532b5b`
-- PR #64 exact-head CI #154 / `33111721776`: success
-- implementation exact-main CI #155 / `33111922206`: success
-- full regression: 961/961; 229 suites; 0 failed/skipped/cancelled
+- 5A PR #66 → merge `1f500cfba2c0a44b8d5ca5fd388f769e8d4cb5da`
+- 5B PR #67 → merge `a68121c027fdfb2f96da449179d28cce5e002a20`
+- 5C PR #68 → merge `9678494c29af6405397670228985e177f19f4ebc`
+- 5D PR #71 → merge `a01793e4d0f00ff83fd8e71979da6ef7eb6a1051`
+- 5E PR #72 → merge `e1116b1e1139fb701ee8c5c09a12ec6d9cc4d1b1`
+- 5F PR #73 → merge `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
+- 5F accepted head after review fixes: `1ffb3bf2e5d78f90ac37ea27b4f3e322fe4e833f`
+- implementation exact-main CI #177 / `33119971061`: success
+- full regression: 1031/1031; 229 suites; 0 failed/skipped/cancelled
 - dependency audit: 120 packages audited; 0 vulnerabilities
 - production build: PASS with Vite 8.2.0
-- production Audiveris/OMR/E2E changes in Package 4: none intended
-- external Guitar TAB dependency additions: none
+- production Audiveris/OMR/E2E changes in Package 5: none intended
+- external violin dependency additions: none
 - deployment: not performed
-- remaining Package 4 gate: this docs-only closure PR and its exact post-merge main CI
 
-Package 4 completion is limited to conservative **basic monophonic** generated Guitar TAB. It does not claim teacher-approved fingering, advanced chord/polyphonic TAB, musical ground truth or universal OMR correctness.
+Package 5 completion is limited to conservative **basic monophonic first-position violin guidance**. It does not claim teacher-approved or pedagogically optimal fingering. Cross-string choices such as D4, A4 and E5 remain review-required when more than one supported first-position string is physically valid. Advanced positions, double stops, polyphony and multi-part/staff material remain outside Package 5.
 
 ## Interpretation rules
 
