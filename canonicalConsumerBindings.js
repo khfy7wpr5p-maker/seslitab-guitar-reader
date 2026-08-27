@@ -54,12 +54,11 @@ export const CANONICAL_CONSUMER_BOUNDARIES = Object.freeze({
   }),
   [CANONICAL_CONSUMER_TYPE.GUITAR_TAB]: freezeBinding({
     consumerType: CANONICAL_CONSUMER_TYPE.GUITAR_TAB,
-    modulePath: null,
-    exportName: null,
-    noteInput: 'canonical-note-projection',
-    status: CANONICAL_CONSUMER_BOUNDARY_STATUS.PENDING,
-    enforcementReady: false,
-    reason: 'No production canonical NoteObject to Guitar TAB consumer exists yet.',
+    modulePath: 'src/services/guitarTabConsumer.js',
+    exportName: 'buildQualityGatedBasicGuitarTab',
+    noteInput: 'note-array',
+    status: CANONICAL_CONSUMER_BOUNDARY_STATUS.MAPPED,
+    enforcementReady: true,
   }),
 })
 
