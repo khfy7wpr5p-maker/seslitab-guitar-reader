@@ -60,6 +60,14 @@ export const CANONICAL_CONSUMER_BOUNDARIES = Object.freeze({
     status: CANONICAL_CONSUMER_BOUNDARY_STATUS.MAPPED,
     enforcementReady: true,
   }),
+  [CANONICAL_CONSUMER_TYPE.VIOLIN]: freezeBinding({
+    consumerType: CANONICAL_CONSUMER_TYPE.VIOLIN,
+    modulePath: null,
+    exportName: null,
+    noteInput: 'note-array',
+    status: CANONICAL_CONSUMER_BOUNDARY_STATUS.PENDING,
+    enforcementReady: false,
+  }),
 })
 
 export const CANONICAL_CONSUMER_BOUNDARY_LIST = Object.freeze(

@@ -228,3 +228,7 @@ export function resolvePlaybackQualityGate(notes, options = {}) {
 export function resolveGuitarTabQualityGate(notes, options = {}) {
   return resolveQualityGateForConsumer(notes, CANONICAL_CONSUMER_TYPE.GUITAR_TAB, options)
 }
+
+export function resolveViolinQualityGate(notes, options = {}) {
+  return resolveQualityGateForConsumer(notes, CANONICAL_CONSUMER_TYPE.VIOLIN, options)
+}
