@@ -264,7 +264,8 @@ test('Package 5C rejects coercible or non-finite physical identity fields', () =
     { beats: Number.POSITIVE_INFINITY },
     { measureIndex: -1 },
   ]) {
-    const result = projectCanonicalNotesToBasicViolin([makeCanonicalNote(overrides)])
+    const malformedNote = { ...makeCanonicalNote(), ...overrides }
+    const result = projectCanonicalNotesToBasicViolin([malformedNote])
     assert.equal(result.state, BASIC_VIOLIN_PROJECTION_STATE.INVALID)
     assert.equal(result.reason, 'canonical-physical-identity-required')
     assert.deepEqual(result.measures, [])
