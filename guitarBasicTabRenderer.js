@@ -110,7 +110,7 @@ function validateProjection(projection) {
   }
 
   const measureKeys = new Set()
-  let expectedNoteIndex = 0
+  const seenNoteIndices = new Set()
 
   for (const measure of projection.measures) {
     if (!measure || typeof measure !== 'object' || Array.isArray(measure)) {
@@ -131,12 +131,18 @@ function validateProjection(projection) {
       return 'projection-events-invalid'
     }
 
+    let previousNoteIndex = -1
     for (const event of measure.events) {
       if (!event || typeof event !== 'object' || Array.isArray(event)) {
         return 'projection-event-invalid'
       }
-      if (event.noteIndex !== expectedNoteIndex) return 'projection-note-order-invalid'
-      expectedNoteIndex += 1
+      if (!isNonNegativeInteger(event.noteIndex) || event.noteIndex >= projection.noteCount) {
+        return 'projection-note-index-invalid'
+      }
+      if (seenNoteIndices.has(event.noteIndex)) return 'projection-note-index-duplicate'
+      if (event.noteIndex <= previousNoteIndex) return 'projection-note-order-invalid'
+      previousNoteIndex = event.noteIndex
+      seenNoteIndices.add(event.noteIndex)
 
       if (!event.note || typeof event.note !== 'object' || Array.isArray(event.note)) {
         return 'projection-note-reference-invalid'
@@ -167,7 +173,10 @@ function validateProjection(projection) {
     }
   }
 
-  if (expectedNoteIndex !== projection.noteCount) return 'projection-note-count-mismatch'
+  if (seenNoteIndices.size !== projection.noteCount) return 'projection-note-count-mismatch'
+  for (let noteIndex = 0; noteIndex < projection.noteCount; noteIndex += 1) {
+    if (!seenNoteIndices.has(noteIndex)) return 'projection-note-index-missing'
+  }
   return null
 }
 
