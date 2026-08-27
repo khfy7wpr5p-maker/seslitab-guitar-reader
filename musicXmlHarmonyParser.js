@@ -337,9 +337,17 @@ function buildPartMeasureSequences(doc) {
   }
 
   if (rootTag === 'score-partwise') {
-    const parts = directChildren(root, 'part').map((partEl, partIndex) => {
-      const partId = attrOf(partEl, 'id') || `P${partIndex + 1}`
-      return {
+    const seenPartIds = new Set()
+    const parts = []
+    const partElements = directChildren(root, 'part')
+    for (let partIndex = 0; partIndex < partElements.length; partIndex++) {
+      const partEl = partElements[partIndex]
+      const partId = attrOf(partEl, 'id')
+      if (!partId || seenPartIds.has(partId)) {
+        return { ok: false, reason: 'part-identity-invalid', parts: [] }
+      }
+      seenPartIds.add(partId)
+      parts.push({
         partId,
         partIndex,
         measures: directChildren(partEl, 'measure').map((measureEl, measureIndex) => ({
@@ -347,16 +355,23 @@ function buildPartMeasureSequences(doc) {
           outerMeasureEl: measureEl,
           measureIndex,
         })),
-      }
-    })
+      })
+    }
     return { ok: true, parts }
   }
 
   const byId = new Map()
   let nextPartIndex = 0
-  for (const outerMeasureEl of directChildren(root, 'measure')) {
+  const outerMeasures = directChildren(root, 'measure')
+  for (let outerMeasureIndex = 0; outerMeasureIndex < outerMeasures.length; outerMeasureIndex++) {
+    const outerMeasureEl = outerMeasures[outerMeasureIndex]
+    const seenInMeasure = new Set()
     for (const partEl of directChildren(outerMeasureEl, 'part')) {
-      const partId = attrOf(partEl, 'id') || `P${nextPartIndex + 1}`
+      const partId = attrOf(partEl, 'id')
+      if (!partId || seenInMeasure.has(partId)) {
+        return { ok: false, reason: 'part-identity-invalid', parts: [] }
+      }
+      seenInMeasure.add(partId)
       if (!byId.has(partId)) {
         byId.set(partId, {
           partId,
@@ -369,7 +384,7 @@ function buildPartMeasureSequences(doc) {
       entry.measures.push({
         contentEl: partEl,
         outerMeasureEl,
-        measureIndex: entry.measures.length,
+        measureIndex: outerMeasureIndex,
       })
     }
   }
@@ -425,7 +440,12 @@ function parsePartMeasureSequence(partSequence) {
           }
         }
 
-        const startDivisions = timelineReliable ? cursorDivisions + offsetDivisions : null
+        let startDivisions = timelineReliable ? cursorDivisions + offsetDivisions : null
+        if (startDivisions != null && startDivisions < 0) {
+          startDivisions = null
+          timelineReliable = false
+          partReviewRequired = true
+        }
         const startBeat = timelineReliable && Number.isFinite(currentDivisions) && currentDivisions > 0
           ? startDivisions / currentDivisions
           : null
