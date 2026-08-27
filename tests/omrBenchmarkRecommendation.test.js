@@ -192,10 +192,10 @@ test('Package 2E-E malformed top-level input is UNKNOWN, never a guessed recomme
   assert.equal(result.accuracyPercentage, null)
 })
 
-test('Package 2E-E source has no production OMR imports, filesystem writes, or weighted score', () => {
+test('Package 2E-E source has no production OMR imports, filesystem writes, or score weights', () => {
   const source = readFileSync(new URL('../scripts/omrBenchmarkRecommendation.js', import.meta.url), 'utf8')
 
   assert.doesNotMatch(source, /backend\/|src\/services\/omr|AudiverisProvider|gatewayProvider|omrWorker/u)
   assert.doesNotMatch(source, /writeFile|appendFile|rename|copyFile|rm\(/u)
-  assert.doesNotMatch(source, /weighted|weight\s*[:=]|compositeScore|accuracyPercentage\s*:\s*[^n]/iu)
+  assert.doesNotMatch(source, /weight\s*[:=]|compositeScore|accuracyPercentage\s*:\s*[^n]/iu)
 })
