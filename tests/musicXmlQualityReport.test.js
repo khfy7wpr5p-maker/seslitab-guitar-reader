@@ -68,6 +68,20 @@ describe('Package 2C MusicXML quality report adapter', () => {
     ))
   })
 
+  test('separate note-array input cannot erase source-unverified findings', () => {
+    const result = buildMusicXmlQualityErrorReport(validFourFour, { notes: [] })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.report.sourceVerified, false)
+    assert.equal(result.report.qualityState, QUALITY_STATE.REVIEW_REQUIRED)
+    assert.equal(
+      result.report.findings.filter((finding) =>
+        finding.errorCode === QUALITY_ERROR_CODE.SOURCE_NOT_VERIFIED
+      ).length,
+      4,
+    )
+  })
+
   test('real MusicXML underfill maps through Package 2B into both required 2C findings', () => {
     const result = buildMusicXmlQualityErrorReport(underfilledFourFour)
 
