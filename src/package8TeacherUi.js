@@ -4,6 +4,7 @@
 // never edits source notes in place, never auto-merges stale edits, and never
 // treats teacher approval as quality-gate acceptance or sharing authorization.
 
+import './package8TeacherUi.css'
 import {
   getPackage3MeasureSnapshot,
   subscribePackage3Measures,
@@ -81,6 +82,7 @@ function setStatus(root, text, { assertive = false, focus = false } = {}) {
   const status = root.getElementById('teacher-status')
   if (!status) return
   status.textContent = text
+  status.setAttribute('role', assertive ? 'alert' : 'status')
   status.setAttribute('aria-live', assertive ? 'assertive' : 'polite')
   if (focus && typeof status.focus === 'function') status.focus()
 
@@ -93,6 +95,7 @@ function clearChildren(element) {
   while (element.children?.length) {
     const child = element.children[0]
     if (typeof child.remove === 'function') child.remove()
+    else if (typeof element.removeChild === 'function') element.removeChild(child)
     else element.children.splice(0, 1)
   }
   element.textContent = ''
@@ -220,7 +223,7 @@ export function ensureTeacherPanel(root = document) {
   const actorGroup = root.createElement('div')
   actorGroup.id = 'teacher-start-group'
   actorGroup.setAttribute('role', 'group')
-  actorGroup.setAttribute('aria-labelledby', 'teacher-actor-help')
+  actorGroup.setAttribute('aria-describedby', 'teacher-actor-help')
   const actor = createLabeledControl(root, actorGroup, {
     labelText: 'Öğretmen kayıt etiketi',
     id: 'teacher-actor-id',
@@ -261,7 +264,7 @@ export function ensureTeacherPanel(root = document) {
   const correctionLegend = root.createElement('legend')
   correctionLegend.textContent = 'Düzeltme oluştur'
   correction.appendChild(correctionLegend)
-  const fieldSelect = createLabeledControl(root, correction, {
+  createLabeledControl(root, correction, {
     labelText: 'Düzeltilecek alan',
     id: 'teacher-field-select',
     tag: 'select',
@@ -274,7 +277,7 @@ export function ensureTeacherPanel(root = document) {
   valueInput.setAttribute('aria-describedby', 'teacher-correction-help')
   const correctionHelp = root.createElement('p')
   correctionHelp.id = 'teacher-correction-help'
-  correctionHelp.textContent = 'Yalnız mevcut ve izin verilmiş nota alanı değiştirilir. Bu işlem müzikal kalite doğrulaması veya onay değildir.'
+  correctionHelp.textContent = 'Yalnız mevcut ve izin verilmiş nota alanı değiştirilir. Bağlı veya türetilmiş alanlar otomatik hesaplanmaz; düzeltilmiş sürüm ayrıca kalite doğrulamasından geçmelidir. Bu işlem öğretmen onayı değildir.'
   correction.appendChild(correctionHelp)
   const apply = root.createElement('button')
   apply.id = 'teacher-correction-btn'
@@ -301,7 +304,7 @@ export function ensureTeacherPanel(root = document) {
   const undoLegend = root.createElement('legend')
   undoLegend.textContent = 'Sürüm geçmişi ve geri al'
   undo.appendChild(undoLegend)
-  const undoSelect = createLabeledControl(root, undo, {
+  createLabeledControl(root, undo, {
     labelText: 'Geri dönülecek eski sürüm',
     id: 'teacher-undo-select',
     tag: 'select',
@@ -398,7 +401,9 @@ export function renderTeacherWorkspace(root = document) {
   if (fieldSelect) {
     const previous = fieldSelect.value
     clearChildren(fieldSelect)
-    for (const field of fields) appendOption(root, fieldSelect, field.key, `${field.label} — mevcut: ${String(field.value)}`)
+    for (const field of fields) {
+      appendOption(root, fieldSelect, field.key, `${field.label} — mevcut: ${String(field.value)}`)
+    }
     if (fields.some((field) => field.key === previous)) fieldSelect.value = previous
     else if (fields[0]) fieldSelect.value = fields[0].key
   }
@@ -406,8 +411,10 @@ export function renderTeacherWorkspace(root = document) {
 
   const historyList = root.getElementById('teacher-history-list')
   const undoSelect = root.getElementById('teacher-undo-select')
+  const previousUndo = undoSelect?.value ?? ''
   if (historyList) clearChildren(historyList)
   if (undoSelect) clearChildren(undoSelect)
+  const undoRevisionIds = []
   const currentIndex = workspace.history.revisions.length - 1
   for (let index = 0; index < workspace.history.revisions.length; index++) {
     const revision = workspace.history.revisions[index]
@@ -422,8 +429,13 @@ export function renderTeacherWorkspace(root = document) {
       index < currentIndex &&
       revision.contentFingerprint !== current.contentFingerprint
     ) {
+      undoRevisionIds.push(revision.revisionId)
       appendOption(root, undoSelect, revision.revisionId, `Sürüm ${index + 1} — ${revision.revisionId}`)
     }
+  }
+  if (undoSelect) {
+    if (undoRevisionIds.includes(previousUndo)) undoSelect.value = previousUndo
+    else undoSelect.value = undoRevisionIds[0] ?? ''
   }
 
   const correctionButton = root.getElementById('teacher-correction-btn')
@@ -432,7 +444,7 @@ export function renderTeacherWorkspace(root = document) {
   const refresh = root.getElementById('teacher-refresh-btn')
   if (correctionButton) correctionButton.disabled = conflict || fields.length === 0
   if (approveButton) approveButton.disabled = conflict || Boolean(approval)
-  if (undoButton) undoButton.disabled = conflict || !(undoSelect?.children?.length > 0)
+  if (undoButton) undoButton.disabled = conflict || undoRevisionIds.length === 0
   if (refresh) refresh.hidden = !conflict
 
   if (conflict) {
@@ -500,7 +512,7 @@ export function applyTeacherUiCorrection(root = document) {
     workspaceByRoot.set(root, next)
     renderTeacherWorkspace(root)
     if (next.state === TEACHER_WORKSPACE_STATE.ACTIVE) {
-      setStatus(root, 'Düzeltme yeni immutable sürüm olarak kaydedildi. Önceki sürüm değiştirilmedi; bu işlem öğretmen onayı veya kalite doğrulaması değildir.')
+      setStatus(root, 'Düzeltme yeni immutable sürüm olarak kaydedildi. Önceki sürüm değiştirilmedi; bağlı alanlar otomatik hesaplanmadı ve bu işlem öğretmen onayı veya kalite doğrulaması değildir.')
     }
     return next
   } catch (error) {
