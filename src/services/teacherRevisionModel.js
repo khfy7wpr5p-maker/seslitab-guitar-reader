@@ -44,7 +44,19 @@ function rejectUnsupportedObjectShape(value, path) {
   }
 
   const descriptors = Object.getOwnPropertyDescriptors(value)
+  const isArray = Array.isArray(value)
+
+  if (isArray) {
+    for (let index = 0; index < value.length; index++) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        throw new TypeError(`Revision content contains a sparse array at ${path}.`)
+      }
+    }
+  }
+
   for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (isArray && key === 'length') continue
+
     if (!descriptor.enumerable) {
       throw new TypeError(
         `Revision content contains a non-enumerable property at ${path}.${key}.`,
