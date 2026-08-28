@@ -1,9 +1,9 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-28  
-Latest verified Package 7 technical main: `7c37057713aa8a975edafdb0928d64f575d7cd5f`
-Current package closure: **Package 7 — closure pending final documentation exact-main gate.**
-Package 8 — Teacher correction and approval: **not started** and must not begin until Package 7 closure evidence is final.
+Latest verified Package 7 closure main: `9f49a07c83bd6dac853fc7aa0131c7df336b2b05`
+Current package closure: **Package 7 — Completed.**
+Next strict roadmap package: **Package 8 — Teacher correction and approval; Not started.**
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build or GitHub Actions result.
 
@@ -60,9 +60,9 @@ The repository currently contains verified foundations for:
 - Source-only MusicXML chord display in the accessible `Akorlar` tab
 - Source-only Turkish chord TTS through the existing `voiceService`
 
-Package 7 chord output is explicitly source presentation only. It does not infer a chord from notes, does not prove the MusicXML harmony is musically correct, and remains `sourceOnly=true`, `definitive=false`, `teacherApproved=false`.
+Package 7 chord output is explicit source presentation only: `sourceOnly=true`, `definitive=false`, `teacherApproved=false`. It does not infer a chord from notes and does not prove that the MusicXML harmony is musically correct.
 
-## Package 7 implementation evidence
+## Package 7 final evidence
 
 ### 7A–7B — presentation and Turkish pronunciation
 
@@ -71,8 +71,6 @@ Status: **Completed**.
 - PR #78
 - merge `ee9a95a02a75c357e74647a09b1c2b27dafdcc6c`
 - exact-main CI #197 / `33144443876`: SUCCESS
-
-Verified: deterministic display/Turkish pronunciation from Package 6 evidence, physical measure identity/timing, visible/spoken parity, fail-closed review/invalid handling, no chord inference.
 
 ### 7C — exact raw MusicXML source handoff
 
@@ -92,7 +90,7 @@ Late stale-source security hotfix:
 - exact-head CI #204 / `33145943788`: SUCCESS
 - exact-main CI #205 / `33146058408`, job `98767251803`: SUCCESS
 
-The source association is atomic with the current preparation attempt. A failed blank/malformed/structurally rejected replacement cannot leave older raw MusicXML consumable for the same exact note array.
+The source association is atomic with each current preparation attempt. A failed blank, malformed or structurally rejected replacement cannot leave older raw MusicXML consumable for the same exact note array.
 
 ### 7D–7F — accessible UI and TTS lifecycle
 
@@ -112,22 +110,25 @@ Verified behavior includes:
 - rendering uses `textContent`;
 - existing `voiceService` is reused;
 - shared-audio ownership prevents lifecycle collisions with full-score and selected-measure consumers;
-- Package 7-owned TTS is preempted safely before another audio consumer starts.
+- Package 7-owned TTS is safely preempted before another audio consumer starts.
 
-### 7G — final package closure
+### 7G — package closure
 
-Status: **closure pending**.
+Status: **Completed**.
 
-- closure-pending PR #81 merged as `fef1464c882878fd1dd9921959887b9080f30927`
+Earlier closure-pending PR #81:
+
+- merge `fef1464c882878fd1dd9921959887b9080f30927`
 - exact-main CI #203: SUCCESS
-- late P2 was then corrected by PR #82 and exact-main CI #205.
-- current final documentation gate: PR #83.
 
-Technical baseline before PR #83:
+Final closure gate PR #83:
 
-`7c37057713aa8a975edafdb0928d64f575d7cd5f`
+- final accepted head `5c0f9aa902c53d9f300ac512c534ff38ea7201e3`
+- exact-head CI #211 / `33146471648`, job `98768539681`: SUCCESS
+- protected-main merge **`9f49a07c83bd6dac853fc7aa0131c7df336b2b05`**
+- exact-main closure CI **#212 / `33146602481`, job `98768923009`: SUCCESS**
 
-Exact-main CI #205 / `33146058408`, job `98767251803`:
+CI #212:
 
 - **1105 / 1105 tests PASS**
 - **229 suites**
@@ -137,7 +138,9 @@ Exact-main CI #205 / `33146058408`, job `98767251803`:
 - **Vite 8.2.0 production build PASS**
 - **55 modules transformed**
 
-PR #83 exact-head CI #206 / `33146234567`, job `98767794592`: SUCCESS with the same 1105/1105 regression, audit 0 and production build PASS. Package 7 remains closure-pending until PR #83 merges and its exact protected-main push `test-and-build` succeeds.
+The Package 7 closure baseline is therefore:
+
+`9f49a07c83bd6dac853fc7aa0131c7df336b2b05`
 
 Detailed documents:
 
@@ -166,14 +169,14 @@ Package 7 did **not**:
 
 `main` is protected. Required status check: `test-and-build`.
 
-Latest verified Package 7 technical main before final documentation closure:
-`7c37057713aa8a975edafdb0928d64f575d7cd5f`.
+Verified Package 7 closure main:
+`9f49a07c83bd6dac853fc7aa0131c7df336b2b05`.
 
-The active PR #83 must merge through protected main and its exact-main `test-and-build` must succeed before Package 7 may be marked **Completed**. Package 8 remains not started during this gate.
+Exact-main CI #212 passed 1105/1105 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
 
 ## Remaining product areas
 
-- Teacher correction, revision history and approval workflow — Package 8
+- Teacher correction, revision history and approval workflow — Package 8 (**Not started**)
 - Audiveris teacher-approved training dataset
 - Advanced Guitar TAB
 - Advanced violin
@@ -197,4 +200,4 @@ The active PR #83 must merge through protected main and its exact-main `test-and
 
 ## Current change boundary
 
-PR #83 is documentation-only. It reconciles already-successful Package 7 implementation and hotfix evidence while deliberately retaining package-level `closure pending` status until its own exact-main gate succeeds. It does not change application code, backend code, tests, workflows, dependencies, deployment configuration, branch protection, production settings or production OMR integration.
+The docs-only Package 7 evidence-recording change records the closure event that already occurred at PR #83 merge `9f49a07c…` + exact-main CI #212. It does not create a new Package 7 closure dependency, does not start Package 8, and does not change application code, backend code, tests, workflows, dependencies, deployment configuration, branch protection, production settings or production OMR integration.
