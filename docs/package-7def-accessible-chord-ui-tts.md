@@ -1,6 +1,15 @@
 # Package 7D–7F — Accessible Chord UI + Turkish TTS
 
-Status: implementation candidate. Authoritative acceptance requires exact-head CI, review/freshness, merge, and exact-main CI.
+Status: **Completed**.
+
+Verified implementation evidence:
+
+- PR #80
+- accepted head `8b3d793f66b4c1ab98244ffd73cfadaa5ed934e7`
+- protected-main merge `fae1b102eae24926ac48f429124c96f8c58899fe`
+- exact-head CI #200 / `33145271095`: SUCCESS
+- exact-main CI #201 / `33145385541`, job `98765125632`: SUCCESS
+- implementation regression at merge: 1103/1103 tests PASS, 229 suites, audit 0, production build PASS
 
 ## Scope
 
@@ -58,7 +67,7 @@ The `chordTtsConsumer`:
 
 ## Safety boundaries
 
-No change is made to:
+No change was made to:
 
 - Audiveris provider/runtime/preflight,
 - OMR worker/provider,
