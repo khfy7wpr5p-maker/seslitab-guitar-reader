@@ -7,7 +7,10 @@
 
 import { validateMusicXmlStructuralRhythm } from './musicXmlStructuralValidation.js'
 import { buildQualityErrorReport } from './qualityErrorReport.js'
-import { registerMusicXmlSourceForNotes } from './musicXmlSourceRegistry.js'
+import {
+  clearMusicXmlSourceForNotes,
+  registerMusicXmlSourceForNotes,
+} from './musicXmlSourceRegistry.js'
 import {
   QUALITY_GATE_DECISION,
   registerQualityReportForNotes,
@@ -49,20 +52,21 @@ function failClosedReport(notes) {
  * silently downgraded to a missing-report REVIEW state.
  *
  * Package 7C additionally records the exact raw MusicXML string against the
- * same NoteObject[] identity. The registry is read-only evidence handoff only;
- * it does not alter quality decisions or promote source correctness.
+ * same NoteObject[] identity. Source association is atomic with the current
+ * preparation attempt: stale evidence is cleared before validation and the
+ * current source is registered only after successful structural/report work.
  */
 export function prepareMusicXmlQualityGate(notes, musicXmlString) {
   if (!Array.isArray(notes)) {
     throw new TypeError('Quality gate requires a NoteObject array.')
   }
-  if (typeof musicXmlString !== 'string' || musicXmlString.trim() === '') {
-    return failClosedReport(notes)
-  }
 
-  try {
-    registerMusicXmlSourceForNotes(notes, musicXmlString)
-  } catch {
+  // A new preparation attempt invalidates any older source association for the
+  // same exact array. A blank, malformed, or structurally rejected replacement
+  // must never leave prior chord source evidence consumable.
+  clearMusicXmlSourceForNotes(notes)
+
+  if (typeof musicXmlString !== 'string' || musicXmlString.trim() === '') {
     return failClosedReport(notes)
   }
 
@@ -75,8 +79,12 @@ export function prepareMusicXmlQualityGate(notes, musicXmlString) {
       { notes, structuralResult },
     )
     registerQualityReportForNotes(notes, report)
+    registerMusicXmlSourceForNotes(notes, musicXmlString)
     return report
   } catch {
+    // Defensive idempotent clear protects future registry implementation
+    // changes from accidentally preserving partially prepared source evidence.
+    clearMusicXmlSourceForNotes(notes)
     return failClosedReport(notes)
   }
 }
