@@ -1,25 +1,23 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-28  
-Latest verified protected `main` implementation baseline: `6f7e58fbbee2655c7bdc296ee673cfb3981f1438`  
-Latest exact-main implementation CI: **#262 / run `33194360060`, job `98927588160` — SUCCESS**  
-Current package state: **Package 0–8 Completed. Package 8B is separate and Not started.**  
-Next approved safe-sequence stage: **Package 8B — verified Audiveris sample and training dataset.**
+Latest verified protected `main` implementation baseline: `278b69ed1f7f0cede6a3dc00e8265e887811c88b`  
+Latest exact-main implementation CI: **#266 / run `33196791822`, job `98935863577` — SUCCESS**  
+Current package state: **Package 0–8 Completed. Package 8B Partially implemented; 8B-T1 Completed.**  
+Next safe-sequence stage: **Package 8B-T2 — bounded verified-evidence intake/readiness work only; no training or production OMR changes.**
 
 Source code, tests, protected-main state and fresh GitHub Actions evidence remain authoritative.
 
 ## Verified current baseline
 
-Exact-main CI #262 checked out exact protected-main SHA `6f7e58fbbee2655c7bdc296ee673cfb3981f1438` and verified:
+Exact-main CI #266 checked out exact protected-main SHA `278b69ed1f7f0cede6a3dc00e8265e887811c88b` and verified:
 
-- **1213 / 1213 tests PASS**
+- **1228 / 1228 tests PASS**
 - **232 suites**
 - **0 failed / skipped / cancelled**
-- `npm ci`: 119 packages installed; 120 packages audited
 - **0 vulnerabilities**
-- Vite 8.2.0 production build **PASS**
-- 63 modules transformed
-- all Package 8-T6 domain/UI/review regressions PASS
+- Vite production build **PASS**
+- all Package 8B-T1 focused and review-regression tests PASS
 - existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions PASS
 
 `main` remains protected and requires `test-and-build`.
@@ -28,71 +26,61 @@ Exact-main CI #262 checked out exact protected-main SHA `6f7e58fbbee2655c7bdc296
 
 Packages 0–7 remain Completed and provide the established PDF/OMR, MusicXML security, canonical note/time, structural and quality validation, Turkish rhythmic text/TTS/playback, MIDI, Basic Guitar TAB, Basic Violin, and source-only chord presentation foundations.
 
-Structural validity, source verification, quality-gate acceptance, teacher correction, teacher approval and later student-sharing authorization remain separate concepts.
+Package 8 is **Completed**. Its T1–T6 teacher revision, controlled correction, exact approval, lossless history/undo, optimistic concurrency and accessible teacher UI contracts remain intact.
 
-## Package 8 — Teacher correction, versioning and approval
+Structural validity, source verification, quality-gate acceptance, teacher correction, teacher approval, Audiveris-training approval and later student-sharing authorization are separate concepts.
+
+## Package 8B — verified Audiveris training evidence
+
+Status: **Partially implemented.**
+
+### 8B-T1 — verified dataset contract
 
 Status: **Completed.**
 
-### 8-T1 — immutable revision domain
-
-Completed. Automatic source and teacher-corrected revisions are immutable, source identity is preserved, and deterministic content plus recursive lineage fingerprints are version/drift evidence rather than authentication.
-
-### 8-T2 — controlled correction operations
-
-Completed. Only bounded existing-path `replace_value` corrections are accepted. Parent revisions are never overwritten. Every accepted correction creates a new immutable revision plus a separate audit event.
-
-### 8-T3 — exact-revision teacher approval
-
-Completed. Approval is separate immutable evidence bound to one exact revision/content/recursive lineage. Later corrections, replays or undo-created revisions do not inherit an older approval.
-
-### 8-T4 — lossless history and undo
-
-Completed. History preserves revisions, correction audits, approvals and undo evidence. Undo creates a new corrected revision from historical content and never rewrites or deletes old evidence.
-
-### 8-T5 — optimistic concurrency
-
-Completed. A stale history expectation produces explicit conflict and zero partial teacher-domain write. T5 is a domain compare-and-apply primitive, not a database transaction or distributed lock.
-
-### 8-T6 — accessible teacher UI
-
-Completed implementation and verification.
+T1 establishes a fail-closed, research-only contract before any real Audiveris training dataset may exist.
 
 Verified behavior:
 
-- native keyboard/screen-reader-readable **Öğretmen** result tab;
-- automatic source is deep-snapshotted and never edited in place;
-- only bounded existing primitive note fields are exposed for correction;
-- raw JSON/MusicXML, source identity, `measureKey`, confidence/verification and nested evidence are not directly editable;
-- correction delegates to T2/T5 and creates a new revision;
-- approval delegates to T3/T5 and applies only to the exact current revision;
-- duplicate current exact approval is rejected;
-- history and lossless undo delegate to T4/T5;
-- stale-history conflict disables mutation and requires explicit refresh;
-- history/source identity mismatch cannot be refreshed into an unrelated workspace;
-- blank numeric UI input cannot silently coerce to zero;
-- replacing the exact published source array resets the in-memory teacher workspace;
-- approval is explicitly not quality-gate acceptance and not student-sharing permission.
+- MusicXML alone is never a trainable sample;
+- source PDF, page image, `.omr`, MusicXML, glyph, label, coordinates, licence and Audiveris version are explicit evidence fields;
+- training approval uses scope `audiveris_training_sample` and binds to the exact deterministic candidate SHA-256 fingerprint;
+- changing sample evidence prevents reuse of old training approval;
+- candidate and dataset manifests are strict immutable records;
+- dataset versions are deterministic;
+- train/evaluation leakage is rejected by provenance plus shared PDF/page/.omr/MusicXML/glyph hashes;
+- IDs/timestamps are caller supplied; none are invented;
+- unsafe paths, malformed hashes, injected/accessor/sparse/mutable evidence fail closed;
+- no filesystem writes, Audiveris execution, training, model replacement or production OMR/deployment integration were added.
 
-Final implementation evidence:
+### Current real evidence inventory
 
-- PR #102 final head: `5efb91ac14dec87353e013b21f32fd5baf0271b2`
-- exact-head CI #261 / run `33194159944`, job `98926913424`: **SUCCESS**
-- exact-head: **1213/1213 tests**, 232 suites, 0 vulnerabilities, build PASS
-- review findings fixed: executable isolation test precision, blank numeric coercion, history/source mismatch refresh safety
-- all three review threads resolved before merge
-- protected-main squash merge: `6f7e58fbbee2655c7bdc296ee673cfb3981f1438`
-- exact-main CI #262 / run `33194360060`, job `98927588160`: **SUCCESS**
-- exact-main: **1213/1213 tests**, 232 suites, 0 failed/skipped/cancelled, 0 vulnerabilities, build PASS
+The repository preserves one strong owner/teacher-approved golden-reference chain at:
 
-Detailed contract: `docs/package-8-t6-accessible-teacher-ui.md`.  
-Closure evidence: `docs/package-8-t6-closure.md`.
+`tests/fixtures/golden-reference/plan0-owner-approved-3-8/`
 
-## Separate next stage — Package 8B
+It includes source PDF, `project.omr`, expected MusicXML, approval record and SHA-256 integrity evidence. The approval is valid golden/reference evidence and records CC0-1.0 rights plus Audiveris 5.11.0.
 
-Package 8B is **not part of Package 8 completion**. It remains **Not started**.
+However, the repository currently preserves **0 trainable real Audiveris samples** under the 8B-T1 contract. The golden chain lacks a separate page image, glyph image, shape label, symbol coordinates, explicit Audiveris-training approval and split assignment. It therefore remains **INCOMPLETE** and is not promoted to training data.
 
-Its source-defined prerequisite is now satisfied: Package 8 is completed. 8B may build a reproducible experimental dataset only from teacher-verified source image/.omr/glyph/shape-label evidence and associated provenance. MusicXML alone is not an Audiveris training sample. Unapproved samples must not enter training data, train/evaluation sets must remain separated, and 8B must not automatically replace the production Audiveris model.
+No missing label, coordinate, image, approval or split is fabricated.
+
+### 8B-T1 implementation evidence
+
+- PR #104 final head: `4005192f55afead7d22e7a32db596569faa7aff9`
+- exact-head CI #265 / run `33196559638`, job `98935074605`: **SUCCESS**
+- exact-head: **1228/1228 tests**, 232 suites, 0 vulnerabilities, build PASS
+- review threads: none
+- protected-main squash merge: `278b69ed1f7f0cede6a3dc00e8265e887811c88b`
+- exact-main CI #266 / run `33196791822`, job `98935863577`: **SUCCESS**
+- exact-main: **1228/1228 tests**, 232 suites, 0 failed/skipped/cancelled, 0 vulnerabilities, build PASS
+
+Detailed contract: `docs/package-8b-t1-dataset-contract.md`.  
+Closure evidence: `docs/package-8b-t1-closure.md`.
+
+## Next safe boundary
+
+Package 8B is **not Completed**. A next bounded 8B stage may validate/intake genuinely supplied teacher-approved labeled image/glyph evidence against T1. It must not synthesize missing training evidence and must not run training or change the production model/runtime unless separately authorized and supported by measured evidence.
 
 ## Protected OMR and deployment boundary
 
@@ -105,4 +93,4 @@ Without separate explicit authorization, do not change:
 - `render.yaml`;
 - current Render service/deployment connection.
 
-Package 8-T6 changed only the bounded teacher workspace/UI surface and tests; exact-main CI #262 confirms existing OMR/Audiveris and deployment security regressions remain green.
+Package 8B-T1 changed only isolated research/data contract, inventory, tests and documentation. Exact-main CI #266 confirms existing OMR/Audiveris and deployment security regressions remain green.

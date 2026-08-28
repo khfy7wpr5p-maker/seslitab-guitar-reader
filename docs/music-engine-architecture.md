@@ -1,14 +1,14 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 3.0.0  
+**Belge sürümü:** 3.1.0  
 **Güncelleme tarihi:** 2026-08-28  
-**Package 8 final implementation main:** `6f7e58fbbee2655c7bdc296ee673cfb3981f1438`  
-**Exact-main CI:** #262 / run `33194360060` — SUCCESS  
-**Durum:** Package 0–8 Completed; Package 8B NEXT / Not started.
+**Package 8B-T1 verified implementation main:** `278b69ed1f7f0cede6a3dc00e8265e887811c88b`  
+**Exact-main CI:** #266 / run `33196791822` — SUCCESS  
+**Durum:** Package 0–8 Completed; Package 8B Partially implemented; 8B-T1 Completed.
 
 ## 1. Değişmez ürün ilkesi
 
-SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Yapısal geçerlilik, kaynak doğrulama, kalite `ACCEPT`, öğretmen düzeltmesi, öğretmen onayı ve öğrenci paylaşım yetkisi birbirinden ayrı katmanlardır.
+SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Yapısal geçerlilik, kaynak doğrulama, kalite `ACCEPT`, öğretmen düzeltmesi, öğretmen onayı, Audiveris-training onayı ve öğrenci paylaşım yetkisi birbirinden ayrı katmanlardır.
 
 ## 2. Ana veri akışı
 
@@ -29,103 +29,126 @@ MusicXML <harmony>
   -> source-only chord parser
   -> accessible chord display / Turkish TTS
 
-Teacher layer (Package 8):
+Teacher layer (Package 8 — Completed):
+  AutomaticRevision
+  -> bounded correction + audit
+  -> exact TeacherApprovalRecord
+  -> immutable history / lossless undo
+  -> optimistic stale-history guard
+  -> accessible teacher workspace/UI
 
-AutomaticRevision (T1)
-  -> bounded correction + audit (T2)
-  -> Exact TeacherApprovalRecord (T3)
-  -> immutable revision history / lossless undo (T4)
-  -> optimistic stale-history guard (T5)
-  -> accessible teacher workspace/UI (T6)
+Experimental training evidence (Package 8B):
+  supplied/repository evidence
+  -> 8B-T1 strict candidate contract
+  -> explicit training approval bound to exact candidate fingerprint
+  -> train/evaluation isolation
+  -> deterministic immutable dataset manifest
+  -> later bounded evidence intake / experiments only
 
 Later:
-  Package 8B -> experimental verified Audiveris dataset only
   Package 12 -> exact-approved-revision student sharing with its own authorization/quality rules
 ```
 
-## 3. Canonical and quality boundary
+## 3. Canonical, teacher and training boundaries
 
-All musical consumers should derive from the shared canonical note/time model. Visible measure number is not unique identity. Missing music must not be invented. Source-unverified or unsafe evidence must not be promoted to definitive student truth.
+All musical consumers derive from the shared canonical note/time model. Missing music must not be invented. Source-unverified or unsafe evidence must not be promoted to definitive student truth.
 
-Quality `ACCEPT` does not create teacher approval. Teacher approval does not bypass quality validation.
+Quality `ACCEPT` does not create teacher approval. Teacher approval does not bypass quality validation. Golden/reference approval does not automatically create Audiveris-training approval.
+
+Package 8B training evidence is isolated from the production MusicXML consumer flow. T1 does not call Audiveris and does not modify production OMR behavior.
 
 ## 4. Package 8 architecture — COMPLETED
 
-### T1 — immutable revision domain
+- `src/services/teacherRevisionModel.js` — immutable automatic/corrected revisions
+- `src/services/teacherCorrectionOperations.js` — bounded corrections and audit evidence
+- `src/services/teacherApprovalModel.js` — exact-revision teacher approval
+- `src/services/teacherRevisionHistory.js` — immutable history and lossless undo
+- `src/services/teacherRevisionConcurrency.js` — optimistic stale-history guard
+- `src/services/teacherWorkspaceModel.js` — UI-facing teacher workspace adapter
+- `src/package8TeacherUi.js` / `.css` — accessible native teacher controls
 
-`src/services/teacherRevisionModel.js`
+Package 8 remains Completed. Teacher approval is exact-revision evidence; it is neither quality acceptance nor student-sharing authorization.
 
-Automatic and teacher-corrected revisions are immutable. Content and recursive-lineage fingerprints provide deterministic drift/version identity; they are not authentication or signatures.
+## 5. Package 8B-T1 architecture — COMPLETED
 
-### T2 — correction operations
+### Dataset candidate/manifest contract
 
-`src/services/teacherCorrectionOperations.js`
+`scripts/audiverisTrainingDatasetContract.js`
 
-Only bounded existing-path `replace_value` operations are supported. Accepted correction creates a new revision plus separate immutable audit evidence. No parent/source overwrite.
+T1 defines strict immutable research-only records for:
 
-### T3 — exact approval
+- source PDF;
+- source page image;
+- `.omr` artifact;
+- optional MusicXML provenance;
+- glyph image;
+- shape label;
+- symbol coordinates;
+- reference approval evidence;
+- exact Audiveris-training approval;
+- licence evidence;
+- Audiveris version;
+- explicit train/evaluation split.
 
-`src/services/teacherApprovalModel.js`
+Every artifact is represented by a safe repository-relative path plus SHA-256 digest. Candidate evidence receives a deterministic SHA-256 fingerprint.
 
-Teacher approval is a separate immutable record bound to exact revision metadata/content/recursive lineage. Later correction or undo does not inherit approval.
+`trainingApproval` must use scope `audiveris_training_sample` and must bind to that exact candidate fingerprint. If candidate evidence changes, the old approval cannot be replayed.
 
-### T4 — lossless history and undo
+A dataset manifest accepts only trainable candidates, rejects duplicate IDs, sorts deterministically, records split counts and has its own deterministic SHA-256 fingerprint.
 
-`src/services/teacherRevisionHistory.js`
+Train/evaluation leakage is rejected when the same provenance or PDF/page/.omr/MusicXML/glyph hash crosses the split boundary.
 
-History preserves the automatic root, corrected revisions, correction audits, approval records and undo events. Undo creates a new revision from historical content rather than rewinding/deleting history.
+### Repository evidence inventory
 
-### T5 — optimistic concurrency
+`scripts/audiverisTrainingDatasetInventory.js`
 
-`src/services/teacherRevisionConcurrency.js`
+The current real owner/teacher-approved Plan 0 evidence chain is inventoried read-only. It is not silently promoted to training data.
 
-An immutable history expectation guards correction/approval/undo. Stale state returns explicit conflict and zero partial domain write. The primitive is not a database transaction or distributed lock.
+Current state:
 
-### T6 — accessible teacher workspace/UI
+```text
+Plan 0 golden chain
+  source.pdf              present
+  project.omr             present
+  expected.musicxml       present
+  golden approval         present
+  SHA-256 integrity       present
+  licence evidence        present (CC0-1.0)
+  Audiveris version       present (5.11.0)
+  separate page image     MISSING
+  glyph image             MISSING
+  real shape label        MISSING
+  symbol coordinates      MISSING
+  explicit training approval MISSING
+  train/evaluation split  MISSING
 
-`src/services/teacherWorkspaceModel.js`  
-`src/package8TeacherUi.js`  
-`src/package8TeacherUi.css`
+=> INCOMPLETE
+=> admitted real trainable samples: 0
+```
 
-T6 consumes T1–T5; it does not create a parallel musical truth model.
+No missing training evidence is synthesized.
 
-Safety/accessibility behavior:
+### Verification
 
-- source note array is snapshotted; original source is not edited;
-- correction UI exposes only an allow-listed set of existing direct primitive musical fields;
-- raw JSON/MusicXML, source identity, physical measure identity, confidence/verification and nested evidence are not direct arbitrary edit paths;
-- accepted correction creates a new revision via T2/T5;
-- exact approval via T3/T5; duplicate current approval rejected;
-- revision history and lossless undo via T4/T5;
-- stale conflict is visible/assistive-technology readable and disables mutation;
-- explicit refresh is required and the failed action is not silently replayed;
-- source/history identity mismatch cannot be refreshed into unrelated history;
-- native controls, labels, tab/tabpanel semantics, live status, assertive conflict alert and visible focus styling are provided;
-- approval text explicitly states it is neither quality-gate acceptance nor sharing permission.
+- PR #104 final head `4005192f55afead7d22e7a32db596569faa7aff9`
+- exact-head CI #265: 1228/1228 PASS, 232 suites, 0 vulnerabilities, build PASS
+- protected-main merge `278b69ed1f7f0cede6a3dc00e8265e887811c88b`
+- exact-main CI #266: 1228/1228 PASS, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS
 
-## 5. Package 8 verification
+## 6. Package 8B-T2 next architecture boundary
 
-PR #102 final head: `5efb91ac14dec87353e013b21f32fd5baf0271b2`  
-Exact-head CI #261: 1213/1213 PASS, 232 suites, 0 vulnerabilities, build PASS.  
-Protected-main merge: `6f7e58fbbee2655c7bdc296ee673cfb3981f1438`.  
-Exact-main CI #262: 1213/1213 PASS, 232 suites, 0 failed/skipped/cancelled, 0 vulnerabilities, build PASS.
-
-Review hardening covered false-positive isolation scanning, blank numeric input coercion, and history/source mismatch refresh safety.
-
-## 6. Package 8B next architecture boundary
-
-Package 8B is separate and experimental. It may establish a reproducible verified Audiveris dataset contract/inventory/validator using teacher-verified image/.omr/glyph/label evidence.
+The next safe stage may add a bounded **evidence intake/readiness** layer over T1. It may classify genuinely supplied evidence, verify declared references/hashes at an isolated boundary and report missing requirements deterministically.
 
 It must not:
 
-- treat MusicXML alone as a training sample;
-- admit unapproved samples;
-- mix training/evaluation membership;
-- fabricate glyph labels, coordinates, approval or provenance;
-- automatically replace or tune the production Audiveris model;
-- alter the current OMR gateway/provider/runtime connection.
+- fabricate page images, glyphs, labels, coordinates, approvals, licences or provenance;
+- treat MusicXML or golden-reference approval as training truth;
+- run training merely because a candidate exists;
+- claim recognition improvement without measured evaluation;
+- automatically replace/tune the production Audiveris model;
+- alter the current gateway/provider/runtime connection.
 
-If real verified training artifacts are incomplete, 8B should fail closed and report missing evidence rather than synthesize it.
+If no new verified training artifacts are available, the system must truthfully remain at zero admitted real training samples.
 
 ## 7. Protected production boundary
 
@@ -141,12 +164,13 @@ Without separate explicit authorization, keep unchanged:
 
 ## 8. Security dependency summary
 
-| Feature | Canonical data | Quality gate | Teacher approval |
+| Feature | Canonical/source data | Quality gate | Teacher/training approval |
 |---|---:|---:|---:|
-| Teacher review UI | Yes | Separate evidence | Optional until explicit approval action |
-| Playback/TTS | Yes | Yes | Product flow dependent; sharing requires later approval rules |
-| MIDI export | Yes | Yes | Sharing requires later approval rules |
-| Basic Guitar TAB | Yes | Yes | Automatic result remains reviewable; sharing later requires approval |
-| Basic Violin | Yes | Yes | Automatic result remains reviewable; sharing later requires approval |
-| Package 8B training sample | Training-specific source evidence | Separate validation | **Yes** |
+| Teacher review UI | Yes | Separate evidence | Exact teacher approval only after explicit action |
+| Playback/TTS | Yes | Yes | Student sharing later has separate rules |
+| MIDI export | Yes | Yes | Student sharing later has separate rules |
+| Basic Guitar TAB | Yes | Yes | Generated result is not teacher truth |
+| Basic Violin | Yes | Yes | Generated result is not teacher truth |
+| Package 8B training candidate | Training-specific evidence | T1 completeness validation | **Exact training approval required** |
+| Package 8B dataset manifest | Trainable candidates only | T1 admission contract | **Required per sample** |
 | Package 12 student sharing | Yes | **Yes** | **Exact approved revision required** |
