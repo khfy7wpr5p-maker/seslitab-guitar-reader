@@ -19,6 +19,7 @@ import {
 export const TEACHER_CONCURRENCY_SCHEMA_VERSION = 1
 
 export const TEACHER_CONCURRENCY_STATUS = Object.freeze({
+  CURRENT: 'current',
   APPLIED: 'applied',
   CONFLICT: 'conflict',
 })
@@ -221,7 +222,7 @@ export function evaluateTeacherHistoryExpectation({ history, expectation } = {})
   return Object.freeze({
     status: conflictReason
       ? TEACHER_CONCURRENCY_STATUS.CONFLICT
-      : TEACHER_CONCURRENCY_STATUS.APPLIED,
+      : TEACHER_CONCURRENCY_STATUS.CURRENT,
     conflictReason,
     currentExpectation,
   })
