@@ -93,6 +93,25 @@ describe('Package 8-T1 teacher revision domain', () => {
     assert.match(first.contentFingerprint, /^fnv1a64-v1:[0-9a-f]{16}:\d+$/)
   })
 
+  test('preserves an own __proto__ data key without changing object prototypes', () => {
+    const payload = JSON.parse('{"__proto__":{"polluted":true},"midi":60}')
+
+    const revision = createAutomaticRevision({
+      revisionId: 'auto-proto',
+      sourceId: 'score-1',
+      content: { payload },
+    })
+
+    assert.equal(isTeacherRevision(revision), true)
+    assert.equal(Object.getPrototypeOf(revision.content.payload), Object.prototype)
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(revision.content.payload, '__proto__'),
+      true,
+    )
+    assert.deepEqual(revision.content.payload.__proto__, { polluted: true })
+    assert.equal({}.polluted, undefined)
+  })
+
   test('creates a corrected revision with exact immutable lineage', () => {
     const automatic = createAutomaticRevision({
       revisionId: 'auto-1',
@@ -139,6 +158,29 @@ describe('Package 8-T1 teacher revision domain', () => {
     assert.equal(correction2.parentRevisionId, 'teacher-1')
     assert.equal(correction2.sourceRevisionId, 'auto-1')
     assert.equal(correction2.sourceId, 'score-1')
+  })
+
+  test('rejects reusing the original automatic revision identity later in a chain', () => {
+    const automatic = createAutomaticRevision({
+      revisionId: 'auto-1',
+      sourceId: 'score-1',
+      content: noteSnapshot(60),
+    })
+    const correction = createTeacherCorrectedRevision({
+      revisionId: 'teacher-1',
+      parentRevision: automatic,
+      content: noteSnapshot(61),
+    })
+
+    assert.throws(
+      () =>
+        createTeacherCorrectedRevision({
+          revisionId: 'auto-1',
+          parentRevision: correction,
+          content: noteSnapshot(62),
+        }),
+      /distinct from parent and source revisions/,
+    )
   })
 
   test('rejects reusing the parent revision identity', () => {
