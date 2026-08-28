@@ -114,6 +114,23 @@ test('Package 8B-T2 review regression: forged rejection vocabulary and duplicate
   })), false)
 })
 
+test('Package 8B-T2 review regression: evidence paths are compared byte-for-byte without trimming', () => {
+  const { candidate, entries } = fixture()
+  const altered = entries.map((entry) => (
+    entry.field === AUDIVERIS_EVIDENCE_FIELD.SOURCE_PDF
+      ? { ...entry, path: ` ${entry.path} ` }
+      : entry
+  ))
+  const report = evaluateAudiverisEvidenceReadiness(candidate, altered)
+
+  assert.equal(report.status, AUDIVERIS_EVIDENCE_READINESS_STATUS.REJECTED)
+  assert.deepEqual(report.rejections, [{
+    code: AUDIVERIS_EVIDENCE_REJECTION_REASON.PATH_MISMATCH,
+    field: AUDIVERIS_EVIDENCE_FIELD.SOURCE_PDF,
+  }])
+  assert.equal(report.eligibleForManifestReview, false)
+})
+
 test('Package 8B-T2 eligibility wording is bounded to manifest review, not training or production authorization', () => {
   const { candidate, entries } = fixture()
   const report = evaluateAudiverisEvidenceReadiness(candidate, entries)
