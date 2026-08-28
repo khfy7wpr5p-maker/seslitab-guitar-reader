@@ -1,9 +1,9 @@
 // Package 8B-T1 — verified Audiveris training-dataset contract.
 //
-// Research/data-domain only. This module does not read or write files, run
-// Audiveris, train a model, replace a model, or import production OMR/runtime
-// code. MusicXML may be retained as provenance evidence, but it is never enough
-// to make a symbol sample trainable.
+// Research/data-domain only. This module does not read/write files, run
+// Audiveris, train or replace a model, or import production OMR/runtime code.
+// MusicXML may be provenance evidence, but is never sufficient by itself to
+// make a symbol sample trainable.
 
 import { createHash } from 'node:crypto'
 
@@ -35,42 +35,21 @@ export const AUDIVERIS_TRAINABILITY_REASON = Object.freeze({
 })
 
 const CANDIDATE_FIELDS = Object.freeze([
-  'schemaVersion',
-  'candidateId',
-  'provenanceId',
-  'split',
-  'sourcePdf',
-  'pageImage',
-  'omrArtifact',
-  'musicXml',
-  'glyphImage',
-  'shapeLabel',
-  'symbolCoordinates',
-  'referenceApprovalEvidence',
-  'trainingApproval',
-  'licenseId',
-  'licenseEvidence',
-  'audiverisVersion',
+  'schemaVersion', 'candidateId', 'provenanceId', 'split', 'sourcePdf',
+  'pageImage', 'omrArtifact', 'musicXml', 'glyphImage', 'shapeLabel',
+  'symbolCoordinates', 'referenceApprovalEvidence', 'trainingApproval',
+  'licenseId', 'licenseEvidence', 'audiverisVersion',
 ])
-
 const ARTIFACT_FIELDS = Object.freeze(['path', 'sha256'])
 const APPROVAL_FIELDS = Object.freeze([
-  'approvalId',
-  'actorId',
-  'approvedAt',
-  'scope',
-  'evidence',
+  'approvalId', 'actorId', 'approvedAt', 'scope', 'evidence',
 ])
 const COORDINATE_FIELDS = Object.freeze(['pageIndex', 'x', 'y', 'width', 'height'])
 const MANIFEST_FIELDS = Object.freeze([
-  'schemaVersion',
-  'datasetId',
-  'versionId',
-  'createdAt',
-  'samples',
-  'splitCounts',
-  'datasetFingerprint',
+  'schemaVersion', 'datasetId', 'versionId', 'createdAt', 'samples',
+  'splitCounts', 'datasetFingerprint',
 ])
+const SPLIT_COUNT_FIELDS = Object.freeze(['train', 'evaluation'])
 
 const PDF_EXTENSIONS = Object.freeze(['.pdf'])
 const OMR_EXTENSIONS = Object.freeze(['.omr'])
@@ -115,18 +94,33 @@ function assertExactObject(value, fields, label) {
   ) {
     throw new TypeError(`${label} has an unsupported field set.`)
   }
-
   const descriptors = Object.getOwnPropertyDescriptors(value)
   for (const field of fields) {
     const descriptor = descriptors[field]
-    if (
-      !descriptor ||
-      !descriptor.enumerable ||
-      !Object.prototype.hasOwnProperty.call(descriptor, 'value')
-    ) {
+    if (!descriptor?.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
       throw new TypeError(`${label}.${field} must be an enumerable data property.`)
     }
   }
+}
+
+function hasStrictFrozenRecord(value, fields) {
+  if (!isPlainObject(value) || !Object.isFrozen(value)) return false
+  const keys = Reflect.ownKeys(value)
+  if (
+    keys.length !== fields.length ||
+    keys.some((key) => typeof key !== 'string' || !fields.includes(key))
+  ) return false
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  return fields.every((field) => {
+    const descriptor = descriptors[field]
+    return Boolean(
+      descriptor &&
+      descriptor.enumerable === true &&
+      descriptor.configurable === false &&
+      descriptor.writable === false &&
+      Object.prototype.hasOwnProperty.call(descriptor, 'value'),
+    )
+  })
 }
 
 function assertDenseArray(value, label) {
@@ -144,11 +138,8 @@ function assertDenseArray(value, label) {
     if (key === 'length') continue
     const index = Number(key)
     if (
-      !Number.isInteger(index) ||
-      index < 0 ||
-      index >= value.length ||
-      String(index) !== key ||
-      !descriptor.enumerable ||
+      !Number.isInteger(index) || index < 0 || index >= value.length ||
+      String(index) !== key || !descriptor.enumerable ||
       !Object.prototype.hasOwnProperty.call(descriptor, 'value')
     ) {
       throw new TypeError(`${label} contains an unsupported array property.`)
@@ -156,18 +147,28 @@ function assertDenseArray(value, label) {
   }
 }
 
-function deepFreeze(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
-  for (const child of Object.values(value)) deepFreeze(child)
-  return Object.freeze(value)
+function hasStrictFrozenArray(value) {
+  if (!Array.isArray(value) || !Object.isFrozen(value)) return false
+  try {
+    assertDenseArray(value, 'frozen array')
+  } catch {
+    return false
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  return Object.entries(descriptors).every(([key, descriptor]) =>
+    key === 'length' || (
+      descriptor.enumerable === true &&
+      descriptor.configurable === false &&
+      descriptor.writable === false &&
+      Object.prototype.hasOwnProperty.call(descriptor, 'value')
+    ),
+  )
 }
 
 function normalizedRepositoryPath(value, fieldName, allowedExtensions) {
   const path = requiredString(value, `${fieldName}.path`, 1024)
   if (
-    path.startsWith('/') ||
-    path.includes('\\') ||
-    path.includes('://') ||
+    path.startsWith('/') || path.includes('\\') || path.includes('://') ||
     path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
   ) {
     throw new TypeError(`${fieldName}.path must be a safe repository-relative path.`)
@@ -236,7 +237,7 @@ function normalizeTrainingApproval(value) {
 }
 
 function buildCandidate(input) {
-  return deepFreeze({
+  return Object.freeze({
     schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
     candidateId: requiredString(input.candidateId, 'candidateId'),
     provenanceId: requiredString(input.provenanceId, 'provenanceId'),
@@ -249,9 +250,7 @@ function buildCandidate(input) {
     shapeLabel: optionalString(input.shapeLabel, 'shapeLabel', 128),
     symbolCoordinates: normalizeCoordinates(input.symbolCoordinates),
     referenceApprovalEvidence: normalizeArtifact(
-      input.referenceApprovalEvidence,
-      'referenceApprovalEvidence',
-      EVIDENCE_EXTENSIONS,
+      input.referenceApprovalEvidence, 'referenceApprovalEvidence', EVIDENCE_EXTENSIONS,
     ),
     trainingApproval: normalizeTrainingApproval(input.trainingApproval),
     licenseId: optionalString(input.licenseId, 'licenseId', 128),
@@ -285,40 +284,38 @@ function sameArtifact(left, right) {
   return left.path === right.path && left.sha256 === right.sha256
 }
 
-function sameApproval(left, right) {
-  if (left === null || right === null) return left === right
-  return (
-    left.approvalId === right.approvalId &&
-    left.actorId === right.actorId &&
-    left.approvedAt === right.approvedAt &&
-    left.scope === right.scope &&
-    sameArtifact(left.evidence, right.evidence)
-  )
-}
-
 function sameCoordinates(left, right) {
   if (left === null || right === null) return left === right
   return COORDINATE_FIELDS.every((field) => left[field] === right[field])
 }
 
-function hasStrictFrozenCandidateShape(value) {
-  if (!isPlainObject(value) || !Object.isFrozen(value)) return false
-  const keys = Reflect.ownKeys(value)
+function sameApproval(left, right) {
+  if (left === null || right === null) return left === right
+  return (
+    left.approvalId === right.approvalId && left.actorId === right.actorId &&
+    left.approvedAt === right.approvedAt && left.scope === right.scope &&
+    sameArtifact(left.evidence, right.evidence)
+  )
+}
+
+function hasStrictNestedCandidateEvidence(candidate) {
+  for (const field of [
+    'sourcePdf', 'pageImage', 'omrArtifact', 'musicXml', 'glyphImage',
+    'referenceApprovalEvidence', 'licenseEvidence',
+  ]) {
+    if (candidate[field] !== null && !hasStrictFrozenRecord(candidate[field], ARTIFACT_FIELDS)) {
+      return false
+    }
+  }
   if (
-    keys.length !== CANDIDATE_FIELDS.length ||
-    keys.some((key) => typeof key !== 'string' || !CANDIDATE_FIELDS.includes(key))
+    candidate.symbolCoordinates !== null &&
+    !hasStrictFrozenRecord(candidate.symbolCoordinates, COORDINATE_FIELDS)
   ) return false
-  const descriptors = Object.getOwnPropertyDescriptors(value)
-  return CANDIDATE_FIELDS.every((field) => {
-    const descriptor = descriptors[field]
-    return Boolean(
-      descriptor &&
-      descriptor.enumerable === true &&
-      descriptor.configurable === false &&
-      descriptor.writable === false &&
-      Object.prototype.hasOwnProperty.call(descriptor, 'value'),
-    )
-  })
+  if (candidate.trainingApproval !== null) {
+    if (!hasStrictFrozenRecord(candidate.trainingApproval, APPROVAL_FIELDS)) return false
+    if (!hasStrictFrozenRecord(candidate.trainingApproval.evidence, ARTIFACT_FIELDS)) return false
+  }
+  return true
 }
 
 export function createAudiverisTrainingCandidate(input = {}) {
@@ -327,13 +324,13 @@ export function createAudiverisTrainingCandidate(input = {}) {
 
 export function isAudiverisTrainingCandidate(value) {
   try {
-    if (!hasStrictFrozenCandidateShape(value)) return false
+    if (!hasStrictFrozenRecord(value, CANDIDATE_FIELDS)) return false
     if (value.schemaVersion !== AUDIVERIS_DATASET_SCHEMA_VERSION) return false
+    if (!hasStrictNestedCandidateEvidence(value)) return false
     const rebuilt = buildCandidate(candidateInputFromRecord(value))
     return (
       rebuilt.candidateId === value.candidateId &&
-      rebuilt.provenanceId === value.provenanceId &&
-      rebuilt.split === value.split &&
+      rebuilt.provenanceId === value.provenanceId && rebuilt.split === value.split &&
       sameArtifact(rebuilt.sourcePdf, value.sourcePdf) &&
       sameArtifact(rebuilt.pageImage, value.pageImage) &&
       sameArtifact(rebuilt.omrArtifact, value.omrArtifact) &&
@@ -356,14 +353,10 @@ export function evaluateAudiverisTrainingCandidate(candidate) {
   if (!isAudiverisTrainingCandidate(candidate)) {
     throw new TypeError('candidate must be a valid immutable Audiveris training candidate.')
   }
-
   const reasons = []
   if (
-    candidate.musicXml &&
-    !candidate.sourcePdf &&
-    !candidate.pageImage &&
-    !candidate.omrArtifact &&
-    !candidate.glyphImage
+    candidate.musicXml && !candidate.sourcePdf && !candidate.pageImage &&
+    !candidate.omrArtifact && !candidate.glyphImage
   ) reasons.push(AUDIVERIS_TRAINABILITY_REASON.MUSICXML_ONLY_EVIDENCE)
   if (!candidate.sourcePdf) reasons.push(AUDIVERIS_TRAINABILITY_REASON.MISSING_SOURCE_PDF)
   if (!candidate.pageImage) reasons.push(AUDIVERIS_TRAINABILITY_REASON.MISSING_PAGE_IMAGE)
@@ -377,7 +370,6 @@ export function evaluateAudiverisTrainingCandidate(candidate) {
   }
   if (!candidate.audiverisVersion) reasons.push(AUDIVERIS_TRAINABILITY_REASON.MISSING_AUDIVERIS_VERSION)
   if (!candidate.split) reasons.push(AUDIVERIS_TRAINABILITY_REASON.MISSING_SPLIT)
-
   return Object.freeze({
     status: reasons.length
       ? AUDIVERIS_TRAINABILITY_STATUS.INCOMPLETE
@@ -411,14 +403,12 @@ function fingerprint(value) {
 function enforceSplitIsolation(samples) {
   const provenanceSplits = new Map()
   const artifactSplits = new Map()
-
   for (const sample of samples) {
     const priorProvenanceSplit = provenanceSplits.get(sample.provenanceId)
     if (priorProvenanceSplit && priorProvenanceSplit !== sample.split) {
       throw new Error(`Train/evaluation leakage detected for provenanceId ${sample.provenanceId}.`)
     }
     provenanceSplits.set(sample.provenanceId, sample.split)
-
     for (const artifact of [sample.sourcePdf, sample.pageImage, sample.omrArtifact]) {
       const priorArtifactSplit = artifactSplits.get(artifact.sha256)
       if (priorArtifactSplit && priorArtifactSplit !== sample.split) {
@@ -452,7 +442,6 @@ export function createAudiverisDatasetManifest({
   }).sort((left, right) => left.candidateId.localeCompare(right.candidateId, 'en'))
 
   enforceSplitIsolation(normalizedSamples)
-
   const splitCounts = Object.freeze({
     train: normalizedSamples.filter((sample) => sample.split === AUDIVERIS_DATASET_SPLIT.TRAIN).length,
     evaluation: normalizedSamples.filter(
@@ -466,7 +455,6 @@ export function createAudiverisDatasetManifest({
     createdAt: normalizedCreatedAt,
     samples: normalizedSamples,
   }
-
   return Object.freeze({
     schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
     datasetId: normalizedDatasetId,
@@ -480,13 +468,11 @@ export function createAudiverisDatasetManifest({
 
 export function isAudiverisDatasetManifest(value) {
   try {
-    if (!isPlainObject(value) || !Object.isFrozen(value)) return false
-    const keys = Reflect.ownKeys(value)
-    if (
-      keys.length !== MANIFEST_FIELDS.length ||
-      keys.some((key) => typeof key !== 'string' || !MANIFEST_FIELDS.includes(key))
-    ) return false
-    if (!Object.isFrozen(value.samples) || !Object.isFrozen(value.splitCounts)) return false
+    if (!hasStrictFrozenRecord(value, MANIFEST_FIELDS)) return false
+    if (value.schemaVersion !== AUDIVERIS_DATASET_SCHEMA_VERSION) return false
+    if (!hasStrictFrozenArray(value.samples)) return false
+    if (!hasStrictFrozenRecord(value.splitCounts, SPLIT_COUNT_FIELDS)) return false
+    if (!value.samples.every(isAudiverisTrainingCandidate)) return false
     const rebuilt = createAudiverisDatasetManifest({
       datasetId: value.datasetId,
       versionId: value.versionId,
@@ -494,7 +480,6 @@ export function isAudiverisDatasetManifest(value) {
       samples: value.samples,
     })
     return (
-      rebuilt.schemaVersion === value.schemaVersion &&
       rebuilt.datasetFingerprint === value.datasetFingerprint &&
       rebuilt.splitCounts.train === value.splitCounts.train &&
       rebuilt.splitCounts.evaluation === value.splitCounts.evaluation &&
