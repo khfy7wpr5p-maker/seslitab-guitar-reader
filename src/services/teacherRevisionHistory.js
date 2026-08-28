@@ -298,6 +298,12 @@ function validateUndoBinding(parent, revision, auditEvent, revisions) {
   if (!target) {
     throw new Error('Undo target revision is not preserved in this history.')
   }
+  if (target.revisionId === parent.revisionId) {
+    throw new Error('Undo target must be an earlier preserved revision, not the current parent.')
+  }
+  if (target.contentFingerprint === parent.contentFingerprint) {
+    throw new Error('Undo target must not reproduce the current parent content.')
+  }
 
   if (
     auditEvent.sourceId !== revision.sourceId ||
