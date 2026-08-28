@@ -4,9 +4,12 @@
 // immutable revision. It is not persistence, authentication, authorization,
 // quality-gate override, student sharing, UI, OMR/Audiveris, or deployment.
 
-import { isTeacherRevision } from './teacherRevisionModel.js'
+import {
+  TEACHER_REVISION_KIND,
+  isTeacherRevision,
+} from './teacherRevisionModel.js'
 
-export const TEACHER_APPROVAL_SCHEMA_VERSION = 1
+export const TEACHER_APPROVAL_SCHEMA_VERSION = 2
 export const TEACHER_APPROVAL_STATE = 'teacher_approved'
 
 export const TEACHER_APPROVAL_APPLICABILITY = Object.freeze({
@@ -22,6 +25,9 @@ const APPROVAL_FIELDS = Object.freeze([
   'sourceId',
   'sourceRevisionId',
   'approvedRevisionId',
+  'approvedRevisionKind',
+  'approvedParentRevisionId',
+  'approvedRevisionCreatedAt',
   'approvedContentFingerprint',
   'createdAt',
 ])
@@ -39,10 +45,10 @@ function normalizeRequiredString(value, fieldName) {
   return value.trim()
 }
 
-function normalizeCreatedAt(value) {
+function normalizeCreatedAt(value, fieldName = 'createdAt') {
   if (value === null || value === undefined) return null
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new TypeError('createdAt must be null or a non-empty string.')
+    throw new TypeError(`${fieldName} must be null or a non-empty string.`)
   }
   return value.trim()
 }
@@ -71,6 +77,36 @@ function hasStrictApprovalShape(value) {
   })
 }
 
+function validateRevisionBindingFields(value) {
+  if (!Object.values(TEACHER_REVISION_KIND).includes(value.approvedRevisionKind)) {
+    return false
+  }
+
+  if (
+    normalizeCreatedAt(
+      value.approvedRevisionCreatedAt,
+      'approvedRevisionCreatedAt',
+    ) !== value.approvedRevisionCreatedAt
+  ) {
+    return false
+  }
+
+  if (value.approvedRevisionKind === TEACHER_REVISION_KIND.AUTOMATIC) {
+    if (value.approvedParentRevisionId !== null) return false
+    if (value.approvedRevisionId !== value.sourceRevisionId) return false
+    return true
+  }
+
+  const parentRevisionId = normalizeRequiredString(
+    value.approvedParentRevisionId,
+    'approvedParentRevisionId',
+  )
+  if (parentRevisionId !== value.approvedParentRevisionId) return false
+  if (parentRevisionId === value.approvedRevisionId) return false
+  if (value.approvedRevisionId === value.sourceRevisionId) return false
+  return true
+}
+
 function validateApprovalRecord(value) {
   if (!isPlainObject(value) || !Object.isFrozen(value)) return false
   if (!hasStrictApprovalShape(value)) return false
@@ -89,6 +125,7 @@ function validateApprovalRecord(value) {
       if (normalizeRequiredString(value[field], field) !== value[field]) return false
     }
 
+    if (!validateRevisionBindingFields(value)) return false
     if (normalizeCreatedAt(value.createdAt) !== value.createdAt) return false
     return true
   } catch {
@@ -135,6 +172,9 @@ export function createTeacherApprovalRecord({
     sourceId: revision.sourceId,
     sourceRevisionId: revision.sourceRevisionId,
     approvedRevisionId: revision.revisionId,
+    approvedRevisionKind: revision.revisionKind,
+    approvedParentRevisionId: revision.parentRevisionId,
+    approvedRevisionCreatedAt: revision.createdAt,
     approvedContentFingerprint: revision.contentFingerprint,
     createdAt: normalizedCreatedAt,
   })
@@ -144,6 +184,11 @@ export function createTeacherApprovalRecord({
  * Determine whether historical approval evidence applies to the exact candidate
  * revision. A changed/new revision makes the old approval non-applicable; the
  * historical approval record itself is not mutated or deleted.
+ *
+ * Exact binding covers the immutable T1 revision identity, lineage metadata,
+ * revision timestamp and content fingerprint. This prevents a later correction
+ * from reviving an older approval by reusing an ancestor revisionId and restoring
+ * the ancestor's content.
  *
  * The returned value is approval applicability only. It is deliberately not a
  * quality decision, authorization decision, or student-sharing permission.
@@ -160,6 +205,9 @@ export function evaluateTeacherApprovalForRevision({ approval, revision } = {}) 
     approval.sourceId === revision.sourceId &&
     approval.sourceRevisionId === revision.sourceRevisionId &&
     approval.approvedRevisionId === revision.revisionId &&
+    approval.approvedRevisionKind === revision.revisionKind &&
+    approval.approvedParentRevisionId === revision.parentRevisionId &&
+    approval.approvedRevisionCreatedAt === revision.createdAt &&
     approval.approvedContentFingerprint === revision.contentFingerprint
 
   return exact
