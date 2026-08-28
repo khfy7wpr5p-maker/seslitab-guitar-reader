@@ -2,8 +2,8 @@
 
 Last documentation review: 2026-08-28  
 Implementation baseline reviewed: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
-Current package closure: **Package 6 — MusicXML Chord-Symbol Parser completed at the verified implementation baseline.**
-Next strict roadmap package: **Package 7 — Chord display and Turkish TTS**.
+Current package state: **Package 6 implementation is verified on protected main; documentation closure is still pending.**
+Next strict roadmap transition: **Package 7 may start only after Package 6 closure PR merge and exact merged-main `test-and-build` success.**
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build or GitHub Actions result.
 
@@ -57,31 +57,12 @@ The repository currently contains verified foundations for:
 - Quality-gated deterministic Basic Guitar TAB text for supported accepted canonical MusicXML data
 - Quality-gated Basic Violin first-position tel/parmak guidance for supported accepted canonical MusicXML data
 
-Package 6 currently provides internal parsed chord-symbol evidence. Chord presentation and Turkish chord TTS are not yet exposed as a verified product output; those belong to Package 7.
+Package 6 currently provides internal parsed chord-symbol evidence. Chord presentation and Turkish chord TTS are not yet exposed as a verified product output; those belong to Package 7 and remain blocked until Package 6 closure completes.
 
-## Package 4 status
+## Package 6 implementation status
 
-Package 4 — Basic Guitar TAB is completed.
+Package 6 implementation PR #75 is merged on protected main.
 
-Final implementation main: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`.
-Exact-main CI #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 and production build PASS.
-
-Detailed evidence: `docs/package-4-closure.md` plus Package 4A–4F stage documents.
-
-## Package 5 status
-
-Package 5 — Basic Violin is completed.
-
-Final implementation main: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`.
-Exact-main CI #177 / `33119971061` succeeded with 1031/1031 tests, 229 suites, audit 0 and production build PASS.
-
-Detailed evidence: `docs/package-5-closure.md` plus Package 5A–5F stage documents.
-
-## Package 6 status
-
-Package 6 — MusicXML Chord-Symbol Parser implementation is merged on protected main.
-
-Implementation PR: #75  
 Accepted review-fixed head: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`  
 Implementation main: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
 
@@ -99,7 +80,7 @@ Exact implementation-main CI #184 / `33124708562` succeeded:
 - Vite 8.2.0 production build: PASS
 - transformed modules: 49
 
-Verified Package 6 behavior includes:
+Verified implementation behavior includes:
 
 - source-only parsing of explicit MusicXML `<harmony>` evidence;
 - deterministic normalization of supported basic chord symbols such as `C`, `Am`, `G7`, slash chords and `N.C.`;
@@ -113,12 +94,23 @@ Verified Package 6 behavior includes:
 - valid mid-measure divisions changes preserve elapsed beat position;
 - malformed explicit divisions invalidate stale inherited timing.
 
-Two valid Codex review findings on divisions handling were fixed before PR #75 merged and received dedicated regression coverage.
+Two valid review findings on divisions handling were fixed before PR #75 merged and have dedicated regression coverage.
 
 Detailed evidence:
 
 - `docs/package-6-chord-symbol-parser.md`
-- `docs/package-6-closure.md`
+- `docs/package-6-closure.md` (closure candidate until the documentation PR and its exact-main CI complete)
+
+## Package 6 closure gate still open
+
+Package 6 is **not yet marked Completed** in this branch because the package-level documentation closure must itself:
+
+1. pass exact-head required `test-and-build`;
+2. have clean review threads and zero-behind merge freshness;
+3. merge with expected-head locking;
+4. pass required `test-and-build` on the exact resulting protected-main SHA.
+
+Package 7 must not start before those conditions are satisfied.
 
 ## Package 6 safety boundary
 
@@ -144,7 +136,7 @@ Exact implementation run #184 / `33124708562` succeeded with 1057/1057 tests, 22
 
 ## Remaining product areas
 
-The following remain later work and are not reclassified as completed by Package 6:
+The following remain later work and are not reclassified as completed by the Package 6 implementation:
 
 - Chord display and Turkish TTS — Package 7
 - Teacher correction, revision history and approval workflow
