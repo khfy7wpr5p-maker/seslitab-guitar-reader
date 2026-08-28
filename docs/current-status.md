@@ -1,133 +1,108 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-28  
-Latest verified protected `main` implementation baseline: `4747210751c1c49295052f8cca7be58281b91023`  
-Latest exact-main implementation CI: **#253 / run `33181815397`, job `98884637074` — SUCCESS**  
-Current package state: **Package 8 — Partially implemented; 8-T1 through 8-T5 Completed.**  
-Next bounded stage: **Package 8-T6 — accessible teacher UI — Not started.**
+Latest verified protected `main` implementation baseline: `6f7e58fbbee2655c7bdc296ee673cfb3981f1438`  
+Latest exact-main implementation CI: **#262 / run `33194360060`, job `98927588160` — SUCCESS**  
+Current package state: **Package 0–8 Completed. Package 8B is separate and Not started.**  
+Next approved safe-sequence stage: **Package 8B — verified Audiveris sample and training dataset.**
 
-This file is a concise orientation document. Source code, tests, protected-main state and fresh GitHub Actions evidence remain authoritative. The documentation-only closure PR that carries this file does not change the T5 implementation baseline above.
+Source code, tests, protected-main state and fresh GitHub Actions evidence remain authoritative.
 
 ## Verified current baseline
 
-Exact-main CI #253 on `4747210751c1c49295052f8cca7be58281b91023` verified:
+Exact-main CI #262 checked out exact protected-main SHA `6f7e58fbbee2655c7bdc296ee673cfb3981f1438` and verified:
 
-- **1186 / 1186 tests PASS**
+- **1213 / 1213 tests PASS**
 - **232 suites**
 - **0 failed / skipped / cancelled**
 - `npm ci`: 119 packages installed; 120 packages audited
 - **0 vulnerabilities**
 - Vite 8.2.0 production build **PASS**
-- 55 modules transformed
-- all **13 Package 8-T5 optimistic-concurrency regressions PASS**
-- T1–T4 revision/correction/approval/history/undo regressions PASS
-- existing API cancellation regression PASS
-- existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions PASS
+- 63 modules transformed
+- all Package 8-T6 domain/UI/review regressions PASS
+- existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions PASS
 
-`main` remains protected and the required status check is `test-and-build`.
+`main` remains protected and requires `test-and-build`.
 
-## Verified product foundations
+## Completed foundations
 
-Packages 0–7 remain Completed and provide the established foundations for PDF/OMR handling, MusicXML security, canonical note/time data, structural and quality validation, Turkish rhythmic text/TTS/playback, MIDI, Basic Guitar TAB, Basic Violin, and source-only MusicXML harmony/chord presentation.
+Packages 0–7 remain Completed and provide the established PDF/OMR, MusicXML security, canonical note/time, structural and quality validation, Turkish rhythmic text/TTS/playback, MIDI, Basic Guitar TAB, Basic Violin, and source-only chord presentation foundations.
 
-Structural validity, source verification, quality-gate acceptance and teacher approval remain separate concepts.
+Structural validity, source verification, quality-gate acceptance, teacher correction, teacher approval and later student-sharing authorization remain separate concepts.
 
-## Package 8 current state
+## Package 8 — Teacher correction, versioning and approval
+
+Status: **Completed.**
 
 ### 8-T1 — immutable revision domain
 
-Status: **Completed.**
+Completed. Automatic source and teacher-corrected revisions are immutable, source identity is preserved, and deterministic content plus recursive lineage fingerprints are version/drift evidence rather than authentication.
 
-Automatic and teacher-corrected revisions are immutable. Revision schema v2 preserves deterministic content and recursive lineage identity. The lineage token is a version/drift identity, not a cryptographic signature or authorization credential.
+### 8-T2 — controlled correction operations
 
-Original bounded closure: PR #86 → protected-main `218c3e18eed3a82861a4a1c24efd5458445ea9ca` → exact-main CI #222 SUCCESS.
+Completed. Only bounded existing-path `replace_value` corrections are accepted. Parent revisions are never overwritten. Every accepted correction creates a new immutable revision plus a separate audit event.
 
-### 8-T2 — controlled teacher correction operations
+### 8-T3 — exact-revision teacher approval
 
-Status: **Completed.**
+Completed. Approval is separate immutable evidence bound to one exact revision/content/recursive lineage. Later corrections, replays or undo-created revisions do not inherit an older approval.
 
-T2 permits only bounded `replace_value` operations against existing paths. Parent revisions are never overwritten; each accepted correction creates a new immutable revision and separate correction audit event. Invalid/no-op/overlapping/prototype-sensitive operations fail closed.
+### 8-T4 — lossless history and undo
 
-Closure: PR #89 → protected-main `f6d80b4614654ee63a4fd2d51101e4961476a1ee` → exact-main CI #230 SUCCESS.
+Completed. History preserves revisions, correction audits, approvals and undo evidence. Undo creates a new corrected revision from historical content and never rewrites or deletes old evidence.
 
-### 8-T3 — exact-revision teacher approval binding/invalidation
+### 8-T5 — optimistic concurrency
 
-Status: **Completed.**
+Completed. A stale history expectation produces explicit conflict and zero partial teacher-domain write. T5 is a domain compare-and-apply primitive, not a database transaction or distributed lock.
 
-Approval is separate immutable evidence bound to exact revision metadata/content and recursive lineage. Later, replayed or undo-created revisions do not inherit an older approval automatically.
+### 8-T6 — accessible teacher UI
 
-Final hardening: PR #95 → implementation main `c57966598d2d6fe34418119670bea42a9cdcf369` → exact-main CI #240 SUCCESS. Detailed evidence: `docs/package-8-t3-closure.md`.
-
-### 8-T4 — lossless revision history and undo
-
-Status: **Completed.**
-
-T4 preserves the automatic root, corrected revisions, correction audits, approval records and undo evidence in immutable history snapshots. Undo never rewrites prior evidence; it creates a new corrected revision from exact historical content with new recursive lineage. Historical approval therefore does not silently resurrect.
-
-Final implementation: PR #97 → merge `eaf967174d1cc0f2552cc97e7e0a6bf0a1715c64` → exact-main CI #248 SUCCESS. Detailed evidence: `docs/package-8-t4-closure.md`.
-
-### 8-T5 — optimistic concurrency / stale-history conflict
-
-Status: **Completed.**
-
-T5 adds `src/services/teacherRevisionConcurrency.js` as a pure domain-level compare-and-apply guard over valid T4 histories.
+Completed implementation and verification.
 
 Verified behavior:
 
-- caller captures a strict immutable expectation from one exact T4 history;
-- expectation binds history/source identity, complete deterministic history-state fingerprint, exact current revision identity/content/recursive lineage, and evidence counts;
-- approval-only history changes invalidate an older expectation even when the current revision does not change;
-- fresh guarded correction/approval/undo may apply using existing T2/T3/T4 rules;
-- stale, history-mismatched or source-mismatched expectations return explicit conflict;
-- conflict returns the exact unchanged current history plus a fresh expectation and creates **no revision, audit event or approval**;
-- no automatic musical merge/rebase is attempted;
-- no ID or timestamp is invented;
-- malformed/mutable/injected expectation records fail closed.
+- native keyboard/screen-reader-readable **Öğretmen** result tab;
+- automatic source is deep-snapshotted and never edited in place;
+- only bounded existing primitive note fields are exposed for correction;
+- raw JSON/MusicXML, source identity, `measureKey`, confidence/verification and nested evidence are not directly editable;
+- correction delegates to T2/T5 and creates a new revision;
+- approval delegates to T3/T5 and applies only to the exact current revision;
+- duplicate current exact approval is rejected;
+- history and lossless undo delegate to T4/T5;
+- stale-history conflict disables mutation and requires explicit refresh;
+- history/source identity mismatch cannot be refreshed into an unrelated workspace;
+- blank numeric UI input cannot silently coerce to zero;
+- replacing the exact published source array resets the in-memory teacher workspace;
+- approval is explicitly not quality-gate acceptance and not student-sharing permission.
 
-### T5 authority boundary
+Final implementation evidence:
 
-T5 is a **domain compare-and-apply primitive**, not a database transaction or distributed lock.
+- PR #102 final head: `5efb91ac14dec87353e013b21f32fd5baf0271b2`
+- exact-head CI #261 / run `33194159944`, job `98926913424`: **SUCCESS**
+- exact-head: **1213/1213 tests**, 232 suites, 0 vulnerabilities, build PASS
+- review findings fixed: executable isolation test precision, blank numeric coercion, history/source mismatch refresh safety
+- all three review threads resolved before merge
+- protected-main squash merge: `6f7e58fbbee2655c7bdc296ee673cfb3981f1438`
+- exact-main CI #262 / run `33194360060`, job `98927588160`: **SUCCESS**
+- exact-main: **1213/1213 tests**, 232 suites, 0 failed/skipped/cancelled, 0 vulnerabilities, build PASS
 
-The `history` supplied to T5 must be the integration layer's authoritative current valid T4 history at the commit boundary. If future persistence is added, the storage integration must preserve the compare-and-apply condition atomically with its own write.
+Detailed contract: `docs/package-8-t6-accessible-teacher-ui.md`.  
+Closure evidence: `docs/package-8-t6-closure.md`.
 
-The deterministic full-history fingerprint is a version/drift token, **not** authentication, authorization, a digital signature or cryptographic integrity credential.
+## Separate next stage — Package 8B
 
-Final code evidence:
+Package 8B is **not part of Package 8 completion**. It remains **Not started**.
 
-- PR #99 final head: `6e151b94609ecf362b3bff0976479a6c2eda45b9`
-- exact-head CI #252 / run `33181561159`, job `98883764663`: **SUCCESS**
-- exact-head: **1186/1186 PASS**, 232 suites, 0 vulnerabilities, build PASS
-- final pre-merge review threads/submitted reviews: none
-- protected-main squash merge: `4747210751c1c49295052f8cca7be58281b91023`
-- exact-main CI #253 / run `33181815397`, job `98884637074`: **SUCCESS**
-- exact-main: **1186/1186 PASS**, 232 suites, 0 vulnerabilities, build PASS
-- detailed contract: `docs/package-8-t5-optimistic-concurrency.md`
-- detailed closure: `docs/package-8-t5-closure.md`
+Its source-defined prerequisite is now satisfied: Package 8 is completed. 8B may build a reproducible experimental dataset only from teacher-verified source image/.omr/glyph/shape-label evidence and associated provenance. MusicXML alone is not an Audiveris training sample. Unapproved samples must not enter training data, train/evaluation sets must remain separated, and 8B must not automatically replace the production Audiveris model.
 
-### Remaining Package 8 stage
+## Protected OMR and deployment boundary
 
-- **8-T6 — Not started / NEXT:** accessible teacher UI.
+Without separate explicit authorization, do not change:
 
-Package 8 therefore remains **Partially implemented**, not Completed.
-
-## Separate later roadmap package
-
-**Package 8B — Audiveris training dataset** remains Not started and separate from Package 8-T1..T6.
-
-## Protected OMR and Render boundary
-
-Package 8 work must not modify without separate explicit authorization:
-
-- Audiveris provider/runtime/preflight;
+- production Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
-- Cloud OMR Gateway;
-- production OMR path;
+- Cloud OMR Gateway or production OMR path;
 - `Dockerfile`;
 - `render.yaml`;
 - current Render service/deployment connection.
 
-PR #99 changed only the T5 concurrency domain, its focused tests and T5 contract document. Exact-main CI #253 confirms the existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions remain green.
-
-## Current next boundary
-
-The next roadmap stage is **8-T6: accessible teacher UI**, but it has **not started** in this closure. T6 must consume the verified T1–T5 contracts without weakening history, approval or stale-state protections. No T6 source/UI change is part of the T5 closure.
+Package 8-T6 changed only the bounded teacher workspace/UI surface and tests; exact-main CI #262 confirms existing OMR/Audiveris and deployment security regressions remain green.

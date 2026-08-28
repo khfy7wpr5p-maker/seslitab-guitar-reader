@@ -1,16 +1,14 @@
 # Package 8-T6 — Accessible Teacher Correction / Approval UI
 
-Status: **implementation candidate / not closed until PR + exact-head CI + review + exact-main CI**
+Status: **Completed**
 
 ## Purpose
 
-Package 8-T6 exposes the already-verified T1–T5 teacher revision domain through a bounded, keyboard-native and screen-reader-readable teacher workspace.
+Package 8-T6 exposes the verified T1–T5 teacher revision domain through a bounded, keyboard-native and screen-reader-readable teacher workspace. It is a UI/orchestration layer, not a new musical truth engine.
 
-T6 is a UI/orchestration layer. It does not become a new musical truth engine and does not bypass revision, correction, approval, history/undo, concurrency, or quality boundaries.
+## Product separation
 
-## Product rule
-
-The teacher workspace must keep these states visibly and semantically separate:
+The UI keeps separate:
 
 1. automatic source revision;
 2. teacher-corrected revision;
@@ -20,194 +18,89 @@ The teacher workspace must keep these states visibly and semantically separate:
 
 Teacher approval is **not** quality-gate acceptance and is **not** student-sharing permission.
 
-## Domain adapter
+## Implemented domain adapter
 
-`src/services/teacherWorkspaceModel.js` provides the UI-facing immutable workspace contract over T1–T5.
+`src/services/teacherWorkspaceModel.js` provides an immutable UI-facing workspace over T1–T5.
 
-The workspace contains:
+It carries one T4 history, one T5 expectation, caller-supplied audit actor label, explicit `active`/`conflict` state and conflict reason. The domain adapter invents no actor/revision/history/event/approval/operation/timestamp identity.
 
-- one immutable T4 history;
-- one T5 expectation;
-- the caller-supplied teacher audit label;
-- explicit `active` or `conflict` UI-domain state;
-- an explicit conflict reason when stale history is detected.
+The actor label is audit metadata only; it is not authentication or authorization.
 
-The model generates no actor, revision, history, event, approval, operation, or timestamp identity. Browser/UI integration supplies those values.
+## Source and correction safety
 
-The teacher audit label is audit metadata only. It is **not authentication or authorization**.
+The workspace begins from the exact published `NoteObject[]` and deep-snapshots it into an automatic revision. Source notes are never edited in place. Publishing a different exact array reference resets the in-memory teacher workspace.
 
-## Session source
+T6 is not a raw JSON/MusicXML editor. It exposes only existing direct primitive fields from a bounded allow-list and excludes arbitrary editing of source/physical identity, `measureKey`, confidence/verification, nested evidence and schema/fingerprint fields.
 
-The current bounded browser integration seeds a teacher workspace only after the existing application publishes an exact `NoteObject[]` through `package3MeasureBridge.js`.
+Every accepted edit becomes a T2 `replace_value` operation guarded by T5 and therefore creates a new immutable teacher revision plus audit evidence.
 
-The automatic revision deep-snapshots that source. The published source array is never edited in place.
+T6 intentionally does not infer/recalculate all dependent musical fields after one primitive correction; later definitive use still requires the appropriate exact-revision validation/quality evidence.
 
-If the application publishes a different exact `NoteObject[]` reference, the previous in-memory teacher workspace is discarded instead of silently carrying corrections to a different source.
-
-T6 does not persist the workspace. Persistence and authenticated teacher identity remain outside this bounded stage.
-
-## Bounded correction UI
-
-T6 is deliberately **not** a raw JSON or MusicXML editor.
-
-The UI exposes only existing direct primitive fields from a bounded allow-list. It does not expose or permit direct path editing of:
-
-- `measureKey`, part identity, measure identity, or source ordering identity;
-- confidence or verification evidence;
-- raw/nested source evidence;
-- content or lineage fingerprints;
-- arbitrary object paths;
-- revision/history schema fields.
-
-Every accepted edit becomes one existing T2 `replace_value` operation and is applied through the T5 guarded correction function.
-
-### Important semantic limit
-
-T6 does **not** infer or automatically recalculate dependent musical fields when one primitive value is corrected. A teacher correction is therefore a new teacher revision, not automatic proof that every related canonical/derived field is internally verified.
-
-The UI states this explicitly. Any later definitive consumer or Package 12 sharing flow must still use the required validation/quality evidence for that exact revision. T6 does not promote a correction directly into definitive student truth.
+Blank or whitespace-only numeric input fails closed instead of becoming numeric zero.
 
 ## Approval
 
-Approval uses the existing T3 exact-revision approval record and T5 guarded history append.
+Approval uses T3 exact-revision evidence plus T5 guarded append:
 
-Rules:
+- only exact current revision is approved;
+- duplicate exact-current approval is rejected in the bounded UI;
+- later correction/undo receives new lineage and does not inherit old approval;
+- historical approval remains immutable;
+- approval does not bypass quality or authorize sharing.
 
-- only the exact current revision is approved;
-- duplicate approval of the already-approved exact current revision is disabled/rejected in the bounded UI;
-- a later correction or undo receives a different lineage and does not inherit the old approval;
-- historical approval evidence remains in history;
-- approval does not override the quality gate;
-- approval does not grant student sharing.
+## History and undo
 
-## Undo / version history
+UI exposes preserved history and earlier different-content undo targets. Undo delegates to T4/T5 and creates a new corrected revision. No old revision/evidence is deleted and no pointer is silently rewound.
 
-The UI lists preserved revision history and offers only earlier revisions whose content differs from the current revision as undo targets.
+## Conflict UX
 
-Undo uses the existing T4/T5 guarded lossless undo operation:
+Stale authoritative history produces explicit conflict with zero partial mutation. Correction/approval/undo controls are disabled, the conflict is exposed as focusable/assertive text, and the teacher must explicitly refresh. The previously failing operation is never automatically retried.
 
-- no old revision is deleted;
-- no mutable pointer is moved backward;
-- the historical content is restored as a **new corrected revision**;
-- recursive lineage changes;
-- historical approval is not resurrected automatically.
+Review hardening additionally guarantees that `history_mismatch` or `source_mismatch` cannot be refreshed into an unrelated active workspace; a new workspace is required.
 
-## Concurrency and conflict UX
+## Accessibility
 
-T6 never silently retries or rebases a stale teacher action.
+The UI provides native buttons, labels/select/input, `role=tab`/`tabpanel`, polite live status, assertive `role=alert` conflict/error state, focusable read-only revision view, deterministic focus behavior, visible `:focus-visible`, reduced-motion-safe styling, and text semantics that do not rely on colour alone.
 
-When the authoritative history differs from the stored T5 expectation:
+No mouse-only gesture is required.
 
-1. the attempted guarded mutation returns explicit conflict;
-2. no partial new revision/audit/approval/undo evidence is created;
-3. correction, approval, and undo controls are disabled;
-4. an assertive, focusable conflict message is exposed using non-colour text semantics;
-5. the teacher must explicitly choose **“Güncel durumu yükle ve düzenlemeye devam et”**;
-6. refresh captures a new expectation;
-7. the previously conflicting action is **not automatically re-applied**.
+## Deferred by design
 
-This UI contract does not claim database transactions or distributed locking. A future persistence layer must preserve T5 compare-and-apply atomically at its own commit boundary.
+T6 does not implement persistence/database, authenticated accounts/authorization, database CAS/distributed locks, automatic conflict merge, student sharing (Package 12), Audiveris training data (Package 8B), advanced Guitar TAB (Package 9), advanced violin (Package 10), or production OMR/deployment changes.
 
-## Accessibility contract
+## Final verification evidence
 
-The T6 workspace uses native controls where possible:
+Implementation PR: **#102**  
+Final PR head: `5efb91ac14dec87353e013b21f32fd5baf0271b2`
 
-- native buttons;
-- native labels bound with `for`/`id`;
-- native select/input controls;
-- a result tab with `role=tab` and `aria-selected`;
-- a panel with `role=tabpanel` and `aria-labelledby`;
-- polite status updates for ordinary actions;
-- assertive `role=alert` conflict/error state;
-- focusable read-only current revision view;
-- deterministic focus transfer to conflict/error status when needed;
-- visible `:focus-visible` outline;
-- reduced-motion-safe styling;
-- approval/conflict/safety meaning expressed in text, not colour alone.
+Exact-head CI #261 / run `33194159944`, job `98926913424`:
 
-No mouse-only gesture is required for the bounded T6 workflow.
+- **1213/1213 tests PASS**
+- **232 suites**
+- 0 failed/skipped/cancelled
+- **0 vulnerabilities**
+- production build PASS
 
-## UI surface
+Review findings fixed before merge:
 
-`src/package8TeacherUi.js` adds the dynamic **Öğretmen** result tab after the existing result UIs.
+1. isolation regression narrowed to executable wiring rather than comment text;
+2. blank/whitespace numeric input no longer coerces to zero;
+3. history/source mismatch cannot be activated via refresh.
 
-It provides:
+All review threads were resolved.
 
-- explicit teacher audit-label entry;
-- workspace start action;
-- current revision and exact approval summary;
-- read-only current snapshot view;
-- bounded correction field/value controls;
-- exact-current-revision approval action;
-- preserved revision history;
-- lossless undo target/action;
-- conflict alert and explicit refresh action.
+Protected-main squash merge:
+`6f7e58fbbee2655c7bdc296ee673cfb3981f1438`
 
-`src/package8TeacherUi.css` provides bounded layout and visible keyboard focus styling.
+Exact-main CI #262 / run `33194360060`, job `98927588160`:
 
-`main.js` loads the T6 CSS and UI module after existing result/discovery controllers so current product features remain intact.
+- **1213/1213 tests PASS**
+- **232 suites**
+- 0 failed/skipped/cancelled
+- **0 vulnerabilities**
+- Vite production build PASS
+- existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions PASS
 
-## Explicitly deferred
+## Completion conclusion
 
-T6 does **not** implement:
-
-- persistent teacher history storage/database;
-- authenticated teacher accounts or authorization;
-- atomic database compare-and-swap wiring;
-- distributed locks;
-- automatic conflict merge/rebase;
-- automatic correction of dependent musical fields;
-- student sharing — Package 12;
-- Audiveris training data — Package 8B;
-- advanced Guitar TAB — Package 9;
-- advanced violin — Package 10;
-- OMR/Audiveris/provider/gateway changes;
-- `Dockerfile`, `render.yaml`, or Render service/deployment changes.
-
-## Protected boundaries
-
-T6 must not modify without separate authorization:
-
-- `backend/` Audiveris provider/runtime/preflight;
-- OMR worker/provider selection;
-- Cloud OMR Gateway or production OMR path;
-- `Dockerfile`;
-- `render.yaml`;
-- current Render service/deployment connection.
-
-## Focused acceptance tests
-
-T6 tests cover:
-
-- immutable source snapshot and no source overwrite;
-- bounded editable-field allow-list and forbidden identity/evidence fields;
-- primitive type parsing and fail-closed invalid input;
-- correction creates new revision and audit;
-- no-op/unsupported correction refusal;
-- exact approval and later invalidation;
-- duplicate current approval refusal;
-- lossless undo and no approval resurrection;
-- stale authoritative history conflict with zero partial mutation;
-- explicit refresh required before another mutation;
-- caller-supplied domain identity/time only;
-- native accessible tab/panel/labels/live status;
-- audit-label-not-authentication disclosure;
-- deterministic correction/approval/undo UI state;
-- assertive conflict alert + disabled mutation controls;
-- refresh without silent operation replay;
-- exact source-array replacement resets session workspace;
-- visible focus styling and source isolation;
-- full repository regression and production build.
-
-## Completion rule
-
-T6 may be marked **Completed** only after:
-
-1. dedicated branch implementation;
-2. exact-head required CI passes;
-3. all valid review findings are resolved;
-4. protected-main merge uses the expected exact head SHA;
-5. exact-main CI passes on the resulting main SHA;
-6. a separate docs closure PR synchronizes status/architecture and records final evidence.
-
-If T1–T6 are all verified after that closure, **Package 8** may be marked Completed. Package **8B remains separate and Not started**.
+T6 satisfies its completion rule at the implementation level. With this separate documentation closure synchronized and merged through its own CI gate, Package 8 T1–T6 is the completed teacher correction/versioning/approval package. Package **8B remains separate** and is the next source-approved stage.
