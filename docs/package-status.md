@@ -1,26 +1,16 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-28  
-Latest verified protected main: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
-Latest exact-main CI: **#230 / `33163126080`, job `98822108194` — SUCCESS**
+Latest verified protected main: `95f11139929d1e3d65bd6c295794c316bb04ca84`  
+Latest exact-main CI: **#237 / `33165513082`, job `98829856646` — SUCCESS**
 
-This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main GitHub workflow evidence are satisfied. Dedicated closure documents remain authoritative.
+This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main workflow evidence are satisfied. Dedicated closure documents remain authoritative.
 
-## Verified closure baselines
+## Verified Package 8 closure baselines
 
-- Plan 0: `4945d5b3ae5b0e1a61138f58673047ae3dba3e2d`
-- Package 2A: `47b3ad374fdd49fdd1898c5e0c1b085fde7b9959`
-- Package 2B: `e2fa6f6947334388d6a08299220d31f6d8462ab1`
-- Package 2C technical closure: `8292f82327b6290d182b029e5ba402ae16c31cff`
-- Package 2D technical closure: `0c9df668ddcb1b16d1d5b4ca6dd1d3839d441d95`
-- Package 2E closure: `f6b808f331a38047f64e82e395a93ed185737813`
-- Package 3 documentation closure: `02dadf55f22505dc5527478f2f6ddb90c17621ff`
-- Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`
-- Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
-- Package 6 final closure baseline: `99232915ebcd5089055d0f8695b6c1b08c697739`
-- Package 7 final closure baseline: `9f49a07c83bd6dac853fc7aa0131c7df336b2b05`
-- Package 8-T1 bounded closure: `218c3e18eed3a82861a4a1c24efd5458445ea9ca`; exact-main CI #222 SUCCESS.
-- Package 8-T2 bounded closure: **`f6d80b4614654ee63a4fd2d51101e4961476a1ee`**; exact-main CI **#230**: **1136/1136 tests**, 231 suites, 0 fail/skipped/cancelled, audit 0 vulnerabilities, production build PASS.
+- Package 8-T1: `218c3e18eed3a82861a4a1c24efd5458445ea9ca`; exact-main CI #222 SUCCESS.
+- Package 8-T2: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`; exact-main CI #230 SUCCESS.
+- Package 8-T3 final review-hardened baseline: **`95f11139929d1e3d65bd6c295794c316bb04ca84`**; exact-main CI **#237** SUCCESS: **1151/1151 tests**, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, production build PASS.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -39,14 +29,14 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 5 — Basic violin | Completed | Conservative first-position quality-gated violin pipeline and accessible UI verified. |
 | 6 — Chord-symbol parser | Completed | Source-only MusicXML `<harmony>` parser verified. |
 | 7 — Chord display and Turkish TTS | Completed | Source-only accessible chord presentation/TTS closure verified. |
-| 8 — Teacher correction and approval | **Partially implemented** | **8-T1 revision domain and 8-T2 controlled correction operations completed; 8-T3..T6 remain unimplemented.** |
+| 8 — Teacher correction and approval | **Partially implemented** | **8-T1 revision domain, 8-T2 controlled corrections and review-hardened 8-T3 exact-revision approval are completed; 8-T4..T6 remain unimplemented.** |
 | 8-T1 — Revision domain contract | **Completed** | PR #86 → merge `218c3e18…` → exact-main CI #222 SUCCESS. |
-| 8-T2 — Correction operations | **Completed** | PR #89 → final head `c47ce6ba…` → merge `f6d80b46…` → exact-main CI #230: 1136/1136 tests, build PASS. |
-| 8-T3 — Approval binding/invalidation | Not started | **Next safe stage.** Approval must be a separate immutable record bound to one exact revision/fingerprint; later revisions must not inherit it. |
-| 8-T4 — Undo/version history | Not started | No verified lossless revision-history/undo store yet. |
+| 8-T2 — Correction operations | **Completed** | PR #89 → merge `f6d80b46…` → exact-main CI #230 SUCCESS. |
+| 8-T3 — Approval binding/invalidation | **Completed** | PR #91 initial implementation; PR #92 review found P1 and was closed unmerged; PR #93 schema-v2 hardening → main `95f11139…` → exact-main CI #237 SUCCESS. |
+| 8-T4 — Undo/version history | Not started | **Next safe stage.** No verified lossless history/undo contract yet. |
 | 8-T5 — Optimistic concurrency | Not started | No verified stale-base edit conflict handling yet. |
 | 8-T6 — Accessible teacher UI | Not started | UI must wait for domain/approval/history/concurrency contracts. |
-| 8B — Audiveris training dataset | Not started | Separate roadmap package; no teacher-approved reproducible training dataset yet. |
+| 8B — Audiveris training dataset | Not started | Separate roadmap package. |
 | 9 — Advanced Guitar TAB | Not started | Polyphonic/pedagogical fingering remains outside Package 4. |
 | 10 — Advanced violin | Not started | Advanced positions, alternatives and double stops remain planned. |
 | 11 — Accessible tuner | Not started | No verified microphone pitch-detection and accessible-feedback package. |
@@ -54,33 +44,42 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web foundations exist; device-level VoiceOver/audio/privacy/productisation criteria remain incomplete. |
 
-## Package 8-T1 evidence
+## Package 8-T3 final evidence
 
-- PR #86 final head: `db32b9e24d4033fe308ab9b2fe7cdefb74ec593b`
-- exact-head CI #221: SUCCESS
-- protected-main merge: `218c3e18eed3a82861a4a1c24efd5458445ea9ca`
-- exact-main CI #222: SUCCESS
-- strict revision schema rejects approval-field injection
-- closure: `docs/package-8-t1-closure.md`
+Initial implementation:
 
-## Package 8-T2 evidence
+- PR #91 final head: `d1805c054e490e71e3d266471ad158defbcd49e1`
+- exact-head CI #233: SUCCESS
+- initial main: `70a02589206eeea9c3defec4d5f544e9222cbe3a`
+- exact-main CI #234: SUCCESS
 
-- implementation baseline: `cd7e4686c88d2428d7a1a095539de2d87f9551e5`
-- PR #89 final accepted head: `c47ce6ba259e50bee8c71453c044650538535a14`
-- exact-head CI #229 / run `33162963010`: SUCCESS
-- protected-main squash merge: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`
-- exact-main CI #230 / run `33163126080`, job `98822108194`: SUCCESS
-- exact-main tests: **1136/1136 PASS**, 231 suites, 0 fail/skipped/cancelled
-- audit: **0 vulnerabilities**
+Closure review:
+
+- docs PR #92 was **not merged**;
+- review identified a valid P1: intermediate ancestor `revisionId` reuse plus restored ancestor content could revive the old four-dimension approval binding;
+- the stale docs PR was closed after the finding.
+
+Final hardening:
+
+- PR #93 final head: `ee215d3c1d53e2bb7a7323387c02a79223643e46`
+- exact-head CI #236 / run `33165415557`, job `98829539401`: SUCCESS
+- final protected-main commit: `95f11139929d1e3d65bd6c295794c316bb04ca84`
+- exact-main CI #237 / run `33165513082`, job `98829856646`: SUCCESS
+- **1151/1151 tests PASS**, 232 suites, 0 fail/skipped/cancelled
+- all **15** T3 focused tests PASS
+- ancestor-revision-ID reuse regression PASS
+- dependency audit: **0 vulnerabilities**
 - production build: **PASS**
-- two review findings were fixed and regression-tested before merge: `-0`/`0` path aliasing and unsupported primitive audit values
-- all review threads resolved before merge
 
-T2 implements controlled correction mechanics only. It does not add teacher approval, authentication/authorization, persistence, history/undo, concurrency, UI, sharing or Audiveris training.
+Final T3 schema is **v2** and binds approval applicability to exact source/root-source/revision ID/revision kind/parent revision/revision timestamp/content fingerprint. Historical approval remains immutable and a later record cannot inherit it merely by reusing an old ID/content.
+
+## CI stability note
+
+The superseded docs PR #92 CI #235 first attempt had one transient `tests/api.test.js` DELETE-job 502. The same exact docs head was rerun without code changes and passed **1150/1150 tests + build**. This is recorded as a test-stability signal, not a current main failure. Final hardened main CI #237 is green.
 
 ## Protected integration boundary
 
-Package 8-T1/T2 did not modify and later Package 8 stages must not modify without separate explicit authorization:
+Package 8-T1/T2/T3 did not modify and later Package 8 stages must not modify without separate explicit authorization:
 
 - Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
@@ -97,4 +96,4 @@ Package 8-T1/T2 did not modify and later Package 8 stages must not modify withou
 - **Not started:** no meaningful verified package implementation evidence.
 - **Not verified:** related code may exist, but available evidence is insufficient to assign another status safely.
 
-Current strict next implementation stage: **Package 8-T3 only**.
+Current strict next implementation stage: **Package 8-T4 only — not started by this closure.**
