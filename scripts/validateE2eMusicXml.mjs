@@ -49,8 +49,8 @@ class MiniDOMParser {
     const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[a-zA-Z-]+\s*=\s*"[^"]*")*)\s*(\/?)>|([^<]+)/g
     let m
     while ((m = tagRe.exec(xml)) !== null) {
-      if (m[4] !== undefined && m[4].trim()) {
-        stack[stack.length - 1]._text += m[4]
+      if (m[4] !== undefined) {
+        if (m[4].trim()) stack[stack.length - 1]._text += m[4]
         continue
       }
       const isClose = m[0][1] === '/'
@@ -128,7 +128,10 @@ if (result.error) {
 }
 
 const parsedNotes = result.notes || []
+const parsedRestCount = parsedNotes.filter((note) => note.isRest).length
+const parsedPitchedNoteCount = parsedNotes.length - parsedRestCount
 console.log(`Parser sonucu: ${parsedNotes.length} nota ayrıştırıldı.`)
+console.log(`Parser ayrıntısı: ${parsedPitchedNoteCount} perdeli nota, ${parsedRestCount} sus.`)
 
 if (parsedNotes.length < 1) {
   console.error('HATA: Parser en az bir nota döndürmedi.')
