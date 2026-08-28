@@ -8,6 +8,7 @@ import {
   HARMONY_SCHEMA_VERSION,
   HARMONY_PARSE_STATE,
   HARMONY_TIMING_STATE,
+  normalizeHarmonyDescriptor,
 } from '../../musicXmlHarmonyParser.js'
 
 export const CHORD_PRESENTATION_STATE = Object.freeze({
@@ -118,12 +119,21 @@ function pitchSpeech(pitch) {
 }
 
 function integerToTurkish(value) {
-  const small = Object.freeze({
+  const small = {
     1: 'bir', 2: 'iki', 3: 'üç', 4: 'dört', 5: 'beş', 6: 'altı',
     7: 'yedi', 8: 'sekiz', 9: 'dokuz', 10: 'on', 11: 'on bir',
     12: 'on iki', 13: 'on üç', 14: 'on dört', 15: 'on beş',
-  })
+  }
   return small[value] || String(value)
+}
+
+function ordinalToTurkish(value) {
+  const ordinals = {
+    1: 'birinci', 2: 'ikinci', 3: 'üçüncü', 4: 'dördüncü',
+    5: 'beşinci', 6: 'altıncı', 7: 'yedinci', 8: 'sekizinci',
+    9: 'dokuzuncu', 10: 'onuncu',
+  }
+  return ordinals[value] || `${value}.`
 }
 
 function degreeSpeech(degree) {
@@ -163,16 +173,13 @@ function timingSpeech(startBeat) {
 function validatePhysicalIdentity(event) {
   const partId = cleanString(event?.partId)
   const measureKey = cleanString(event?.measureKey)
-  if (
-    !partId ||
-    !nonNegativeInteger(event?.partIndex) ||
-    !nonNegativeInteger(event?.measureIndex) ||
-    !nonNegativeInteger(event?.sequenceIndex) ||
-    measureKey !== `${partId}:${event.measureIndex}`
-  ) {
-    return false
-  }
-  return true
+  return Boolean(
+    partId &&
+    nonNegativeInteger(event?.partIndex) &&
+    nonNegativeInteger(event?.measureIndex) &&
+    nonNegativeInteger(event?.sequenceIndex) &&
+    measureKey === `${partId}:${event.measureIndex}`
+  )
 }
 
 function validateKind(event) {
@@ -183,6 +190,46 @@ function validateKind(event) {
 function validateDegrees(degrees) {
   if (!Array.isArray(degrees)) return false
   return degrees.every((degree) => degreeSpeech(degree) !== null)
+}
+
+function comparable(value) {
+  return JSON.stringify(value)
+}
+
+function validateDescriptorConsistency(event) {
+  const normalized = normalizeHarmonyDescriptor({
+    rootStep: event.root?.step ?? null,
+    rootAlter: event.root?.alter ?? null,
+    kindValue: event.kind?.value ?? null,
+    kindText: event.kind?.text ?? null,
+    bassStep: event.bass?.step ?? null,
+    bassAlter: event.bass?.alter ?? null,
+    inversion: event.inversion ?? null,
+    degrees: Array.isArray(event.degrees)
+      ? event.degrees.map((degree) => ({
+        type: degree?.type,
+        value: degree?.value,
+        alter: degree?.alter,
+        printObject: degree?.printObject,
+      }))
+      : null,
+    staff: event.staff ?? null,
+    functionText: event.functionText ?? null,
+  })
+
+  return Boolean(
+    normalized.state === HARMONY_PARSE_STATE.PARSED &&
+    normalized.symbol === event.symbol &&
+    comparable(normalized.root) === comparable(event.root) &&
+    comparable(normalized.kind) === comparable(event.kind) &&
+    comparable(normalized.bass) === comparable(event.bass) &&
+    normalized.inversion === event.inversion &&
+    comparable(normalized.degrees) === comparable(event.degrees) &&
+    normalized.staff === event.staff &&
+    normalized.functionText === event.functionText &&
+    normalized.provenance === event.provenance &&
+    normalized.teacherApproved === event.teacherApproved
+  )
 }
 
 function buildChordSpeech(event) {
@@ -206,7 +253,7 @@ function buildChordSpeech(event) {
 
   if (event.inversion !== null && event.inversion !== undefined) {
     if (!nonNegativeInteger(event.inversion)) return null
-    if (event.inversion > 0) phrases.push(`${integerToTurkish(event.inversion)}inci çevrim`)
+    if (event.inversion > 0) phrases.push(`${ordinalToTurkish(event.inversion)} çevrim`)
   }
 
   for (const degree of event.degrees) {
@@ -231,7 +278,8 @@ function buildPresentationItem(event) {
     !validateKind(event) ||
     !validateDegrees(event.degrees) ||
     !finiteNonNegative(event.startBeat) ||
-    !cleanString(event.symbol)
+    !cleanString(event.symbol) ||
+    !validateDescriptorConsistency(event)
   ) {
     return null
   }
