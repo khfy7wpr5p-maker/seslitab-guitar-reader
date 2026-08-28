@@ -182,17 +182,49 @@ function deepFreeze(value) {
   return Object.freeze(value)
 }
 
-function isDeepFrozen(value, seen = new Set()) {
+function isDeepFrozenPlainData(value, seen = new Set()) {
   if (!value || typeof value !== 'object') return true
-  if (seen.has(value)) return false
-  if (!Object.isFrozen(value)) return false
+  if (!Array.isArray(value) && !isPlainObject(value)) return false
+  if (!Object.isFrozen(value) || seen.has(value)) return false
+
+  try {
+    rejectUnsupportedObjectShape(value, 'content')
+  } catch {
+    return false
+  }
 
   seen.add(value)
-  for (const child of Object.values(value)) {
-    if (!isDeepFrozen(child, seen)) return false
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (Array.isArray(value) && key === 'length') continue
+    if (!isDeepFrozenPlainData(descriptor.value, seen)) return false
   }
   seen.delete(value)
   return true
+}
+
+function hasStrictRevisionRecordShape(value) {
+  const ownKeys = Reflect.ownKeys(value)
+  if (
+    ownKeys.length !== REVISION_FIELDS.length ||
+    ownKeys.some(
+      (key) => typeof key !== 'string' || !REVISION_FIELDS.includes(key),
+    )
+  ) {
+    return false
+  }
+
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  return REVISION_FIELDS.every((field) => {
+    const descriptor = descriptors[field]
+    return Boolean(
+      descriptor &&
+        descriptor.enumerable === true &&
+        descriptor.configurable === false &&
+        descriptor.writable === false &&
+        Object.prototype.hasOwnProperty.call(descriptor, 'value'),
+    )
+  })
 }
 
 function buildFrozenRevision({
@@ -223,18 +255,10 @@ function buildFrozenRevision({
 
 function validateRevisionShape(value) {
   if (!isPlainObject(value) || !Object.isFrozen(value)) return false
-
-  const keys = Object.keys(value)
-  if (
-    keys.length !== REVISION_FIELDS.length ||
-    keys.some((key) => !REVISION_FIELDS.includes(key))
-  ) {
-    return false
-  }
-
+  if (!hasStrictRevisionRecordShape(value)) return false
   if (value.schemaVersion !== TEACHER_REVISION_SCHEMA_VERSION) return false
   if (!Object.values(TEACHER_REVISION_KIND).includes(value.revisionKind)) return false
-  if (!isDeepFrozen(value.content)) return false
+  if (!isDeepFrozenPlainData(value.content)) return false
 
   try {
     const revisionId = normalizeRequiredId(value.revisionId, 'revisionId')
