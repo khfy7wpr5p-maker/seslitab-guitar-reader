@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto'
 
 import {
+  AUDIVERIS_TRAINABILITY_REASON,
   AUDIVERIS_TRAINABILITY_STATUS,
   evaluateAudiverisTrainingCandidate,
   isAudiverisTrainingCandidate,
@@ -183,6 +184,23 @@ function strictFrozenRecord(value, fields) {
   })
 }
 
+function hasUniqueSupportedStrings(values, supportedValues) {
+  if (!strictFrozenArray(values)) return false
+  const seen = new Set()
+  for (const value of values) {
+    if (typeof value !== 'string' || !supportedValues.includes(value) || seen.has(value)) return false
+    seen.add(value)
+  }
+  return true
+}
+
+function isSorted(values) {
+  for (let index = 1; index < values.length; index++) {
+    if (values[index - 1].localeCompare(values[index], 'en') > 0) return false
+  }
+  return true
+}
+
 export function evaluateAudiverisEvidenceReadiness(candidate, evidenceEntries = []) {
   if (!isAudiverisTrainingCandidate(candidate)) {
     throw new TypeError('candidate must be a valid immutable Audiveris training candidate.')
@@ -267,21 +285,60 @@ export function isAudiverisEvidenceReadinessReport(value) {
   try {
     if (!strictFrozenRecord(value, REPORT_FIELDS)) return false
     if (value.schemaVersion !== AUDIVERIS_EVIDENCE_READINESS_SCHEMA_VERSION) return false
+    if (requiredString(value.candidateId, 'candidateId', 256) !== value.candidateId) return false
     if (!FINGERPRINT_RE.test(value.candidateFingerprint)) return false
     if (!Object.values(AUDIVERIS_EVIDENCE_READINESS_STATUS).includes(value.status)) return false
     if (!Object.values(AUDIVERIS_TRAINABILITY_STATUS).includes(value.trainabilityStatus)) return false
-    if (!strictFrozenArray(value.trainabilityReasons)) return false
-    if (!strictFrozenArray(value.verifiedEvidenceFields)) return false
-    if (!strictFrozenArray(value.missingEvidenceFields)) return false
-    if (!strictFrozenArray(value.rejections)) return false
-    if (!value.rejections.every((rejection) => strictFrozenRecord(rejection, REJECTION_FIELDS))) {
+    if (!hasUniqueSupportedStrings(
+      value.trainabilityReasons,
+      Object.values(AUDIVERIS_TRAINABILITY_REASON),
+    )) return false
+    if (!hasUniqueSupportedStrings(value.verifiedEvidenceFields, EVIDENCE_FIELDS)) return false
+    if (!hasUniqueSupportedStrings(value.missingEvidenceFields, EVIDENCE_FIELDS)) return false
+    if (!isSorted(value.verifiedEvidenceFields) || !isSorted(value.missingEvidenceFields)) return false
+    if (value.verifiedEvidenceFields.some((field) => value.missingEvidenceFields.includes(field))) {
       return false
     }
+    if (!strictFrozenArray(value.rejections)) return false
+    const rejectionKeys = new Set()
+    for (const rejection of value.rejections) {
+      if (!strictFrozenRecord(rejection, REJECTION_FIELDS)) return false
+      if (!Object.values(AUDIVERIS_EVIDENCE_REJECTION_REASON).includes(rejection.code)) return false
+      if (!EVIDENCE_FIELDS.includes(rejection.field)) return false
+      const key = `${rejection.field}:${rejection.code}`
+      if (rejectionKeys.has(key)) return false
+      rejectionKeys.add(key)
+    }
+    const sortedRejections = sortRejections(value.rejections)
+    if (!value.rejections.every((rejection, index) => (
+      rejection.field === sortedRejections[index].field &&
+      rejection.code === sortedRejections[index].code
+    ))) return false
+
+    const trainabilityConsistent = value.trainabilityStatus === AUDIVERIS_TRAINABILITY_STATUS.TRAINABLE
+      ? value.trainabilityReasons.length === 0
+      : value.trainabilityReasons.length > 0
+    if (!trainabilityConsistent) return false
+
     if (typeof value.eligibleForManifestReview !== 'boolean') return false
     if (value.eligibleForManifestReview !== (value.status === AUDIVERIS_EVIDENCE_READINESS_STATUS.ELIGIBLE)) {
       return false
     }
-    return true
+
+    if (value.status === AUDIVERIS_EVIDENCE_READINESS_STATUS.ELIGIBLE) {
+      return (
+        value.trainabilityStatus === AUDIVERIS_TRAINABILITY_STATUS.TRAINABLE &&
+        value.missingEvidenceFields.length === 0 &&
+        value.rejections.length === 0
+      )
+    }
+    if (value.status === AUDIVERIS_EVIDENCE_READINESS_STATUS.REJECTED) {
+      return value.rejections.length > 0
+    }
+    return value.rejections.length === 0 && (
+      value.trainabilityStatus === AUDIVERIS_TRAINABILITY_STATUS.INCOMPLETE ||
+      value.missingEvidenceFields.length > 0
+    )
   } catch {
     return false
   }
