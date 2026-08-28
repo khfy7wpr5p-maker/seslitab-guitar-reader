@@ -30,7 +30,7 @@ function noteSnapshot(midi = 60) {
 
 describe('Package 8-T1 teacher revision domain', () => {
   test('exports immutable revision vocabulary', () => {
-    assert.equal(TEACHER_REVISION_SCHEMA_VERSION, 1)
+    assert.equal(TEACHER_REVISION_SCHEMA_VERSION, 2)
     assert.equal(Object.isFrozen(TEACHER_REVISION_KIND), true)
     assert.deepEqual(TEACHER_REVISION_KIND, {
       AUTOMATIC: 'automatic',
@@ -54,6 +54,11 @@ describe('Package 8-T1 teacher revision domain', () => {
     assert.equal(revision.revisionId, 'rev-auto-1')
     assert.equal(revision.sourceRevisionId, 'rev-auto-1')
     assert.equal(revision.parentRevisionId, null)
+    assert.equal(revision.parentLineageFingerprint, null)
+    assert.match(
+      revision.lineageFingerprint,
+      /^lineage-fnv1a64-v1:[0-9a-f]{16}:\d+$/,
+    )
     assert.equal(Object.isFrozen(revision), true)
     assert.equal(Object.isFrozen(revision.content), true)
     assert.equal(Object.isFrozen(revision.content[0]), true)
@@ -70,7 +75,7 @@ describe('Package 8-T1 teacher revision domain', () => {
     assert.equal('approvalId' in revision, false)
   })
 
-  test('uses a deterministic content fingerprint independent of object key order', () => {
+  test('uses deterministic content and lineage fingerprints independent of object key order', () => {
     const first = createAutomaticRevision({
       revisionId: 'auto-a',
       sourceId: 'score-1',
@@ -81,7 +86,7 @@ describe('Package 8-T1 teacher revision domain', () => {
     })
 
     const second = createAutomaticRevision({
-      revisionId: 'auto-b',
+      revisionId: 'auto-a',
       sourceId: 'score-1',
       content: {
         title: 'Etüt',
@@ -90,7 +95,12 @@ describe('Package 8-T1 teacher revision domain', () => {
     })
 
     assert.equal(first.contentFingerprint, second.contentFingerprint)
+    assert.equal(first.lineageFingerprint, second.lineageFingerprint)
     assert.match(first.contentFingerprint, /^fnv1a64-v1:[0-9a-f]{16}:\d+$/)
+    assert.match(
+      first.lineageFingerprint,
+      /^lineage-fnv1a64-v1:[0-9a-f]{16}:\d+$/,
+    )
   })
 
   test('preserves an own __proto__ data key without changing object prototypes', () => {
@@ -130,10 +140,12 @@ describe('Package 8-T1 teacher revision domain', () => {
     assert.equal(isTeacherRevision(corrected), true)
     assert.equal(corrected.revisionKind, 'teacher_corrected')
     assert.equal(corrected.parentRevisionId, 'auto-1')
+    assert.equal(corrected.parentLineageFingerprint, automatic.lineageFingerprint)
     assert.equal(corrected.sourceRevisionId, 'auto-1')
     assert.equal(corrected.sourceId, 'score-1')
     assert.equal(corrected.content[0].midi, 61)
     assert.notEqual(corrected.contentFingerprint, automatic.contentFingerprint)
+    assert.notEqual(corrected.lineageFingerprint, automatic.lineageFingerprint)
     assert.deepEqual(automatic, parentBefore)
     assert.equal(automatic.content[0].midi, 60)
   })
@@ -156,8 +168,50 @@ describe('Package 8-T1 teacher revision domain', () => {
     })
 
     assert.equal(correction2.parentRevisionId, 'teacher-1')
+    assert.equal(correction2.parentLineageFingerprint, correction1.lineageFingerprint)
     assert.equal(correction2.sourceRevisionId, 'auto-1')
     assert.equal(correction2.sourceId, 'score-1')
+  })
+
+  test('recursive lineage changes when multi-hop revision ids and content are replayed', () => {
+    const automatic = createAutomaticRevision({
+      revisionId: 'auto-1',
+      sourceId: 'score-1',
+      createdAt: '2026-08-28T08:45:00Z',
+      content: noteSnapshot(60),
+    })
+    const r1 = createTeacherCorrectedRevision({
+      revisionId: 'r1',
+      parentRevision: automatic,
+      createdAt: '2026-08-28T08:46:00Z',
+      content: noteSnapshot(61),
+    })
+    const r2 = createTeacherCorrectedRevision({
+      revisionId: 'r2',
+      parentRevision: r1,
+      createdAt: '2026-08-28T08:47:00Z',
+      content: noteSnapshot(62),
+    })
+    const replayR1 = createTeacherCorrectedRevision({
+      revisionId: 'r1',
+      parentRevision: r2,
+      createdAt: r1.createdAt,
+      content: structuredClone(r1.content),
+    })
+    const replayR2 = createTeacherCorrectedRevision({
+      revisionId: 'r2',
+      parentRevision: replayR1,
+      createdAt: r2.createdAt,
+      content: structuredClone(r2.content),
+    })
+
+    assert.equal(replayR2.revisionId, r2.revisionId)
+    assert.equal(replayR2.parentRevisionId, r2.parentRevisionId)
+    assert.equal(replayR2.createdAt, r2.createdAt)
+    assert.equal(replayR2.contentFingerprint, r2.contentFingerprint)
+    assert.notEqual(replayR1.lineageFingerprint, r1.lineageFingerprint)
+    assert.notEqual(replayR2.lineageFingerprint, r2.lineageFingerprint)
+    assert.equal(replayR2.parentLineageFingerprint, replayR1.lineageFingerprint)
   })
 
   test('rejects reusing the original automatic revision identity later in a chain', () => {
@@ -248,6 +302,38 @@ describe('Package 8-T1 teacher revision domain', () => {
           content: noteSnapshot(61),
         }),
       /valid immutable teacher revision/,
+    )
+  })
+
+  test('rejects forged lineage metadata', () => {
+    const automatic = createAutomaticRevision({
+      revisionId: 'auto-1',
+      sourceId: 'score-1',
+      content: noteSnapshot(),
+    })
+    const corrected = createTeacherCorrectedRevision({
+      revisionId: 'teacher-1',
+      parentRevision: automatic,
+      content: noteSnapshot(61),
+    })
+
+    assert.equal(
+      isTeacherRevision(
+        Object.freeze({
+          ...corrected,
+          parentLineageFingerprint: 'lineage-fnv1a64-v1:0000000000000000:0',
+        }),
+      ),
+      false,
+    )
+    assert.equal(
+      isTeacherRevision(
+        Object.freeze({
+          ...corrected,
+          lineageFingerprint: 'lineage-fnv1a64-v1:0000000000000000:0',
+        }),
+      ),
+      false,
     )
   })
 

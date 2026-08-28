@@ -5,7 +5,7 @@
 // It establishes only the safe revision identity/snapshot boundary required
 // before correction, approval, undo, concurrency, or teacher UI can be added.
 
-export const TEACHER_REVISION_SCHEMA_VERSION = 1
+export const TEACHER_REVISION_SCHEMA_VERSION = 2
 
 export const TEACHER_REVISION_KIND = Object.freeze({
   AUTOMATIC: 'automatic',
@@ -19,8 +19,10 @@ const REVISION_FIELDS = Object.freeze([
   'sourceId',
   'sourceRevisionId',
   'parentRevisionId',
+  'parentLineageFingerprint',
   'createdAt',
   'contentFingerprint',
+  'lineageFingerprint',
   'content',
 ])
 
@@ -179,6 +181,29 @@ function fingerprintSnapshot(snapshot) {
   return `fnv1a64-v1:${fnv1a64(serialized)}:${serialized.length}`
 }
 
+function fingerprintLineage({
+  revisionId,
+  revisionKind,
+  sourceId,
+  sourceRevisionId,
+  parentRevisionId,
+  parentLineageFingerprint,
+  createdAt,
+  contentFingerprint,
+}) {
+  const serialized = stableSerialize({
+    revisionId,
+    revisionKind,
+    sourceId,
+    sourceRevisionId,
+    parentRevisionId,
+    parentLineageFingerprint,
+    createdAt,
+    contentFingerprint,
+  })
+  return `lineage-fnv1a64-v1:${fnv1a64(serialized)}:${serialized.length}`
+}
+
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
 
@@ -239,11 +264,22 @@ function buildFrozenRevision({
   sourceId,
   sourceRevisionId,
   parentRevisionId,
+  parentLineageFingerprint,
   createdAt,
   content,
 }) {
   const snapshot = cloneRevisionContent(content)
   const contentFingerprint = fingerprintSnapshot(snapshot)
+  const lineageFingerprint = fingerprintLineage({
+    revisionId,
+    revisionKind,
+    sourceId,
+    sourceRevisionId,
+    parentRevisionId,
+    parentLineageFingerprint,
+    createdAt,
+    contentFingerprint,
+  })
   deepFreeze(snapshot)
 
   return Object.freeze({
@@ -253,8 +289,10 @@ function buildFrozenRevision({
     sourceId,
     sourceRevisionId,
     parentRevisionId,
+    parentLineageFingerprint,
     createdAt,
     contentFingerprint,
+    lineageFingerprint,
     content: snapshot,
   })
 }
@@ -282,19 +320,38 @@ function validateRevisionShape(value) {
 
     if (value.revisionKind === TEACHER_REVISION_KIND.AUTOMATIC) {
       if (value.parentRevisionId !== null) return false
+      if (value.parentLineageFingerprint !== null) return false
       if (value.sourceRevisionId !== value.revisionId) return false
     } else {
       const parentRevisionId = normalizeRequiredId(
         value.parentRevisionId,
         'parentRevisionId',
       )
+      const parentLineageFingerprint = normalizeRequiredId(
+        value.parentLineageFingerprint,
+        'parentLineageFingerprint',
+      )
       if (parentRevisionId !== value.parentRevisionId) return false
+      if (parentLineageFingerprint !== value.parentLineageFingerprint) return false
       if (parentRevisionId === value.revisionId) return false
       if (sourceRevisionId === value.revisionId) return false
     }
 
     const snapshot = cloneRevisionContent(value.content)
-    if (fingerprintSnapshot(snapshot) !== value.contentFingerprint) return false
+    const contentFingerprint = fingerprintSnapshot(snapshot)
+    if (contentFingerprint !== value.contentFingerprint) return false
+
+    const lineageFingerprint = fingerprintLineage({
+      revisionId: value.revisionId,
+      revisionKind: value.revisionKind,
+      sourceId: value.sourceId,
+      sourceRevisionId: value.sourceRevisionId,
+      parentRevisionId: value.parentRevisionId,
+      parentLineageFingerprint: value.parentLineageFingerprint,
+      createdAt: value.createdAt,
+      contentFingerprint: value.contentFingerprint,
+    })
+    if (lineageFingerprint !== value.lineageFingerprint) return false
 
     return true
   } catch {
@@ -330,6 +387,7 @@ export function createAutomaticRevision({
     sourceId: normalizedSourceId,
     sourceRevisionId: normalizedRevisionId,
     parentRevisionId: null,
+    parentLineageFingerprint: null,
     createdAt: normalizeCreatedAt(createdAt),
     content,
   })
@@ -367,6 +425,7 @@ export function createTeacherCorrectedRevision({
     sourceId: parentRevision.sourceId,
     sourceRevisionId: parentRevision.sourceRevisionId,
     parentRevisionId: parentRevision.revisionId,
+    parentLineageFingerprint: parentRevision.lineageFingerprint,
     createdAt: normalizeCreatedAt(createdAt),
     content,
   })
