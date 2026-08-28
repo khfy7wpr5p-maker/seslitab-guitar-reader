@@ -17,6 +17,7 @@ import {
   isTeacherRevisionHistory,
 } from './teacherRevisionHistory.js'
 import {
+  TEACHER_CONCURRENCY_CONFLICT,
   TEACHER_CONCURRENCY_STATUS,
   appendTeacherApprovalWithExpectation,
   applyTeacherCorrectionWithExpectation,
@@ -333,6 +334,9 @@ export function parseTeacherEditableValue(descriptor, rawValue) {
   }
 
   if (descriptor.valueType === 'number') {
+    if (typeof rawValue === 'string' && rawValue.trim() === '') {
+      throw new TypeError('Numeric field requires a finite number.')
+    }
     const value = typeof rawValue === 'number' ? rawValue : Number(String(rawValue).trim())
     if (!Number.isFinite(value)) throw new TypeError('Numeric field requires a finite number.')
     return Object.is(value, -0) ? 0 : value
@@ -465,6 +469,14 @@ export function withTeacherWorkspaceAuthoritativeHistory({ workspace, history } 
 
 export function refreshTeacherWorkspace(workspace) {
   requireWorkspace(workspace)
+  if (
+    workspace.state === TEACHER_WORKSPACE_STATE.CONFLICT &&
+    (workspace.conflictReason === TEACHER_CONCURRENCY_CONFLICT.HISTORY_MISMATCH ||
+      workspace.conflictReason === TEACHER_CONCURRENCY_CONFLICT.SOURCE_MISMATCH)
+  ) {
+    throw new Error('Teacher workspace identity mismatch requires creating a new workspace.')
+  }
+
   return buildWorkspace({
     state: TEACHER_WORKSPACE_STATE.ACTIVE,
     actorId: workspace.actorId,
