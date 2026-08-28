@@ -1,19 +1,17 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 2.1.0  
+**Belge sürümü:** 2.2.0  
 **Güncelleme tarihi:** 2026-08-28  
-**Doğrulanan başlangıç main:** `c096f0daa43eb20c79fea46d1d76211b8fcb49dc`  
 **T1 kapanış main:** `218c3e18eed3a82861a4a1c24efd5458445ea9ca`  
 **T2 kapanış main:** `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
-**Durum:** Mevcut kod ve kapanmış paketlerle uzlaştırılmış mimari yönlendirme belgesi.
-
-Bu belge ürünün güncel mimarisini açıklar. Paket kapanış kanıtları için `docs/package-status.md` ve ilgili `docs/package-*-closure.md` belgeleri; güncel repository gerçeği için kaynak kod, testler ve fresh CI kanıtı esas alınır.
+**T3 final/hardened main:** `95f11139929d1e3d65bd6c295794c316bb04ca84`  
+**Durum:** Mevcut kod, review bulguları ve kapanmış paketlerle uzlaştırılmış mimari yönlendirme belgesi.
 
 ## 1. Değişmez ürün ilkesi
 
 SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir.
 
-Yapısal olarak geçerli MusicXML, müzikal doğruluk kanıtı değildir. Kaynakla doğrulanmamış veya kalite kapısında güvenli bulunmamış veri öğrenciye kesin doğru bilgi olarak sunulmamalıdır. Otomatik OMR verisi, öğretmen düzeltmesi ve öğretmen onayı birbirinden ayrı sürüm/kayıtlar olarak korunmalıdır.
+Yapısal olarak geçerli MusicXML, müzikal doğruluk kanıtı değildir. Kaynakla doğrulanmamış veya kalite kapısında güvenli bulunmamış veri öğrenciye kesin doğru bilgi olarak sunulmamalıdır. Otomatik kaynak, öğretmen düzeltmesi ve öğretmen onayı birbirinden ayrı, izlenebilir ve immutable kayıtlar olarak korunmalıdır.
 
 ## 2. Güncel ana veri akışı
 
@@ -23,267 +21,247 @@ PDF
   -> mevcut Audiveris provider/runtime
   -> MusicXML
 
-Doğrudan MusicXML -------------------------┐
-Guitar TAB metni ----------------------┐   │
-                                       │   │
-                                       v   v
-                              parse / normalize
-                                      |
-                                      v
-                         canonical NoteObject[]
-                    canonical pitch + timing identity
-                                      |
-                  +-------------------+-------------------+
-                  |                                       |
-                  v                                       v
-     structuralRhythmValidator                 qualityErrorReport
-                  |                                       |
-                  +-------------------+-------------------+
-                                      v
-                               appQualityGate
-                         ACCEPT / REVIEW / BLOCK
-                                      |
-       +----------------+-------------+-------------+----------------+
-       |                |             |             |                |
-       v                v             v             v                v
- rhythmic text/HTML   TTS/playback   MIDI       Basic Guitar TAB  Basic Violin
-                                      |
-                                      +-----------------------------+
-                                                                    |
-MusicXML <harmony> -> source-only chord parser/presentation/TTS <---+
+Doğrudan MusicXML / Guitar TAB
+  -> parse / normalize
+  -> canonical NoteObject[]
+  -> structuralRhythmValidator + qualityErrorReport
+  -> appQualityGate (ACCEPT / REVIEW / BLOCK)
+  -> rhythmic text/HTML, TTS/playback, MIDI, Basic Guitar TAB, Basic Violin
 
-Package 8 revision layer:
-AutomaticSourceRevision (immutable)
-  -> controlled replace-only correction operation(s)
-  -> TeacherCorrectedRevision (new immutable revision)
-  +-> TeacherCorrectionAuditEvent (separate immutable audit evidence)
-  -> validation/quality per revision
-  -> future T3 TeacherApprovalRecord bound to one exact revision/fingerprint
-  -> later Package 12 student sharing of approved exact revision only
+MusicXML <harmony>
+  -> source-only chord parser/presentation/TTS
+
+Package 8 domain layer
+  AutomaticSourceRevision (immutable)
+    -> controlled replace-only correction
+    -> TeacherCorrectedRevision (new immutable revision)
+       + TeacherCorrectionAuditEvent (separate immutable evidence)
+    -> TeacherApprovalRecord v2 (separate immutable approval evidence)
+       bound to exact revision identity + lineage + fingerprint
+    -> future T4 lossless history/undo
+    -> future T5 stale-base concurrency
+    -> future T6 accessible teacher UI
+    -> later Package 12 approved-revision sharing
 ```
 
 ## 3. Doğrulanmış mimari katmanlar
 
-### 3.1 Girdi ve OMR katmanı — korunacak mevcut bağlantı
+### 3.1 OMR katmanı — korunacak mevcut bağlantı
 
-Mevcut PDF yolu backend OMR gateway ve provider mimarisi üzerinden çalışır. Audiveris ana OMR motorudur. Package 1A/1B ve Package 2E kapsamında kuyruk, iptal/retry, dosya/XML güvenliği ve benchmark sınırları kapanmıştır.
+PDF yolu mevcut backend OMR gateway/provider mimarisini kullanır; Audiveris ana OMR motorudur.
 
-**Package 8 kapsamında ayrı izin olmadan değiştirilmeyecek alanlar:**
+Package 8 kapsamında ayrı izin olmadan değiştirilmeyecek alanlar:
 
-- `backend/` içindeki Audiveris provider/runtime/preflight davranışı
-- OMR worker/provider seçimi
-- Cloud OMR Gateway sözleşmeleri
-- üretim MusicXML OMR yolu
-- `Dockerfile`
-- `render.yaml`
-- mevcut Render servis bağlantısı ve deployment ayarları
+- `backend/` Audiveris provider/runtime/preflight;
+- OMR worker/provider seçimi;
+- Cloud OMR Gateway sözleşmeleri;
+- üretim MusicXML OMR yolu;
+- `Dockerfile`;
+- `render.yaml`;
+- mevcut Render servis/deployment bağlantısı.
 
-Yeni öğretmen çalışma katmanı OMR altyapısını yeniden yazmamalı veya Audiveris'e bağımlı yeni bir revision modeli oluşturmamalıdır. OMR yalnız otomatik kaynak verisini sağlar; Package 8 bunun üzerinde sürümleme/audit/onay sözleşmeleri kurar.
+Package 8 öğretmen katmanı bu altyapının üstünde çalışır; OMR mimarisini yeniden yazmaz.
 
-### 3.2 Canonical nota ve zaman modeli — Package 2A
+### 3.2 Canonical nota/zaman modeli — Package 2A
 
-Ana sözleşme `canonicalNoteModel.js` ve canonical consumer katmanları etrafında kuruludur. TTS, playback, validator, MIDI, TAB ve enstrüman tüketicileri birbirinden bağımsız pitch/timing hesabı üretmemelidir.
+Canonical `NoteObject[]` tüketiciler arasındaki ortak veri sınırıdır. Fiziksel ölçü kimliği, canonical pitch/time ve source-verification bilgisi korunur. Eksik nota/ritim icat edilmez.
 
-Temel kimlik ilkeleri:
+### 3.3 Yapısal doğrulama/kalite — Package 2B–2D
 
-- fiziksel ölçü kimliği `measureKey` / part + measure index ile korunur;
-- görünen ölçü numarası benzersiz kimlik değildir;
-- canonical event referansları tüketiciler arasında korunur;
-- eksik nota/ritim otomatik olarak icat edilmez;
-- kaynak doğrulama durumu müzikal doğrulukla eş anlamlı değildir.
+- `structuralRhythmValidator.js`
+- `qualityErrorReport.js`
+- `appQualityGate.js`
+- canonical consumer policy/bindings
 
-### 3.3 Yapısal doğrulama ve kalite — Package 2B–2D
-
-- `src/services/structuralRhythmValidator.js`: yapısal ve ritmik bulgular
-- `src/services/qualityErrorReport.js`: hata/kalite raporu
-- `src/services/appQualityGate.js`: tüketici bazlı fail-closed karar
-- `canonicalConsumerPolicy.js` / `canonicalConsumerBindings.js`: canonical tüketici sınırları
-
-Kalite kapısı öğretmen onayının yerine geçmez. `ACCEPT`, yalnız mevcut otomatik tüketim sözleşmesi açısından gerekli yapısal/kaynak koşullarının karşılandığını gösterir; öğretmen tarafından onaylanmış anlamına gelmez.
+Quality-gate `ACCEPT` öğretmen onayı değildir ve T3 bunu değiştirmez.
 
 ### 3.4 OMR benchmark — Package 2E
 
-Benchmark altyapısı farklı giriş/preprocessing varyantlarını ölçmek için izole edilmiştir. Üretim OMR hattını otomatik olarak değiştirmez, farklı OMR sonuçlarından nota birleştirmez ve universal accuracy iddiası üretmez.
+İzole ölçüm/evidence katmanıdır; üretim OMR hattını otomatik değiştirmez ve universal accuracy iddiası üretmez.
 
-### 3.5 Playback, ölçü seçimi ve MIDI — Package 3
+### 3.5 Playback, ölçü seçimi, MIDI — Package 3
 
-Doğrulanmış davranışlar:
-
-- tam eser için `Müziği Dinle`;
-- tek aktif playback oturumu;
-- canonical `measureKey` ile ölçü seçimi;
-- Ritimli HTML içinde erişilebilir ölçü kontrolleri;
-- seçili ölçüde TTS/playback;
-- quality-gated deterministic SMF0 MIDI export.
+Canonical measure identity, selected-measure TTS/playback ve quality-gated deterministic MIDI doğrulanmıştır.
 
 ### 3.6 Basic Guitar TAB — Package 4
 
-```text
-canonical NoteObject[]
-  -> GUITAR_TAB quality gate
-  -> guitarPositionResolver.js
-  -> guitarBasicPositionPolicy.js
-  -> guitarBasicTabProjection.js
-  -> deterministic renderer/consumer
-  -> src/package4Ui.js
-```
-
-Bu motor yalnız güvenli temel kapsamı temsil eder. Çok sesli/pedagojik gelişmiş çözüm Package 9 kapsamındadır. Otomatik sonuç öğretmen onayı değildir.
+Conservative quality-gated basic projection/rendering kullanılır. Polyphonic/pedagojik gelişmiş Guitar TAB Package 9'a aittir.
 
 ### 3.7 Basic Violin — Package 5
 
-İlk pozisyon, konservatif ve quality-gated keman yönlendirmesi mevcuttur. Gelişmiş pozisyonlar, alternatifler ve çift sesler Package 10 kapsamındadır.
+Conservative first-position quality-gated yönlendirme vardır. Advanced violin Package 10'a aittir.
 
-### 3.8 MusicXML harmony ve akor sunumu — Package 6–7
+### 3.8 Harmony/chord — Package 6–7
 
-Package 6/7 yalnız kaynak MusicXML `<harmony>` verisini işler. Nota içeriğinden akor tahmini yapmaz.
+Yalnız MusicXML `<harmony>` source evidence işlenir; nota içeriğinden akor tahmini yapılmaz.
 
-- source-only harmony parsing/normalization
-- `src/services/chordPresentation.js`
-- `src/services/chordSourceConsumer.js`
-- `src/services/chordTtsConsumer.js`
-- `src/package7Ui.js`
+## 4. Package 8 — teacher revision/correction/approval mimarisi
 
-Hazır akor çıktısı öğretmen onaylı veya definitive değildir.
+Package 8 mutable bir “correction engine” olarak otomatik kaynağın üstüne yazmaz. Doğrulanmış sınır immutable revision + ayrı correction audit + ayrı approval evidence modelidir.
 
-## 4. Package 8 — öğretmen düzeltme ve onay katmanının mimari yeri
+### 4.1 T1 — revision domain (Completed)
 
-Package 8 mevcut canonical modeli veya OMR sonucunu yerinde değiştiren mutable bir `Teacher Correction Engine` olmamalıdır. Güvenli sınır immutable revision + ayrı audit + ayrı approval modelidir.
+T1 sağlar:
 
-### 4.1 T1 + T2 ile doğrulanmış mevcut sınır
+- immutable `automatic` ve `teacher_corrected` revision records;
+- exact parent/root-source lineage;
+- deterministic `contentFingerprint`;
+- strict frozen plain-data snapshots;
+- approval-field injection rejection.
 
-```text
-AutomaticSourceRevision (immutable)
-        |
-        |  applyTeacherCorrectionBatch
-        |  replace_value / existing path only
-        v
-TeacherCorrectedRevision #1 (immutable)
-        +------------------------------+
-        |                              |
-        v                              v
-validator / quality           TeacherCorrectionAuditEvent
-per exact revision             (separate, immutable)
-        |
-        | future T3 explicit approval action
-        v
-TeacherApprovalRecord
-bound to exact source + revisionId + contentFingerprint
-```
+Önemli sınır: T1 immediate parent ve root-source revision ID reuse'u engeller; bütün tarih boyunca ara revision ID'lerinin global uniqueness'ını tek başına garanti etmez.
 
-T1/T2 ile doğrulanmış kurallar:
-
-1. Otomatik kaynak sürümü immutable kalır.
-2. Düzeltme yeni revision üretir; parent/otomatik sürümün üstüne yazılmaz.
-3. Her revision exact parent ve root source lineage taşır.
-4. T2 yalnız var olan path üzerinde `replace_value` uygular; insertion/delete yapmaz.
-5. Aynı batch içinde duplicate ID, overlapping/same-target path ve no-op fail closed olur.
-6. `__proto__`, `constructor`, `prototype` correction target olarak reddedilir.
-7. `-0` ve `0` aynı array target olarak canonicalize edilir.
-8. Correction audit event revision'dan ayrıdır ve before/after + exact parent/result fingerprint kaydeder.
-9. Correction audit event approval değildir.
-10. Unsafe/non-deterministic data correction ve audit validation sınırında reddedilir.
-
-### 4.2 T3 için henüz uygulanmamış approval sınırı
-
-T3 aşağıdaki mimariyi tamamlayacak ilk aşamadır:
+### 4.2 T2 — controlled corrections (Completed)
 
 ```text
-TeacherCorrectedRevision R1
-   + exact source identity
-   + revisionId R1
-   + contentFingerprint F1
-              |
-              | explicit teacher approval
-              v
-TeacherApprovalRecord A1
-   bound to (source, R1, F1)
-
-TeacherCorrectedRevision R2
-   revisionId R2 / fingerprint F2
-              |
-              +--> A1 does NOT apply automatically
+ParentRevision
+  -> applyTeacherCorrectionBatch
+  -> replace_value / existing path only
+  -> NewTeacherCorrectedRevision
+  +-> TeacherCorrectionAuditEvent
 ```
 
-T3 kuralları:
+Doğrulanmış kurallar:
 
-1. Approval revision içine mutable flag olarak eklenmemelidir.
-2. Approval ayrı immutable record olmalıdır.
-3. Approval exact source/revision/fingerprint üçlüsüne bağlanmalıdır.
-4. Yeni revision oluşunca eski approval record mutasyona uğramamalı; yeni revision için yalnız `not applicable` olmalıdır.
-5. Quality-gate `ACCEPT` approval'a otomatik çevrilmemelidir.
-6. Approval kritik yapısal/quality güvenlik mekanizmasını bypass etmemelidir.
-7. Authentication/authorization ile approval-domain kaydı karıştırılmamalıdır; kimlik caller-supplied evidence olabilir ancak auth henüz ayrı bir ürün katmanıdır.
-8. Package 12 öğrenci paylaşımı T3'te aktive edilmemelidir.
+- insertion/delete yok;
+- parent overwrite yok;
+- duplicate operation ID / overlap / no-op fail closed;
+- prototype-sensitive paths reddedilir;
+- `-0`/`0` aynı array target'tır;
+- unsafe audit/correction data reddedilir;
+- correction approval değildir.
 
-### 4.3 Sonraki aşamalar
+### 4.3 T3 — exact revision approval (Completed after review hardening)
 
-- **8-T1 — Revision domain contract: COMPLETED.**
-- **8-T2 — Controlled correction operations: COMPLETED.**
-- **8-T3 — Approval binding/invalidation: NEXT.**
-- **8-T4 — Undo/version history:** kayıpsız tarihçe ve geri alma.
-- **8-T5 — Optimistic concurrency:** stale base revision conflict.
-- **8-T6 — Accessible teacher UI:** önceki domain/history/concurrency katmanları kanıtlandıktan sonra arayüz.
+Final schema: **TeacherApprovalRecord v2**.
 
-Ayrı **Package 8B — Audiveris training dataset** bu T1–T6 alt aşamalarından farklıdır ve T3 kapsamına alınmamalıdır.
+```text
+Revision R1
+  sourceId = S
+  sourceRevisionId = A0
+  revisionId = R1
+  revisionKind = teacher_corrected
+  parentRevisionId = A0
+  revision.createdAt = T1
+  contentFingerprint = F1
+        |
+        | explicit teacher approval
+        v
+Approval A1
+  bound to (S, A0, R1, kind, parent, T1, F1)
+```
 
-## 5. Güvenlik bağımlılıkları
+Applicability vocabulary:
+
+- `APPROVED_EXACT_REVISION`
+- `NOT_APPLICABLE_TO_REVISION`
+
+Approval exact olarak şu yedi boyuta bağlanır:
+
+1. `sourceId`
+2. root `sourceRevisionId`
+3. exact `revisionId`
+4. exact `revisionKind`
+5. exact `parentRevisionId`
+6. exact revision `createdAt`
+7. exact `contentFingerprint`
+
+### 4.4 P1 review hardening neden gerekliydi
+
+İlk T3 PR #91 dört boyut kullanıyordu: source, root-source revision, revision ID ve fingerprint. Docs closure PR #92 review'ında şu geçerli risk bulundu:
+
+```text
+A0 -> R1 (approved) -> R2 -> later R1 id reused + R1 content restored
+```
+
+T1 ara ancestor ID'nin daha sonra tekrar kullanılmasını global olarak engellemediği için dört alan aynı hale getirilebilirdi. Bu, eski approval'ın yeni revision için yanlışlıkla geçerli görünmesine yol açabilirdi.
+
+PR #92 merge edilmeden kapatıldı. PR #93 approval schema'yı v2 yaptı ve parent lineage + revision kind + revision timestamp'i exact binding'e ekledi. Regression testi ayrıca eski timestamp ve içeriği kasıtlı olarak geri getirerek saldırı senaryosunu doğrular; farklı parent lineage nedeniyle yeni kayıt `NOT_APPLICABLE_TO_REVISION` kalır.
+
+### 4.5 Approval sınırı
+
+T3 approval:
+
+- revision içine mutable flag eklemez;
+- eski approval record'u invalidate etmek için mutate/delete etmez;
+- quality-gate `ACCEPT` değildir;
+- authentication/authorization kanıtı değildir;
+- `shareAllowed`/`safeToShare` üretmez;
+- Package 12 student sharing'i aktive etmez;
+- fingerprint'i cryptographic authorization olarak kullanmaz.
+
+## 5. Sonraki Package 8 aşamaları
+
+- **8-T1 — Completed**
+- **8-T2 — Completed**
+- **8-T3 — Completed after review hardening**
+- **8-T4 — NEXT / Not started:** lossless undo/version history
+- **8-T5 — Not started:** optimistic concurrency / stale-base conflict
+- **8-T6 — Not started:** accessible teacher UI
+
+Package 8B — Audiveris training dataset — ayrı ve daha sonraki roadmap paketidir.
+
+### T4 mimari sınırı
+
+T4 historical revision/audit/approval records üzerinde lossless history kurmalıdır. Undo:
+
+- historical revision bytes'ı overwrite/delete etmemeli;
+- duplicate veya contradictory revision identity'yi fail closed ele almalı;
+- broken ancestry/cross-source history'yi reddetmeli;
+- T3 approval'ı sessizce restore/icat etmemeli;
+- T5 concurrency veya T6 UI davranışını erken eklememelidir.
+
+## 6. Güvenlik bağımlılıkları
 
 | Tüketici / özellik | Canonical | Quality gate | Teacher approval |
 |---|---:|---:|---:|
-| Öğretmen tarafı inceleme görüntüsü | Evet | Uyarı/engelleme semantiği | Hayır |
-| Tam eser playback/TTS | Evet | Evet | Mevcut ürün akışında zorunlu değil |
-| MIDI export | Evet | Evet | Öğrenci paylaşımı için ayrıca gerekir |
-| Basic Guitar TAB | Evet | Evet | Otomatik öneri için hayır; öğrenci paylaşımı için evet |
-| Basic Violin | Evet | Evet | Otomatik öneri için hayır; öğrenci paylaşımı için evet |
-| Chord source display/TTS | Kaynak + canonical bağ | Fail-closed source state | Öğrenci paylaşımı için evet |
+| Öğretmen inceleme | Evet | Uyarı/engelleme | Hayır |
+| Playback/TTS | Evet | Evet | Mevcut akışta zorunlu değil |
+| MIDI export | Evet | Evet | Öğrenci paylaşımında ayrıca gerekir |
+| Basic Guitar TAB | Evet | Evet | Otomatik öneri için hayır; paylaşım için evet |
+| Basic Violin | Evet | Evet | Otomatik öneri için hayır; paylaşım için evet |
+| Chord source display/TTS | Kaynak/canonical | Fail-closed source state | Paylaşım için evet |
 | Package 12 student sharing | Evet | Evet | **Evet, exact revision** |
 
-## 6. Veri sahipliği ve mutasyon sınırı
+## 7. Veri sahipliği / mutasyon sınırı
 
-Aşağıdaki veriler yerinde overwrite edilmemelidir:
+Yerinde overwrite edilmemeli:
 
-- orijinal PDF;
-- orijinal OMR sonucu / `.omr`;
-- otomatik MusicXML;
-- otomatik canonical/source revision;
-- teacher-corrected revision'lar;
-- teacher correction audit event'leri;
-- gelecekteki teacher approval record'ları.
+- original PDF;
+- original OMR / `.omr`;
+- automatic MusicXML/canonical source;
+- automatic revision;
+- teacher-corrected revisions;
+- correction audit events;
+- teacher approval records.
 
-Yeni bir düzeltme mevcut veri nesnesinin güvenilirlik/approval alanını sessizce değiştirmek yerine yeni, izlenebilir bir revision üretmelidir.
+T4 history de bu kayıtları lossless korumalıdır.
 
-## 7. Erişilebilirlik sınırı
+## 8. Erişilebilirlik sınırı
 
-Yeni öğretmen arayüzü eklenmeden önce domain kuralları testlerle kapanmalıdır. Arayüz geldiğinde:
+Teacher UI T6'dır. UI başlamadan domain/history/concurrency sözleşmeleri kapanmalıdır. Gelecekte native controls, keyboard erişimi, screen-reader eşdeğer durum bilgisi ve yalnız-renk olmayan hata/onay anlatımı korunmalıdır.
 
-- klavye ile tam kullanılabilir olmalı;
-- native controls tercih edilmeli;
-- değişiklik/onay/iptal durumları erişilebilir live-region ile bildirilmelidir;
-- ekranda görülen revision/onay durumu ile ekran okuyucunun söylediği durum aynı kaynaktan üretilmelidir;
-- kritik veya onaysız içerik yalnız renkle ifade edilmemelidir.
+## 9. Repository sınırları
 
-## 8. Repository sınırları
-
-- Frontend orchestration/UI: `src/`, `main.js`, `index.html`
-- Canonical/parser/theory çekirdekleri: root-level music modules + `src/services/`
-- Teacher revision/correction domain: `src/services/teacherRevisionModel.js`, `src/services/teacherCorrectionOperations.js`
+- Frontend/UI: `src/`, `main.js`, `index.html`
+- Canonical/parser/theory: root modules + `src/services/`
+- Teacher domain:
+  - `src/services/teacherRevisionModel.js`
+  - `src/services/teacherCorrectionOperations.js`
+  - `src/services/teacherApprovalModel.js`
 - Backend OMR/API: `backend/`
 - Tests: `tests/`
 - CI: `.github/workflows/`
 - Deployment: `Dockerfile`, `render.yaml`
-- Mimari/status belgeleri: `docs/`
+- Docs: `docs/`
 
-Package 8-T2 protected main üzerinde tamamlandı. Sıradaki 8-T3 aşaması yalnız exact-revision approval binding/invalidation domain sınırında kalmalıdır; backend, OMR, Audiveris, deployment veya mevcut Render bağlantısına değişiklik gerektirmemelidir.
+## 10. Verified T3 final baseline
 
-## 9. Mevcut durum
+- initial PR #91 / exact-head CI #233 / main CI #234: green but later review showed closure gap;
+- superseded docs PR #92: closed unmerged after valid P1;
+- final hardening PR #93 head: `ee215d3c1d53e2bb7a7323387c02a79223643e46`;
+- exact-head CI #236: SUCCESS;
+- final protected main: `95f11139929d1e3d65bd6c295794c316bb04ca84`;
+- exact-main CI #237: **1151/1151 tests, 232 suites, 0 failures/skips/cancels, 0 vulnerabilities, build PASS**.
 
-- Package 0–7: **Completed**.
-- Package 8: **Partially implemented** — **8-T1 Completed, 8-T2 Completed; 8-T3 next**.
-- Package 8-T4..T6: Not started.
-- Package 8B, 9–13: Not started.
-- Package 14: Partially implemented.
-
-T2 kapanış kanıtı: protected main `f6d80b4614654ee63a4fd2d51101e4961476a1ee`; exact-main CI #230 başarılıdır: 1136/1136 test, 231 suite, 0 fail/skipped/cancelled, audit 0 vulnerabilities ve production build PASS.
-
-Bu belge gelecekteki implementasyon için sınırsız izin belgesi değildir. Her yeni aşama fresh-read, ayrı branch, focused test, tam regression, review çözümü ve production build kanıtı ile yürütülmelidir.
+Package 8 remains **Partially implemented**. T4 is the next stage but is not started by this documentation closure.
