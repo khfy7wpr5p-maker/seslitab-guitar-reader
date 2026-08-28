@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-28
-Implementation baseline reviewed: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
+Implementation baseline reviewed: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
 
 This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main GitHub workflow evidence are satisfied. Dedicated closure documents remain authoritative for detailed evidence.
 
@@ -16,6 +16,7 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 3 documentation closure: `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 / `33104428265` succeeded with 898/898 tests, 229 suites, audit 0 and production build PASS.
 - Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 and production build PASS.
 - Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 / `33119971061` succeeded with 1031/1031 tests, 229 suites, audit 0 and production build PASS.
+- Package 6 implementation baseline: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; exact-main CI #184 / `33124708562` succeeded with 1057/1057 tests, 229 suites, audit 0 and production build PASS.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -38,8 +39,8 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 3G — Real MIDI | Completed | PR #57; dependency-free deterministic SMF0 export is quality-gated. Package 3 closure PR #58 merged as `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 succeeded. |
 | 4 — Basic Guitar TAB | Completed | PRs #59–#64 implement candidates → deterministic basic policy → conservative projection → ASCII renderer → Package 2D-gated production consumer → accessible result UI. Final implementation main `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 passed 961/961 tests, 229 suites, audit 0 and build PASS. |
 | 5 — Basic violin | Completed | PRs #66–#68 and #71–#73 implement first-position physical candidates → conservative finger-zone policy → fail-closed projection → Package 2D VIOLIN gate → production consumer → accessible result UI. Final implementation main `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 passed 1031/1031 tests, 229 suites, audit 0 and build PASS. `docs/package-5-closure.md` defines the conservative scope. |
-| 6 — Chord-symbol parser | Not started | No verified MusicXML harmony package. |
-| 7 — Chord display and Turkish TTS | Not started | No verified shared chord display/TTS package. |
+| 6 — Chord-symbol parser | Completed | PR #75 implements isolated source-only MusicXML `<harmony>` parsing, deterministic basic chord-symbol normalization, physical identity/timing preservation and fail-closed unsupported harmony handling. Implementation main `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; exact-main CI #184 passed 1057/1057 tests, 229 suites, audit 0 and build PASS. `docs/package-6-closure.md` defines the scope and closure evidence. |
+| 7 — Chord display and Turkish TTS | Not started | Package 6 provides source chord evidence; no verified shared accessible chord display/TTS package yet. |
 | 8 — Teacher correction and approval | Not started | Teacher correction, revision history and approval remain product requirements. |
 | 8B — Audiveris training dataset | Not started | No teacher-approved reproducible training-dataset package. |
 | 9 — Advanced Guitar TAB | Not started | Chord/polyphonic/pedagogical fingering remains intentionally outside Package 4. |
@@ -59,16 +60,29 @@ Authoritative detail: `docs/package-5-closure.md` plus Package 5A–5F stage doc
 - 5D PR #71 → merge `a01793e4d0f00ff83fd8e71979da6ef7eb6a1051`
 - 5E PR #72 → merge `e1116b1e1139fb701ee8c5c09a12ec6d9cc4d1b1`
 - 5F PR #73 → merge `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
-- 5F accepted head after review fixes: `1ffb3bf2e5d78f90ac37ea27b4f3e322fe4e833f`
 - implementation exact-main CI #177 / `33119971061`: success
 - full regression: 1031/1031; 229 suites; 0 failed/skipped/cancelled
 - dependency audit: 120 packages audited; 0 vulnerabilities
 - production build: PASS with Vite 8.2.0
-- production Audiveris/OMR/E2E changes in Package 5: none intended
-- external violin dependency additions: none
+
+## Package 6 closure evidence
+
+Authoritative detail: `docs/package-6-closure.md` and `docs/package-6-chord-symbol-parser.md`.
+
+- Package 6 implementation PR #75
+- accepted review-fixed head: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`
+- implementation merge: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
+- exact-head CI #183 / `33124475810`: success
+- implementation exact-main CI #184 / `33124708562`: success
+- full regression: 1057/1057; 229 suites; 0 failed/skipped/cancelled
+- dependency audit: 120 packages audited; 0 vulnerabilities
+- production build: PASS with Vite 8.2.0; 49 modules transformed
+- two valid review findings on divisions handling were fixed before merge and covered by dedicated regression tests
+- production Audiveris/OMR/gateway/E2E edits: none
+- UI/TTS edits: none; those remain Package 7
 - deployment: not performed
 
-Package 5 completion is limited to conservative **basic monophonic first-position violin guidance**. It does not claim teacher-approved or pedagogically optimal fingering. Cross-string choices such as D4, A4 and E5 remain review-required when more than one supported first-position string is physically valid. Advanced positions, double stops, polyphony and multi-part/staff material remain outside Package 5.
+Package 6 is source-only: it parses explicit MusicXML harmony evidence and does not infer chords from note content, claim OMR correctness, claim teacher approval, or implement chord presentation/TTS.
 
 ## Interpretation rules
 
