@@ -7,6 +7,7 @@
 
 import { validateMusicXmlStructuralRhythm } from './musicXmlStructuralValidation.js'
 import { buildQualityErrorReport } from './qualityErrorReport.js'
+import { registerMusicXmlSourceForNotes } from './musicXmlSourceRegistry.js'
 import {
   QUALITY_GATE_DECISION,
   registerQualityReportForNotes,
@@ -46,12 +47,22 @@ function failClosedReport(notes) {
  * Build and register a report for the exact canonical array shown by the app.
  * Validation failures become an unreliable fail-closed report; they are never
  * silently downgraded to a missing-report REVIEW state.
+ *
+ * Package 7C additionally records the exact raw MusicXML string against the
+ * same NoteObject[] identity. The registry is read-only evidence handoff only;
+ * it does not alter quality decisions or promote source correctness.
  */
 export function prepareMusicXmlQualityGate(notes, musicXmlString) {
   if (!Array.isArray(notes)) {
     throw new TypeError('Quality gate requires a NoteObject array.')
   }
   if (typeof musicXmlString !== 'string' || musicXmlString.trim() === '') {
+    return failClosedReport(notes)
+  }
+
+  try {
+    registerMusicXmlSourceForNotes(notes, musicXmlString)
+  } catch {
     return failClosedReport(notes)
   }
 
