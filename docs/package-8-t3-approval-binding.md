@@ -1,18 +1,18 @@
 # Package 8-T3 — Exact-Revision Teacher Approval Binding
 
-Status: **Implementation candidate; closure requires protected-main merge plus exact-main CI.**
+Status: **Completed and protected-main verified.**
 
-Baseline: `c426325af2ddeca9ae2341449f365f3667aaa3f0`.
+Implementation baseline: `c426325af2ddeca9ae2341449f365f3667aaa3f0`.  
+Final feature head: `d1805c054e490e71e3d266471ad158defbcd49e1`.  
+Protected-main implementation merge: `70a02589206eeea9c3defec4d5f544e9222cbe3a`.
 
 ## Purpose
 
 Package 8-T3 records an explicit teacher approval as a separate immutable domain record bound to one exact Package 8-T1 revision.
 
-The project source rule is preserved directly:
+The project source rule is preserved directly: teacher approval records which version was approved, and a later data change makes that previous approval non-applicable to the changed/new version.
 
-> Teacher approval must record which version was approved, and a later data change makes that previous approval invalid for the changed version.
-
-T3 therefore does not add a mutable `teacherApproved` flag to revision content. Historical approval evidence stays immutable; applicability is recalculated against the candidate revision.
+T3 therefore does not add a mutable `teacherApproved` flag to revision content. Historical approval evidence stays immutable; applicability is evaluated against the candidate revision.
 
 ## Public contract
 
@@ -62,7 +62,7 @@ A later corrected revision therefore does not inherit approval even if:
 - it descends from the approved revision; or
 - its content happens to produce the same fingerprint.
 
-The historical approval record is not mutated or deleted. This keeps version history possible for T4 while satisfying the rule that approval becomes invalid for changed/new revision data.
+The historical approval record is not mutated or deleted. This preserves lossless history for T4 while satisfying the rule that approval does not carry into changed/new revision data.
 
 ## Automatic versus corrected revisions
 
@@ -87,7 +87,7 @@ Later Package 12 must separately require the appropriate quality/safety evidence
 
 `contentFingerprint` remains the deterministic T1 drift/version token. It is not a cryptographic signature, actor authentication mechanism or authorization credential.
 
-A syntactically valid caller-constructed approval record with a different fingerprint is therefore recognized as a structurally valid record but evaluates as not applicable to the real revision.
+A syntactically valid caller-constructed approval record with a different fingerprint is therefore structurally recognizable but does not apply to the real revision.
 
 ## Fail-closed rules
 
@@ -104,9 +104,9 @@ T3 rejects or refuses to recognize:
 
 Applicability evaluation throws for invalid approval/revision inputs rather than treating invalid evidence as a normal non-applicable record.
 
-## Tests
+## Verified tests
 
-Focused tests cover:
+Focused tests cover and pass:
 
 - immutable approval/applicability vocabulary;
 - exact binding to corrected revision;
@@ -123,11 +123,22 @@ Focused tests cover:
 - fail-closed evaluator inputs;
 - absence of quality/authorization/sharing claims.
 
-Full repository regression and production build are mandatory before merge.
+## Closure evidence
+
+- PR: **#91 — Package 8-T3: bind teacher approval to exact revision**
+- final PR head: `d1805c054e490e71e3d266471ad158defbcd49e1`
+- exact-head CI: **#233 / run `33164496653`, job `98826560680` — SUCCESS**
+- review threads at merge gate: **none**
+- protected-main squash merge: `70a02589206eeea9c3defec4d5f544e9222cbe3a`
+- exact-main CI: **#234 / run `33164575331`, job `98826810765` — SUCCESS**
+- exact-main result: **1150/1150 tests PASS; 232 suites; 0 fail/skipped/cancelled**
+- dependency audit: **0 vulnerabilities**
+- production build: **PASS**
+- Vite 8.2.0; 55 modules transformed
 
 ## Protected boundaries
 
-T3 must not modify:
+T3 did not modify:
 
 - `backend/`;
 - Audiveris provider/runtime/preflight;
@@ -140,11 +151,15 @@ T3 must not modify:
 - dependencies;
 - CI workflows.
 
-## Explicitly deferred
+Existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions passed on exact-main CI #234.
 
-- **8-T4:** undo/version-history storage
+## Explicitly deferred / next
+
+- **8-T4 — NEXT:** undo/version-history storage
 - **8-T5:** optimistic concurrency/stale-base conflict
 - **8-T6:** accessible teacher UI
 - **8B:** Audiveris training dataset
 - **12:** teacher-to-student sharing
 - authentication/authorization implementation
+
+Package 8 remains **Partially implemented** until its remaining required stages are verified.
