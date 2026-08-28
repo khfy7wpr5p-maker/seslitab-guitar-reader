@@ -1,9 +1,9 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-28  
-Implementation baseline reviewed: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
-Current package state: **Package 6 implementation is verified on protected main; documentation closure is still pending.**
-Next strict roadmap transition: **Package 7 may start only after Package 6 closure PR merge and exact merged-main `test-and-build` success.**
+Verified protected-main closure baseline: `99232915ebcd5089055d0f8695b6c1b08c697739`
+Current package closure: **Package 6 — MusicXML Chord-Symbol Parser completed.**
+Next strict roadmap package: **Package 7 — Chord display and Turkish TTS.**
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build or GitHub Actions result.
 
@@ -57,30 +57,44 @@ The repository currently contains verified foundations for:
 - Quality-gated deterministic Basic Guitar TAB text for supported accepted canonical MusicXML data
 - Quality-gated Basic Violin first-position tel/parmak guidance for supported accepted canonical MusicXML data
 
-Package 6 currently provides internal parsed chord-symbol evidence. Chord presentation and Turkish chord TTS are not yet exposed as a verified product output; those belong to Package 7 and remain blocked until Package 6 closure completes.
+Package 6 provides internal parsed source chord-symbol evidence. Chord presentation and Turkish chord TTS are the next Package 7 work and are not yet claimed as verified product outputs.
 
-## Package 6 implementation status
+## Package 6 closure
 
-Package 6 implementation PR #75 is merged on protected main.
+Package 6 implementation PR #75 merged as:
+`4417a32f3ddaa46dacf149dc1317f6a83d19403c`
 
-Accepted review-fixed head: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`  
-Implementation main: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
+Accepted implementation head after review fixes:
+`3bb822d2df750079359c2c8c9e43060f6b0fedd2`
 
-Exact implementation-main CI #184 / `33124708562` succeeded:
+Implementation exact-main CI #184 / `33124708562` succeeded with:
 
-- exact `head_sha`: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
-- required job: `98699924529` / `test-and-build`
-- tests: 1057 / 1057 passed
-- suites: 229
-- failed/skipped/cancelled: 0 / 0 / 0
+- 1057 / 1057 tests PASS
+- 229 suites
 - 120 packages audited
-- vulnerabilities: 0
-- Node: 24.19.0
-- npm: 11.17.0
-- Vite 8.2.0 production build: PASS
-- transformed modules: 49
+- 0 vulnerabilities
+- Vite 8.2.0 production build PASS
+- 49 modules transformed
 
-Verified implementation behavior includes:
+Package-level documentation closure PR #76 used accepted head:
+`bf91a58951cbef79842b093656d3e75f61cb71b9`
+
+Closure merge on protected main:
+`99232915ebcd5089055d0f8695b6c1b08c697739`
+
+Exact closure-main CI #188 / `33142995146`, job `98757771854` / `test-and-build`, succeeded with:
+
+- 1057 / 1057 tests PASS
+- 229 suites
+- 0 failed / skipped / cancelled
+- 120 packages audited
+- 0 vulnerabilities
+- Vite 8.2.0 production build PASS
+- 49 modules transformed
+
+This evidence satisfies the Package 6 closure gate. The present reconciliation only records that already-achieved state; it does not create a new closure gate.
+
+Verified Package 6 behavior includes:
 
 - source-only parsing of explicit MusicXML `<harmony>` evidence;
 - deterministic normalization of supported basic chord symbols such as `C`, `Am`, `G7`, slash chords and `N.C.`;
@@ -94,23 +108,10 @@ Verified implementation behavior includes:
 - valid mid-measure divisions changes preserve elapsed beat position;
 - malformed explicit divisions invalidate stale inherited timing.
 
-Two valid review findings on divisions handling were fixed before PR #75 merged and have dedicated regression coverage.
-
 Detailed evidence:
 
 - `docs/package-6-chord-symbol-parser.md`
-- `docs/package-6-closure.md` (closure candidate until the documentation PR and its exact-main CI complete)
-
-## Package 6 closure gate still open
-
-Package 6 is **not yet marked Completed** in this branch because the package-level documentation closure must itself:
-
-1. pass exact-head required `test-and-build`;
-2. have clean review threads and zero-behind merge freshness;
-3. merge with expected-head locking;
-4. pass required `test-and-build` on the exact resulting protected-main SHA.
-
-Package 7 must not start before those conditions are satisfied.
+- `docs/package-6-closure.md`
 
 ## Package 6 safety boundary
 
@@ -131,12 +132,12 @@ Package 6 does **not**:
 
 `main` is protected. Required status check: `test-and-build`.
 
-Latest verified Package 6 implementation main: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`.
-Exact implementation run #184 / `33124708562` succeeded with 1057/1057 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
+Latest verified Package 6 closure main: `99232915ebcd5089055d0f8695b6c1b08c697739`.
+Exact closure run #188 / `33142995146` succeeded with 1057/1057 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
 
 ## Remaining product areas
 
-The following remain later work and are not reclassified as completed by the Package 6 implementation:
+The following remain later work and are not reclassified as completed by Package 6:
 
 - Chord display and Turkish TTS — Package 7
 - Teacher correction, revision history and approval workflow
@@ -163,11 +164,4 @@ The following remain later work and are not reclassified as completed by the Pac
 
 ## Current change boundary
 
-This Package 6 closure package is documentation/status reconciliation only:
-
-- `docs/current-status.md`
-- `docs/package-status.md`
-- `docs/package-6-chord-symbol-parser.md`
-- `docs/package-6-closure.md`
-
-No application code, backend code, test code, workflow, dependency, deployment configuration, branch-protection setting, production setting or production OMR integration is intentionally changed by this closure package. No deployment is performed.
+This evidence reconciliation changes documentation only. It records the already-successful Package 6 closure PR #76 and exact-main CI #188. It does not change application code, backend code, tests, workflows, dependencies, deployment configuration, branch protection, production settings or production OMR integration.
