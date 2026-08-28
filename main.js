@@ -3,9 +3,11 @@
 
 import './src/style.css'
 import './src/discovery.css'
+import './src/package8TeacherUi.css'
 import './src/app.js'
 import './src/package3Ui.js'
 import './src/package4Ui.js'
 import './src/package5Ui.js'
 import './src/package7Ui.js'
 import './src/discoveryUi.js'
+import './src/package8TeacherUi.js'

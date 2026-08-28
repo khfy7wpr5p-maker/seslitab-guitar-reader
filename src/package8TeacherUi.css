@@ -1,0 +1,121 @@
+.teacher-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.teacher-workspace[hidden] {
+  display: none;
+}
+
+.teacher-workspace h3 {
+  margin: 0;
+}
+
+#teacher-safety-note,
+#teacher-status,
+#teacher-revision-summary,
+#teacher-approval-summary,
+#teacher-correction-help,
+#teacher-start-group p,
+#teacher-undo-group p {
+  max-width: 72ch;
+}
+
+#teacher-safety-note {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--warning-500);
+  border-radius: var(--radius-sm);
+  background: var(--warning-100);
+  color: var(--neutral-900);
+  font-weight: 600;
+}
+
+#teacher-status {
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--primary-500);
+  background: var(--neutral-50);
+}
+
+#teacher-status[role='alert'] {
+  border-left-width: 6px;
+  border-left-color: var(--error-600);
+  background: #fef2f2;
+  color: var(--neutral-900);
+  font-weight: 700;
+}
+
+#teacher-start-group,
+#teacher-active-workspace,
+#teacher-approval-group,
+#teacher-correction-group,
+#teacher-undo-group {
+  display: grid;
+  gap: 0.75rem;
+}
+
+#teacher-correction-group,
+#teacher-undo-group {
+  padding: 1rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+}
+
+#teacher-correction-group legend,
+#teacher-undo-group legend {
+  padding: 0 0.4rem;
+  font-weight: 700;
+}
+
+#teacher-start-group label,
+#teacher-correction-group label,
+#teacher-undo-group label {
+  font-weight: 600;
+}
+
+#teacher-actor-id,
+#teacher-field-select,
+#teacher-field-value,
+#teacher-undo-select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.625rem 0.75rem;
+  border: 2px solid var(--neutral-300);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--neutral-900);
+  font: inherit;
+}
+
+#teacher-current-content {
+  max-height: 320px;
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-sm);
+  background: var(--neutral-50);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#teacher-history-list {
+  display: grid;
+  gap: 0.4rem;
+  padding-left: 1.5rem;
+}
+
+.teacher-workspace button:focus-visible,
+.teacher-workspace input:focus-visible,
+.teacher-workspace select:focus-visible,
+.teacher-workspace [tabindex]:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teacher-workspace *,
+  .teacher-workspace *::before,
+  .teacher-workspace *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
