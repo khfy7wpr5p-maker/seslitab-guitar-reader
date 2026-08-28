@@ -1,6 +1,6 @@
 # Package 8-T5 — Optimistic Concurrency / Stale-History Conflict
 
-Status: **implementation candidate / not closed until PR + exact-head CI + review + exact-main CI**
+Status: **Completed**
 
 ## Purpose
 
@@ -14,13 +14,11 @@ T5 is a **compare-and-apply domain primitive**, not a database transaction or di
 
 The `history` supplied to a guarded operation must be the caller/integration layer's **authoritative current valid T4 history at the commit boundary**. T5 compares the submitted expectation to that current history before creating any new revision, audit, approval, or undo evidence.
 
-If an integration later stores histories in a database or remote service, that integration must preserve this compare-and-apply condition atomically with its own write. Passing an old local history as if it were current can never be made safe by a pure in-memory domain function alone.
+If an integration later stores histories in a database or remote service, that integration must preserve this compare-and-apply condition atomically with its own write. Passing an old local history as if it were current cannot be made safe by a pure in-memory domain function alone.
 
-Therefore T5 proves the stale-state comparison and zero-partial-domain-write semantics. It does **not** claim cross-process atomic persistence, distributed locking, authentication, or authorization.
+Therefore T5 proves stale-state comparison and zero-partial-domain-write semantics. It does **not** claim cross-process atomic persistence, distributed locking, authentication, or authorization.
 
 ## Core rule
-
-Before a teacher mutation, the caller captures an immutable expectation from one exact valid history snapshot.
 
 ```text
 H0 -> expectation E0
@@ -36,9 +34,7 @@ A stale operation never attempts to merge musical data automatically.
 
 ## Why current revision identity alone is insufficient
 
-T4 allows a valid history-only change such as appending a teacher approval while the current revision remains exactly the same.
-
-Therefore T5 does **not** treat only `currentRevisionId` or content fingerprint as the concurrency version.
+T4 permits valid history-only changes such as appending a teacher approval while the current revision remains exactly the same. Therefore T5 does **not** use only `currentRevisionId` or content fingerprint as the concurrency version.
 
 The expectation binds:
 
@@ -51,17 +47,17 @@ The expectation binds:
 - undo-event count;
 - approval count.
 
-This means an approval-only change also invalidates an older expectation.
+An approval-only history change therefore invalidates an older expectation.
 
 ## History-state fingerprint
 
-The complete already-validated immutable history plain-data state is deterministically serialized with sorted object keys and fingerprinted with the dependency-free FNV-1a 64-bit mechanism used as a version/drift token.
+The complete already-validated immutable history plain-data state is deterministically serialized with sorted object keys and fingerprinted with the dependency-free FNV-1a 64-bit mechanism as a version/drift token.
 
 Prefix:
 
 `teacher-history-fnv1a64-v1:`
 
-This fingerprint is **not** authentication, authorization, a digital signature, or a cryptographic integrity credential. It is a deterministic optimistic-concurrency/version token used only after T4 strict history validation.
+This fingerprint is **not** authentication, authorization, a digital signature, or a cryptographic integrity credential.
 
 ## Public domain surface
 
@@ -85,21 +81,7 @@ This fingerprint is **not** authentication, authorization, a digital signature, 
 
 ## Mutation semantics
 
-### Fresh correction
-
-A current expectation allows existing T2 correction creation and T4 history append. The parent is always the exact current revision read after the expectation passes.
-
-### Fresh approval append
-
-A current expectation allows existing T4 exact approval append behavior.
-
-### Fresh undo
-
-A current expectation allows existing T4 lossless undo behavior.
-
-### Conflict
-
-A valid but stale/mismatched expectation returns an immutable conflict result before any correction, approval append, or undo is attempted.
+A current expectation allows the existing T2/T3/T4 domain operation to run against the exact authoritative current history. A valid but stale/mismatched expectation returns an immutable conflict result **before** correction, approval append, or undo is attempted.
 
 Conflict result contains:
 
@@ -113,34 +95,34 @@ Conflict result contains:
 
 No partial new domain evidence is produced.
 
-Malformed/mutable/injected expectation records are invalid input and fail closed rather than being treated as a legitimate stale token.
+Malformed/mutable/injected expectation records are invalid input and fail closed rather than being treated as legitimate stale tokens.
 
 ## Required invariants
 
 1. T5 accepts only a valid immutable T4 history.
-2. The supplied history is required to represent the authoritative current state at the compare-and-apply boundary.
+2. The supplied history represents the authoritative current state at the compare-and-apply boundary.
 3. Expectations are strict immutable records.
 4. No ID or timestamp is generated by T5.
 5. A valid fresh expectation is `current`, not an applied mutation.
 6. Successful guarded mutation is `applied` and returns a new immutable T4 history snapshot.
 7. Any valid intervening history change visible in authoritative current history makes the old expectation stale.
 8. Approval-only history changes are concurrency-visible even when current revision is unchanged.
-9. Different valid evidence with identical counts/current revision is still distinguished by the full history-state fingerprint.
+9. Different valid evidence with identical counts/current revision is distinguished by the full history-state fingerprint.
 10. History/source mismatch is explicit.
 11. Conflict produces no revision, audit event, approval, or mutated history.
 12. Undo-restored content with a new recursive lineage remains a distinct concurrency state.
 13. T5 does not merge, infer, or invent musical content.
-14. Existing T1/T2/T3/T4 validation remains authoritative for revision, correction, approval, history, and undo semantics.
+14. Existing T1/T2/T3/T4 validation remains authoritative.
 15. Atomic persistence/distributed locking remains an integration responsibility outside this bounded stage.
 
-## Focused acceptance tests
+## Verified acceptance tests
 
-Regressions cover:
+The T5 regression suite verifies:
 
 - immutable deterministic expectation generation;
 - `current` expectation evaluation;
 - fresh guarded correction;
-- sequential compare-and-apply simulation: first request applies, the same old expectation conflicts against the resulting authoritative history;
+- first request applies, the same old expectation conflicts against the resulting authoritative history;
 - zero-partial-domain-write conflict behavior;
 - approval-only stale detection;
 - different valid approval evidence with identical counts/current revision;
@@ -150,8 +132,20 @@ Regressions cover:
 - source mismatch;
 - malformed/mutable/injected/forged expectation rejection;
 - caller-supplied identity/time only;
-- isolation from persistence/backend/UI/OMR/Audiveris/deployment wiring;
-- full repository regression and production build.
+- isolation from persistence/backend/UI/OMR/Audiveris/deployment wiring.
+
+## Final implementation evidence
+
+- PR #99: `Package 8-T5: add optimistic concurrency stale-history guard`
+- final head: `6e151b94609ecf362b3bff0976479a6c2eda45b9`
+- final exact-head CI #252 / run `33181561159`, job `98883764663`: **SUCCESS**
+- exact-head: **1186/1186 tests PASS**, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, production build PASS
+- all 13 focused T5 regressions: **PASS**
+- review threads/submitted reviews at final pre-merge check: none
+- protected-main squash merge: `4747210751c1c49295052f8cca7be58281b91023`
+- exact-main CI #253 / run `33181815397`, job `98884637074`: **SUCCESS**
+- exact-main: **1186/1186 tests PASS**, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, production build PASS
+- existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions: **PASS**
 
 ## Explicitly deferred
 
@@ -171,7 +165,7 @@ T5 does **not** implement:
 
 ## Protected boundaries
 
-This stage must not modify:
+T5 did not modify:
 
 - `backend/` OMR/Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
@@ -180,13 +174,14 @@ This stage must not modify:
 - `render.yaml`;
 - current Render service/deployment connection.
 
-## Completion rule
+## Status advancement
 
-T5 may be marked **Completed** only after:
+- 8-T1 — Completed
+- 8-T2 — Completed
+- 8-T3 — Completed
+- 8-T4 — Completed
+- **8-T5 — Completed**
+- **8-T6 — NEXT / Not started**
+- Package 8B — separate / Not started
 
-1. dedicated branch implementation;
-2. exact-head required CI passes;
-3. review findings are resolved and no valid blocking finding remains;
-4. protected-main merge uses the expected exact head SHA;
-5. exact-main CI passes on the resulting main SHA;
-6. status/architecture documents are synchronized in a separate closure PR.
+Package 8 remains **Partially implemented** until T6 and the parent acceptance criteria are verified.
