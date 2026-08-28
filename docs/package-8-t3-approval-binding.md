@@ -1,17 +1,15 @@
 # Package 8-T3 — Exact-Revision Teacher Approval Binding
 
-Status: **Implementation candidate after review hardening; closure requires protected-main merge plus exact-main CI.**
+Status: **Completed and protected-main verified after review hardening.**
 
-Baseline: `c426325af2ddeca9ae2341449f365f3667aaa3f0`.  
-Initial T3 merge requiring closure hardening: `70a02589206eeea9c3defec4d5f544e9222cbe3a`.
+Initial T3 main: `70a02589206eeea9c3defec4d5f544e9222cbe3a`  
+Final review-hardened T3 main: `95f11139929d1e3d65bd6c295794c316bb04ca84`
 
 ## Purpose
 
-Package 8-T3 records an explicit teacher approval as a separate immutable domain record bound to one exact Package 8-T1 revision.
+Package 8-T3 records explicit teacher approval as a separate immutable domain record bound to one exact Package 8-T1 revision.
 
-The project source rule is preserved directly: teacher approval records which version was approved, and a later data change makes that previous approval non-applicable to the changed/new version.
-
-T3 therefore does not add a mutable `teacherApproved` flag to revision content. Historical approval evidence stays immutable; applicability is evaluated against the candidate revision.
+Teacher approval records which version was approved. A later/new revision does not inherit the old approval automatically, and historical approval evidence is not mutated or deleted merely because it does not apply to a later revision.
 
 ## Public contract
 
@@ -26,11 +24,22 @@ T3 therefore does not add a mutable `teacherApproved` flag to revision content. 
 - `isTeacherApprovalRecord(...)`
 - `evaluateTeacherApprovalForRevision(...)`
 
-Schema v2 is the review-hardened approval record. It supersedes the initial v1 four-dimension binding because v1 could not distinguish a later correction that reused an ancestor revision ID and restored the ancestor content.
+## Why schema v2 is required
 
-## Approval record
+The initial v1 implementation bound approval to:
 
-An approval record contains exactly:
+- `sourceId`
+- root `sourceRevisionId`
+- `revisionId`
+- `contentFingerprint`
+
+PR #91 and CI #233/#234 verified that implementation, but docs closure PR #92 review found a valid P1: T1 does not globally prevent reuse of every intermediate ancestor `revisionId`. Therefore a later correction could reuse an older intermediate ID and restore the older content, recreating the four v1 values and reviving an old approval incorrectly.
+
+PR #92 was closed unmerged. PR #93 hardened T3 to schema v2.
+
+## Final approval record
+
+The v2 approval record contains exactly:
 
 - schema version;
 - approval state;
@@ -47,11 +56,11 @@ An approval record contains exactly:
 
 The record is frozen, flat and has no mutable nested data.
 
-`actorId` is audit evidence supplied by the caller. T3 does not authenticate or authorize that identity.
+`actorId` is audit evidence only. T3 does not authenticate or authorize that identity.
 
 ## Exact-revision applicability
 
-An approval applies only when all immutable revision binding dimensions match a valid candidate revision:
+Approval applies only when all seven immutable revision-binding dimensions match a valid candidate revision:
 
 1. `sourceId`
 2. root `sourceRevisionId`
@@ -61,40 +70,36 @@ An approval applies only when all immutable revision binding dimensions match a 
 6. exact revision `createdAt`
 7. exact `contentFingerprint`
 
-If any dimension differs, the result is `NOT_APPLICABLE_TO_REVISION`.
+Any mismatch returns `NOT_APPLICABLE_TO_REVISION`.
 
-This explicitly prevents the review regression:
+The review regression is explicitly tested:
 
 ```text
-A0 -> R1 (approved) -> R2 -> later R1 id reused with R1 content restored
+A0 -> R1 (approved) -> R2 -> later R1 id reused + old R1 content + old R1 timestamp
 ```
 
-The later record has different parent lineage, so the historical R1 approval is not applicable even if source ID, root source revision ID, reused revision ID, timestamp and content fingerprint are deliberately made equal.
-
-The historical approval record is not mutated or deleted. This preserves lossless history for T4 while satisfying the rule that approval does not carry into changed/new revision data.
+The later record still has a different parent lineage, so the old R1 approval remains non-applicable to the later record. The original R1 remains `APPROVED_EXACT_REVISION`.
 
 ## Automatic versus corrected revisions
 
-T3 may explicitly approve any valid immutable T1 revision, including an automatic revision that a teacher reviewed without needing a correction. Automatic approvals require `approvedParentRevisionId = null`; corrected approvals preserve the exact non-null parent revision ID.
+T3 may explicitly approve any valid immutable T1 revision, including a reviewed automatic revision. Automatic approval requires `approvedParentRevisionId = null`; corrected approval preserves its exact non-null parent revision ID.
 
-## Quality and sharing boundary
+## Quality, authorization and sharing boundary
 
 Teacher approval and quality safety remain separate.
 
 T3 does **not**:
 
 - turn quality-gate `ACCEPT` into teacher approval;
-- make teacher approval override structural/quality safety;
-- return a `safeToShare`, `shareAllowed`, authorization, or quality claim;
-- activate student sharing.
-
-`evaluateTeacherApprovalForRevision(...)` answers only whether this approval record applies to this exact revision.
-
-Later Package 12 must separately require the appropriate quality/safety evidence and exact teacher approval before student sharing.
+- let approval override structural/quality safety;
+- authenticate or authorize `actorId`;
+- return `safeToShare` / `shareAllowed`;
+- activate Package 12 student sharing;
+- add backend persistence/history/concurrency/UI behavior.
 
 ## Fingerprint meaning
 
-`contentFingerprint` remains the deterministic T1 drift/version token. It is not a cryptographic signature, actor authentication mechanism or authorization credential. Schema v2 therefore binds fingerprint together with immutable lineage/record metadata rather than treating the fingerprint as a unique revision identity by itself.
+`contentFingerprint` is the deterministic T1 drift/version token. It is not a cryptographic signature or authorization credential. Schema v2 therefore combines fingerprint with immutable revision metadata and lineage rather than treating fingerprint plus reusable ID as a globally unique revision identity.
 
 ## Fail-closed rules
 
@@ -103,40 +108,59 @@ T3 rejects or refuses to recognize:
 - invalid/mutable T1 revisions;
 - revision records with injected approval fields;
 - missing/blank approval or actor identity;
-- malformed approval or revision timestamps;
+- malformed approval/revision timestamps;
 - mutable approval records;
 - extra, hidden, symbol or accessor fields;
 - unsupported schema/state/revision-kind values;
 - malformed automatic/corrected parent binding;
 - blank source/revision/fingerprint binding fields.
 
-Applicability evaluation throws for invalid approval/revision inputs rather than treating invalid evidence as a normal non-applicable record.
+Applicability evaluation throws for invalid approval/revision inputs rather than treating invalid evidence as normal non-applicability.
 
-## Tests
+## Verified tests
 
-Focused tests cover:
+The final hardened T3 has **15 focused tests**, including:
 
 - immutable approval/applicability vocabulary;
 - full exact corrected-revision binding;
-- explicit approval of a valid automatic revision;
+- automatic-revision approval;
 - exact applicability without mutation;
 - later correction invalidating applicability;
-- new revision with identical content not inheriting approval;
-- **ancestor revision-ID reuse + restored content cannot revive old approval**;
-- cross-source non-applicability;
-- revision-ID, parent-lineage, revision-timestamp and fingerprint mismatch;
-- caller-owned IDs/timestamps;
+- same-content new revision not inheriting approval;
+- **ancestor revision-ID reuse + restored content/timestamp cannot revive old approval**;
+- cross-source isolation;
+- revision ID / parent lineage / revision timestamp / fingerprint mismatch;
+- caller-owned identities/timestamps;
 - invalid/injected revision rejection;
-- strict frozen record descriptors and field set;
-- unsupported state/schema/revision-kind/binding values;
+- strict frozen record descriptors/field set;
+- unsupported schema/state/revision-kind/binding values;
 - fail-closed evaluator inputs;
 - absence of quality/authorization/sharing claims.
 
-Full repository regression and production build are mandatory before merge.
+## Closure evidence
+
+Initial implementation:
+
+- PR #91 final head: `d1805c054e490e71e3d266471ad158defbcd49e1`
+- exact-head CI #233 / run `33164496653`, job `98826560680`: SUCCESS
+- initial protected-main merge: `70a02589206eeea9c3defec4d5f544e9222cbe3a`
+- exact-main CI #234 / run `33164575331`, job `98826810765`: SUCCESS
+
+Review hardening:
+
+- superseded docs PR #92: closed unmerged after P1 discovery
+- hardening PR #93 final head: `ee215d3c1d53e2bb7a7323387c02a79223643e46`
+- exact-head CI #236 / run `33165415557`, job `98829539401`: SUCCESS
+- final protected-main merge: `95f11139929d1e3d65bd6c295794c316bb04ca84`
+- exact-main CI #237 / run `33165513082`, job `98829856646`: SUCCESS
+- final result: **1151/1151 tests PASS; 232 suites; 0 fail/skipped/cancelled**
+- dependency audit: **0 vulnerabilities**
+- production Vite build: **PASS**
+- existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions: **PASS**
 
 ## Protected boundaries
 
-T3 must not modify:
+T3 did not modify:
 
 - `backend/`;
 - Audiveris provider/runtime/preflight;
@@ -149,11 +173,13 @@ T3 must not modify:
 - dependencies;
 - CI workflows.
 
-## Explicitly deferred
+## Next / explicitly deferred
 
-- **8-T4:** undo/version-history storage
+- **8-T4 — NEXT but Not started:** lossless undo/version history
 - **8-T5:** optimistic concurrency/stale-base conflict
 - **8-T6:** accessible teacher UI
 - **8B:** Audiveris training dataset
 - **12:** teacher-to-student sharing
 - authentication/authorization implementation
+
+Package 8 remains **Partially implemented**.
