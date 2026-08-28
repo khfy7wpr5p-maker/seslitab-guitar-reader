@@ -1,45 +1,33 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-28  
-Latest verified protected `main`: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
-Latest exact-main CI: **#230 / `33163126080`, job `98822108194` — SUCCESS**  
-Current package state: **Package 8 — Partially implemented; 8-T1 and 8-T2 Completed.**  
-Next safe implementation stage: **Package 8-T3 — exact-revision teacher approval binding and invalidation semantics.**
+Latest verified protected `main`: `c57966598d2d6fe34418119670bea42a9cdcf369`  
+Latest exact-main CI: **#240 / run `33175019324`, job `98861276737` — SUCCESS**  
+Current package state: **Package 8 — Partially implemented; 8-T1, 8-T2 and 8-T3 Completed.**  
+Next safe implementation stage: **Package 8-T4 — lossless undo/version history.**
 
 This file is a concise orientation document. Source code, tests, protected-main state and fresh GitHub Actions evidence remain authoritative.
 
 ## Verified current baseline
 
-Exact-main CI #230 on `f6d80b4614654ee63a4fd2d51101e4961476a1ee` verified:
+Exact-main CI #240 on `c57966598d2d6fe34418119670bea42a9cdcf369` verified:
 
-- **1136 / 1136 tests PASS**
-- **231 suites**
+- **1154 / 1154 tests PASS**
+- **232 suites**
 - **0 failed / skipped / cancelled**
 - `npm ci`: 119 packages installed; 120 packages audited
 - **0 vulnerabilities**
 - Vite 8.2.0 production build **PASS**
 - 55 modules transformed
+- T3 multi-hop revision-ID replay regression **PASS**
+- T1 recursive-lineage regression **PASS**
+- existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions **PASS**
 
 `main` remains protected and the required status check is `test-and-build`.
 
 ## Verified product foundations
 
-Packages 0–7 remain completed and provide the established foundations for:
-
-- PDF upload and safe OMR job handling;
-- the existing Cloud OMR Gateway and Audiveris provider/runtime path;
-- file, multipart, API and MusicXML security;
-- canonical `NoteObject` pitch/time/source-verification data;
-- structural/rhythmic validation and quality/error reporting;
-- fail-closed `ACCEPT` / `REVIEW` / `BLOCK` quality gates;
-- isolated OMR benchmark/evidence framework;
-- Turkish rhythmic text and Rhythmic HTML;
-- Turkish TTS and Web Audio playback;
-- canonical measure selection and selected-measure TTS/playback;
-- deterministic SMF0 MIDI export;
-- conservative quality-gated Basic Guitar TAB;
-- conservative quality-gated Basic Violin first-position guidance;
-- source-only MusicXML `<harmony>` parsing, chord presentation and Turkish chord TTS.
+Packages 0–7 remain Completed and provide the established foundations for PDF/OMR handling, MusicXML security, canonical note/time data, structural and quality validation, Turkish rhythmic text/TTS/playback, MIDI, Basic Guitar TAB, Basic Violin, and source-only MusicXML harmony/chord presentation.
 
 Structural validity, source verification, quality-gate acceptance and teacher approval remain separate concepts.
 
@@ -49,55 +37,73 @@ Structural validity, source verification, quality-gate acceptance and teacher ap
 
 Status: **Completed.**
 
-T1 provides immutable automatic and teacher-corrected revisions, exact parent/root-source lineage, deterministic content fingerprints, strict frozen plain-data snapshots and fail-closed revision validation. Approval fields cannot be injected into a valid revision.
+The original bounded T1 closure remains PR #86 → protected-main `218c3e18eed3a82861a4a1c24efd5458445ea9ca` → exact-main CI #222 SUCCESS.
 
-Evidence:
+During T3 security hardening, the revision schema was deliberately upgraded from v1 to **v2** without changing the T1 mutation model. It now also carries:
 
-- PR #86
-- accepted feature head: `db32b9e24d4033fe308ab9b2fe7cdefb74ec593b`
-- exact-head CI #221: SUCCESS
-- protected-main merge: `218c3e18eed3a82861a4a1c24efd5458445ea9ca`
-- exact-main CI #222: SUCCESS
-- detailed closure: `docs/package-8-t1-closure.md`
+- `parentLineageFingerprint`;
+- deterministic recursive `lineageFingerprint`.
+
+Each corrected revision derives its lineage token from the exact parent lineage plus its own immutable identity metadata and content fingerprint. This prevents a later multi-hop replay from reconstructing an earlier revision merely by reusing revision IDs, timestamps and content.
+
+The lineage token is a deterministic drift/version identity, **not** a cryptographic signature or authorization credential.
 
 ### 8-T2 — controlled teacher correction operations
 
 Status: **Completed.**
 
-T2 adds only a bounded, pure correction layer above T1:
+T2 remains unchanged in behavior:
 
-- one supported operation kind: `replace_value`;
-- existing paths only; no structural insertion/deletion;
-- parent revision is never overwritten;
-- each accepted correction batch creates a new immutable T1 corrected revision;
-- a separate immutable audit event records actor/event identity, exact parent/result identities and fingerprints, and before/after values;
-- duplicate operation IDs, overlapping paths, no-op changes, unsafe values, invalid paths and prototype-sensitive targets fail closed;
-- correction does not imply teacher approval or musical verification.
+- bounded `replace_value` operations only;
+- existing paths only;
+- parent revision never overwritten;
+- every accepted correction creates a new immutable revision;
+- separate immutable correction audit event;
+- duplicate/overlapping/no-op/unsafe/prototype-sensitive corrections fail closed;
+- correction does not imply approval.
 
-Evidence:
+Original closure: PR #89 → protected-main `f6d80b4614654ee63a4fd2d51101e4961476a1ee` → exact-main CI #230 SUCCESS.
 
-- implementation baseline: `cd7e4686c88d2428d7a1a095539de2d87f9551e5`
-- PR #89
-- final accepted feature head after review hardening: `c47ce6ba259e50bee8c71453c044650538535a14`
-- exact-head CI #229: SUCCESS
-- protected-main merge: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`
-- exact-main CI #230: SUCCESS
-- **1136/1136 tests, 231 suites, 0 fail/skipped/cancelled**
+T2 regressions remain green on exact-main CI #240 after T1 schema-v2 lineage hardening.
+
+### 8-T3 — exact-revision teacher approval binding/invalidation
+
+Status: **Completed.**
+
+Final verified contract:
+
+- approval is a separate immutable record, never a mutable field on revision content;
+- approval schema is **v3**;
+- approval binds to exact source/root-source identity, revision ID/kind, parent revision ID, revision timestamp, content fingerprint and **recursive lineage fingerprint**;
+- a later revision does not inherit an older approval;
+- a historical approval record is not mutated when it becomes non-applicable;
+- approval does not override quality safety and does not authorize student sharing;
+- actor identity is caller-supplied audit evidence; authentication/authorization remains separate.
+
+### T3 review-hardening history
+
+T3 was not accepted at the first green build. Review gates found two valid replay cases and both were fixed before final closure:
+
+1. **PR #92 review:** one-hop ancestor revision-ID reuse could revive a schema-v1 approval. PR #92 was not merged. PR #93 hardened approval binding to schema v2.
+2. **PR #94 review:** schema v2 could still be reconstructed with a multi-hop replay: `A0 -> R1 -> R2 (approved) -> replay R1 -> replay R2`. PR #94 was not merged.
+3. **PR #95 final hardening:** T1 schema v2 recursive lineage + T3 approval schema v3 lineage binding closes the multi-hop replay path.
+
+Final evidence:
+
+- PR #95 final head: `77f5035a85dfd6895490198d2160107b28479320`
+- exact-head CI #239 / run `33174812700`: **SUCCESS**
+- exact-head tests: **1154/1154 PASS**, 232 suites, 0 fail/skipped/cancelled
 - audit: **0 vulnerabilities**
 - production build: **PASS**
-- detailed closure: `docs/package-8-t2-closure.md`
-
-PR review found and T2 fixed two relevant edge cases before merge:
-
-1. `-0` and `0` are canonicalized as the same array target so a batch cannot mutate one location twice while appearing independent.
-2. Audit validation rejects unsupported primitive values such as `undefined`, non-finite numbers, bigint, symbols and functions.
-
-Both review regressions pass on exact-main CI #230.
+- protected-main squash merge: `c57966598d2d6fe34418119670bea42a9cdcf369`
+- exact-main CI #240 / run `33175019324`, job `98861276737`: **SUCCESS**
+- exact-main: **1154/1154 PASS**, 232 suites, 0 vulnerabilities, build PASS
+- regression `multi-hop revisionId replay cannot reconstruct an approved revision`: **PASS**
+- detailed closure: `docs/package-8-t3-closure.md`
 
 ### Remaining Package 8 stages
 
-- **8-T3 — Not started / NEXT:** exact-revision approval binding and changed-revision invalidation semantics.
-- **8-T4 — Not started:** undo/version history.
+- **8-T4 — Not started / NEXT:** lossless undo/version history.
 - **8-T5 — Not started:** optimistic concurrency / stale-base conflict.
 - **8-T6 — Not started:** accessible teacher UI.
 
@@ -105,11 +111,11 @@ Package 8 therefore remains **Partially implemented**, not Completed.
 
 ## Separate later roadmap package
 
-**Package 8B — Audiveris training dataset** remains Not started and separate from Package 8-T1..T6. It must not be started as part of T3.
+**Package 8B — Audiveris training dataset** remains Not started and separate from Package 8-T1..T6. It must not be started as part of T4.
 
 ## Protected OMR and Render boundary
 
-Current autonomous Package 8 work must not modify unless separately and explicitly authorized:
+Package 8 work must not modify without separate explicit authorization:
 
 - Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
@@ -119,24 +125,8 @@ Current autonomous Package 8 work must not modify unless separately and explicit
 - `render.yaml`;
 - current Render service/deployment connection.
 
-Package 8-T1 and 8-T2 did not modify these areas. Exact-main CI #230 passed the existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions.
-
-## Maintenance closure since T1
-
-Legacy PR #17 was safely superseded by PR #88 instead of merging its stale branch. The still-valid E2E MiniDOM whitespace fix was refreshed onto current main, regression-tested, merged and exact-main verified before T2 began. This maintenance work did not change the production MusicXML parser, OMR/Audiveris or Render connection.
-
-## Remaining product areas
-
-- Package 8-T3..T6 teacher approval/history/concurrency/UI workflow
-- Package 8B Audiveris teacher-approved training dataset
-- Package 9 Advanced Guitar TAB
-- Package 10 Advanced violin
-- Package 11 Accessible tuner
-- Package 12 Teacher-to-student approved-revision sharing
-- Package 13 Simplified rhythm mode
-- Package 14 full mobile productisation/device-level VoiceOver verification
-- user authentication, roles and job ownership where required by later packages
+PR #95 changed only the teacher revision/approval domain and focused tests. Exact-main CI #240 confirms the existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions remain green.
 
 ## Current safe next step
 
-The next implementation stage is **8-T3 only**. T3 must define a separate immutable teacher-approval record bound to one exact revision identity/content fingerprint and make it impossible for a later corrected revision to inherit that approval implicitly. It must remain above the existing canonical/quality layers, must not bypass quality safety, and must not yet add persistence/history, optimistic concurrency, UI, student sharing, Audiveris training, OMR changes or Render/deployment changes.
+The next implementation stage is **8-T4 only**: lossless revision/version history and undo semantics. T4 must preserve immutable T1/T2/T3 evidence rather than rewriting old revisions or approvals. It must not yet add optimistic concurrency, teacher UI, student sharing, Audiveris training, OMR changes or Render/deployment changes.
