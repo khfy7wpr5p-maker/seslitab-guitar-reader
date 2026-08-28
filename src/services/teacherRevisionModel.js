@@ -12,6 +12,18 @@ export const TEACHER_REVISION_KIND = Object.freeze({
   TEACHER_CORRECTED: 'teacher_corrected',
 })
 
+const REVISION_FIELDS = Object.freeze([
+  'schemaVersion',
+  'revisionId',
+  'revisionKind',
+  'sourceId',
+  'sourceRevisionId',
+  'parentRevisionId',
+  'createdAt',
+  'contentFingerprint',
+  'content',
+])
+
 const FNV_1A_64_OFFSET = 0xcbf29ce484222325n
 const FNV_1A_64_PRIME = 0x100000001b3n
 const UINT64_MASK = 0xffffffffffffffffn
@@ -170,6 +182,19 @@ function deepFreeze(value) {
   return Object.freeze(value)
 }
 
+function isDeepFrozen(value, seen = new Set()) {
+  if (!value || typeof value !== 'object') return true
+  if (seen.has(value)) return false
+  if (!Object.isFrozen(value)) return false
+
+  seen.add(value)
+  for (const child of Object.values(value)) {
+    if (!isDeepFrozen(child, seen)) return false
+  }
+  seen.delete(value)
+  return true
+}
+
 function buildFrozenRevision({
   revisionId,
   revisionKind,
@@ -198,8 +223,18 @@ function buildFrozenRevision({
 
 function validateRevisionShape(value) {
   if (!isPlainObject(value) || !Object.isFrozen(value)) return false
+
+  const keys = Object.keys(value)
+  if (
+    keys.length !== REVISION_FIELDS.length ||
+    keys.some((key) => !REVISION_FIELDS.includes(key))
+  ) {
+    return false
+  }
+
   if (value.schemaVersion !== TEACHER_REVISION_SCHEMA_VERSION) return false
   if (!Object.values(TEACHER_REVISION_KIND).includes(value.revisionKind)) return false
+  if (!isDeepFrozen(value.content)) return false
 
   try {
     const revisionId = normalizeRequiredId(value.revisionId, 'revisionId')
