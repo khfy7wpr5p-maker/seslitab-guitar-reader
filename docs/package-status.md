@@ -1,8 +1,8 @@
 # SesliTab Package Status
 
-Last documentation review: 2026-08-28  
-Latest verified protected-main implementation baseline: `278b69ed1f7f0cede6a3dc00e8265e887811c88b`  
-Latest exact-main implementation CI: **#266 / run `33196791822`, job `98935863577` — SUCCESS**
+Last documentation review: 2026-08-29  
+Latest verified protected-main implementation baseline: `ce5210476c5957595a9159abff6fd3b64afd10bd`  
+Latest exact-main implementation CI: **#273 / run `33207881028`, job `98973500868` — SUCCESS**
 
 A package/substage is **Completed** only after bounded acceptance criteria, focused tests, full regression suite, production build, protected-main merge and exact-main workflow evidence are satisfied.
 
@@ -26,10 +26,10 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 | 6 — Chord-symbol parser | Completed | Source-only MusicXML harmony parser verified. |
 | 7 — Chord display and Turkish TTS | Completed | Accessible source-only chord presentation/TTS verified. |
 | 8 — Teacher correction and approval | **Completed** | T1–T6 verified, merged and docs closed. |
-| 8B — Audiveris training dataset | **Partially implemented** | T1 contract completed; zero real trainable samples currently admitted. |
+| 8B — Audiveris training dataset | **Partially implemented** | T1/T2 contracts completed; zero real eligible/trainable samples currently admitted. |
 | 8B-T1 — Verified dataset contract | **Completed** | PR #104 → merge `278b69ed…` → exact-main CI #266, 1228/1228 PASS. |
-| 8B-T2 — Verified evidence intake/readiness | Not started | Next bounded safe stage; must not fabricate or train. |
-| 9 — Advanced Guitar TAB | Not started | Polyphonic/pedagogical fingering remains future work. |
+| 8B-T2 — Verified evidence intake/readiness | **Completed** | PR #106 → merge `ce521047…` → exact-main CI #273, 1244/1244 PASS. |
+| 9 — Advanced Guitar TAB | Not started | Sequentially blocked while Package 8B remains incomplete. |
 | 10 — Advanced violin | Not started | Advanced positions/alternatives/double stops remain planned. |
 | 11 — Accessible tuner | Not started | Microphone pitch/accessibility package absent. |
 | 12 — Teacher-to-student sharing | Not started | Exact-approved-revision sharing/authorization not implemented. |
@@ -38,7 +38,7 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 
 ## Package 8B-T1 verified result
 
-T1 provides the admission contract required before a real Audiveris training dataset can exist:
+T1 provides the immutable admission contract required before a real Audiveris training dataset can exist:
 
 1. MusicXML alone cannot become a training sample.
 2. Explicit training approval is required and is bound to exact candidate evidence by SHA-256 fingerprint.
@@ -48,32 +48,48 @@ T1 provides the admission contract required before a real Audiveris training dat
 6. Missing or malformed evidence fails closed.
 7. No production OMR/model/deployment wiring changed.
 
-Current repository inventory contains one owner/teacher-approved golden-reference chain with PDF + `.omr` + MusicXML + approval + integrity evidence. It is **not** a trainable 8B sample because separate page/glyph/shape/coordinate evidence, explicit training approval and split membership are absent.
+## Package 8B-T2 verified result
 
-Therefore current real trainable sample count is **0**.
+T2 proves whether actual supplied artifact bytes match the exact T1 evidence declarations without changing the evidence:
 
-## 8B-T1 evidence
+1. T2 computes SHA-256 from raw non-empty `Uint8Array` bytes itself.
+2. Exact declared path and digest must match; paths are not silently trimmed or normalized into equivalence.
+3. Missing observations remain `incomplete`.
+4. Duplicate, undeclared, path-mismatched or hash-mismatched observations become `rejected`.
+5. Only a T1-trainable candidate with all declared artifacts verified can be `eligible`.
+6. `eligible` means only eligible for dataset-manifest review, not authorized training or production use.
+7. Raw evidence bytes are not retained in reports.
+8. Readiness reports are deterministic, immutable and semantically fail-closed.
+9. Existing production OMR/model/deployment wiring remains unchanged.
 
-- implementation PR #104 head `4005192f55afead7d22e7a32db596569faa7aff9`
-- exact-head CI #265 / run `33196559638`, job `98935074605`: SUCCESS
-- 1228/1228 tests, 232 suites, 0 vulnerabilities, build PASS
-- no review threads
-- protected-main merge `278b69ed1f7f0cede6a3dc00e8265e887811c88b`
-- exact-main CI #266 / run `33196791822`, job `98935863577`: SUCCESS
-- 1228/1228 tests, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, build PASS
+The current repository owner/teacher-approved golden-reference chain verifies its currently declared PDF/.omr/MusicXML/reference approval/licence bytes, but it still lacks separate page/glyph/shape/coordinate evidence, explicit training approval and split membership.
 
-## Package 8B continuing safeguards
+Therefore current real eligible/trainable sample count is **0**.
+
+## 8B-T2 evidence
+
+- implementation PR #106 final head `8d333a4bc3de2b58731b6c0360e5d0923b9728fb`
+- exact-head CI #272 / run `33207712313`, job `98972982291`: SUCCESS
+- 1244/1244 tests, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS
+- review P2 exact-path issue fixed and regression-tested
+- protected-main merge `ce5210476c5957595a9159abff6fd3b64afd10bd`
+- exact-main CI #273 / run `33207881028`, job `98973500868`: SUCCESS
+- 1244/1244 tests, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, build PASS
+
+## Package 8B continuing safeguards / blocker
 
 - accept only actual supplied/verified evidence;
-- never invent glyphs, labels, coordinates, images, approvals or metrics;
+- never invent glyphs, labels, coordinates, images, approvals, licences or metrics;
 - golden-reference approval is not silently treated as Audiveris-training approval;
 - training and evaluation evidence remain isolated;
 - no automatic production-model replacement;
-- existing production OMR flow remains unchanged.
+- existing production OMR flow remains unchanged;
+- no evidence-supported T3 coding stage is declared while genuine teacher-verified symbol evidence is absent;
+- Package 9 does not start while Package 8B remains incomplete under the approved sequential roadmap.
 
 ## Protected integration boundary
 
-No Package 8B work may silently change production Audiveris/provider/runtime, gateway/worker, `Dockerfile`, `render.yaml`, or the Render deployment connection. Any production-model/runtime change needs separate explicit authorization and measured evidence.
+No Package 8B work may silently change production Audiveris/provider/runtime, gateway/worker, `Dockerfile`, `render.yaml`, Render deployment connection, or production model selection. Any production-model/runtime change needs separate explicit authorization and measured evidence.
 
 ## Status vocabulary
 

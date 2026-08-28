@@ -1,7 +1,7 @@
 # Package 8B-T2 — Verified Evidence Intake / Readiness
 
 Date: 2026-08-28  
-Status: **Implementation in progress**
+Status: **Completed**
 
 ## Purpose
 
@@ -13,15 +13,15 @@ T2 answers only this question:
 
 T2 does **not** train Audiveris, admit data into a production model, measure recognition accuracy, or authorize model replacement.
 
-## Prerequisite
+## Prerequisite and verified baseline
 
-Package 8B-T1 is completed and closed on protected main.
+Package 8B-T1 was completed and docs-closed before T2.
 
-Verified T1 closure main before T2:
+T2 implementation baseline:
 
 `bc5dd930a9f2538160bf07e628cce5876c8223dd`
 
-Exact-main CI #269 is the T2 baseline:
+Exact-main CI #269 baseline:
 
 - 1228/1228 tests PASS
 - 232 suites
@@ -46,7 +46,7 @@ Exact-main CI #269 is the T2 baseline:
 
 ## Evidence fields
 
-T2 can verify bytes for T1-declared artifact evidence only:
+T2 verifies bytes for T1-declared artifact evidence only:
 
 - source PDF;
 - page image;
@@ -69,7 +69,7 @@ Shape labels and symbol coordinates remain structured T1 candidate evidence. T2 
 
 T2 computes SHA-256 itself from the supplied raw bytes. Caller-provided digest strings are not accepted as verification evidence.
 
-Raw bytes are never retained in the readiness report.
+Evidence paths are compared exactly and are not trimmed into equivalence. Raw bytes are never retained in the readiness report.
 
 ## Fail-closed rules
 
@@ -79,7 +79,7 @@ Raw bytes are never retained in the readiness report.
 4. Unknown evidence fields fail closed.
 5. Duplicate evidence fields produce `rejected` readiness.
 6. Evidence for a field not declared by the T1 candidate produces `rejected` readiness.
-7. Exact path mismatch produces `rejected` readiness even when bytes happen to hash to another declared artifact.
+7. Exact raw path mismatch produces `rejected` readiness even when bytes happen to hash to the declared artifact.
 8. Exact SHA-256 mismatch produces `rejected` readiness.
 9. A declared artifact with no supplied observation keeps readiness `incomplete`.
 10. T1 trainability remains authoritative: T2 cannot promote an incomplete T1 candidate.
@@ -90,7 +90,7 @@ Raw bytes are never retained in the readiness report.
 
 The repository candidate `plan0-owner-approved-3-8-evidence-chain` has real PDF, `.omr`, MusicXML, reference approval/licence evidence and recorded hashes.
 
-T2 verifies those declared bytes against the repository fixture in regression tests, but the candidate remains **incomplete** because it still lacks:
+T2 verifies those currently declared bytes against the repository fixture in regression tests, but the candidate remains **incomplete** because it still lacks:
 
 - separate page image;
 - glyph image;
@@ -99,7 +99,7 @@ T2 verifies those declared bytes against the repository fixture in regression te
 - explicit `audiveris_training_sample` approval;
 - train/evaluation split assignment.
 
-Therefore the current real eligible sample count remains **0**.
+Therefore the current real eligible/trainable sample count remains **0**.
 
 No missing evidence is generated, inferred or fabricated.
 
@@ -107,37 +107,51 @@ No missing evidence is generated, inferred or fabricated.
 
 - `scripts/audiverisTrainingEvidenceReadiness.js` — isolated byte-hash/readiness evaluator and strict report validator
 - `tests/package8bEvidenceReadiness.test.js` — main T2 regressions, including current real repository evidence
-- `tests/package8bEvidenceReadinessReview.test.js` — semantic-forgery/readiness wording hardening regressions
+- `tests/package8bEvidenceReadinessReview.test.js` — semantic-forgery, exact-path and readiness-wording hardening regressions
 - `docs/package-8b-t2-evidence-readiness.md` — this contract
+- `docs/package-8b-t2-closure.md` — final implementation/CI/review closure evidence
+
+## Review hardening
+
+PR review found one P2 exact-path issue: intake paths were initially passed through a trimming helper, allowing a whitespace-padded locator to compare as the declared path. The merge was stopped.
+
+The final head uses a raw-path validator and compares the supplied path byte-for-byte. A dedicated regression proves that a leading/trailing-whitespace variant with identical bytes is `PATH_MISMATCH` / `rejected`.
+
+## Verification evidence
+
+Implementation PR #106:
+
+- final head: `8d333a4bc3de2b58731b6c0360e5d0923b9728fb`
+- exact-head CI #272 / run `33207712313`, job `98972982291`: **SUCCESS**
+- **1244/1244 tests PASS**
+- **232 suites**
+- 0 failed/skipped/cancelled
+- **0 vulnerabilities**
+- production build PASS
+- review P2 fixed and regression-tested
+- unresolved review threads: 0 at merge gate
+- branch: 0 behind at merge gate
+
+Protected-main squash merge:
+
+`ce5210476c5957595a9159abff6fd3b64afd10bd`
+
+Exact-main CI #273 / run `33207881028`, job `98973500868`:
+
+- **SUCCESS**
+- **1244/1244 tests PASS**
+- **232 suites**
+- 0 failed/skipped/cancelled
+- **0 vulnerabilities**
+- production build PASS
+- existing OMR/Audiveris, Render Blueprint and Dockerfile safety regressions PASS
 
 ## Protected boundaries
 
-T2 must not change or activate:
+T2 changed no production Audiveris/OMR provider/runtime/preflight, worker/provider selection, Cloud OMR Gateway, `Dockerfile`, `render.yaml`, Render deployment connection, dependency, workflow, model-training execution or production model selection/replacement.
 
-- production Audiveris provider/runtime/preflight;
-- OMR worker/provider selection;
-- Cloud OMR Gateway or production OMR path;
-- `Dockerfile`;
-- `render.yaml`;
-- current Render service/deployment connection;
-- model-training execution;
-- production model selection/replacement.
+## Completion result
 
-No dependency is added.
+All T2 acceptance criteria are satisfied. **Package 8B-T2 is Completed.**
 
-## Acceptance criteria
-
-T2 implementation may be marked complete only if:
-
-1. exact evidence bytes can make a fully valid synthetic T1 candidate `eligible` for manifest review;
-2. missing observations remain `incomplete`;
-3. path/hash contradictions become `rejected`;
-4. malformed/injected intake fails closed;
-5. current real repository candidate stays `incomplete` after all currently declared hashes are verified;
-6. MusicXML-only evidence cannot be promoted;
-7. output is deterministic and immutable;
-8. raw evidence bytes are not retained in reports;
-9. production OMR/Audiveris/Render/Docker boundaries remain isolated;
-10. focused tests, full regression and production build pass on exact PR head;
-11. review findings are resolved;
-12. protected-main exact merge SHA passes push CI.
+Package 8B as a whole remains **Partially implemented** because there is still no genuine teacher-verified training-ready symbol sample. No evidence-supported T3 coding stage is declared by this closure; the next safe action is to obtain genuine missing evidence and fresh-read it through T1/T2 before any training work.

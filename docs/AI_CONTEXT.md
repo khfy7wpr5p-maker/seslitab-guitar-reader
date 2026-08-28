@@ -30,31 +30,31 @@ Only one implementation package may be active at a time.
 
 ## Current roadmap position
 
-As of verified Package 8B-T1 implementation closure on 2026-08-28:
+As of verified Package 8B-T2 implementation closure on 2026-08-28:
 
 - Package 0–7: **Completed**
 - Package 8 / T1–T6: **Completed**
 - Package 8B: **Partially implemented**
 - Package 8B-T1 — verified dataset contract: **Completed**
-- Package 8B-T2 — verified evidence intake/readiness: **NEXT / Not started**
-- Package 9 — Advanced Guitar TAB: Not started
+- Package 8B-T2 — verified evidence intake/readiness: **Completed**
+- Package 9 — Advanced Guitar TAB: Not started / sequentially blocked while Package 8B is incomplete
 - Package 10 — Advanced Violin: Not started
 - Package 11 — Accessible Tuner: Not started
 - Package 12 — Teacher-to-student sharing: Not started
 - Package 13 — Simplified rhythm mode: Not started
 - Package 14 — Mobile productisation: Partially implemented
 
-Verified Package 8B-T1 implementation main:
-`278b69ed1f7f0cede6a3dc00e8265e887811c88b`
+Verified Package 8B-T2 implementation main:
+`ce5210476c5957595a9159abff6fd3b64afd10bd`
 
-Exact-main CI #266 / run `33196791822`, job `98935863577`:
+Exact-main CI #273 / run `33207881028`, job `98973500868`:
 
-- **1228/1228 tests PASS**
+- **1244/1244 tests PASS**
 - **232 suites**
 - 0 failed/skipped/cancelled
 - **0 vulnerabilities**
 - production build PASS
-- Package 8B-T1 focused/review regressions PASS
+- Package 8B-T1/T2 focused and review regressions PASS
 - existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions PASS
 
 ## Package 8 invariants retained
@@ -84,70 +84,74 @@ Exact-main CI #266 / run `33196791822`, job `98935863577`:
 12. Unsafe paths, malformed hashes, accessors, sparse arrays, injected or mutable evidence fail closed.
 13. No production Audiveris/provider/runtime/gateway/worker/Docker/Render integration is activated.
 
+## Package 8B-T2 invariants
+
+1. T2 accepts only a strict T1 candidate plus dense exact `{ field, path, bytes }` evidence observations.
+2. Raw evidence bytes must be non-empty `Uint8Array` values and are hashed by T2 itself.
+3. Caller-provided digest strings do not prove byte verification.
+4. Evidence paths are compared exactly and are not trimmed into equivalence.
+5. Exact path/hash mismatch, duplicate fields and undeclared evidence are rejected.
+6. Missing declared observations remain incomplete.
+7. T2 cannot promote a T1-incomplete candidate.
+8. `eligible` means eligible for dataset-manifest review only; it is not training authorization or production readiness.
+9. MusicXML-only evidence cannot be promoted.
+10. Raw evidence bytes are never retained in readiness reports.
+11. Readiness reports are deterministic, immutable and semantically fail-closed.
+12. T2 does not infer shape-label or coordinate truth from pixels.
+13. No production Audiveris/model/deployment boundary is activated.
+
 ## Current real 8B evidence
 
 The repository currently has one owner/teacher-approved golden-reference chain:
 
 `tests/fixtures/golden-reference/plan0-owner-approved-3-8/`
 
-It preserves PDF + `.omr` + MusicXML + approval + SHA-256 integrity, with CC0-1.0 rights evidence and Audiveris 5.11.0 recorded.
+It preserves PDF + `.omr` + MusicXML + reference approval + SHA-256/licence evidence, with Audiveris 5.11.0 recorded. T2 verifies the currently declared artifact bytes in regression tests.
 
-It is intentionally **INCOMPLETE** for Audiveris training because the repository has no separate page image, glyph image, shape label, symbol coordinates, explicit training approval or split assignment for that chain.
+It remains **INCOMPLETE** for Audiveris training because the repository has no separate page image, glyph image, real shape label, symbol coordinates, explicit `audiveris_training_sample` approval or train/evaluation split assignment.
 
-Current actual trainable 8B sample count: **0**.
+Current actual eligible/trainable 8B sample count: **0**.
 
 Never fabricate the missing evidence and never infer that benchmark/golden approval is training approval.
 
-## Package 8B-T1 implementation map
+## Package 8B implementation map
 
-- `scripts/audiverisTrainingDatasetContract.js` — strict candidate/manifest validation, exact approval binding, deterministic fingerprints and split isolation
-- `scripts/audiverisTrainingDatasetInventory.js` — read-only inventory of current repository evidence
-- `tests/package8bDatasetContract.test.js` — focused fail-closed and boundary regressions
-- `docs/package-8b-t1-dataset-contract.md` — T1 contract
-- `docs/package-8b-t1-closure.md` — closure evidence
+- `scripts/audiverisTrainingDatasetContract.js` — strict T1 candidate/manifest validation, exact approval binding, deterministic fingerprints and split isolation
+- `scripts/audiverisTrainingDatasetInventory.js` — read-only T1 inventory of current repository evidence
+- `scripts/audiverisTrainingEvidenceReadiness.js` — T2 isolated raw-byte path/hash readiness evaluator
+- `tests/package8bDatasetContract.test.js` — T1 fail-closed/boundary regressions
+- `tests/package8bEvidenceReadiness.test.js` — T2 readiness/current-repository regressions
+- `tests/package8bEvidenceReadinessReview.test.js` — T2 semantic-forgery/exact-path hardening regressions
+- `docs/package-8b-t1-closure.md` / `docs/package-8b-t2-closure.md` — closure evidence
 
-## Package 8B-T1 evidence
+## Package 8B-T2 evidence
 
-- PR #104 final head `4005192f55afead7d22e7a32db596569faa7aff9`
-- exact-head CI #265 / run `33196559638`, job `98935074605`: SUCCESS
-- 1228/1228 tests, 232 suites, 0 vulnerabilities, build PASS
-- review threads: none
-- protected-main merge `278b69ed1f7f0cede6a3dc00e8265e887811c88b`
-- exact-main CI #266 / run `33196791822`, job `98935863577`: SUCCESS
-- 1228/1228 tests, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, build PASS
+- PR #106 final head `8d333a4bc3de2b58731b6c0360e5d0923b9728fb`
+- exact-head CI #272 / run `33207712313`, job `98972982291`: SUCCESS
+- 1244/1244 tests, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS
+- review P2 exact-path issue fixed and regression-tested
+- protected-main merge `ce5210476c5957595a9159abff6fd3b64afd10bd`
+- exact-main CI #273 / run `33207881028`, job `98973500868`: SUCCESS
+- 1244/1244 tests, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS
 
-## Next bounded stage: Package 8B-T2
+## Current blocker / next safe action
 
-T2 may only establish a bounded intake/readiness/report layer for genuinely supplied external or repository evidence against the T1 contract.
+Package 8B remains **Partially implemented**. There is no evidence-supported T3 coding stage while genuine teacher-verified symbol training evidence is absent.
 
-Safe T2 candidates include:
+The next safe action is to obtain genuine missing evidence and then fresh-read it through T1/T2. Do not generate page/glyph images and label them as teacher evidence, infer real Audiveris shape labels, invent coordinates/approvals/licences/splits, run training, claim accuracy improvement, or replace/tune the production model.
 
-- classify evidence as eligible/incomplete/rejected without modifying it;
-- produce deterministic missing-evidence/readiness reports;
-- verify declared file/hash/provenance/training-approval references at an isolated boundary;
-- keep actual admitted training samples separate from mere candidates.
-
-T2 must **not**:
-
-- generate page images or glyphs and call them teacher evidence;
-- infer/assign real Audiveris shape labels without teacher evidence;
-- invent coordinates, approvals, licences or source metadata;
-- run model training;
-- claim accuracy improvement;
-- replace/tune the production model;
-- change the production OMR path.
-
-If no new verified training artifacts are supplied, T2 should remain an intake/readiness contract and report zero admitted real samples.
+Under the approved sequential roadmap, do not start Package 9 while Package 8B remains incomplete unless the user explicitly changes the roadmap.
 
 ## Protected integration boundaries
 
-Unless separately and explicitly authorized, do not change:
+Unless separately and explicitly authorized with measured evidence, do not change:
 
 - production Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
 - Cloud OMR Gateway or production OMR path;
 - `Dockerfile`;
 - `render.yaml`;
-- current Render service/deployment connection.
+- current Render service/deployment connection;
+- production model selection/replacement.
 
 Do not add dependencies unless necessary and approved. Do not invent notes, rhythms, symbols, training labels, coordinates, approval evidence or performance metrics.
