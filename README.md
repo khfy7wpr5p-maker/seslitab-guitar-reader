@@ -23,7 +23,7 @@ It helps students read, hear, understand, and practise musical notation, rhythm,
 - Guitar and music teachers
 - Inclusive music education groups
 - Students with additional learning needs
-- Future violin and rhythm-training users
+- Violin and rhythm-training users as those product areas mature
 
 ## Project Approach
 
@@ -33,20 +33,51 @@ Its goal is to provide a reliable, teacher-supervised, semi-automatic learning s
 
 ## Current Inputs
 
-- PDF files through the OMR gateway
+- PDF files through the existing OMR gateway and Audiveris provider path
 - MusicXML files
 - Guitar TAB text
 
-## Current and Developing Outputs
+## Verified Current Outputs
 
 - Turkish rhythmic text
 - Rhythmic HTML
 - Note cards
-- MusicXML output
+- MusicXML output/download
 - Turkish text-to-speech
-- Musical playback
-- Future teacher-approved Guitar TAB
-- Future accessible student practice sessions
+- Web Audio musical playback
+- Accessible selected-measure TTS/playback
+- Quality-gated deterministic SMF0 MIDI download
+- Quality-gated Basic Guitar TAB output
+- Quality-gated Basic Violin first-position guidance
+- Source-only MusicXML chord display and Turkish chord TTS
+- Audiveris `.omr` download when available
+
+These outputs are not automatically teacher-approved. Structural validity, quality-gate acceptance, source evidence and teacher approval remain separate concepts.
+
+## Roadmap Position
+
+Packages 0–7 are recorded as completed in the repository status/closure documents. The next strict roadmap package is **Package 8 — Teacher correction, revision history and approval**.
+
+Package 8 must preserve three distinct layers:
+
+1. immutable automatic source/revision;
+2. teacher-corrected revision(s);
+3. teacher approval bound to one exact revision.
+
+A later change must not inherit an older approval automatically. Secure teacher-to-student sharing remains a later Package 12 concern and must only consume explicitly approved revisions.
+
+## Protected OMR / Deployment Boundary
+
+The current Audiveris OMR path and the existing Render connection are established infrastructure boundaries. Routine music-engine, teacher-revision, TAB, violin, MIDI or chord work must not rewrite or reconfigure them unless a separate, explicitly approved package requires it.
+
+In particular, Package 8 architecture work does not require changes to:
+
+- Audiveris provider/runtime/preflight;
+- OMR worker/provider selection;
+- Cloud OMR Gateway;
+- `Dockerfile`;
+- `render.yaml`;
+- Render deployment/service configuration.
 
 ## Development
 
@@ -94,7 +125,8 @@ npm run backend:start
 - Do not share unapproved content with students.
 - Develop one limited package at a time.
 - Never modify the `main` branch directly.
-- Require tests and a production build for every development package.
+- Require focused tests, full regression and a production build for development packages.
+- Do not bypass the quality gate by setting teacher approval flags directly on canonical source data.
 
 ## License and Commercial Use
 
@@ -113,10 +145,13 @@ The public repository intentionally does not promise publication of product-spec
 
 See [`docs/proprietary-extension-boundary.md`](docs/proprietary-extension-boundary.md).
 
-## Status
+## Status and Architecture
 
-SesliTab is under active development.
+SesliTab is under active development. The repository has verified foundations for OMR processing, canonical note/time handling, quality gating, accessible playback, MIDI export, Basic Guitar TAB, Basic Violin and source-only chord presentation/TTS. Teacher correction/approval, secure student sharing, advanced Guitar TAB, advanced violin, tuner functionality, simplified rhythm mode and full mobile productisation remain later roadmap work.
 
-Foundations such as PDF upload, OMR processing, MusicXML parsing, Turkish speech, playback, and canonical note/time handling already exist. Teacher correction, approval, secure student sharing, advanced Guitar TAB, MIDI export, violin support, tuner functionality, and mobile productisation remain planned or partially implemented.
+See:
 
-See [`docs/project-charter.md`](docs/project-charter.md) for the project purpose and safety rules.
+- [`docs/project-charter.md`](docs/project-charter.md)
+- [`docs/current-status.md`](docs/current-status.md)
+- [`docs/package-status.md`](docs/package-status.md)
+- [`docs/music-engine-architecture.md`](docs/music-engine-architecture.md)
