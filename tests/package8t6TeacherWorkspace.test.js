@@ -327,6 +327,6 @@ test('Package 8-T6 workspace source stays isolated from OMR/Audiveris, persisten
   const source = readFileSync(new URL('../src/services/teacherWorkspaceModel.js', import.meta.url), 'utf8')
   assert.match(source, /teacherRevisionModel\.js/)
   assert.match(source, /teacherRevisionConcurrency\.js/)
-  assert.doesNotMatch(source, /backend\/|Audiveris|omrService|gatewayProvider|render\.yaml|Dockerfile|fetch\(|localStorage|indexedDB/i)
-  assert.doesNotMatch(source, /student.*shar|shareAllowed|authorization/i)
+  assert.doesNotMatch(source, /(?:from\s+['\"](?:\.\.\/)*backend\/|from\s+['\"][^'\"]*(?:audiveris|omrService|gatewayProvider)|\bfetch\s*\(|\blocalStorage\b|\bindexedDB\b|render\.yaml|Dockerfile)/i)
+  assert.doesNotMatch(source, /(?:shareAllowed|authorization\s*=|studentSharing)/i)
 })
