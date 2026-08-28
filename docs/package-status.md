@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-28
-Implementation baseline reviewed: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
+Verified closure baseline reviewed: `99232915ebcd5089055d0f8695b6c1b08c697739`
 
 This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main GitHub workflow evidence are satisfied. Dedicated closure documents remain authoritative for detailed evidence.
 
@@ -16,7 +16,8 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 3 documentation closure: `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 / `33104428265` succeeded with 898/898 tests, 229 suites, audit 0 and production build PASS.
 - Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 and production build PASS.
 - Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 / `33119971061` succeeded with 1031/1031 tests, 229 suites, audit 0 and production build PASS.
-- Package 6 implementation baseline: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; exact-main CI #184 / `33124708562` succeeded with 1057/1057 tests, 229 suites, audit 0 and production build PASS. Package-level documentation closure is still pending until its closure PR merges and exact merged-main CI succeeds.
+- Package 6 implementation baseline: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; implementation exact-main CI #184 / `33124708562` succeeded with 1057/1057 tests, 229 suites, audit 0 and production build PASS.
+- Package 6 final closure baseline: `99232915ebcd5089055d0f8695b6c1b08c697739`; closure exact-main CI #188 / `33142995146`, job `98757771854`, succeeded with 1057/1057 tests, 229 suites, audit 0 and production build PASS.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -39,8 +40,8 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 3G — Real MIDI | Completed | PR #57; dependency-free deterministic SMF0 export is quality-gated. Package 3 closure PR #58 merged as `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 succeeded. |
 | 4 — Basic Guitar TAB | Completed | PRs #59–#64 implement candidates → deterministic basic policy → conservative projection → ASCII renderer → Package 2D-gated production consumer → accessible result UI. Final implementation main `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 passed 961/961 tests, 229 suites, audit 0 and build PASS. |
 | 5 — Basic violin | Completed | PRs #66–#68 and #71–#73 implement first-position physical candidates → conservative finger-zone policy → fail-closed projection → Package 2D VIOLIN gate → production consumer → accessible result UI. Final implementation main `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 passed 1031/1031 tests, 229 suites, audit 0 and build PASS. `docs/package-5-closure.md` defines the conservative scope. |
-| 6 — Chord-symbol parser | Partially implemented | Implementation PR #75 is merged and exact-main CI #184 passed 1057/1057 tests, 229 suites, audit 0 and build PASS. Package closure remains pending until the documentation closure PR itself merges and its exact merged-main required CI succeeds. |
-| 7 — Chord display and Turkish TTS | Not started | Blocked by the Package 6 closure gate. No verified shared accessible chord display/TTS package yet. |
+| 6 — Chord-symbol parser | Completed | Implementation PR #75 plus closure PR #76 are verified on protected main. Final closure main `99232915ebcd5089055d0f8695b6c1b08c697739`; exact-main CI #188 passed 1057/1057 tests, 229 suites, audit 0 and build PASS. `docs/package-6-closure.md` records the final evidence. |
+| 7 — Chord display and Turkish TTS | Not started | Package 6 closure gate is satisfied; Package 7 is the next strict roadmap package. |
 | 8 — Teacher correction and approval | Not started | Teacher correction, revision history and approval remain product requirements. |
 | 8B — Audiveris training dataset | Not started | No teacher-approved reproducible training-dataset package. |
 | 9 — Advanced Guitar TAB | Not started | Chord/polyphonic/pedagogical fingering remains intentionally outside Package 4. |
@@ -50,24 +51,29 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web foundations exist; device-level VoiceOver/audio/privacy/productisation criteria remain incomplete. |
 
-## Package 6 implementation evidence
+## Package 6 closure evidence
 
-Authoritative implementation detail: `docs/package-6-chord-symbol-parser.md` and closure-candidate evidence in `docs/package-6-closure.md`.
+Authoritative detail: `docs/package-6-chord-symbol-parser.md` and `docs/package-6-closure.md`.
 
-- Package 6 implementation PR #75
-- accepted review-fixed head: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`
+- implementation PR #75
+- accepted implementation head: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`
 - implementation merge: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
 - exact-head CI #183 / `33124475810`: success
 - implementation exact-main CI #184 / `33124708562`: success
+- closure PR #76
+- accepted closure head: `bf91a58951cbef79842b093656d3e75f61cb71b9`
+- closure merge: `99232915ebcd5089055d0f8695b6c1b08c697739`
+- closure exact-main CI #188 / `33142995146`: success
 - full regression: 1057/1057; 229 suites; 0 failed/skipped/cancelled
 - dependency audit: 120 packages audited; 0 vulnerabilities
 - production build: PASS with Vite 8.2.0; 49 modules transformed
-- two valid review findings on divisions handling were fixed before merge and covered by dedicated regression tests
 - production Audiveris/OMR/gateway/E2E edits: none
 - UI/TTS edits: none; those remain Package 7
 - deployment: not performed
 
-Package 6 remains source-only: it parses explicit MusicXML harmony evidence and does not infer chords from note content, claim OMR correctness, claim teacher approval, or implement chord presentation/TTS.
+The evidence-reconciliation documentation change records closure evidence that already exists on protected main and is not a new Package 6 closure gate.
+
+Package 6 is source-only: it parses explicit MusicXML harmony evidence and does not infer chords from note content, claim OMR correctness, claim teacher approval, or implement chord presentation/TTS.
 
 ## Interpretation rules
 
