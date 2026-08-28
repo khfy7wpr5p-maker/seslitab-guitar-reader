@@ -80,7 +80,7 @@ test('Package 7B pronounces minor, dominant seventh and supported accidentals de
   assert.match(model.displayText, /ölçü başlangıcından 1 vuruş sonra: G7/)
 })
 
-test('Package 7B pronounces explicit slash bass without deriving one from inversion', () => {
+test('Package 7B pronounces explicit slash bass but does not add inversion-only speech absent from the symbol', () => {
   const slash = readyEvent({
     rootStep: 'D',
     rootAlter: 1,
@@ -97,11 +97,12 @@ test('Package 7B pronounces explicit slash bass without deriving one from invers
   const model = buildChordPresentationModel(parseResult([slash, inversionOnly]))
   assert.equal(model.state, CHORD_PRESENTATION_STATE.READY)
   assert.match(model.spokenText, /Re diyez minör yedi akoru, bas La diyez/)
-  assert.match(model.spokenText, /Do majör akoru, birinci çevrim/)
+  assert.match(model.spokenText, /Do majör akoru/)
+  assert.doesNotMatch(model.spokenText, /çevrim/)
   assert.doesNotMatch(model.items[1].displayText, /\//)
 })
 
-test('Package 7B preserves degree semantics from structured fields instead of parsing symbol text', () => {
+test('Package 7B preserves visible degree semantics from structured fields instead of parsing symbol text', () => {
   const event = readyEvent({
     rootStep: 'C',
     kindValue: 'dominant',
@@ -117,6 +118,18 @@ test('Package 7B preserves degree semantics from structured fields instead of pa
   assert.match(model.spokenText, /bemol beş/)
   assert.match(model.spokenText, /dokuz eklendi/)
   assert.match(model.spokenText, /üç çıkarıldı/)
+})
+
+test('Package 7B does not speak a degree hidden by MusicXML print-object=no', () => {
+  const event = readyEvent({
+    rootStep: 'C',
+    kindValue: 'dominant',
+    degrees: [{ type: 'add', value: 9, alter: 0, printObject: false }],
+  })
+  const model = buildChordPresentationModel(parseResult([event]))
+  assert.equal(event.symbol, 'C7')
+  assert.match(model.spokenText, /Do dominant yedi akoru/)
+  assert.doesNotMatch(model.spokenText, /dokuz eklendi/)
 })
 
 test('Package 7A presents explicit no-chord as source evidence without inventing a root', () => {
@@ -188,12 +201,13 @@ test('Package 7A contradictory physical identity fails closed without partial pr
   assert.equal(model.items.length, 0)
 })
 
-test('Package 7A contradictory pitch token or teacher approval fails closed', () => {
+test('Package 7A contradictory pitch token, symbol, or teacher approval fails closed', () => {
   const base = readyEvent({ rootStep: 'D', rootAlter: 1, kindValue: 'major' })
   const badToken = Object.freeze({ ...base, root: Object.freeze({ ...base.root, token: 'Db' }) })
+  const badSymbol = Object.freeze({ ...base, symbol: 'Eb' })
   const approved = Object.freeze({ ...base, teacherApproved: true })
 
-  for (const event of [badToken, approved]) {
+  for (const event of [badToken, badSymbol, approved]) {
     const model = buildChordPresentationModel(parseResult([event]))
     assert.equal(model.state, CHORD_PRESENTATION_STATE.INVALID)
     assert.equal(model.spokenText, '')
