@@ -26,38 +26,49 @@ function artifact(path, character) {
   return { path, sha256: digest(character) }
 }
 
-function completeCandidate({
+function candidateInput({
   candidateId = 'sample-a',
   provenanceId = 'source-a',
   split = AUDIVERIS_DATASET_SPLIT.TRAIN,
   sourceCharacter = 'a',
   pageCharacter = 'b',
   omrCharacter = 'c',
+  musicXmlCharacter = 'e',
   glyphCharacter = 'd',
   label = 'test_only_shape',
 } = {}) {
-  return createAudiverisTrainingCandidate({
+  return {
     candidateId,
     provenanceId,
     split,
     sourcePdf: artifact(`fixtures/${candidateId}/source.pdf`, sourceCharacter),
     pageImage: artifact(`fixtures/${candidateId}/page-1.png`, pageCharacter),
     omrArtifact: artifact(`fixtures/${candidateId}/project.omr`, omrCharacter),
-    musicXml: artifact(`fixtures/${candidateId}/reference.musicxml`, 'e'),
+    musicXml: artifact(`fixtures/${candidateId}/reference.musicxml`, musicXmlCharacter),
     glyphImage: artifact(`fixtures/${candidateId}/glyph.png`, glyphCharacter),
     shapeLabel: label,
     symbolCoordinates: { pageIndex: 0, x: 10, y: 20, width: 12, height: 16 },
     referenceApprovalEvidence: null,
-    trainingApproval: {
-      approvalId: `approval-${candidateId}`,
-      actorId: 'teacher-test-actor',
-      approvedAt: '2026-08-28T18:00:00.000Z',
-      scope: AUDIVERIS_TRAINING_APPROVAL_SCOPE,
-      evidence: artifact(`fixtures/${candidateId}/TRAINING_APPROVAL.md`, 'f'),
-    },
+    trainingApproval: null,
     licenseId: 'TEST-ONLY-PERMITTED',
     licenseEvidence: artifact(`fixtures/${candidateId}/LICENSE.md`, '1'),
     audiverisVersion: '5.11.0',
+  }
+}
+
+function completeCandidate(options = {}) {
+  const input = candidateInput(options)
+  const draft = createAudiverisTrainingCandidate(input)
+  return createAudiverisTrainingCandidate({
+    ...input,
+    trainingApproval: {
+      approvalId: `approval-${input.candidateId}`,
+      actorId: 'teacher-test-actor',
+      approvedAt: '2026-08-28T18:00:00.000Z',
+      scope: AUDIVERIS_TRAINING_APPROVAL_SCOPE,
+      approvedCandidateFingerprint: draft.candidateFingerprint,
+      evidence: artifact(`fixtures/${input.candidateId}/TRAINING_APPROVAL.md`, 'f'),
+    },
   })
 }
 
@@ -75,11 +86,16 @@ test('Package 8B-T1 vocabulary is explicit and immutable', () => {
   assert.equal(AUDIVERIS_TRAINING_APPROVAL_SCOPE, 'audiveris_training_sample')
 })
 
-test('Package 8B-T1 complete candidate is immutable, strict, and trainable only with explicit training approval', () => {
+test('Package 8B-T1 complete candidate is immutable and trainable only with exact approval binding', () => {
   const candidate = completeCandidate()
   const evaluation = evaluateAudiverisTrainingCandidate(candidate)
 
   assert.equal(isAudiverisTrainingCandidate(candidate), true)
+  assert.match(candidate.candidateFingerprint, /^sha256:[0-9a-f]{64}$/u)
+  assert.equal(
+    candidate.trainingApproval.approvedCandidateFingerprint,
+    candidate.candidateFingerprint,
+  )
   assert.equal(Object.isFrozen(candidate), true)
   assert.equal(Object.isFrozen(candidate.sourcePdf), true)
   assert.equal(Object.isFrozen(candidate.symbolCoordinates), true)
@@ -88,6 +104,19 @@ test('Package 8B-T1 complete candidate is immutable, strict, and trainable only 
   assert.equal(evaluation.status, AUDIVERIS_TRAINABILITY_STATUS.TRAINABLE)
   assert.deepEqual(evaluation.reasons, [])
   assert.equal(requireAudiverisTrainableSample(candidate), candidate)
+})
+
+test('Package 8B-T1 review regression: approval cannot be copied to changed sample evidence', () => {
+  const approved = completeCandidate()
+  const changed = candidateInput({ label: 'changed_test_only_shape' })
+
+  assert.throws(
+    () => createAudiverisTrainingCandidate({
+      ...changed,
+      trainingApproval: approved.trainingApproval,
+    }),
+    /does not bind the exact candidate evidence/,
+  )
 })
 
 test('Package 8B-T1 rejects mutable nested evidence disguised inside a frozen candidate', () => {
@@ -127,109 +156,102 @@ test('Package 8B-T1 MusicXML-only evidence is never a training sample', () => {
   assert.throws(() => requireAudiverisTrainableSample(candidate), /not trainable/)
 })
 
-test('Package 8B-T1 unapproved candidate is rejected even when images, OMR and label evidence exist', () => {
-  const complete = completeCandidate()
-  const candidate = createAudiverisTrainingCandidate({
-    ...complete,
-    trainingApproval: null,
-  })
+test('Package 8B-T1 unapproved candidate is rejected even when image, OMR and label evidence exist', () => {
+  const candidate = createAudiverisTrainingCandidate(candidateInput())
   const evaluation = evaluateAudiverisTrainingCandidate(candidate)
 
   assert.equal(evaluation.status, AUDIVERIS_TRAINABILITY_STATUS.INCOMPLETE)
   assert.deepEqual(evaluation.reasons, [AUDIVERIS_TRAINABILITY_REASON.MISSING_TRAINING_APPROVAL])
   assert.throws(
     () => createAudiverisDatasetManifest({
-      datasetId: 'dataset-a',
-      versionId: 'v1',
-      samples: [candidate],
+      datasetId: 'dataset-a', versionId: 'v1', samples: [candidate],
     }),
     /not trainable/,
   )
 })
 
-test('Package 8B-T1 image/label evidence is paired and coordinates must be bounded plain integers', () => {
-  const complete = completeCandidate()
-  const missingLabel = createAudiverisTrainingCandidate({ ...complete, shapeLabel: null })
-  const missingGlyph = createAudiverisTrainingCandidate({ ...complete, glyphImage: null })
+test('Package 8B-T1 image/label evidence is paired and coordinates use bounded plain integers', () => {
+  const missingLabel = createAudiverisTrainingCandidate({
+    ...candidateInput(), shapeLabel: null,
+  })
+  const missingGlyph = createAudiverisTrainingCandidate({
+    ...candidateInput(), glyphImage: null,
+  })
 
   assert.deepEqual(evaluateAudiverisTrainingCandidate(missingLabel).reasons, [
     AUDIVERIS_TRAINABILITY_REASON.MISSING_SHAPE_LABEL,
+    AUDIVERIS_TRAINABILITY_REASON.MISSING_TRAINING_APPROVAL,
   ])
   assert.deepEqual(evaluateAudiverisTrainingCandidate(missingGlyph).reasons, [
     AUDIVERIS_TRAINABILITY_REASON.MISSING_GLYPH_IMAGE,
+    AUDIVERIS_TRAINABILITY_REASON.MISSING_TRAINING_APPROVAL,
   ])
   assert.throws(
     () => createAudiverisTrainingCandidate({
-      ...complete,
+      ...candidateInput(),
       pageImage: artifact('fixtures/sample-a/page-1.pdf', 'b'),
     }),
     /file extension/,
   )
   assert.throws(
     () => createAudiverisTrainingCandidate({
-      ...complete,
+      ...candidateInput(),
       symbolCoordinates: { pageIndex: 0, x: 1, y: 2, width: 0, height: 3 },
     }),
     /greater than zero/,
   )
   assert.throws(
     () => createAudiverisTrainingCandidate({
-      ...complete,
+      ...candidateInput(),
       symbolCoordinates: { pageIndex: 0, x: 1.5, y: 2, width: 3, height: 4 },
     }),
     /safe integer/,
   )
 })
 
-test('Package 8B-T1 requires safe repository paths and exact SHA-256 evidence', () => {
-  const complete = completeCandidate()
+test('Package 8B-T1 requires safe repository paths, exact SHA-256 and strict input fields', () => {
   assert.throws(
     () => createAudiverisTrainingCandidate({
-      ...complete,
+      ...candidateInput(),
       glyphImage: { path: '../escape.png', sha256: digest('d') },
     }),
     /repository-relative/,
   )
   assert.throws(
     () => createAudiverisTrainingCandidate({
-      ...complete,
+      ...candidateInput(),
       glyphImage: { path: 'fixtures/glyph.png', sha256: 'abc' },
     }),
     /SHA-256/,
   )
   assert.throws(
-    () => createAudiverisTrainingCandidate({
-      ...complete,
-      trainingApproval: {
-        ...complete.trainingApproval,
-        scope: 'golden_reference',
-      },
-    }),
-    /explicitly approve Audiveris training use/,
+    () => createAudiverisTrainingCandidate({ ...candidateInput(), unexpected: true }),
+    /unsupported field/,
   )
+
+  const accessor = candidateInput()
+  Object.defineProperty(accessor, 'shapeLabel', {
+    enumerable: true,
+    configurable: true,
+    get() { return 'unsafe' },
+  })
+  assert.throws(() => createAudiverisTrainingCandidate(accessor), /enumerable data property/)
 })
 
 test('Package 8B-T1 dataset version fingerprint is deterministic across input order', () => {
   const a = completeCandidate({ candidateId: 'a', provenanceId: 'pa' })
   const b = completeCandidate({
-    candidateId: 'b',
-    provenanceId: 'pb',
-    sourceCharacter: '2',
-    pageCharacter: '3',
-    omrCharacter: '4',
-    glyphCharacter: '5',
+    candidateId: 'b', provenanceId: 'pb',
+    sourceCharacter: '2', pageCharacter: '3', omrCharacter: '4',
+    musicXmlCharacter: '5', glyphCharacter: '6',
   })
   const one = createAudiverisDatasetManifest({
-    datasetId: 'verified-symbols',
-    versionId: 'v1',
-    createdAt: '2026-08-28T18:10:00.000Z',
-    samples: [b, a],
+    datasetId: 'verified-symbols', versionId: 'v1',
+    createdAt: '2026-08-28T18:10:00.000Z', samples: [b, a],
   })
   const two = createAudiverisDatasetManifest({
-    datasetId: 'verified-symbols',
-    versionId: 'v1',
-    createdAt: '2026-08-28T18:10:00.000Z',
-    samples: [a, b],
+    datasetId: 'verified-symbols', versionId: 'v1',
+    createdAt: '2026-08-28T18:10:00.000Z', samples: [a, b],
   })
 
   assert.equal(one.datasetFingerprint, two.datasetFingerprint)
@@ -241,8 +263,8 @@ test('Package 8B-T1 dataset version fingerprint is deterministic across input or
 })
 
 test('Package 8B-T1 dataset fingerprint changes when exact labeled evidence changes', () => {
-  const a = completeCandidate()
-  const b = completeCandidate({ label: 'different_test_only_shape' })
+  const a = completeCandidate({ candidateId: 'a' })
+  const b = completeCandidate({ candidateId: 'b', label: 'different_test_only_shape' })
   const manifestA = createAudiverisDatasetManifest({
     datasetId: 'verified-symbols', versionId: 'v1', samples: [a],
   })
@@ -255,13 +277,10 @@ test('Package 8B-T1 dataset fingerprint changes when exact labeled evidence chan
 test('Package 8B-T1 train/evaluation split rejects provenance and source-evidence leakage', () => {
   const train = completeCandidate({ candidateId: 'train-a', provenanceId: 'shared-source' })
   const evaluationSameProvenance = completeCandidate({
-    candidateId: 'eval-a',
-    provenanceId: 'shared-source',
+    candidateId: 'eval-a', provenanceId: 'shared-source',
     split: AUDIVERIS_DATASET_SPLIT.EVALUATION,
-    sourceCharacter: '2',
-    pageCharacter: '3',
-    omrCharacter: '4',
-    glyphCharacter: '5',
+    sourceCharacter: '2', pageCharacter: '3', omrCharacter: '4',
+    musicXmlCharacter: '5', glyphCharacter: '6',
   })
   assert.throws(
     () => createAudiverisDatasetManifest({
@@ -271,13 +290,10 @@ test('Package 8B-T1 train/evaluation split rejects provenance and source-evidenc
   )
 
   const evaluationSharedPdf = completeCandidate({
-    candidateId: 'eval-b',
-    provenanceId: 'different-source-id',
+    candidateId: 'eval-b', provenanceId: 'different-source-id',
     split: AUDIVERIS_DATASET_SPLIT.EVALUATION,
-    sourceCharacter: 'a',
-    pageCharacter: '3',
-    omrCharacter: '4',
-    glyphCharacter: '5',
+    sourceCharacter: 'a', pageCharacter: '3', omrCharacter: '4',
+    musicXmlCharacter: '5', glyphCharacter: '6',
   })
   assert.throws(
     () => createAudiverisDatasetManifest({
@@ -287,7 +303,46 @@ test('Package 8B-T1 train/evaluation split rejects provenance and source-evidenc
   )
 })
 
-test('Package 8B-T1 repository inventory preserves the real approved chain but does not promote it to trainable data', () => {
+test('Package 8B-T1 review regression: direct glyph or MusicXML sharing cannot cross train/evaluation split', () => {
+  const train = completeCandidate({ candidateId: 'train-glyph', provenanceId: 'train-source' })
+  const sharedGlyph = completeCandidate({
+    candidateId: 'eval-glyph', provenanceId: 'eval-source',
+    split: AUDIVERIS_DATASET_SPLIT.EVALUATION,
+    sourceCharacter: '2', pageCharacter: '3', omrCharacter: '4',
+    musicXmlCharacter: '5', glyphCharacter: 'd',
+  })
+  assert.throws(
+    () => createAudiverisDatasetManifest({
+      datasetId: 'dataset-a', versionId: 'v1', samples: [train, sharedGlyph],
+    }),
+    /leakage.*shared source evidence/i,
+  )
+
+  const sharedMusicXml = completeCandidate({
+    candidateId: 'eval-xml', provenanceId: 'eval-source-2',
+    split: AUDIVERIS_DATASET_SPLIT.EVALUATION,
+    sourceCharacter: '2', pageCharacter: '3', omrCharacter: '4',
+    musicXmlCharacter: 'e', glyphCharacter: '6',
+  })
+  assert.throws(
+    () => createAudiverisDatasetManifest({
+      datasetId: 'dataset-a', versionId: 'v1', samples: [train, sharedMusicXml],
+    }),
+    /leakage.*shared source evidence/i,
+  )
+})
+
+test('Package 8B-T1 strict manifest validation rejects mutable or injected containers', () => {
+  const sample = completeCandidate()
+  const manifest = createAudiverisDatasetManifest({
+    datasetId: 'dataset-a', versionId: 'v1', samples: [sample],
+  })
+  assert.equal(isAudiverisDatasetManifest(manifest), true)
+  assert.equal(isAudiverisDatasetManifest({ ...manifest }), false)
+  assert.equal(isAudiverisDatasetManifest(Object.freeze({ ...manifest, extra: true })), false)
+})
+
+test('Package 8B-T1 repository inventory preserves the approved chain without promoting it to training data', () => {
   assert.equal(AUDIVERIS_8B_REPOSITORY_CANDIDATES.length, 1)
   assert.equal(AUDIVERIS_8B_REPOSITORY_EVALUATIONS.length, 1)
   const candidate = AUDIVERIS_8B_REPOSITORY_CANDIDATES[0]
@@ -314,14 +369,12 @@ test('Package 8B-T1 repository inventory preserves the real approved chain but d
   ])
 })
 
-test('Package 8B-T1 contract is isolated from production OMR/model/deployment wiring', () => {
+test('Package 8B-T1 contract remains isolated from production OMR/model/deployment wiring', () => {
   const source = readFileSync(
-    new URL('../scripts/audiverisTrainingDatasetContract.js', import.meta.url),
-    'utf8',
+    new URL('../scripts/audiverisTrainingDatasetContract.js', import.meta.url), 'utf8',
   )
   const inventory = readFileSync(
-    new URL('../scripts/audiverisTrainingDatasetInventory.js', import.meta.url),
-    'utf8',
+    new URL('../scripts/audiverisTrainingDatasetInventory.js', import.meta.url), 'utf8',
   )
   const importTargets = [...`${source}\n${inventory}`.matchAll(/from\s+['"]([^'"]+)['"]/gu)]
     .map((match) => match[1])
