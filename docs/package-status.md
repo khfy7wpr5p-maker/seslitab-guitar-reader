@@ -16,7 +16,7 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 3 documentation closure: `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 / `33104428265` succeeded with 898/898 tests, 229 suites, audit 0 and production build PASS.
 - Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 / `33111922206` succeeded with 961/961 tests, 229 suites, audit 0 and production build PASS.
 - Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 / `33119971061` succeeded with 1031/1031 tests, 229 suites, audit 0 and production build PASS.
-- Package 6 implementation baseline: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; exact-main CI #184 / `33124708562` succeeded with 1057/1057 tests, 229 suites, audit 0 and production build PASS.
+- Package 6 implementation baseline: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; exact-main CI #184 / `33124708562` succeeded with 1057/1057 tests, 229 suites, audit 0 and production build PASS. Package-level documentation closure is still pending until its closure PR merges and exact merged-main CI succeeds.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -39,8 +39,8 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 3G — Real MIDI | Completed | PR #57; dependency-free deterministic SMF0 export is quality-gated. Package 3 closure PR #58 merged as `02dadf55f22505dc5527478f2f6ddb90c17621ff`; exact-main CI #136 succeeded. |
 | 4 — Basic Guitar TAB | Completed | PRs #59–#64 implement candidates → deterministic basic policy → conservative projection → ASCII renderer → Package 2D-gated production consumer → accessible result UI. Final implementation main `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 passed 961/961 tests, 229 suites, audit 0 and build PASS. |
 | 5 — Basic violin | Completed | PRs #66–#68 and #71–#73 implement first-position physical candidates → conservative finger-zone policy → fail-closed projection → Package 2D VIOLIN gate → production consumer → accessible result UI. Final implementation main `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 passed 1031/1031 tests, 229 suites, audit 0 and build PASS. `docs/package-5-closure.md` defines the conservative scope. |
-| 6 — Chord-symbol parser | Completed | PR #75 implements isolated source-only MusicXML `<harmony>` parsing, deterministic basic chord-symbol normalization, physical identity/timing preservation and fail-closed unsupported harmony handling. Implementation main `4417a32f3ddaa46dacf149dc1317f6a83d19403c`; exact-main CI #184 passed 1057/1057 tests, 229 suites, audit 0 and build PASS. `docs/package-6-closure.md` defines the scope and closure evidence. |
-| 7 — Chord display and Turkish TTS | Not started | Package 6 provides source chord evidence; no verified shared accessible chord display/TTS package yet. |
+| 6 — Chord-symbol parser | Partially implemented | Implementation PR #75 is merged and exact-main CI #184 passed 1057/1057 tests, 229 suites, audit 0 and build PASS. Package closure remains pending until the documentation closure PR itself merges and its exact merged-main required CI succeeds. |
+| 7 — Chord display and Turkish TTS | Not started | Blocked by the Package 6 closure gate. No verified shared accessible chord display/TTS package yet. |
 | 8 — Teacher correction and approval | Not started | Teacher correction, revision history and approval remain product requirements. |
 | 8B — Audiveris training dataset | Not started | No teacher-approved reproducible training-dataset package. |
 | 9 — Advanced Guitar TAB | Not started | Chord/polyphonic/pedagogical fingering remains intentionally outside Package 4. |
@@ -50,24 +50,9 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web foundations exist; device-level VoiceOver/audio/privacy/productisation criteria remain incomplete. |
 
-## Package 5 closure evidence
+## Package 6 implementation evidence
 
-Authoritative detail: `docs/package-5-closure.md` plus Package 5A–5F stage documents.
-
-- 5A PR #66 → merge `1f500cfba2c0a44b8d5ca5fd388f769e8d4cb5da`
-- 5B PR #67 → merge `a68121c027fdfb2f96da449179d28cce5e002a20`
-- 5C PR #68 → merge `9678494c29af6405397670228985e177f19f4ebc`
-- 5D PR #71 → merge `a01793e4d0f00ff83fd8e71979da6ef7eb6a1051`
-- 5E PR #72 → merge `e1116b1e1139fb701ee8c5c09a12ec6d9cc4d1b1`
-- 5F PR #73 → merge `0465dba0c40e66ad0d8c77ea47b62fbd421209de`
-- implementation exact-main CI #177 / `33119971061`: success
-- full regression: 1031/1031; 229 suites; 0 failed/skipped/cancelled
-- dependency audit: 120 packages audited; 0 vulnerabilities
-- production build: PASS with Vite 8.2.0
-
-## Package 6 closure evidence
-
-Authoritative detail: `docs/package-6-closure.md` and `docs/package-6-chord-symbol-parser.md`.
+Authoritative implementation detail: `docs/package-6-chord-symbol-parser.md` and closure-candidate evidence in `docs/package-6-closure.md`.
 
 - Package 6 implementation PR #75
 - accepted review-fixed head: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`
@@ -82,12 +67,12 @@ Authoritative detail: `docs/package-6-closure.md` and `docs/package-6-chord-symb
 - UI/TTS edits: none; those remain Package 7
 - deployment: not performed
 
-Package 6 is source-only: it parses explicit MusicXML harmony evidence and does not infer chords from note content, claim OMR correctness, claim teacher approval, or implement chord presentation/TTS.
+Package 6 remains source-only: it parses explicit MusicXML harmony evidence and does not infer chords from note content, claim OMR correctness, claim teacher approval, or implement chord presentation/TTS.
 
 ## Interpretation rules
 
-- **Completed:** acceptance criteria, focused tests, full regression, production build and required protected-main workflow evidence are satisfied.
-- **Partially implemented:** relevant implementation exists, but package acceptance is incomplete or unverified.
+- **Completed:** acceptance criteria, focused tests, full regression, production build and required protected-main workflow evidence are satisfied, including any package-specific closure gate.
+- **Partially implemented:** relevant implementation exists, but package acceptance or closure is incomplete.
 - **Not started:** no meaningful verified package implementation evidence.
 - **Not verified:** related code may exist, but available evidence is insufficient to assign another status safely.
 
