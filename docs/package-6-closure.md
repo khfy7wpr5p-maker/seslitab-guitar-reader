@@ -2,7 +2,7 @@
 
 Date: 2026-08-28
 
-Status: **Closure candidate. Final Package 6 completion requires this documentation PR to merge and its exact merged-main `test-and-build` to succeed.**
+Status: **Completed.** The implementation, documentation closure merge, and exact merged-main required CI have all succeeded.
 
 ## Scope closed
 
@@ -55,9 +55,40 @@ Exact implementation-main CI:
 - Vite 8.2.0 production build PASS
 - 49 modules transformed
 
+## Documentation closure evidence
+
+Closure PR: **#76 — Docs: close Package 6 chord-symbol parser**
+
+Accepted closure head after documentation review fix:
+`bf91a58951cbef79842b093656d3e75f61cb71b9`
+
+Closure merge on protected main:
+`99232915ebcd5089055d0f8695b6c1b08c697739`
+
+Exact closure-head CI:
+- run #187 / `33142892750`
+- required `test-and-build`: SUCCESS
+- 1057/1057 tests PASS
+- 229 suites
+- dependency audit: 0 vulnerabilities
+- production build PASS
+
+Exact closure-main CI:
+- run #188 / `33142995146`
+- job `98757771854` / `test-and-build`
+- exact head SHA `99232915ebcd5089055d0f8695b6c1b08c697739`
+- 1057/1057 tests PASS
+- 229 suites
+- 0 failed / skipped / cancelled
+- 120 packages audited; 0 vulnerabilities
+- Vite 8.2.0 production build PASS
+- 49 modules transformed
+
+The later evidence-reconciliation documentation change only records already-achieved closure evidence and is not a new Package 6 closure gate.
+
 ## Review findings handled before merge
 
-The first green PR head was not merged after two valid automated review findings were identified:
+The first green implementation PR head was not merged after two valid automated review findings were identified:
 
 1. P1: a mid-measure `<divisions>` change could reinterpret an already accumulated cursor in the new unit scale.
 2. P2: an explicitly present but malformed `<divisions>` value could silently reuse a stale inherited divisions value.
@@ -68,7 +99,7 @@ Both were fixed before merge. Dedicated regression coverage verifies:
 - empty/nonnumeric/non-positive explicit divisions invalidates stale timing;
 - timed source events without trustworthy divisions fail timing closed.
 
-Both review threads were resolved and the accepted feature head was re-run through the complete required CI before merge.
+The closure PR also received a valid P2 documentation finding: Package 6 must not be marked Completed before the closure PR's own exact-main CI exists. The status was reverted to pending, CI #188 then succeeded, and this reconciliation records that completed evidence.
 
 ## Verified parser behavior
 
@@ -134,8 +165,6 @@ Package 6 does not claim:
 
 ## Next strict package
 
-After this closure PR itself is merged and its exact-main required CI succeeds, the next roadmap package is:
+Package 6 closure is satisfied. The next roadmap package is:
 
 **Package 7 — Chord display and Turkish TTS.**
-
-Package 7 is not started by this closure.
