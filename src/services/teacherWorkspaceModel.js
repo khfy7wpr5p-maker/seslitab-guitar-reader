@@ -35,7 +35,10 @@ export const TEACHER_WORKSPACE_STATE = Object.freeze({
 
 // Direct NoteObject fields only. Source identity, confidence/verification,
 // measureKey/part/measure identity, raw evidence, and arbitrary nested JSON are
-// deliberately not exposed by the bounded T6 editor.
+// deliberately not exposed by the bounded T6 editor. T6 does not recalculate
+// dependent musical fields or quality evidence; every correction remains a
+// teacher revision that requires the existing validation/quality boundary
+// before any later definitive consumer or sharing decision.
 export const TEACHER_EDITABLE_NOTE_FIELDS = Object.freeze([
   'step',
   'alter',
@@ -166,6 +169,14 @@ function requireWorkspace(workspace) {
   return workspace
 }
 
+function requireActiveWorkspace(workspace) {
+  requireWorkspace(workspace)
+  if (workspace.state === TEACHER_WORKSPACE_STATE.CONFLICT) {
+    throw new Error('Teacher workspace conflict requires explicit refresh before another mutation.')
+  }
+  return workspace
+}
+
 function fieldType(value) {
   if (typeof value === 'string') return 'string'
   if (typeof value === 'boolean') return 'boolean'
@@ -183,7 +194,7 @@ function conflictWorkspace(workspace, history, conflictReason) {
     actorId: workspace.actorId,
     history,
     // Keep the submitted stale expectation until the teacher explicitly
-    // refreshes. This prevents a second click from silently rebasing/retrying.
+    // refreshes. This prevents a second call from silently rebasing/retrying.
     expectation: workspace.expectation,
     conflictReason,
   })
@@ -345,7 +356,7 @@ export function applyTeacherWorkspaceCorrection({
   operationId,
   createdAt = null,
 } = {}) {
-  requireWorkspace(workspace)
+  requireActiveWorkspace(workspace)
   const descriptor = listTeacherEditableFields(workspace).find(
     (field) => field.key === selectedFieldKey,
   )
@@ -379,12 +390,15 @@ export function approveTeacherWorkspace({
   approvalId,
   createdAt = null,
 } = {}) {
-  requireWorkspace(workspace)
+  requireActiveWorkspace(workspace)
 
   // T5 approval append receives an already-created T3 record. Preflight first
   // so a stale UI never even creates local approval evidence before conflict.
   const conflict = preflightExpectation(workspace)
   if (conflict) return conflict
+  if (getTeacherWorkspaceApplicableApproval(workspace)) {
+    throw new Error('The exact current revision is already teacher-approved in this workspace.')
+  }
 
   const revision = getCurrentTeacherRevision(workspace.history)
   const approval = createTeacherApprovalRecord({
@@ -412,7 +426,7 @@ export function undoTeacherWorkspace({
   eventId,
   createdAt = null,
 } = {}) {
-  requireWorkspace(workspace)
+  requireActiveWorkspace(workspace)
   const result = undoTeacherRevisionHistoryWithExpectation({
     history: workspace.history,
     expectation: workspace.expectation,
