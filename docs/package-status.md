@@ -17,7 +17,7 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 / `33111922206`: 961/961 tests, 229 suites, audit 0, build PASS.
 - Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 / `33119971061`: 1031/1031 tests, 229 suites, audit 0, build PASS.
 - Package 6 final closure baseline: `99232915ebcd5089055d0f8695b6c1b08c697739`; exact-main CI #188 / `33142995146`: 1057/1057 tests, 229 suites, audit 0, build PASS.
-- Package 7 final technical baseline: `7c37057713aa8a975edafdb0928d64f575d7cd5f`; exact-main CI #205 / `33146058408`, job `98767251803`: **1105/1105 tests**, 229 suites, audit 0, build PASS. Final documentation reconciliation is this docs-only gate.
+- Package 7 final technical baseline before package closure: `7c37057713aa8a975edafdb0928d64f575d7cd5f`; exact-main CI #205 / `33146058408`, job `98767251803`: **1105/1105 tests**, 229 suites, audit 0, build PASS. PR #83 is the active documentation closure gate.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -35,7 +35,7 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 4 — Basic Guitar TAB | Completed | Candidates → deterministic policy → conservative projection → ASCII renderer → quality-gated consumer → accessible UI. |
 | 5 — Basic violin | Completed | First-position candidates → conservative fingering → quality-gated consumer → accessible UI. |
 | 6 — Chord-symbol parser | Completed | Source-only MusicXML `<harmony>` parser; final closure main `99232915…`, CI #188 green. |
-| 7 — Chord display and Turkish TTS | **Completed** | PRs #78–#82 implement source-only presentation, Turkish pronunciation, exact MusicXML handoff, accessible `Akorlar` UI, shared-audio/TTS lifecycle and stale-source invalidation. Technical baseline `7c370577…`; exact-main CI #205 passed 1105/1105 tests, 229 suites, audit 0 and build PASS. |
+| 7 — Chord display and Turkish TTS | **Closure pending** | 7A–7F and the 7C stale-source hotfix are technically verified. PR #83 must merge and its exact-main `test-and-build` must succeed before package-level `Completed`. |
 | 8 — Teacher correction and approval | Not started | Teacher correction, revision history and approval remain product requirements. |
 | 8B — Audiveris training dataset | Not started | No teacher-approved reproducible training-dataset package. |
 | 9 — Advanced Guitar TAB | Not started | Chord/polyphonic/pedagogical fingering remains intentionally outside Package 4. |
@@ -45,14 +45,14 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web foundations exist; device-level VoiceOver/audio/privacy/productisation criteria remain incomplete. |
 
-## Package 7 final evidence
+## Package 7 stage evidence
 
 Authoritative detail:
 
-- `docs/package-7ab-chord-presentation.md`
-- `docs/package-7c-chord-source-handoff.md`
-- `docs/package-7def-accessible-chord-ui-tts.md`
-- `docs/package-7-closure.md`
+- `docs/package-7ab-chord-presentation.md` — 7A–7B **Completed**
+- `docs/package-7c-chord-source-handoff.md` — 7C **Completed**, including PR #82 hotfix
+- `docs/package-7def-accessible-chord-ui-tts.md` — 7D–7F **Completed**
+- `docs/package-7-closure.md` — package-level **closure pending** until PR #83 exact-main gate
 
 Verified sequence:
 
@@ -61,15 +61,16 @@ Verified sequence:
 - 7D–7F PR #80 → merge `fae1b102eae24926ac48f429124c96f8c58899fe` → exact-main CI #201 SUCCESS with 1103/1103 tests.
 - 7G closure-pending PR #81 → merge `fef1464c882878fd1dd9921959887b9080f30927` → exact-main CI #203 SUCCESS.
 - Late valid P2 stale-source finding → hotfix PR #82 → accepted head `0968a439a8e5b2a8712d216277f7466c8ba84daa` → merge `7c37057713aa8a975edafdb0928d64f575d7cd5f` → exact-head #204 and exact-main #205 SUCCESS.
-- Final technical regression: **1105/1105 PASS**, 229 suites, 0 failed/skipped/cancelled, 120 packages audited, 0 vulnerabilities, Vite 8.2.0 build PASS, 55 modules transformed.
+- Current PR #83 exact-head CI #206 / `33146234567`, job `98767794592`: SUCCESS with **1105/1105 PASS**, 229 suites, audit 0, build PASS.
 
 Package 7 remains **source-only presentation**. `sourceOnly=true`, `definitive=false`, `teacherApproved=false`. It does not infer chords from note content and does not prove that source harmony is musically correct.
 
 ## Interpretation rules
 
 - **Completed:** acceptance criteria, focused tests, full regression, production build and required protected-main workflow evidence are satisfied, including package-specific closure evidence.
+- **Closure pending:** implementation stages are verified, but the active package-level closure PR still requires protected-main merge and exact-main CI.
 - **Partially implemented:** relevant implementation exists, but package acceptance or closure is incomplete.
 - **Not started:** no meaningful verified package implementation evidence.
 - **Not verified:** related code may exist, but available evidence is insufficient to assign another status safely.
 
-Package 8 must not be treated as started by this Package 7 closure. Teacher correction and approval require a separate architecture/security review.
+Package 8 must not be treated as started by the current Package 7 closure gate.
