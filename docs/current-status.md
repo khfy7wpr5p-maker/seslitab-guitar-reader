@@ -2,8 +2,8 @@
 
 Last documentation review: 2026-08-28  
 Latest verified Package 7 technical main: `7c37057713aa8a975edafdb0928d64f575d7cd5f`
-Current package closure: **Package 7 — Chord display and Turkish TTS Completed.**
-Next strict roadmap step: **Package 8 — Teacher correction and approval; not started.**
+Current package closure: **Package 7 — closure pending final documentation exact-main gate.**
+Package 8 — Teacher correction and approval: **not started** and must not begin until Package 7 closure evidence is final.
 
 This file is a concise orientation document. It is not a substitute for a fresh read-only audit, test run, production build or GitHub Actions result.
 
@@ -62,9 +62,11 @@ The repository currently contains verified foundations for:
 
 Package 7 chord output is explicitly source presentation only. It does not infer a chord from notes, does not prove the MusicXML harmony is musically correct, and remains `sourceOnly=true`, `definitive=false`, `teacherApproved=false`.
 
-## Package 7 final evidence
+## Package 7 implementation evidence
 
 ### 7A–7B — presentation and Turkish pronunciation
+
+Status: **Completed**.
 
 - PR #78
 - merge `ee9a95a02a75c357e74647a09b1c2b27dafdcc6c`
@@ -73,6 +75,8 @@ Package 7 chord output is explicitly source presentation only. It does not infer
 Verified: deterministic display/Turkish pronunciation from Package 6 evidence, physical measure identity/timing, visible/spoken parity, fail-closed review/invalid handling, no chord inference.
 
 ### 7C — exact raw MusicXML source handoff
+
+Status: **Completed**, including stale-source security hotfix.
 
 Original implementation:
 
@@ -88,9 +92,11 @@ Late stale-source security hotfix:
 - exact-head CI #204 / `33145943788`: SUCCESS
 - exact-main CI #205 / `33146058408`, job `98767251803`: SUCCESS
 
-The source association is now atomic with the current preparation attempt. A failed blank/malformed/structurally rejected replacement cannot leave older raw MusicXML consumable for the same exact note array.
+The source association is atomic with the current preparation attempt. A failed blank/malformed/structurally rejected replacement cannot leave older raw MusicXML consumable for the same exact note array.
 
 ### 7D–7F — accessible UI and TTS lifecycle
+
+Status: **Completed**.
 
 - PR #80
 - merge `fae1b102eae24926ac48f429124c96f8c58899fe`
@@ -108,13 +114,16 @@ Verified behavior includes:
 - shared-audio ownership prevents lifecycle collisions with full-score and selected-measure consumers;
 - Package 7-owned TTS is preempted safely before another audio consumer starts.
 
-### 7G — closure
+### 7G — final package closure
+
+Status: **closure pending**.
 
 - closure-pending PR #81 merged as `fef1464c882878fd1dd9921959887b9080f30927`
 - exact-main CI #203: SUCCESS
-- late P2 was then corrected by PR #82 before final completion was recorded.
+- late P2 was then corrected by PR #82 and exact-main CI #205.
+- current final documentation gate: PR #83.
 
-Final technical baseline before this documentation reconciliation:
+Technical baseline before PR #83:
 
 `7c37057713aa8a975edafdb0928d64f575d7cd5f`
 
@@ -127,6 +136,8 @@ Exact-main CI #205 / `33146058408`, job `98767251803`:
 - **0 vulnerabilities**
 - **Vite 8.2.0 production build PASS**
 - **55 modules transformed**
+
+PR #83 exact-head CI #206 / `33146234567`, job `98767794592`: SUCCESS with the same 1105/1105 regression, audit 0 and production build PASS. Package 7 remains closure-pending until PR #83 merges and its exact protected-main push `test-and-build` succeeds.
 
 Detailed documents:
 
@@ -155,16 +166,12 @@ Package 7 did **not**:
 
 `main` is protected. Required status check: `test-and-build`.
 
-Latest verified Package 7 technical main before final documentation reconciliation:
+Latest verified Package 7 technical main before final documentation closure:
 `7c37057713aa8a975edafdb0928d64f575d7cd5f`.
 
-Exact-main CI #205 passed 1105/1105 tests, 229 suites, audit 0 vulnerabilities and Vite production build PASS.
-
-The final documentation reconciliation PR must itself pass exact-head CI, merge through protected main, and pass exact-main CI before Package 7 is reported externally as fully closed.
+The active PR #83 must merge through protected main and its exact-main `test-and-build` must succeed before Package 7 may be marked **Completed**. Package 8 remains not started during this gate.
 
 ## Remaining product areas
-
-The following remain later work and are not reclassified as completed by Package 7:
 
 - Teacher correction, revision history and approval workflow — Package 8
 - Audiveris teacher-approved training dataset
@@ -190,4 +197,4 @@ The following remain later work and are not reclassified as completed by Package
 
 ## Current change boundary
 
-The active final Package 7 evidence reconciliation is documentation-only. It records already-successful Package 7 implementation, accessibility/TTS, closure-pending and stale-source hotfix evidence. It does not change application code, backend code, tests, workflows, dependencies, deployment configuration, branch protection, production settings or production OMR integration.
+PR #83 is documentation-only. It reconciles already-successful Package 7 implementation and hotfix evidence while deliberately retaining package-level `closure pending` status until its own exact-main gate succeeds. It does not change application code, backend code, tests, workflows, dependencies, deployment configuration, branch protection, production settings or production OMR integration.
