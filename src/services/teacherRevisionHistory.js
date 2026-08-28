@@ -11,6 +11,7 @@ import {
   isTeacherRevision,
 } from './teacherRevisionModel.js'
 import {
+  applyTeacherCorrectionBatch,
   isTeacherCorrectionAuditEvent,
 } from './teacherCorrectionOperations.js'
 import {
@@ -134,6 +135,35 @@ function assertDenseFrozenArray(value, label) {
   }
 }
 
+function samePlainData(left, right) {
+  if (Object.is(left, right)) return true
+  if (typeof left !== typeof right || left === null || right === null) return false
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => samePlainData(entry, right[index]))
+    )
+  }
+
+  if (typeof left === 'object') {
+    if (!isPlainObject(left) || !isPlainObject(right)) return false
+    const leftKeys = Object.keys(left).sort()
+    const rightKeys = Object.keys(right).sort()
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every(
+        (key, index) =>
+          key === rightKeys[index] && samePlainData(left[key], right[key]),
+      )
+    )
+  }
+
+  return false
+}
+
 function freezeArray(entries) {
   return Object.freeze([...entries])
 }
@@ -232,6 +262,28 @@ function validateCorrectionBinding(parent, revision, auditEvent) {
     auditEvent.resultContentFingerprint !== revision.contentFingerprint
   ) {
     throw new Error('Correction audit event does not bind the exact history transition.')
+  }
+
+  const replay = applyTeacherCorrectionBatch({
+    eventId: auditEvent.eventId,
+    actorId: auditEvent.actorId,
+    revisionId: auditEvent.resultRevisionId,
+    parentRevision: parent,
+    createdAt: auditEvent.createdAt,
+    operations: auditEvent.operations.map((operation) => ({
+      operationId: operation.operationId,
+      kind: operation.kind,
+      path: [...operation.path],
+      value: operation.after,
+    })),
+  })
+
+  if (
+    replay.revision.createdAt !== revision.createdAt ||
+    replay.revision.lineageFingerprint !== revision.lineageFingerprint ||
+    !samePlainData(replay.auditEvent.operations, auditEvent.operations)
+  ) {
+    throw new Error('Correction audit operations do not reproduce the exact history transition.')
   }
 }
 
