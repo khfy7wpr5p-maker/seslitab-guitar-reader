@@ -16,6 +16,9 @@ import {
 } from '../src/services/chordPresentation.js'
 
 function eventFromDescriptor(descriptor, overrides = {}) {
+  const divisions = overrides.divisions ?? 4
+  const startBeat = overrides.startBeat ?? 0
+  const startDivisions = overrides.startDivisions ?? (startBeat * divisions)
   return Object.freeze({
     ...descriptor,
     partId: 'P1',
@@ -25,10 +28,10 @@ function eventFromDescriptor(descriptor, overrides = {}) {
     measureIndex: 0,
     measureKey: 'P1:0',
     sequenceIndex: 0,
-    divisions: 4,
+    divisions,
     offsetDivisions: 0,
-    startDivisions: 0,
-    startBeat: 0,
+    startDivisions,
+    startBeat,
     timingState: HARMONY_TIMING_STATE.MEASURED,
     ...overrides,
   })
