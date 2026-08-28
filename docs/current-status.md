@@ -1,19 +1,19 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-28  
-Latest verified protected `main`: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
-Latest exact-main CI: **#230 / `33163126080`, job `98822108194` — SUCCESS**  
-Current package state: **Package 8 — Partially implemented; 8-T1 and 8-T2 Completed.**  
-Next safe implementation stage: **Package 8-T3 — exact-revision teacher approval binding and invalidation semantics.**
+Latest verified protected `main`: `70a02589206eeea9c3defec4d5f544e9222cbe3a`  
+Latest exact-main CI: **#234 / `33164575331`, job `98826810765` — SUCCESS**  
+Current package state: **Package 8 — Partially implemented; 8-T1, 8-T2 and 8-T3 Completed.**  
+Next safe implementation stage: **Package 8-T4 — undo/version history.**
 
 This file is a concise orientation document. Source code, tests, protected-main state and fresh GitHub Actions evidence remain authoritative.
 
 ## Verified current baseline
 
-Exact-main CI #230 on `f6d80b4614654ee63a4fd2d51101e4961476a1ee` verified:
+Exact-main CI #234 on `70a02589206eeea9c3defec4d5f544e9222cbe3a` verified:
 
-- **1136 / 1136 tests PASS**
-- **231 suites**
+- **1150 / 1150 tests PASS**
+- **232 suites**
 - **0 failed / skipped / cancelled**
 - `npm ci`: 119 packages installed; 120 packages audited
 - **0 vulnerabilities**
@@ -64,7 +64,7 @@ Evidence:
 
 Status: **Completed.**
 
-T2 adds only a bounded, pure correction layer above T1:
+T2 adds a bounded, pure correction layer above T1:
 
 - one supported operation kind: `replace_value`;
 - existing paths only; no structural insertion/deletion;
@@ -76,28 +76,47 @@ T2 adds only a bounded, pure correction layer above T1:
 
 Evidence:
 
-- implementation baseline: `cd7e4686c88d2428d7a1a095539de2d87f9551e5`
 - PR #89
-- final accepted feature head after review hardening: `c47ce6ba259e50bee8c71453c044650538535a14`
+- final accepted feature head: `c47ce6ba259e50bee8c71453c044650538535a14`
 - exact-head CI #229: SUCCESS
 - protected-main merge: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`
 - exact-main CI #230: SUCCESS
-- **1136/1136 tests, 231 suites, 0 fail/skipped/cancelled**
-- audit: **0 vulnerabilities**
-- production build: **PASS**
 - detailed closure: `docs/package-8-t2-closure.md`
 
-PR review found and T2 fixed two relevant edge cases before merge:
+T2 review hardening canonicalizes `-0` and `0` as one array target and rejects unsupported primitive values in audit validation.
 
-1. `-0` and `0` are canonicalized as the same array target so a batch cannot mutate one location twice while appearing independent.
-2. Audit validation rejects unsupported primitive values such as `undefined`, non-finite numbers, bigint, symbols and functions.
+### 8-T3 — exact-revision teacher approval binding
 
-Both review regressions pass on exact-main CI #230.
+Status: **Completed.**
+
+T3 adds a separate immutable teacher approval record above T1/T2 without mutating revision content:
+
+- approval is an explicit `teacher_approved` record, not a mutable revision flag;
+- approval binds to exact `sourceId`, root `sourceRevisionId`, `approvedRevisionId` and `approvedContentFingerprint`;
+- `APPROVED_EXACT_REVISION` is returned only for the exact bound valid revision;
+- any later/new revision is `NOT_APPLICABLE_TO_REVISION`, even when its content fingerprint happens to match;
+- historical approval evidence remains immutable and is not deleted or rewritten;
+- caller supplies approval/actor identity and optional timestamp; T3 generates none;
+- approval does not become a quality-gate decision, authentication/authorization proof, sharing permission or persistence record.
+
+Evidence:
+
+- PR #91
+- final feature head: `d1805c054e490e71e3d266471ad158defbcd49e1`
+- exact-head CI #233 / run `33164496653`, job `98826560680`: SUCCESS
+- protected-main squash merge: `70a02589206eeea9c3defec4d5f544e9222cbe3a`
+- exact-main CI #234 / run `33164575331`, job `98826810765`: SUCCESS
+- **1150/1150 tests, 232 suites, 0 fail/skipped/cancelled**
+- audit: **0 vulnerabilities**
+- production build: **PASS**
+- review threads: none at merge gate
+- detailed closure: `docs/package-8-t3-closure.md`
+
+T3 focused tests verify exact binding, later-revision non-applicability, identical-content non-inheritance, cross-source isolation, strict frozen-record validation and separation from quality/auth/sharing claims.
 
 ### Remaining Package 8 stages
 
-- **8-T3 — Not started / NEXT:** exact-revision approval binding and changed-revision invalidation semantics.
-- **8-T4 — Not started:** undo/version history.
+- **8-T4 — Not started / NEXT:** undo/version history.
 - **8-T5 — Not started:** optimistic concurrency / stale-base conflict.
 - **8-T6 — Not started:** accessible teacher UI.
 
@@ -105,7 +124,7 @@ Package 8 therefore remains **Partially implemented**, not Completed.
 
 ## Separate later roadmap package
 
-**Package 8B — Audiveris training dataset** remains Not started and separate from Package 8-T1..T6. It must not be started as part of T3.
+**Package 8B — Audiveris training dataset** remains Not started and separate from Package 8-T1..T6. It must not be started as part of T4.
 
 ## Protected OMR and Render boundary
 
@@ -119,15 +138,11 @@ Current autonomous Package 8 work must not modify unless separately and explicit
 - `render.yaml`;
 - current Render service/deployment connection.
 
-Package 8-T1 and 8-T2 did not modify these areas. Exact-main CI #230 passed the existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions.
-
-## Maintenance closure since T1
-
-Legacy PR #17 was safely superseded by PR #88 instead of merging its stale branch. The still-valid E2E MiniDOM whitespace fix was refreshed onto current main, regression-tested, merged and exact-main verified before T2 began. This maintenance work did not change the production MusicXML parser, OMR/Audiveris or Render connection.
+Package 8-T1, 8-T2 and 8-T3 did not modify these areas. Exact-main CI #234 passed the existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions.
 
 ## Remaining product areas
 
-- Package 8-T3..T6 teacher approval/history/concurrency/UI workflow
+- Package 8-T4..T6 teacher history/concurrency/UI workflow
 - Package 8B Audiveris teacher-approved training dataset
 - Package 9 Advanced Guitar TAB
 - Package 10 Advanced violin
@@ -139,4 +154,4 @@ Legacy PR #17 was safely superseded by PR #88 instead of merging its stale branc
 
 ## Current safe next step
 
-The next implementation stage is **8-T3 only**. T3 must define a separate immutable teacher-approval record bound to one exact revision identity/content fingerprint and make it impossible for a later corrected revision to inherit that approval implicitly. It must remain above the existing canonical/quality layers, must not bypass quality safety, and must not yet add persistence/history, optimistic concurrency, UI, student sharing, Audiveris training, OMR changes or Render/deployment changes.
+The next implementation stage is **8-T4 only**. T4 must add lossless undo/version-history semantics above the immutable T1/T2/T3 records: existing revisions and approval/audit evidence must remain preserved rather than overwritten or deleted. T4 must not yet add optimistic concurrency, teacher UI, student sharing, Audiveris training, OMR changes or Render/deployment changes.
