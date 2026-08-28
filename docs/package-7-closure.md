@@ -1,27 +1,27 @@
 # Package 7 — Chord Display and Turkish TTS Closure
 
-Status: **closure pending**.
+Status: **Completed**.
 
-This document records the Package 7 implementation evidence already verified on protected `main`. Package 7 must not be marked **Completed** until this documentation closure PR is itself merged through the required `test-and-build` gate and its exact protected-main push workflow succeeds.
+Package 7 is closed on protected `main` after implementation, accessibility/TTS integration, closure-pending evidence, and the late Package 7C stale-source security hotfix all passed the required `test-and-build` gates.
 
-## Implemented chain
+## Completed chain
 
 ```text
 Package 6 MusicXML <harmony> evidence
         ↓
-7A — deterministic accessible chord presentation
+7A — deterministic accessible chord presentation ✅
         ↓
-7B — Turkish chord pronunciation text
+7B — Turkish chord pronunciation text ✅
         ↓
-7C — exact NoteObject[] ↔ raw MusicXML source handoff
+7C — exact NoteObject[] ↔ raw MusicXML source handoff ✅
         ↓
-7D — accessible Akorlar result tab
+7D — accessible Akorlar result tab ✅
         ↓
-7E — shared-audio lifecycle ownership and preemption
+7E — shared-audio lifecycle ownership and preemption ✅
         ↓
-7F — existing voiceService Turkish TTS
+7F — existing voiceService Turkish TTS ✅
         ↓
-7G — documentation / regression closure (this gate)
+7G — regression / documentation closure ✅
 ```
 
 ## 7A–7B evidence
@@ -32,53 +32,48 @@ PR #78 — `Package 7A/B: add fail-closed chord presentation and Turkish pronunc
 - merge on protected main: `ee9a95a02a75c357e74647a09b1c2b27dafdcc6c`
 - exact-main CI #197 / `33144443876`: SUCCESS
 
-Verified behavior includes:
+Verified behavior includes source-only presentation, deterministic Turkish pronunciation, slash bass, hidden-degree parity, physical measure identity/timing, zero bytes on review/invalid evidence, `teacherApproved=false`, and no chord inference from notes.
 
-- source-only chord display and Turkish pronunciation from Package 6 structured harmony evidence;
-- deterministic examples such as C → `Do majör akoru`, Am → `La minör akoru`, G7 → `Sol dominant yedi akoru`;
-- explicit slash-bass pronunciation without inventing bass from inversion;
-- hidden `print-object="no"` degrees are not spoken;
-- physical `measureKey` and source-relative timing remain preserved;
-- `REVIEW_REQUIRED` / `INVALID` emit zero display or speech bytes;
-- all presentation remains `teacherApproved=false`;
-- no note-content chord inference.
-
-Two valid P2 review findings were fixed before merge:
-
-1. redundant Package 6 timing evidence (`startBeat`, `startDivisions`, `divisions`) is now consistency-checked;
-2. malformed `N.C.` events carrying inversion/degree metadata fail closed instead of silently discarding source evidence.
+Two P2 findings were fixed before merge: redundant timing evidence consistency and malformed `N.C.` metadata handling.
 
 ## 7C evidence
 
-PR #79 — `Package 7C: add exact MusicXML chord source handoff`
+Original implementation PR #79:
 
 - accepted head: `7e98787e881adb06e776b9e8b464d0eb81f39d27`
-- merge on protected main: `56ba563d47f3eec45ea0de88435706c121316a0d`
+- merge: `56ba563d47f3eec45ea0de88435706c121316a0d`
 - exact-main CI #199 / `33145040418`: SUCCESS
 
-Verified behavior includes:
+The implementation binds raw MusicXML to the exact `NoteObject[]` identity through a `WeakMap`; equivalent clones never inherit source evidence. Package 6 remains the only harmony parser and Package 7A/B remains the presentation layer. Ready output remains `sourceOnly=true`, `definitive=false`, `teacherApproved=false`.
 
-- raw MusicXML is registered against the exact `NoteObject[]` identity through a `WeakMap` registry;
-- equivalent cloned arrays do not inherit MusicXML source evidence;
-- registered raw XML is parsed only by Package 6 and presented only through Package 7A/B;
-- a ready result remains `sourceOnly=true`, `definitive=false`, `teacherApproved=false`;
-- missing source, invalid evidence and review-required evidence expose zero finalized chord presentation bytes;
-- no chord is derived from NoteObject pitch content.
+### Late 7C P2 security hotfix
+
+A valid late review found that a previous successful MusicXML association could survive a later failed preparation for the same exact note array. Package 7 was not considered finally closed until this was corrected.
+
+PR #82 — `Package 7C: invalidate stale MusicXML source evidence`
+
+- accepted head: `0968a439a8e5b2a8712d216277f7466c8ba84daa`
+- merge on protected main: `7c37057713aa8a975edafdb0928d64f575d7cd5f`
+- exact-head CI #204 / `33145943788`: SUCCESS
+- exact-main CI #205 / `33146058408`, job `98767251803`: SUCCESS
+- final regression: **1105 / 1105 tests PASS**
+- suites: **229**
+- failed / skipped / cancelled: **0 / 0 / 0**
+- dependency audit: **120 packages, 0 vulnerabilities**
+- Vite 8.2.0 production build: **PASS**
+- transformed modules: **55**
+
+The source registry is now atomic with each preparation attempt: old exact-array source evidence is invalidated first, and the current source is registered only after the current structural validation and quality-report construction succeed. Blank, malformed, structurally rejected or thrown preparation work leaves no stale chord source consumable.
 
 ## 7D–7F evidence
 
 PR #80 — `Package 7D-F: add accessible source chord UI and Turkish TTS`
 
 - accepted head: `8b3d793f66b4c1ab98244ffd73cfadaa5ed934e7`
-- merge on protected main: `fae1b102eae24926ac48f429124c96f8c58899fe`
+- merge: `fae1b102eae24926ac48f429124c96f8c58899fe`
 - exact-head CI #200 / `33145271095`: SUCCESS
 - exact-main CI #201 / `33145385541`, job `98765125632`: SUCCESS
-- full regression: **1103 / 1103 PASS**
-- suites: **229**
-- failed / skipped / cancelled: **0 / 0 / 0**
-- dependency audit: **120 packages, 0 vulnerabilities**
-- Vite 8.2.0 production build: **PASS**
-- transformed modules: **55**
+- implementation regression at that point: 1103 / 1103 PASS, 229 suites, audit 0, build PASS
 
 Verified behavior includes:
 
@@ -86,14 +81,22 @@ Verified behavior includes:
 - `aria-selected`, `aria-labelledby`, polite live status and focusable text-only output;
 - only source-ready evidence renders chord text or enables speech;
 - `REVIEW`, `INVALID`, `EMPTY` and `NO_SOURCE` expose zero chord-output bytes and disable TTS;
-- chord output is inserted with `textContent`, not chord HTML injection;
+- chord output uses `textContent`;
 - existing `voiceService` is reused rather than creating a second speech engine;
 - full-score and selected-measure audio ownership blocks chord TTS while those consumers are active;
-- Package 7 stops shared speech only when it proves ownership of the active chord utterance;
-- Package 7-owned TTS is capture-phase preempted before another existing audio consumer starts;
-- source-only truth remains `definitive=false` and `teacherApproved=false`.
+- Package 7 stops shared speech only when it owns the active chord utterance;
+- Package 7-owned TTS is capture-phase preempted before another existing audio consumer starts.
 
-## Safety boundary preserved
+## 7G closure evidence
+
+Closure-pending documentation PR #81 merged as:
+
+- merge `fef1464c882878fd1dd9921959887b9080f30927`
+- exact-main CI #203: SUCCESS
+
+PR #81 deliberately kept the package in `closure pending` state while the package-level evidence was being reconciled. The subsequent PR #82 security hotfix and exact-main CI #205 are the final technical evidence that allows this reconciliation to mark Package 7 **Completed**.
+
+## Final safety boundary
 
 Package 7 did **not** change:
 
@@ -109,8 +112,11 @@ No deployment was performed.
 
 Package 7 does not prove that a source chord is musically correct, does not infer chords from notes, and does not convert source harmony into teacher-approved truth. Teacher correction and approval remain Package 8.
 
-## Closure gate
+## Final closure baseline before evidence-reconciliation merge
 
-Implementation on `fae1b102eae24926ac48f429124c96f8c58899fe` is verified by exact-main CI #201.
+Technical Package 7 baseline:
+`7c37057713aa8a975edafdb0928d64f575d7cd5f`
 
-This document and the status reconciliation remain **closure pending** until the present docs-only PR passes exact-head CI, review/freshness, merges through protected `main`, and its exact-main `test-and-build` succeeds. Only after that evidence exists may a final documentation reconciliation mark Package 7 **Completed**.
+Exact-main CI #205 / `33146058408`, job `98767251803`: SUCCESS with **1105/1105 tests**, **229 suites**, **0 vulnerabilities**, and production build PASS.
+
+This final evidence-reconciliation PR is documentation-only. Its own exact-head and exact-main required CI remain mandatory before the user-facing Package 7 closure is declared final.
