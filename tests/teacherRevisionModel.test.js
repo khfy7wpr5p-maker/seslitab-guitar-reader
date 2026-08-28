@@ -159,7 +159,7 @@ describe('Package 8-T1 teacher revision domain', () => {
     )
   })
 
-  test('rejects records with injected approval fields or mutable nested content', () => {
+  test('rejects visible, hidden, accessor, or mutable revision injection', () => {
     const automatic = createAutomaticRevision({
       revisionId: 'auto-1',
       sourceId: 'score-1',
@@ -170,12 +170,32 @@ describe('Package 8-T1 teacher revision domain', () => {
       ...automatic,
       teacherApproved: true,
     })
+
+    const hiddenApproval = { ...automatic }
+    Object.defineProperty(hiddenApproval, 'teacherApproved', {
+      value: true,
+      enumerable: false,
+    })
+    Object.freeze(hiddenApproval)
+
+    const accessorRevision = { ...automatic }
+    delete accessorRevision.revisionId
+    Object.defineProperty(accessorRevision, 'revisionId', {
+      enumerable: true,
+      get() {
+        return 'auto-1'
+      },
+    })
+    Object.freeze(accessorRevision)
+
     const mutableContent = Object.freeze({
       ...automatic,
       content: structuredClone(automatic.content),
     })
 
     assert.equal(isTeacherRevision(injectedApproval), false)
+    assert.equal(isTeacherRevision(hiddenApproval), false)
+    assert.equal(isTeacherRevision(accessorRevision), false)
     assert.equal(isTeacherRevision(mutableContent), false)
 
     assert.throws(
