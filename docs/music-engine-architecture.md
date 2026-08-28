@@ -1,13 +1,14 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 2.3.0  
+**Belge sürümü:** 2.4.0  
 **Güncelleme tarihi:** 2026-08-28  
 **T1 ilk kapanış main:** `218c3e18eed3a82861a4a1c24efd5458445ea9ca`  
 **T2 kapanış main:** `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
 **T3 final review-hardened main:** `c57966598d2d6fe34418119670bea42a9cdcf369`  
 **T4 final implementation main:** `eaf967174d1cc0f2552cc97e7e0a6bf0a1715c64`  
-**T4 exact-main CI:** #248 / run `33177550356` — SUCCESS  
-**Durum:** Package 0–7 Completed; Package 8 Partially implemented; T1/T2/T3/T4 Completed; **T5 NEXT**.
+**T5 final implementation main:** `4747210751c1c49295052f8cca7be58281b91023`  
+**T5 exact-main CI:** #253 / run `33181815397` — SUCCESS  
+**Durum:** Package 0–7 Completed; Package 8 Partially implemented; T1/T2/T3/T4/T5 Completed; **T6 NEXT**.
 
 Bu belge ürünün güncel mimarisini açıklar. Paket kapanış kanıtları için `docs/package-status.md` ve ilgili closure belgeleri; repository gerçeği için kaynak kod, testler ve fresh GitHub Actions kanıtı esas alınır.
 
@@ -49,56 +50,38 @@ Guitar TAB metni ----------------------┐   │
        |                |             |             |                |
        v                v             v             v                v
  rhythmic text/HTML   TTS/playback   MIDI       Basic Guitar TAB  Basic Violin
-                                      |
-                                      +-----------------------------+
-                                                                    |
-MusicXML <harmony> -> source-only chord parser/presentation/TTS <---+
+
+MusicXML <harmony> -> source-only chord parser/presentation/TTS
 
 Package 8 teacher revision layer:
 
-AutomaticSourceRevision
-  schema v2
-  contentFingerprint
-  lineageFingerprint
+AutomaticSourceRevision (T1, schema v2)
+  contentFingerprint + recursive lineageFingerprint
         |
-        | controlled replace-only correction(s)
+        | controlled replace_value correction (T2)
         v
 TeacherCorrectedRevision
-  immutable
-  parentRevisionId
-  parentLineageFingerprint
-  recursive lineageFingerprint
-        +-----------------------------+
-        |                             |
-        v                             v
-TeacherCorrectionAuditEvent     validation / quality
-separate immutable evidence     per exact revision
         |
-        +-----------------------------+
-                                      |
-                           TeacherRevisionHistory
-                           schema v1, immutable
-                           exact revisions + audits
-                           + approvals + undo events
-                                      |
-                         +------------+-------------+
-                         |                          |
-                         v                          v
-                TeacherApprovalRecord       TeacherUndoAuditEvent
-                schema v3                   schema v1
-                exact revision binding      exact parent/target/result
-                + recursive lineage         binding
-                         |                          |
-                         +-------------+------------+
-                                       |
-                                  future T5
-                         optimistic concurrency
-                                       |
-                                  future T6
-                         accessible teacher UI
-                                       |
-                              later Package 12
-                         approved revision sharing
+        +--> TeacherCorrectionAuditEvent
+        |
+        v
+TeacherRevisionHistory (T4, immutable)
+  exact revisions + correction audits + approvals + undo events
+        |
+        +--> TeacherApprovalRecord (T3 schema v3, exact revision/lineage binding)
+        +--> TeacherUndoAuditEvent (T4 schema v1, exact parent/target/result binding)
+        |
+        v
+TeacherHistoryExpectation / guarded mutation (T5)
+  full immutable history-state fingerprint
+  current / applied / conflict
+  stale history => zero partial domain write
+        |
+        v
+future T6 accessible teacher UI
+        |
+        v
+later Package 12 exact-approved-revision sharing
 ```
 
 ## 3. Doğrulanmış mimari katmanlar
@@ -117,7 +100,7 @@ Mevcut PDF yolu backend OMR gateway ve provider mimarisi üzerinden çalışır.
 - `render.yaml`;
 - mevcut Render servis/deployment bağlantısı.
 
-Teacher revision/history/concurrency katmanı OMR altyapısının üzerinde çalışır; Audiveris yalnız otomatik kaynak verisini sağlar. T1–T4 bu bağlantıyı değiştirmedi.
+Teacher revision/history/concurrency katmanı OMR altyapısının üzerinde çalışır; Audiveris yalnız otomatik kaynak verisini sağlar. T1–T5 bu bağlantıyı değiştirmedi.
 
 ### 3.2 Canonical nota ve zaman modeli — Package 2A
 
@@ -146,27 +129,11 @@ Benchmark altyapısı preprocessing/OMR varyantlarını izole olarak ölçer. Ü
 
 ### 3.5 Playback, ölçü seçimi ve MIDI — Package 3
 
-Doğrulanmış davranışlar:
-
-- tam eser playback;
-- tek aktif playback oturumu;
-- canonical `measureKey` ile ölçü seçimi;
-- erişilebilir ölçü kontrolleri;
-- seçili ölçü TTS/playback;
-- quality-gated deterministic SMF0 MIDI export.
+Doğrulanmış davranışlar tam eser playback, canonical `measureKey` ile ölçü seçimi, erişilebilir ölçü kontrolleri, seçili ölçü TTS/playback ve quality-gated deterministic SMF0 MIDI export içerir.
 
 ### 3.6 Basic Guitar TAB — Package 4
 
-```text
-canonical NoteObject[]
-  -> GUITAR_TAB quality gate
-  -> physical candidate resolver
-  -> basic-position policy
-  -> deterministic projection
-  -> renderer / accessible UI
-```
-
-Bu motor yalnız güvenli temel kapsamı temsil eder. Polifonik/pedagojik gelişmiş çözüm Package 9 kapsamındadır. Otomatik TAB öğretmen onayı değildir.
+Canonical NoteObject[] kalite kapısından geçtikten sonra fiziksel aday resolver, temel pozisyon politikası, deterministic projection ve erişilebilir UI katmanına ilerler. Polifonik/pedagojik gelişmiş çözüm Package 9 kapsamındadır. Otomatik TAB öğretmen onayı değildir.
 
 ### 3.7 Basic Violin — Package 5
 
@@ -174,17 +141,9 @@ Bu motor yalnız güvenli temel kapsamı temsil eder. Polifonik/pedagojik geliş
 
 ### 3.8 MusicXML harmony ve akor sunumu — Package 6–7
 
-Package 6/7 yalnız kaynak MusicXML `<harmony>` verisini işler; nota içeriğinden akor tahmini yapmaz.
+Package 6/7 yalnız kaynak MusicXML `<harmony>` verisini işler; nota içeriğinden akor tahmini yapmaz. Source-only parsing/normalization, sunum, Turkish chord TTS ve erişilebilir chord UI mevcuttur. Hazır akor çıktısı kendiliğinden teacher-approved veya definitive değildir.
 
-- source-only harmony parsing/normalization;
-- chord presentation;
-- source consumer;
-- Turkish chord TTS;
-- accessible chord UI.
-
-Hazır akor çıktısı kendiliğinden teacher-approved veya definitive değildir.
-
-## 4. Package 8 — öğretmen düzeltme, onay ve history mimarisi
+## 4. Package 8 — öğretmen düzeltme, onay, history ve concurrency mimarisi
 
 Package 8 mevcut canonical modeli veya OMR sonucunu yerinde değiştiren mutable bir engine değildir. Güvenli sınır:
 
@@ -193,7 +152,7 @@ immutable revision
 + separate correction audit
 + separate exact-revision approval
 + immutable lossless history/undo
-+ next optimistic concurrency
++ optimistic concurrency / stale-history conflict
 + later accessible teacher UI
 ```
 
@@ -209,104 +168,85 @@ immutable revision
 - identifiers/timestamps caller-supplied'dır;
 - malformed, injected, mutable veya non-deterministic shapes fail closed olur.
 
-`contentFingerprint` ve `lineageFingerprint` deterministic drift/version tokenlarıdır; kriptografik imza veya authorization credential değildir.
+Fingerprint alanları deterministic drift/version tokenlarıdır; kriptografik imza veya authorization credential değildir.
 
 ### 4.2 T2 — controlled correction operations: COMPLETED
 
 `src/services/teacherCorrectionOperations.js`
 
-- yalnız bounded `replace_value` operation desteklenir;
-- yalnız mevcut path değiştirilebilir; insertion/delete yoktur;
-- parent revision overwrite edilmez;
-- accepted correction yeni immutable T1 revision üretir;
-- correction audit event ayrı immutable kayıttır;
-- duplicate operation ID, same/overlapping target, no-op fail closed olur;
-- prototype-sensitive targetlar reddedilir;
-- unsafe/non-deterministic replacement/audit verisi reddedilir;
-- correction approval değildir.
+Yalnız bounded `replace_value` operation desteklenir; mevcut path değiştirilebilir, insertion/delete yoktur. Parent overwrite edilmez. Accepted correction yeni immutable T1 revision ve ayrı immutable audit event üretir. Duplicate/overlapping/no-op/prototype-sensitive/unsafe işlemler fail closed olur. Correction approval değildir.
 
 ### 4.3 T3 — exact-revision approval binding/invalidation: COMPLETED
 
 `src/services/teacherApprovalModel.js`
 
-Approval schema v3 ayrı immutable evidence kaydıdır ve şu exact boyutları bağlar:
-
-1. source/root-source identity;
-2. revision ID/kind;
-3. parent revision ID;
-4. revision timestamp;
-5. content fingerprint;
-6. recursive lineage fingerprint.
-
-Bir later/replayed revision bu exact binding'i taşımıyorsa eski approval uygulanmaz. Historical approval evidence mutasyona uğramaz.
-
-T3 review hardening sırasında one-hop ve multi-hop revision-ID replay yolları kapanmış; recursive lineage binding exact-main CI ile doğrulanmıştır.
+Approval schema v3 ayrı immutable evidence kaydıdır. Source/root-source identity, revision ID/kind, parent revision ID, revision timestamp, content fingerprint ve recursive lineage fingerprint exact olarak bağlanır. Later/replayed revision exact binding'i taşımıyorsa eski approval uygulanmaz. Historical approval evidence mutasyona uğramaz.
 
 ### 4.4 T4 — lossless revision history and undo: COMPLETED
 
 `src/services/teacherRevisionHistory.js`
 
-T4, T1/T2/T3 kanıtlarını immutable bir lineer history snapshot içinde korur.
+T4 automatic root, later T1 revisions, T2 correction audits, T3 approval records ve undo events'i immutable lineer history içinde korur. Undo eski state'i silmez veya pointer'ı geri taşımaz; current revision'dan historical target'ın exact content'ine yeni corrected revision üretir. Aynı içerik geri gelse bile recursive lineage yenidir ve eski approval yeniden doğmaz. Correction audit semantics parent üzerinde replay edilerek doğrulanır; impossible current-parent/no-op undo fail closed olur.
 
-Doğrulanmış temel kurallar:
+Final T4 evidence: PR #97 → merge `eaf967174d1cc0f2552cc97e7e0a6bf0a1715c64` → exact-main CI #248 SUCCESS, 1173/1173 tests, 232 suites, 0 vulnerabilities, build PASS.
 
-1. automatic source revision history'nin immutable root'udur;
-2. later revisions exact T1 revision nesneleri olarak korunur;
-3. T2 correction audit events exact parent/result transition'ına bağlanır;
-4. T3 approval records exact preserved revision'a historical evidence olarak bağlanır;
-5. undo hiçbir eski revision'ı silmez, değiştirmez veya yeniden etiketlemez;
-6. undo, current revision'dan seçilen historical target'ın exact content'ine **yeni corrected revision** üretir;
-7. undo sonucu historical target ile aynı `contentFingerprint` değerine sahip olabilir ama current parent lineage nedeniyle farklı recursive `lineageFingerprint` taşır;
-8. bu nedenle historical target approval'ı undo sonucuna otomatik taşınmaz;
-9. revision/event/approval identity reuse ve cross-source evidence fail closed olur;
-10. history validator yalnız metadata eşleştirmez; correction audit operations'ı parent üzerinde tekrar oynatıp exact result lineage ile doğrular;
-11. externally reconstructed current-parent/no-op undo records fail closed olur;
-12. T4 persistence/backend API, concurrency ve UI eklemez.
+### 4.5 T5 — optimistic concurrency / stale-history conflict: COMPLETED
 
-### 4.5 T4 review-hardening ve CI kanıtı
+`src/services/teacherRevisionConcurrency.js`
 
-PR #97 ilk yeşil sonucu beklerken domain self-review ve PR review ile iki önemli integrity açığı kapatıldı:
+T5 T4 history'nin üzerinde pure domain-level compare-and-apply guard sağlar.
 
-- forged correction audit semantics: operation list parent üzerinde replay edilmeden kabul edilebiliyordu;
-- impossible current-parent/no-op undo: externally reconstructed history validator creator kurallarıyla tam eşleşmiyordu.
+Doğrulanmış kurallar:
 
-Her ikisi production validator + regression test ile kapatıldı.
+1. expectation exact valid immutable T4 history snapshot'ından üretilir;
+2. expectation history/source identity, full deterministic history-state fingerprint, current revision identity/content/recursive lineage ve evidence counts taşır;
+3. current revision değişmese bile approval-only history değişikliği eski expectation'ı stale yapar;
+4. fresh guarded correction, approval append veya undo `applied` olur ve yeni immutable history döndürür;
+5. aynı eski expectation daha yeni authoritative history'ye uygulanırsa explicit `conflict` döner;
+6. conflict yeni revision, correction audit, approval veya undo evidence üretmez — zero partial domain write;
+7. conflict automatic merge/rebase veya müzikal veri tahmini yapmaz;
+8. malformed/mutable/injected/forged expectations fail closed olur;
+9. T5 ID veya timestamp üretmez;
+10. history fingerprint authentication, authorization veya cryptographic integrity credential değildir;
+11. pure T5 katmanı atomic database transaction veya distributed lock garantisi vermez; gelecekteki persistence integration compare-and-apply koşulunu atomik korumalıdır.
 
-Final implementation evidence:
+Final T5 evidence:
 
-- PR #97 final head: `0c83c54b2353ff5b82a4acfa7bb64e0f23635b0b`;
-- exact-head CI #247 aynı exact-head rerun: **1173/1173 tests PASS**, 232 suites, 0 vulnerabilities, production build PASS;
-- ilk #247 attempt'teki tek fail mevcut API cancellation timing testindeki tekil 502 flake idi; T4 regressions o denemede de PASS'ti ve aynı SHA rerun'da tekrarlanmadı;
-- protected-main squash merge: `eaf967174d1cc0f2552cc97e7e0a6bf0a1715c64`;
-- exact-main CI #248 / run `33177550356`: **1173/1173 tests PASS**, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, production build PASS;
-- existing Audiveris/OMR, Render Blueprint ve Dockerfile security regressions PASS.
+- PR #99 final head: `6e151b94609ecf362b3bff0976479a6c2eda45b9`;
+- exact-head CI #252: **1186/1186 tests PASS**, 232 suites, 0 vulnerabilities, production build PASS;
+- protected-main squash merge: `4747210751c1c49295052f8cca7be58281b91023`;
+- exact-main CI #253 / run `33181815397`: **1186/1186 tests PASS**, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, production build PASS;
+- existing Audiveris/OMR, Render Blueprint and Dockerfile security regressions PASS.
 
-### 4.6 Sonraki Package 8 aşamaları
+### 4.6 Sonraki Package 8 aşaması
 
 - **8-T1 — Completed**
 - **8-T2 — Completed**
 - **8-T3 — Completed**
 - **8-T4 — Completed**
-- **8-T5 — NEXT / Not started:** optimistic concurrency / stale-base conflict
-- **8-T6 — Not started:** accessible teacher UI
+- **8-T5 — Completed**
+- **8-T6 — NEXT / Not started:** accessible teacher UI
 
-**Package 8B — Audiveris training dataset** ayrı ve daha sonraki pakettir; T5 kapsamına dahil değildir.
+**Package 8B — Audiveris training dataset** ayrı ve daha sonraki pakettir; T6 kapsamında değildir.
 
-## 5. T5 için mimari sınır
+## 5. T6 için mimari sınır
 
-T5'in görevi aynı history üzerinde eşzamanlı/stale teacher editlerinin sessiz overwrite edilmesini önlemektir.
+T6'nın görevi T1–T5'in doğrulanmış immutable domain state'ini öğretmene erişilebilir ve doğru semantiklerle sunmaktır.
 
-Güvenli T5 yönü:
+Güvenli T6 yönü:
 
-- caller, işlem yaparken beklediği exact current revision/history identity bilgisini sunar;
-- current state bu beklentiyle eşleşmiyorsa işlem uygulanmaz ve explicit conflict sonucu üretilir;
-- conflict çözümü otomatik merge veya müzikal veri uydurma değildir;
-- T5 current history'yi mutasyona uğratmaz; başarılı operation yeni immutable history snapshot üretir;
-- correction/approval/undo evidence T1–T4 exact binding kurallarını korur;
-- T5 persistence/backend API veya distributed lock zorunluluğu oluşturmaz; domain-level optimistic concurrency contract olarak kalabilir;
-- UI conflict presentation T6'ya bırakılır.
+- UI kendi revision/history/approval gerçeğini üretmez; T1–T5 sonuçlarını gösterir ve mevcut domain operasyonlarını çağırır;
+- correction yalnız T2/T5 guarded correction üzerinden yapılır;
+- approval yalnız T3/T5 guarded approval append üzerinden yapılır;
+- undo yalnız T4/T5 guarded undo üzerinden yapılır;
+- stale state explicit conflict olarak görünür; UI silent overwrite veya automatic merge yapmaz;
+- original/automatic source state ile current corrected state açıkça ayrılır;
+- approval exact current revision için applicable değilse UI bunu onaylı gibi göstermez;
+- keyboard-only kullanım, native controls, visible focus, accessible names ve `aria-live` durum mesajları zorunludur;
+- conflict/warning/approval durumu yalnız renk ile ifade edilmemelidir;
+- T6 persistence/backend API, authentication/authorization veya Package 12 sharing eklememelidir.
 
-T5 başlamadan fresh repository read, exact-main CI, open PR/issue ve protected boundary kontrolü zorunludur.
+T6 başlamadan fresh repository read, exact-main CI, open PR/issue ve protected boundary kontrolü zorunludur.
 
 ## 6. Güvenlik bağımlılıkları
 
@@ -333,19 +273,24 @@ Yerinde overwrite edilmemelidir:
 - teacher-corrected revision'lar;
 - correction audit event'leri;
 - teacher approval record'ları;
-- T4 history snapshot ve undo audit event'leri.
+- history snapshot ve undo audit event'leri;
+- T5 expectation/conflict evidence.
 
-Correction, undo veya gelecekte T5 guarded operation yeni immutable state üretir. Historical evidence korunur.
+Correction, undo ve successful guarded operations yeni immutable state üretir. Historical evidence korunur.
 
 ## 8. Erişilebilirlik sınırı
 
-Teacher UI T6'ya kadar genişletilmemelidir. T6 geldiğinde:
+T6 geldiğinde öğretmen arayüzü:
 
 - klavye ile tam kullanılabilir;
 - native control öncelikli;
 - revision/change/approval/conflict durumları ekran okuyucu ile açık;
 - görsel ve spoken durum aynı state kaynağından;
-- kritik/onaysız/conflict durumu yalnız renk ile ifade edilmemiş olmalıdır.
+- kritik/onaysız/conflict durumu yalnız renk ile ifade edilmeyen;
+- focus yönetimi deterministic ve modal trap içermeyen;
+- conflict sonrasında yeniden yükleme/retry gereğini açıkça ifade eden
+
+bir katman olmalıdır.
 
 ## 9. Repository sınırları
 
@@ -355,6 +300,7 @@ Teacher UI T6'ya kadar genişletilmemelidir. T6 geldiğinde:
 - Teacher correction domain: `src/services/teacherCorrectionOperations.js`
 - Teacher approval domain: `src/services/teacherApprovalModel.js`
 - Teacher history/undo domain: `src/services/teacherRevisionHistory.js`
+- Teacher optimistic concurrency domain: `src/services/teacherRevisionConcurrency.js`
 - Backend OMR/API: `backend/`
 - Tests: `tests/`
 - CI: `.github/workflows/`
@@ -364,11 +310,11 @@ Teacher UI T6'ya kadar genişletilmemelidir. T6 geldiğinde:
 ## 10. Mevcut durum
 
 - Package 0–7: **Completed**.
-- Package 8: **Partially implemented** — T1/T2/T3/T4 Completed; T5 next.
-- Package 8-T5/T6: Not started.
+- Package 8: **Partially implemented** — T1/T2/T3/T4/T5 Completed; T6 next.
+- Package 8-T6: Not started.
 - Package 8B, 9–13: Not started.
 - Package 14: Partially implemented.
 
-T4 final implementation baseline: `eaf967174d1cc0f2552cc97e7e0a6bf0a1715c64`; exact-main CI #248: **1173/1173 tests**, 232 suites, 0 fail/skipped/cancelled, audit 0 vulnerabilities ve production build PASS.
+T5 final implementation baseline: `4747210751c1c49295052f8cca7be58281b91023`; exact-main CI #253: **1186/1186 tests**, 232 suites, 0 fail/skipped/cancelled, audit 0 vulnerabilities ve production build PASS.
 
-Bu belge gelecekteki implementasyon için sınırsız izin değildir. T5 ve sonraki her aşama fresh-read, ayrı branch, focused test, full regression, review çözümü ve exact-head/exact-main CI kanıtı ile yürütülmelidir.
+Bu belge gelecekteki implementasyon için sınırsız izin değildir. T6 ve sonraki her aşama fresh-read, ayrı branch, focused test, full regression, review çözümü ve exact-head/exact-main CI kanıtı ile yürütülmelidir.
