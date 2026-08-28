@@ -87,12 +87,12 @@ export function ensureDiscoveryPanel(root = document) {
 
   const intro = root.createElement('div')
   intro.className = 'discovery-intro'
-  appendTextElement(root, intro, 'h3', 'Nota ve skor ara')
+  appendTextElement(root, intro, 'h3', 'Nota, akor, TAB ve dinleme kaynağı ara')
   appendTextElement(
     root,
     intro,
     'p',
-    'Sanatçı, eser veya repertuvar arayın. Akor, söz ve TAB yalnız kaynak açıkça bildiriyorsa gösterilir; notadan akor üretilmez.',
+    'Sanatçı veya eser adını bir kez yazın. Bulunan nota, akor ve TAB sonuçları ile güvenli kaynak aramaları aynı ekranda gösterilir; notadan akor üretilmez.',
   )
   panel.appendChild(intro)
 
@@ -114,7 +114,7 @@ export function ensureDiscoveryPanel(root = document) {
   queryInput.minLength = 2
   queryInput.maxLength = 160
   queryInput.autocomplete = 'off'
-  queryInput.placeholder = 'Örn. Barış Manço, Beethoven, string quartet'
+  queryInput.placeholder = 'Örn. Barış Manço Dönence, Mor ve Ötesi Cambaz, Beethoven'
   queryInput.setAttribute('aria-describedby', 'discovery-help')
   queryRow.appendChild(queryInput)
 
@@ -130,7 +130,7 @@ export function ensureDiscoveryPanel(root = document) {
     root,
     form,
     'p',
-    'Türkçe/yabancı rock-pop ile klasik repertuvar aynı discovery altyapısından aranır.',
+    'Türkçe pop/rock, yabancı pop/rock ve klasik repertuvar aynı arama altyapısından bulunur. Filtre seçmezseniz mevcut bütün kaynak türleri aranır.',
     'discovery-help',
   )
   help.id = 'discovery-help'
@@ -149,9 +149,10 @@ export function ensureDiscoveryPanel(root = document) {
     { value: 'international', label: 'Yabancı / uluslararası' },
   ]))
   filters.appendChild(createSelect(root, 'discovery-format', 'Format', [
-    { value: '', label: 'PDF + MusicXML' },
+    { value: '', label: 'Tüm kaynak türleri' },
     { value: 'pdf', label: 'PDF' },
     { value: 'musicxml', label: 'MusicXML' },
+    { value: 'web', label: 'Web / akor / TAB' },
   ]))
   filters.appendChild(createSelect(root, 'discovery-instrument', 'Enstrüman', [
     { value: '', label: 'Tümü' },
@@ -167,9 +168,9 @@ export function ensureDiscoveryPanel(root = document) {
   const featureGroup = root.createElement('fieldset')
   featureGroup.className = 'discovery-feature-group'
   const legend = root.createElement('legend')
-  legend.textContent = 'Kaynakta bulunması gereken içerik'
+  legend.textContent = 'İsterseniz yalnız belirli içerikleri gösterin'
   featureGroup.appendChild(legend)
-  featureGroup.appendChild(createFeatureCheck(root, 'notation', 'Nota', true))
+  featureGroup.appendChild(createFeatureCheck(root, 'notation', 'Nota'))
   featureGroup.appendChild(createFeatureCheck(root, 'chords', 'Akor'))
   featureGroup.appendChild(createFeatureCheck(root, 'lyrics', 'Şarkı sözleri'))
   featureGroup.appendChild(createFeatureCheck(root, 'tablature', 'TAB'))
@@ -186,8 +187,29 @@ export function ensureDiscoveryPanel(root = document) {
   const results = root.createElement('ul')
   results.id = 'discovery-results'
   results.className = 'discovery-results'
-  setAttrs(results, { 'aria-label': 'Nota arama sonuçları' })
+  setAttrs(results, { 'aria-label': 'Bulunan eser kaynakları' })
   panel.appendChild(results)
+
+  const sourceSection = root.createElement('section')
+  sourceSection.id = 'discovery-source-section'
+  sourceSection.className = 'discovery-source-section'
+  sourceSection.hidden = true
+  setAttrs(sourceSection, { 'aria-labelledby': 'discovery-source-heading' })
+  const sourceHeading = appendTextElement(root, sourceSection, 'h3', 'Kaynaklarda ara', 'discovery-source-heading')
+  sourceHeading.id = 'discovery-source-heading'
+  appendTextElement(
+    root,
+    sourceSection,
+    'p',
+    'Aşağıdaki bağlantılar eseri ilgili kaynakta arar. Bunlar bulunmuş dosya iddiası değil, güvenli arama yollarıdır.',
+    'discovery-help',
+  )
+  const sourceList = root.createElement('ul')
+  sourceList.id = 'discovery-source-locators'
+  sourceList.className = 'discovery-results discovery-source-locators'
+  setAttrs(sourceList, { 'aria-label': 'Ek nota, akor, TAB ve dinleme kaynakları' })
+  sourceSection.appendChild(sourceList)
+  panel.appendChild(sourceSection)
 
   tabPanel.parentElement.appendChild(panel)
   return panel
@@ -210,9 +232,8 @@ export function buildDiscoverySearchRequest(root = document) {
   if (format) filters.format = format
   if (instrument) filters.requiredInstruments = [instrument]
 
-  const requiredFeatures = root.querySelectorAll('[data-discovery-feature]')
-    .filter ? root.querySelectorAll('[data-discovery-feature]').filter((input) => input.checked).map((input) => input.value)
-      : Array.from(root.querySelectorAll('[data-discovery-feature]')).filter((input) => input.checked).map((input) => input.value)
+  const featureInputs = Array.from(root.querySelectorAll('[data-discovery-feature]'))
+  const requiredFeatures = featureInputs.filter((input) => input.checked).map((input) => input.value)
   if (requiredFeatures.length) filters.requiredFeatures = requiredFeatures
 
   return {
@@ -237,11 +258,20 @@ function safeSourceUrl(value) {
 }
 
 function featureLabel(feature) {
-  return ({ notation: 'Nota', chords: 'Akor', lyrics: 'Söz', tablature: 'TAB' })[feature] || feature
+  return ({
+    notation: 'Nota',
+    chords: 'Akor',
+    lyrics: 'Söz',
+    tablature: 'TAB',
+    audio: 'Dinle',
+    metadata: 'Eser bilgisi',
+  })[feature] || feature
 }
 
 function formatLabel(format) {
-  return format === 'musicxml' ? 'MusicXML' : String(format || '').toUpperCase()
+  if (format === 'musicxml') return 'MusicXML'
+  if (format === 'web') return 'Web'
+  return String(format || '').toUpperCase()
 }
 
 function addResultActions(root, actions, result) {
@@ -252,7 +282,7 @@ function addResultActions(root, actions, result) {
     link.href = sourceUrl
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
-    link.textContent = 'Kaynağı Aç'
+    link.textContent = result.format === 'web' ? 'Akor / TAB Kaynağını Aç' : 'Kaynağı Aç'
     link.setAttribute('aria-label', `${result.title} kaynağını yeni sekmede aç`)
     actions.appendChild(link)
   }
@@ -282,6 +312,56 @@ function addResultActions(root, actions, result) {
   }
 }
 
+export function renderDiscoverySourceLocators(root = document, response = {}) {
+  const section = root.getElementById('discovery-source-section')
+  const list = root.getElementById('discovery-source-locators')
+  if (!section || !list) return 0
+
+  list.textContent = ''
+  const locators = Array.isArray(response.sourceLocators) ? response.sourceLocators : []
+  section.hidden = locators.length === 0
+
+  for (const locator of locators) {
+    const sourceUrl = safeSourceUrl(locator.sourcePageUrl)
+    if (!sourceUrl) continue
+
+    const item = root.createElement('li')
+    item.className = 'discovery-result-card discovery-source-card'
+    appendTextElement(root, item, 'h4', locator.source || 'Kaynak', 'discovery-result-title')
+
+    if (Array.isArray(locator.capabilities) && locator.capabilities.length) {
+      const features = root.createElement('div')
+      features.className = 'discovery-result-features'
+      features.setAttribute('aria-label', 'Bu kaynakta aranabilen içerikler')
+      for (const capability of locator.capabilities) {
+        appendTextElement(root, features, 'span', featureLabel(capability), 'discovery-feature-badge')
+      }
+      item.appendChild(features)
+    }
+
+    if (locator.note) appendTextElement(root, item, 'p', locator.note, 'discovery-help')
+    if (locator.availability === 'search-unverified') {
+      appendTextElement(root, item, 'p', 'Kaynak araması · eser/dosya henüz doğrulanmadı', 'discovery-source-state')
+    }
+
+    const actions = root.createElement('div')
+    actions.className = 'discovery-result-actions'
+    const link = root.createElement('a')
+    link.className = 'btn btn-secondary btn-sm'
+    link.href = sourceUrl
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.textContent = locator.label || `${locator.source} kaynağında ara`
+    link.setAttribute('aria-label', `${locator.label || locator.source}; yeni sekmede aç`)
+    actions.appendChild(link)
+    item.appendChild(actions)
+    list.appendChild(item)
+  }
+
+  if (list.children?.length === 0) section.hidden = true
+  return list.children?.length ?? locators.length
+}
+
 export function renderDiscoveryResults(root = document, response = {}) {
   const list = root.getElementById('discovery-results')
   const status = root.getElementById('discovery-status')
@@ -289,17 +369,7 @@ export function renderDiscoveryResults(root = document, response = {}) {
 
   list.textContent = ''
   const results = Array.isArray(response.results) ? response.results : []
-  if (results.length === 0) {
-    status.textContent = 'Uygun nota/skor sonucu bulunamadı.'
-    return 0
-  }
-
-  const summaryParts = [`${results.length} sonuç gösteriliyor`]
-  if (Number.isInteger(response.totalResults) && response.totalResults > results.length) {
-    summaryParts.push(`toplam ${response.totalResults}`)
-  }
-  if (response.partial) summaryParts.push('bazı kaynaklar yanıt vermedi')
-  status.textContent = summaryParts.join(' · ')
+  const locatorCount = renderDiscoverySourceLocators(root, response)
 
   for (const result of results) {
     const item = root.createElement('li')
@@ -327,7 +397,7 @@ export function renderDiscoveryResults(root = document, response = {}) {
     }
 
     const rights = [result.rightsStatus, result.rightsLicense].filter(Boolean).join(' · ')
-    if (rights) appendTextElement(root, item, 'p', `Hak durumu: ${rights}`, 'discovery-rights')
+    if (rights) appendTextElement(root, item, 'p', `Kaynak durumu: ${rights}`, 'discovery-rights')
 
     const actions = root.createElement('div')
     actions.className = 'discovery-result-actions'
@@ -335,6 +405,19 @@ export function renderDiscoveryResults(root = document, response = {}) {
     item.appendChild(actions)
     list.appendChild(item)
   }
+
+  const summaryParts = []
+  if (results.length > 0) {
+    summaryParts.push(`${results.length} doğrudan sonuç gösteriliyor`)
+    if (Number.isInteger(response.totalResults) && response.totalResults > results.length) {
+      summaryParts.push(`toplam ${response.totalResults}`)
+    }
+  } else {
+    summaryParts.push('Doğrudan eser sonucu bulunamadı')
+  }
+  if (locatorCount > 0) summaryParts.push(`${locatorCount} ek kaynakta arama seçeneği hazır`)
+  if (response.partial) summaryParts.push('bazı kaynaklar yanıt vermedi')
+  status.textContent = summaryParts.join(' · ')
 
   return results.length
 }
@@ -397,9 +480,13 @@ export function initDiscoveryUi(root = document, searchFn = searchScores) {
     activeController?.abort()
     activeController = new AbortController()
     searchButton.disabled = true
-    status.textContent = 'Nota kaynakları aranıyor…'
+    status.textContent = 'Nota, akor, TAB ve diğer kaynaklar aranıyor…'
     const list = root.getElementById('discovery-results')
     if (list) list.textContent = ''
+    const sourceSection = root.getElementById('discovery-source-section')
+    const sourceList = root.getElementById('discovery-source-locators')
+    if (sourceList) sourceList.textContent = ''
+    if (sourceSection) sourceSection.hidden = true
 
     const response = await searchFn(built.request, { signal: activeController.signal })
     searchButton.disabled = false
