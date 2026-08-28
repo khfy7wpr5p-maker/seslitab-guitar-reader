@@ -69,6 +69,7 @@ const SOURCE_PROVENANCE = 'musicxml-harmony-source'
 const VALID_STEPS = new Set(Object.keys(TURKISH_PITCH_NAMES))
 const VALID_ALTERS = new Set([-2, -1, 0, 1, 2])
 const VALID_DEGREE_TYPES = new Set(['add', 'alter', 'subtract'])
+const TIMING_EPSILON = 1e-9
 
 function freezeDeep(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
@@ -78,6 +79,10 @@ function freezeDeep(value) {
 
 function finiteNonNegative(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+function finitePositive(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
 function nonNegativeInteger(value) {
@@ -175,6 +180,17 @@ function validatePhysicalIdentity(event) {
   )
 }
 
+function validateTimingConsistency(event) {
+  if (
+    !finitePositive(event?.divisions) ||
+    !finiteNonNegative(event?.startDivisions) ||
+    !finiteNonNegative(event?.startBeat)
+  ) {
+    return false
+  }
+  return Math.abs((event.startDivisions / event.divisions) - event.startBeat) <= TIMING_EPSILON
+}
+
 function validateKind(event) {
   const value = cleanString(event?.kind?.value)
   return Boolean(value && Object.prototype.hasOwnProperty.call(TURKISH_KIND_NAMES, value))
@@ -228,7 +244,16 @@ function validateDescriptorConsistency(event) {
 function buildChordSpeech(event) {
   const kindValue = cleanString(event.kind?.value)
   if (kindValue === 'none') {
-    if (event.symbol !== 'N.C.' || event.root !== null || event.bass !== null) return null
+    if (
+      event.symbol !== 'N.C.' ||
+      event.root !== null ||
+      event.bass !== null ||
+      event.inversion !== null ||
+      !Array.isArray(event.degrees) ||
+      event.degrees.length !== 0
+    ) {
+      return null
+    }
     return 'akor yok'
   }
 
@@ -266,9 +291,9 @@ function buildPresentationItem(event) {
     event.provenance !== SOURCE_PROVENANCE ||
     event.teacherApproved !== false ||
     !validatePhysicalIdentity(event) ||
+    !validateTimingConsistency(event) ||
     !validateKind(event) ||
     !validateDegrees(event.degrees) ||
-    !finiteNonNegative(event.startBeat) ||
     !cleanString(event.symbol) ||
     !validateDescriptorConsistency(event)
   ) {
@@ -355,4 +380,5 @@ export const chordPresentationInternals = Object.freeze({
   pitchSpeech,
   degreeSpeech,
   timingSpeech,
+  validateTimingConsistency,
 })
