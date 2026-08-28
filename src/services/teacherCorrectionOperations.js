@@ -73,9 +73,8 @@ function assertDenseArray(value, label) {
     }
   }
 
-  for (const [key, descriptor] of Object.entries(
-    Object.getOwnPropertyDescriptors(value),
-  )) {
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  for (const [key, descriptor] of Object.entries(descriptors)) {
     if (key === 'length') continue
     const index = Number(key)
     if (
@@ -121,17 +120,16 @@ function assertExactObject(value, fields, label) {
 
 function cloneData(value, seen = new Set(), path = 'value') {
   if (value === null) return null
-  if (typeof value === 'string' || typeof value === 'boolean') return value
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new TypeError(`${path} contains a non-finite number.`)
+
+  const type = typeof value
+  if (type === 'string' || type === 'boolean') return value
+  if (type === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new TypeError(`${path} contains a non-finite number.`)
+    }
     return Object.is(value, -0) ? 0 : value
   }
-  if (
-    typeof value === 'undefined' ||
-    typeof value === 'function' ||
-    typeof value === 'symbol' ||
-    typeof value === 'bigint'
-  ) {
+  if (type !== 'object') {
     throw new TypeError(`${path} contains unsupported data.`)
   }
 
@@ -157,9 +155,9 @@ function cloneData(value, seen = new Set(), path = 'value') {
   }
 
   const clone = {}
-  for (const [key, descriptor] of Object.entries(
-    Object.getOwnPropertyDescriptors(value),
-  ).sort(([a], [b]) => a.localeCompare(b))) {
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  for (const key of Object.keys(descriptors).sort()) {
+    const descriptor = descriptors[key]
     if (
       !descriptor.enumerable ||
       !Object.prototype.hasOwnProperty.call(descriptor, 'value')
@@ -186,7 +184,7 @@ function deepFreeze(value) {
 }
 
 function dataEqual(left, right) {
-  if (Object.is(left, right)) return true
+  if (left === right) return true
   if (typeof left !== typeof right || left === null || right === null) return false
 
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -216,7 +214,9 @@ function dataEqual(left, right) {
 
 function normalizePath(path, operationId) {
   assertDenseArray(path, `operation ${operationId} path`)
-  if (!path.length) throw new TypeError(`operation ${operationId} path must not be empty.`)
+  if (!path.length) {
+    throw new TypeError(`operation ${operationId} path must not be empty.`)
+  }
 
   return path.map((segment, index) => {
     if (typeof segment === 'number') {
@@ -225,17 +225,23 @@ function normalizePath(path, operationId) {
           `operation ${operationId} path segment ${index} must be a non-negative integer.`,
         )
       }
-      return segment
+      // JavaScript treats -0 and 0 as the same array index. Canonicalize here
+      // so overlap detection cannot accept two operations for one target.
+      return Object.is(segment, -0) ? 0 : segment
     }
+
     if (typeof segment === 'string') {
       if (!segment.length) {
-        throw new TypeError(`operation ${operationId} path segment ${index} must not be empty.`)
+        throw new TypeError(
+          `operation ${operationId} path segment ${index} must not be empty.`,
+        )
       }
       if (PROTECTED_PATH_KEYS.has(segment)) {
         throw new TypeError(`operation ${operationId} path contains a protected key.`)
       }
       return segment
     }
+
     throw new TypeError(
       `operation ${operationId} path segment ${index} must be a string or non-negative integer.`,
     )
@@ -248,6 +254,7 @@ function normalizeOperation(operation) {
   if (operation.kind !== TEACHER_CORRECTION_OPERATION_KIND.REPLACE_VALUE) {
     throw new TypeError(`Unsupported correction operation kind: ${operation.kind}.`)
   }
+
   return {
     operationId,
     kind: operation.kind,
@@ -259,7 +266,7 @@ function normalizeOperation(operation) {
 function pathsOverlap(left, right) {
   const length = Math.min(left.length, right.length)
   for (let index = 0; index < length; index++) {
-    if (!Object.is(left[index], right[index])) return false
+    if (left[index] !== right[index]) return false
   }
   return true
 }
@@ -272,6 +279,7 @@ function validateBatch(operations) {
     }
     ids.add(operation.operationId)
   }
+
   for (let i = 0; i < operations.length; i++) {
     for (let j = i + 1; j < operations.length; j++) {
       if (pathsOverlap(operations[i].path, operations[j].path)) {
@@ -356,16 +364,29 @@ function replaceExisting(root, operation) {
 }
 
 function isDeepFrozenPlainData(value, seen = new Set()) {
-  if (!value || typeof value !== 'object') return true
+  if (value === null) return true
+
+  const type = typeof value
+  if (type === 'string' || type === 'boolean') return true
+  if (type === 'number') return Number.isFinite(value)
+  if (type !== 'object') return false
+
   if ((!Array.isArray(value) && !isPlainObject(value)) || !Object.isFrozen(value)) {
     return false
   }
   if (seen.has(value) || Object.getOwnPropertySymbols(value).length) return false
 
+  if (Array.isArray(value)) {
+    try {
+      assertDenseArray(value, 'audit data array')
+    } catch {
+      return false
+    }
+  }
+
   seen.add(value)
-  for (const [key, descriptor] of Object.entries(
-    Object.getOwnPropertyDescriptors(value),
-  )) {
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  for (const [key, descriptor] of Object.entries(descriptors)) {
     if (Array.isArray(value) && key === 'length') continue
     if (
       !descriptor.enumerable ||
@@ -399,6 +420,7 @@ export function isTeacherCorrectionAuditEvent(value) {
     ]) {
       if (requiredId(value[field], field) !== value[field]) return false
     }
+
     if (normalizedTime(value.createdAt) !== value.createdAt) return false
     if (!Array.isArray(value.operations) || !value.operations.length) return false
     if (!isDeepFrozenPlainData(value.operations)) return false
@@ -410,11 +432,16 @@ export function isTeacherCorrectionAuditEvent(value) {
       const operationId = requiredId(operation.operationId, 'operationId')
       if (operationId !== operation.operationId || ids.has(operationId)) return false
       ids.add(operationId)
-      if (operation.kind !== TEACHER_CORRECTION_OPERATION_KIND.REPLACE_VALUE) return false
+      if (operation.kind !== TEACHER_CORRECTION_OPERATION_KIND.REPLACE_VALUE) {
+        return false
+      }
       const path = normalizePath(operation.path, operationId)
+      if (!isDeepFrozenPlainData(operation.before)) return false
+      if (!isDeepFrozenPlainData(operation.after)) return false
       if (dataEqual(operation.before, operation.after)) return false
       paths.push(path)
     }
+
     validateBatch(
       paths.map((path, index) => ({
         operationId: value.operations[index].operationId,
