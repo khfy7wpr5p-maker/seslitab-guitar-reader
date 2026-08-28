@@ -1,10 +1,11 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 2.1.0  
+**Belge sürümü:** 2.2.0  
 **Güncelleme tarihi:** 2026-08-28  
 **Doğrulanan başlangıç main:** `c096f0daa43eb20c79fea46d1d76211b8fcb49dc`  
 **T1 kapanış main:** `218c3e18eed3a82861a4a1c24efd5458445ea9ca`  
 **T2 kapanış main:** `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
+**T3 kapanış main:** `70a02589206eeea9c3defec4d5f544e9222cbe3a`  
 **Durum:** Mevcut kod ve kapanmış paketlerle uzlaştırılmış mimari yönlendirme belgesi.
 
 Bu belge ürünün güncel mimarisini açıklar. Paket kapanış kanıtları için `docs/package-status.md` ve ilgili `docs/package-*-closure.md` belgeleri; güncel repository gerçeği için kaynak kod, testler ve fresh CI kanıtı esas alınır.
@@ -58,7 +59,10 @@ AutomaticSourceRevision (immutable)
   -> TeacherCorrectedRevision (new immutable revision)
   +-> TeacherCorrectionAuditEvent (separate immutable audit evidence)
   -> validation/quality per revision
-  -> future T3 TeacherApprovalRecord bound to one exact revision/fingerprint
+  -> TeacherApprovalRecord (separate immutable exact-revision approval)
+       -> exact sourceId + sourceRevisionId + revisionId + contentFingerprint
+       -> later/new revision: NOT_APPLICABLE_TO_REVISION unless explicitly approved
+  -> future T4 lossless history/undo view
   -> later Package 12 student sharing of approved exact revision only
 ```
 
@@ -150,7 +154,7 @@ Hazır akor çıktısı öğretmen onaylı veya definitive değildir.
 
 Package 8 mevcut canonical modeli veya OMR sonucunu yerinde değiştiren mutable bir `Teacher Correction Engine` olmamalıdır. Güvenli sınır immutable revision + ayrı audit + ayrı approval modelidir.
 
-### 4.1 T1 + T2 ile doğrulanmış mevcut sınır
+### 4.1 T1 + T2 + T3 ile doğrulanmış mevcut sınır
 
 ```text
 AutomaticSourceRevision (immutable)
@@ -165,13 +169,16 @@ TeacherCorrectedRevision #1 (immutable)
 validator / quality           TeacherCorrectionAuditEvent
 per exact revision             (separate, immutable)
         |
-        | future T3 explicit approval action
+        | explicit teacher approval
         v
 TeacherApprovalRecord
-bound to exact source + revisionId + contentFingerprint
+bound to exact sourceId + sourceRevisionId + revisionId + contentFingerprint
+        |
+        +--> exact bound revision: APPROVED_EXACT_REVISION
+        +--> any later/other revision: NOT_APPLICABLE_TO_REVISION
 ```
 
-T1/T2 ile doğrulanmış kurallar:
+T1/T2/T3 ile doğrulanmış kurallar:
 
 1. Otomatik kaynak sürümü immutable kalır.
 2. Düzeltme yeni revision üretir; parent/otomatik sürümün üstüne yazılmaz.
@@ -183,49 +190,48 @@ T1/T2 ile doğrulanmış kurallar:
 8. Correction audit event revision'dan ayrıdır ve before/after + exact parent/result fingerprint kaydeder.
 9. Correction audit event approval değildir.
 10. Unsafe/non-deterministic data correction ve audit validation sınırında reddedilir.
+11. T3 approval revision içine mutable flag olarak eklenmez; ayrı immutable record'dur.
+12. Approval exact source/root-source/revision/fingerprint kimliğine bağlanır.
+13. Yeni revision eski approval'ı otomatik devralmaz; içerik fingerprint'i aynı olsa bile exact revision ID eşleşmesi gerekir.
+14. Eski approval record yeni revision oluştuğunda mutasyona uğramaz veya silinmez.
+15. Quality-gate `ACCEPT` teacher approval'a otomatik çevrilmez ve teacher approval quality güvenliğini bypass etmez.
+16. T3 actor identity audit evidence'dır; authentication/authorization T3 kapsamında uygulanmaz.
+17. Package 12 öğrenci paylaşımı T3'te aktive edilmez.
 
-### 4.2 T3 için henüz uygulanmamış approval sınırı
-
-T3 aşağıdaki mimariyi tamamlayacak ilk aşamadır:
+### 4.2 Doğrulanmış T3 approval sınırı
 
 ```text
 TeacherCorrectedRevision R1
-   + exact source identity
+   + sourceId S1
+   + sourceRevisionId A0
    + revisionId R1
    + contentFingerprint F1
               |
               | explicit teacher approval
               v
 TeacherApprovalRecord A1
-   bound to (source, R1, F1)
+   bound to (S1, A0, R1, F1)
+              |
+              +--> R1 = APPROVED_EXACT_REVISION
 
 TeacherCorrectedRevision R2
    revisionId R2 / fingerprint F2
               |
-              +--> A1 does NOT apply automatically
+              +--> A1 = NOT_APPLICABLE_TO_REVISION
 ```
 
-T3 kuralları:
-
-1. Approval revision içine mutable flag olarak eklenmemelidir.
-2. Approval ayrı immutable record olmalıdır.
-3. Approval exact source/revision/fingerprint üçlüsüne bağlanmalıdır.
-4. Yeni revision oluşunca eski approval record mutasyona uğramamalı; yeni revision için yalnız `not applicable` olmalıdır.
-5. Quality-gate `ACCEPT` approval'a otomatik çevrilmemelidir.
-6. Approval kritik yapısal/quality güvenlik mekanizmasını bypass etmemelidir.
-7. Authentication/authorization ile approval-domain kaydı karıştırılmamalıdır; kimlik caller-supplied evidence olabilir ancak auth henüz ayrı bir ürün katmanıdır.
-8. Package 12 öğrenci paylaşımı T3'te aktive edilmemelidir.
+T3 ayrıca aynı fingerprint'e sahip yeni revision'ın da eski approval'ı devralmadığını, farklı source üzerinde benzer kimliklerin approval'ı yeniden kullanamadığını ve malformed/mutable/injected approval kayıtlarının fail closed olduğunu doğrular.
 
 ### 4.3 Sonraki aşamalar
 
 - **8-T1 — Revision domain contract: COMPLETED.**
 - **8-T2 — Controlled correction operations: COMPLETED.**
-- **8-T3 — Approval binding/invalidation: NEXT.**
-- **8-T4 — Undo/version history:** kayıpsız tarihçe ve geri alma.
+- **8-T3 — Approval binding/invalidation: COMPLETED.**
+- **8-T4 — Undo/version history: NEXT.** Kayıpsız tarihçe ve geri alma; historical revision/audit/approval evidence overwrite edilmemeli veya silinmemelidir.
 - **8-T5 — Optimistic concurrency:** stale base revision conflict.
 - **8-T6 — Accessible teacher UI:** önceki domain/history/concurrency katmanları kanıtlandıktan sonra arayüz.
 
-Ayrı **Package 8B — Audiveris training dataset** bu T1–T6 alt aşamalarından farklıdır ve T3 kapsamına alınmamalıdır.
+Ayrı **Package 8B — Audiveris training dataset** bu T1–T6 alt aşamalarından farklıdır ve T4 kapsamına alınmamalıdır.
 
 ## 5. Güvenlik bağımlılıkları
 
@@ -249,9 +255,9 @@ Aşağıdaki veriler yerinde overwrite edilmemelidir:
 - otomatik canonical/source revision;
 - teacher-corrected revision'lar;
 - teacher correction audit event'leri;
-- gelecekteki teacher approval record'ları.
+- teacher approval record'ları.
 
-Yeni bir düzeltme mevcut veri nesnesinin güvenilirlik/approval alanını sessizce değiştirmek yerine yeni, izlenebilir bir revision üretmelidir.
+Yeni bir düzeltme mevcut veri nesnesinin güvenilirlik/approval alanını sessizce değiştirmek yerine yeni, izlenebilir bir revision üretmelidir. Gelecekte T4 undo/history de historical kayıtları silmek veya yeniden yazmak yerine lossless history üzerinde çalışmalıdır.
 
 ## 7. Erişilebilirlik sınırı
 
@@ -267,23 +273,23 @@ Yeni öğretmen arayüzü eklenmeden önce domain kuralları testlerle kapanmal�
 
 - Frontend orchestration/UI: `src/`, `main.js`, `index.html`
 - Canonical/parser/theory çekirdekleri: root-level music modules + `src/services/`
-- Teacher revision/correction domain: `src/services/teacherRevisionModel.js`, `src/services/teacherCorrectionOperations.js`
+- Teacher revision/correction/approval domain: `src/services/teacherRevisionModel.js`, `src/services/teacherCorrectionOperations.js`, `src/services/teacherApprovalModel.js`
 - Backend OMR/API: `backend/`
 - Tests: `tests/`
 - CI: `.github/workflows/`
 - Deployment: `Dockerfile`, `render.yaml`
 - Mimari/status belgeleri: `docs/`
 
-Package 8-T2 protected main üzerinde tamamlandı. Sıradaki 8-T3 aşaması yalnız exact-revision approval binding/invalidation domain sınırında kalmalıdır; backend, OMR, Audiveris, deployment veya mevcut Render bağlantısına değişiklik gerektirmemelidir.
+Package 8-T3 protected main üzerinde tamamlandı. Sıradaki 8-T4 aşaması yalnız lossless undo/version-history domain sınırında kalmalıdır; backend, OMR, Audiveris, deployment veya mevcut Render bağlantısına değişiklik gerektirmemelidir.
 
 ## 9. Mevcut durum
 
 - Package 0–7: **Completed**.
-- Package 8: **Partially implemented** — **8-T1 Completed, 8-T2 Completed; 8-T3 next**.
-- Package 8-T4..T6: Not started.
+- Package 8: **Partially implemented** — **8-T1 Completed, 8-T2 Completed, 8-T3 Completed; 8-T4 next**.
+- Package 8-T5..T6: Not started.
 - Package 8B, 9–13: Not started.
 - Package 14: Partially implemented.
 
-T2 kapanış kanıtı: protected main `f6d80b4614654ee63a4fd2d51101e4961476a1ee`; exact-main CI #230 başarılıdır: 1136/1136 test, 231 suite, 0 fail/skipped/cancelled, audit 0 vulnerabilities ve production build PASS.
+T3 kapanış implementation kanıtı: protected main `70a02589206eeea9c3defec4d5f544e9222cbe3a`; exact-main CI #234 başarılıdır: 1150/1150 test, 232 suite, 0 fail/skipped/cancelled, audit 0 vulnerabilities ve production build PASS.
 
 Bu belge gelecekteki implementasyon için sınırsız izin belgesi değildir. Her yeni aşama fresh-read, ayrı branch, focused test, tam regression, review çözümü ve production build kanıtı ile yürütülmelidir.
