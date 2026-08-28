@@ -34,17 +34,22 @@ export const AUDIVERIS_TRAINABILITY_REASON = Object.freeze({
   MISSING_SPLIT: 'missing_split',
 })
 
+const CANDIDATE_INPUT_FIELDS = Object.freeze([
+  'candidateId', 'provenanceId', 'split', 'sourcePdf', 'pageImage',
+  'omrArtifact', 'musicXml', 'glyphImage', 'shapeLabel', 'symbolCoordinates',
+  'referenceApprovalEvidence', 'trainingApproval', 'licenseId',
+  'licenseEvidence', 'audiverisVersion',
+])
 const CANDIDATE_FIELDS = Object.freeze([
-  'schemaVersion', 'candidateId', 'provenanceId', 'split', 'sourcePdf',
-  'pageImage', 'omrArtifact', 'musicXml', 'glyphImage', 'shapeLabel',
-  'symbolCoordinates', 'referenceApprovalEvidence', 'trainingApproval',
-  'licenseId', 'licenseEvidence', 'audiverisVersion',
+  'schemaVersion', ...CANDIDATE_INPUT_FIELDS, 'candidateFingerprint',
 ])
 const ARTIFACT_FIELDS = Object.freeze(['path', 'sha256'])
 const APPROVAL_FIELDS = Object.freeze([
-  'approvalId', 'actorId', 'approvedAt', 'scope', 'evidence',
+  'approvalId', 'actorId', 'approvedAt', 'scope',
+  'approvedCandidateFingerprint', 'evidence',
 ])
 const COORDINATE_FIELDS = Object.freeze(['pageIndex', 'x', 'y', 'width', 'height'])
+const MANIFEST_INPUT_FIELDS = Object.freeze(['datasetId', 'versionId', 'createdAt', 'samples'])
 const MANIFEST_FIELDS = Object.freeze([
   'schemaVersion', 'datasetId', 'versionId', 'createdAt', 'samples',
   'splitCounts', 'datasetFingerprint',
@@ -57,6 +62,7 @@ const MUSICXML_EXTENSIONS = Object.freeze(['.musicxml', '.xml', '.mxl'])
 const IMAGE_EXTENSIONS = Object.freeze(['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp'])
 const EVIDENCE_EXTENSIONS = Object.freeze(['.md', '.txt', '.json'])
 const SHA256_RE = /^[0-9a-f]{64}$/u
+const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/u
 
 function isPlainObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -83,6 +89,19 @@ function optionalString(value, fieldName, maxLength = 256) {
 function normalizedTime(value, fieldName = 'createdAt') {
   if (value === null || value === undefined) return null
   return requiredString(value, fieldName, 128)
+}
+
+function assertSupportedInputObject(value, allowedFields, label) {
+  if (!isPlainObject(value)) throw new TypeError(`${label} must be a plain object.`)
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || !allowedFields.includes(key)) {
+      throw new TypeError(`${label} contains an unsupported field.`)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor?.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      throw new TypeError(`${label}.${key} must be an enumerable data property.`)
+    }
+  }
 }
 
 function assertExactObject(value, fields, label) {
@@ -114,11 +133,8 @@ function hasStrictFrozenRecord(value, fields) {
   return fields.every((field) => {
     const descriptor = descriptors[field]
     return Boolean(
-      descriptor &&
-      descriptor.enumerable === true &&
-      descriptor.configurable === false &&
-      descriptor.writable === false &&
-      Object.prototype.hasOwnProperty.call(descriptor, 'value'),
+      descriptor && descriptor.enumerable === true && descriptor.configurable === false &&
+      descriptor.writable === false && Object.prototype.hasOwnProperty.call(descriptor, 'value'),
     )
   })
 }
@@ -157,10 +173,8 @@ function hasStrictFrozenArray(value) {
   const descriptors = Object.getOwnPropertyDescriptors(value)
   return Object.entries(descriptors).every(([key, descriptor]) =>
     key === 'length' || (
-      descriptor.enumerable === true &&
-      descriptor.configurable === false &&
-      descriptor.writable === false &&
-      Object.prototype.hasOwnProperty.call(descriptor, 'value')
+      descriptor.enumerable === true && descriptor.configurable === false &&
+      descriptor.writable === false && Object.prototype.hasOwnProperty.call(descriptor, 'value')
     ),
   )
 }
@@ -219,26 +233,22 @@ function normalizeCoordinates(value) {
   return Object.freeze(normalized)
 }
 
-function normalizeTrainingApproval(value) {
-  if (value === null || value === undefined) return null
-  assertExactObject(value, APPROVAL_FIELDS, 'trainingApproval')
-  if (value.scope !== AUDIVERIS_TRAINING_APPROVAL_SCOPE) {
-    throw new TypeError('trainingApproval.scope must explicitly approve Audiveris training use.')
-  }
-  return Object.freeze({
-    approvalId: requiredString(value.approvalId, 'trainingApproval.approvalId'),
-    actorId: requiredString(value.actorId, 'trainingApproval.actorId'),
-    approvedAt: requiredString(value.approvedAt, 'trainingApproval.approvedAt', 128),
-    scope: AUDIVERIS_TRAINING_APPROVAL_SCOPE,
-    evidence: normalizeArtifact(value.evidence, 'trainingApproval.evidence', EVIDENCE_EXTENSIONS, {
-      optional: false,
-    }),
-  })
+function stableSerialize(value) {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'number') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
+  const keys = Object.keys(value).sort()
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`
 }
 
-function buildCandidate(input) {
+function fingerprint(value) {
+  return `sha256:${createHash('sha256').update(stableSerialize(value), 'utf8').digest('hex')}`
+}
+
+function normalizeCandidateCore(input) {
   return Object.freeze({
-    schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
     candidateId: requiredString(input.candidateId, 'candidateId'),
     provenanceId: requiredString(input.provenanceId, 'provenanceId'),
     split: normalizeSplit(input.split),
@@ -252,31 +262,46 @@ function buildCandidate(input) {
     referenceApprovalEvidence: normalizeArtifact(
       input.referenceApprovalEvidence, 'referenceApprovalEvidence', EVIDENCE_EXTENSIONS,
     ),
-    trainingApproval: normalizeTrainingApproval(input.trainingApproval),
     licenseId: optionalString(input.licenseId, 'licenseId', 128),
     licenseEvidence: normalizeArtifact(input.licenseEvidence, 'licenseEvidence', EVIDENCE_EXTENSIONS),
     audiverisVersion: optionalString(input.audiverisVersion, 'audiverisVersion', 64),
   })
 }
 
-function candidateInputFromRecord(candidate) {
-  return {
-    candidateId: candidate.candidateId,
-    provenanceId: candidate.provenanceId,
-    split: candidate.split,
-    sourcePdf: candidate.sourcePdf,
-    pageImage: candidate.pageImage,
-    omrArtifact: candidate.omrArtifact,
-    musicXml: candidate.musicXml,
-    glyphImage: candidate.glyphImage,
-    shapeLabel: candidate.shapeLabel,
-    symbolCoordinates: candidate.symbolCoordinates,
-    referenceApprovalEvidence: candidate.referenceApprovalEvidence,
-    trainingApproval: candidate.trainingApproval,
-    licenseId: candidate.licenseId,
-    licenseEvidence: candidate.licenseEvidence,
-    audiverisVersion: candidate.audiverisVersion,
+function candidateEvidenceFingerprint(core) {
+  return fingerprint({
+    schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
+    ...core,
+  })
+}
+
+function normalizeTrainingApproval(value, expectedFingerprint) {
+  if (value === null || value === undefined) return null
+  assertExactObject(value, APPROVAL_FIELDS, 'trainingApproval')
+  if (value.scope !== AUDIVERIS_TRAINING_APPROVAL_SCOPE) {
+    throw new TypeError('trainingApproval.scope must explicitly approve Audiveris training use.')
   }
+  const approvedCandidateFingerprint = requiredString(
+    value.approvedCandidateFingerprint,
+    'trainingApproval.approvedCandidateFingerprint',
+    71,
+  )
+  if (!FINGERPRINT_RE.test(approvedCandidateFingerprint)) {
+    throw new TypeError('trainingApproval.approvedCandidateFingerprint must be a SHA-256 fingerprint.')
+  }
+  if (approvedCandidateFingerprint !== expectedFingerprint) {
+    throw new TypeError('trainingApproval does not bind the exact candidate evidence.')
+  }
+  return Object.freeze({
+    approvalId: requiredString(value.approvalId, 'trainingApproval.approvalId'),
+    actorId: requiredString(value.actorId, 'trainingApproval.actorId'),
+    approvedAt: requiredString(value.approvedAt, 'trainingApproval.approvedAt', 128),
+    scope: AUDIVERIS_TRAINING_APPROVAL_SCOPE,
+    approvedCandidateFingerprint,
+    evidence: normalizeArtifact(value.evidence, 'trainingApproval.evidence', EVIDENCE_EXTENSIONS, {
+      optional: false,
+    }),
+  })
 }
 
 function sameArtifact(left, right) {
@@ -289,12 +314,16 @@ function sameCoordinates(left, right) {
   return COORDINATE_FIELDS.every((field) => left[field] === right[field])
 }
 
-function sameApproval(left, right) {
-  if (left === null || right === null) return left === right
+function sameCore(left, right) {
   return (
-    left.approvalId === right.approvalId && left.actorId === right.actorId &&
-    left.approvedAt === right.approvedAt && left.scope === right.scope &&
-    sameArtifact(left.evidence, right.evidence)
+    left.candidateId === right.candidateId && left.provenanceId === right.provenanceId &&
+    left.split === right.split && sameArtifact(left.sourcePdf, right.sourcePdf) &&
+    sameArtifact(left.pageImage, right.pageImage) && sameArtifact(left.omrArtifact, right.omrArtifact) &&
+    sameArtifact(left.musicXml, right.musicXml) && sameArtifact(left.glyphImage, right.glyphImage) &&
+    left.shapeLabel === right.shapeLabel && sameCoordinates(left.symbolCoordinates, right.symbolCoordinates) &&
+    sameArtifact(left.referenceApprovalEvidence, right.referenceApprovalEvidence) &&
+    left.licenseId === right.licenseId && sameArtifact(left.licenseEvidence, right.licenseEvidence) &&
+    left.audiverisVersion === right.audiverisVersion
   )
 }
 
@@ -319,7 +348,16 @@ function hasStrictNestedCandidateEvidence(candidate) {
 }
 
 export function createAudiverisTrainingCandidate(input = {}) {
-  return buildCandidate(input)
+  assertSupportedInputObject(input, CANDIDATE_INPUT_FIELDS, 'candidate input')
+  const core = normalizeCandidateCore(input)
+  const candidateFingerprint = candidateEvidenceFingerprint(core)
+  const trainingApproval = normalizeTrainingApproval(input.trainingApproval, candidateFingerprint)
+  return Object.freeze({
+    schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
+    ...core,
+    trainingApproval,
+    candidateFingerprint,
+  })
 }
 
 export function isAudiverisTrainingCandidate(value) {
@@ -327,23 +365,13 @@ export function isAudiverisTrainingCandidate(value) {
     if (!hasStrictFrozenRecord(value, CANDIDATE_FIELDS)) return false
     if (value.schemaVersion !== AUDIVERIS_DATASET_SCHEMA_VERSION) return false
     if (!hasStrictNestedCandidateEvidence(value)) return false
-    const rebuilt = buildCandidate(candidateInputFromRecord(value))
-    return (
-      rebuilt.candidateId === value.candidateId &&
-      rebuilt.provenanceId === value.provenanceId && rebuilt.split === value.split &&
-      sameArtifact(rebuilt.sourcePdf, value.sourcePdf) &&
-      sameArtifact(rebuilt.pageImage, value.pageImage) &&
-      sameArtifact(rebuilt.omrArtifact, value.omrArtifact) &&
-      sameArtifact(rebuilt.musicXml, value.musicXml) &&
-      sameArtifact(rebuilt.glyphImage, value.glyphImage) &&
-      rebuilt.shapeLabel === value.shapeLabel &&
-      sameCoordinates(rebuilt.symbolCoordinates, value.symbolCoordinates) &&
-      sameArtifact(rebuilt.referenceApprovalEvidence, value.referenceApprovalEvidence) &&
-      sameApproval(rebuilt.trainingApproval, value.trainingApproval) &&
-      rebuilt.licenseId === value.licenseId &&
-      sameArtifact(rebuilt.licenseEvidence, value.licenseEvidence) &&
-      rebuilt.audiverisVersion === value.audiverisVersion
-    )
+    if (!FINGERPRINT_RE.test(value.candidateFingerprint)) return false
+    const rebuiltCore = normalizeCandidateCore(value)
+    if (!sameCore(rebuiltCore, value)) return false
+    const expectedFingerprint = candidateEvidenceFingerprint(rebuiltCore)
+    if (expectedFingerprint !== value.candidateFingerprint) return false
+    normalizeTrainingApproval(value.trainingApproval, expectedFingerprint)
+    return true
   } catch {
     return false
   }
@@ -386,20 +414,6 @@ export function requireAudiverisTrainableSample(candidate) {
   return candidate
 }
 
-function stableSerialize(value) {
-  if (value === null) return 'null'
-  if (typeof value === 'string') return JSON.stringify(value)
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'number') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
-  const keys = Object.keys(value).sort()
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`
-}
-
-function fingerprint(value) {
-  return `sha256:${createHash('sha256').update(stableSerialize(value), 'utf8').digest('hex')}`
-}
-
 function enforceSplitIsolation(samples) {
   const provenanceSplits = new Map()
   const artifactSplits = new Map()
@@ -409,7 +423,9 @@ function enforceSplitIsolation(samples) {
       throw new Error(`Train/evaluation leakage detected for provenanceId ${sample.provenanceId}.`)
     }
     provenanceSplits.set(sample.provenanceId, sample.split)
-    for (const artifact of [sample.sourcePdf, sample.pageImage, sample.omrArtifact]) {
+    for (const artifact of [
+      sample.sourcePdf, sample.pageImage, sample.omrArtifact, sample.musicXml, sample.glyphImage,
+    ]) {
       const priorArtifactSplit = artifactSplits.get(artifact.sha256)
       if (priorArtifactSplit && priorArtifactSplit !== sample.split) {
         throw new Error('Train/evaluation leakage detected through shared source evidence.')
@@ -419,20 +435,16 @@ function enforceSplitIsolation(samples) {
   }
 }
 
-export function createAudiverisDatasetManifest({
-  datasetId,
-  versionId,
-  createdAt = null,
-  samples,
-} = {}) {
-  const normalizedDatasetId = requiredString(datasetId, 'datasetId')
-  const normalizedVersionId = requiredString(versionId, 'versionId')
-  const normalizedCreatedAt = normalizedTime(createdAt)
-  assertDenseArray(samples, 'samples')
-  if (!samples.length) throw new TypeError('samples must contain at least one trainable sample.')
+export function createAudiverisDatasetManifest(input = {}) {
+  assertSupportedInputObject(input, MANIFEST_INPUT_FIELDS, 'manifest input')
+  const normalizedDatasetId = requiredString(input.datasetId, 'datasetId')
+  const normalizedVersionId = requiredString(input.versionId, 'versionId')
+  const normalizedCreatedAt = normalizedTime(input.createdAt)
+  assertDenseArray(input.samples, 'samples')
+  if (!input.samples.length) throw new TypeError('samples must contain at least one trainable sample.')
 
   const ids = new Set()
-  const normalizedSamples = samples.map((sample) => {
+  const normalizedSamples = input.samples.map((sample) => {
     const trainable = requireAudiverisTrainableSample(sample)
     if (ids.has(trainable.candidateId)) {
       throw new Error(`Duplicate Audiveris training candidateId: ${trainable.candidateId}.`)
@@ -448,21 +460,22 @@ export function createAudiverisDatasetManifest({
       (sample) => sample.split === AUDIVERIS_DATASET_SPLIT.EVALUATION,
     ).length,
   })
-  const fingerprintPayload = {
+  const samples = Object.freeze([...normalizedSamples])
+  const datasetFingerprint = fingerprint({
     schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
     datasetId: normalizedDatasetId,
     versionId: normalizedVersionId,
     createdAt: normalizedCreatedAt,
-    samples: normalizedSamples,
-  }
+    samples,
+  })
   return Object.freeze({
     schemaVersion: AUDIVERIS_DATASET_SCHEMA_VERSION,
     datasetId: normalizedDatasetId,
     versionId: normalizedVersionId,
     createdAt: normalizedCreatedAt,
-    samples: Object.freeze([...normalizedSamples]),
+    samples,
     splitCounts,
-    datasetFingerprint: fingerprint(fingerprintPayload),
+    datasetFingerprint,
   })
 }
 
@@ -472,6 +485,7 @@ export function isAudiverisDatasetManifest(value) {
     if (value.schemaVersion !== AUDIVERIS_DATASET_SCHEMA_VERSION) return false
     if (!hasStrictFrozenArray(value.samples)) return false
     if (!hasStrictFrozenRecord(value.splitCounts, SPLIT_COUNT_FIELDS)) return false
+    if (!FINGERPRINT_RE.test(value.datasetFingerprint)) return false
     if (!value.samples.every(isAudiverisTrainingCandidate)) return false
     const rebuilt = createAudiverisDatasetManifest({
       datasetId: value.datasetId,
