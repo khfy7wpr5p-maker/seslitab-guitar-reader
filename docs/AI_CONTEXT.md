@@ -20,10 +20,11 @@ Before each implementation stage:
 3. confirm exact package and prerequisites;
 4. define allowed files and protected boundaries;
 5. define focused tests, full regression and production build;
-6. use a dedicated branch and never direct-commit to main;
-7. resolve review findings and require exact-head CI before merge;
-8. merge with exact expected head;
-9. require exact-main CI before status advancement.
+6. confirm write/merge authority;
+7. use a dedicated branch and never direct-commit to main;
+8. resolve review findings and require exact-head CI before merge;
+9. merge with exact expected head;
+10. require exact-main CI before status advancement.
 
 Only one implementation package may be active at a time.
 
