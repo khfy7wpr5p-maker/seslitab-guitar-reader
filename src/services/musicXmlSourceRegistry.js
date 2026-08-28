@@ -34,6 +34,13 @@ export function registerMusicXmlSourceForNotes(notes, musicXml) {
   return record
 }
 
+export function clearMusicXmlSourceForNotes(notes) {
+  if (!validNotes(notes)) {
+    throw new TypeError('MusicXML source registry requires a NoteObject array.')
+  }
+  return sourcesByNotes.delete(notes)
+}
+
 export function resolveMusicXmlSourceForNotes(notes) {
   if (!validNotes(notes)) return null
   return sourcesByNotes.get(notes) ?? null
