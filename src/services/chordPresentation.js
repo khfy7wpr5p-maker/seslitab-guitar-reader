@@ -127,15 +127,6 @@ function integerToTurkish(value) {
   return small[value] || String(value)
 }
 
-function ordinalToTurkish(value) {
-  const ordinals = {
-    1: 'birinci', 2: 'ikinci', 3: 'üçüncü', 4: 'dördüncü',
-    5: 'beşinci', 6: 'altıncı', 7: 'yedinci', 8: 'sekizinci',
-    9: 'dokuzuncu', 10: 'onuncu',
-  }
-  return ordinals[value] || `${value}.`
-}
-
 function degreeSpeech(degree) {
   if (!degree || typeof degree !== 'object') return null
   const type = cleanString(degree.type)
@@ -144,6 +135,8 @@ function degreeSpeech(degree) {
   if (!VALID_DEGREE_TYPES.has(type) || !Number.isInteger(value) || value < 1 || !VALID_ALTERS.has(alter)) {
     return null
   }
+
+  if (degree.printObject === false) return ''
 
   const valueText = integerToTurkish(value)
   if (type === 'add') {
@@ -157,8 +150,8 @@ function degreeSpeech(degree) {
   }
 
   const accidental = accidentalSpeech(alter)
-  if (!accidental) return alter === 0 ? `${valueText} değişmedi` : null
-  return `${accidental} ${valueText}`
+  if (alter === 0) return `natürel ${valueText}`
+  return accidental ? `${accidental} ${valueText}` : null
 }
 
 function timingSpeech(startBeat) {
@@ -251,15 +244,13 @@ function buildChordSpeech(event) {
     phrases.push(`bas ${bass}`)
   }
 
-  if (event.inversion !== null && event.inversion !== undefined) {
-    if (!nonNegativeInteger(event.inversion)) return null
-    if (event.inversion > 0) phrases.push(`${ordinalToTurkish(event.inversion)} çevrim`)
-  }
-
+  // Inversion metadata is validated and preserved by Package 6, but it is not
+  // encoded in the visible symbol unless an explicit bass exists. Package 7
+  // therefore does not add inversion-only information to speech.
   for (const degree of event.degrees) {
     const spoken = degreeSpeech(degree)
-    if (!spoken) return null
-    phrases.push(spoken)
+    if (spoken === null) return null
+    if (spoken) phrases.push(spoken)
   }
 
   return phrases.join(', ')
