@@ -45,7 +45,7 @@ function approve(revision, overrides = {}) {
 
 describe('Package 8-T3 exact-revision teacher approval binding', () => {
   test('exports explicit immutable approval/applicability vocabulary', () => {
-    assert.equal(TEACHER_APPROVAL_SCHEMA_VERSION, 2)
+    assert.equal(TEACHER_APPROVAL_SCHEMA_VERSION, 3)
     assert.equal(TEACHER_APPROVAL_STATE, 'teacher_approved')
     assert.equal(Object.isFrozen(TEACHER_APPROVAL_APPLICABILITY), true)
     assert.deepEqual(TEACHER_APPROVAL_APPLICABILITY, {
@@ -72,6 +72,10 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
       approval.approvedContentFingerprint,
       revision.contentFingerprint,
     )
+    assert.equal(
+      approval.approvedLineageFingerprint,
+      revision.lineageFingerprint,
+    )
     assert.deepEqual(revision, revisionBefore)
   })
 
@@ -84,6 +88,7 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
     assert.equal(approval.approvedRevisionKind, 'automatic')
     assert.equal(approval.approvedParentRevisionId, null)
     assert.equal(approval.approvedRevisionCreatedAt, revision.createdAt)
+    assert.equal(approval.approvedLineageFingerprint, revision.lineageFingerprint)
     assert.equal(
       evaluateTeacherApprovalForRevision({ approval, revision }),
       TEACHER_APPROVAL_APPLICABILITY.APPROVED_EXACT_REVISION,
@@ -153,6 +158,10 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
       sameContentNewRevision.contentFingerprint,
       firstRevision.contentFingerprint,
     )
+    assert.notEqual(
+      sameContentNewRevision.lineageFingerprint,
+      firstRevision.lineageFingerprint,
+    )
     assert.equal(
       evaluateTeacherApprovalForRevision({
         approval,
@@ -175,8 +184,6 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
     const reusedAncestorIdRevision = createTeacherCorrectedRevision({
       revisionId: firstRevision.revisionId,
       parentRevision: secondRevision,
-      // Deliberately reuse the old timestamp too: parent lineage must still
-      // distinguish this later revision from the originally approved record.
       createdAt: firstRevision.createdAt,
       content: structuredClone(firstRevision.content),
     })
@@ -195,6 +202,10 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
       reusedAncestorIdRevision.parentRevisionId,
       firstRevision.parentRevisionId,
     )
+    assert.notEqual(
+      reusedAncestorIdRevision.lineageFingerprint,
+      firstRevision.lineageFingerprint,
+    )
     assert.equal(
       evaluateTeacherApprovalForRevision({
         approval,
@@ -204,6 +215,62 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
     )
     assert.equal(
       evaluateTeacherApprovalForRevision({ approval, revision: firstRevision }),
+      TEACHER_APPROVAL_APPLICABILITY.APPROVED_EXACT_REVISION,
+    )
+  })
+
+  test('multi-hop revisionId replay cannot reconstruct an approved revision', () => {
+    const source = automatic()
+    const r1 = createTeacherCorrectedRevision({
+      revisionId: 'r1',
+      parentRevision: source,
+      createdAt: '2026-08-28T10:05:00Z',
+      content: [{ midi: 61, beats: 1 }],
+    })
+    const r2 = createTeacherCorrectedRevision({
+      revisionId: 'r2',
+      parentRevision: r1,
+      createdAt: '2026-08-28T10:06:00Z',
+      content: [{ midi: 62, beats: 1 }],
+    })
+    const approval = approve(r2)
+
+    const replayR1 = createTeacherCorrectedRevision({
+      revisionId: r1.revisionId,
+      parentRevision: r2,
+      createdAt: r1.createdAt,
+      content: structuredClone(r1.content),
+    })
+    const replayR2 = createTeacherCorrectedRevision({
+      revisionId: r2.revisionId,
+      parentRevision: replayR1,
+      createdAt: r2.createdAt,
+      content: structuredClone(r2.content),
+    })
+
+    // Every binding dimension used by schema v2 can be reconstructed here.
+    assert.equal(replayR2.sourceId, r2.sourceId)
+    assert.equal(replayR2.sourceRevisionId, r2.sourceRevisionId)
+    assert.equal(replayR2.revisionId, r2.revisionId)
+    assert.equal(replayR2.revisionKind, r2.revisionKind)
+    assert.equal(replayR2.parentRevisionId, r2.parentRevisionId)
+    assert.equal(replayR2.createdAt, r2.createdAt)
+    assert.equal(replayR2.contentFingerprint, r2.contentFingerprint)
+
+    // Recursive lineage cannot be reconstructed because replayR1 descends from
+    // R2 rather than from the original automatic source.
+    assert.notEqual(replayR1.lineageFingerprint, r1.lineageFingerprint)
+    assert.notEqual(replayR2.lineageFingerprint, r2.lineageFingerprint)
+    assert.notEqual(
+      replayR2.parentLineageFingerprint,
+      r2.parentLineageFingerprint,
+    )
+    assert.equal(
+      evaluateTeacherApprovalForRevision({ approval, revision: replayR2 }),
+      TEACHER_APPROVAL_APPLICABILITY.NOT_APPLICABLE_TO_REVISION,
+    )
+    assert.equal(
+      evaluateTeacherApprovalForRevision({ approval, revision: r2 }),
       TEACHER_APPROVAL_APPLICABILITY.APPROVED_EXACT_REVISION,
     )
   })
@@ -223,18 +290,23 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
       otherRevision.contentFingerprint,
       approvedRevision.contentFingerprint,
     )
+    assert.notEqual(
+      otherRevision.lineageFingerprint,
+      approvedRevision.lineageFingerprint,
+    )
     assert.equal(
       evaluateTeacherApprovalForRevision({ approval, revision: otherRevision }),
       TEACHER_APPROVAL_APPLICABILITY.NOT_APPLICABLE_TO_REVISION,
     )
   })
 
-  test('approval binding requires exact revision id, lineage metadata, timestamp, and content fingerprint', () => {
+  test('approval binding requires exact revision id, lineage metadata, timestamp, content and lineage fingerprints', () => {
     const revision = corrected()
     const approval = approve(revision)
 
     for (const replacement of [
       { approvedContentFingerprint: 'fnv1a64-v1:0000000000000000:0' },
+      { approvedLineageFingerprint: 'lineage-fnv1a64-v1:0000000000000000:0' },
       { approvedRevisionId: 'teacher-other' },
       { approvedParentRevisionId: 'teacher-other-parent' },
       { approvedRevisionCreatedAt: '2026-08-28T10:06:00Z' },
@@ -336,7 +408,7 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
     const valid = approve(corrected())
 
     for (const replacement of [
-      { schemaVersion: 3 },
+      { schemaVersion: 4 },
       { approvalState: 'automatic' },
       { approvalId: ' ' },
       { actorId: '' },
@@ -347,6 +419,7 @@ describe('Package 8-T3 exact-revision teacher approval binding', () => {
       { approvedParentRevisionId: '' },
       { approvedRevisionCreatedAt: 123 },
       { approvedContentFingerprint: '' },
+      { approvedLineageFingerprint: '' },
       { createdAt: 123 },
     ]) {
       assert.equal(
