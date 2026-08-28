@@ -66,28 +66,29 @@ Node.js requirement: `>=24.0.0 <25`.
 
 ## Current Roadmap Position
 
-Fresh status must still be verified before work starts. As of the Package 8-T1 protected-main closure on 2026-08-28:
+Fresh status must still be verified before work starts. As of the Package 8-T2 protected-main closure on 2026-08-28:
 
 - Package 0–7 are Completed.
 - Package 8 is **Partially implemented**.
 - Package 8-T1 — immutable revision domain contract — is **Completed**.
-- Package 8-T2 — controlled correction operations — is the **next safe implementation stage**.
-- Package 8-T3..T6 are Not started.
+- Package 8-T2 — controlled teacher correction operations — is **Completed**.
+- Package 8-T3 — exact-revision approval binding/invalidation — is the **next safe implementation stage**.
+- Package 8-T4..T6 are Not started.
 - Package 8B — Audiveris training dataset — is a later, separate roadmap package and must not be confused with Package 8-T1..T6.
 
-Verified Package 8-T1 closure main:
+Verified Package 8-T2 implementation main:
 
-`218c3e18eed3a82861a4a1c24efd5458445ea9ca`
+`f6d80b4614654ee63a4fd2d51101e4961476a1ee`
 
-Exact-main CI #222 / `33157031392`, job `98802158018`:
+Exact-main CI #230 / run `33163126080`, job `98822108194`:
 
-- 1118/1118 tests PASS
-- 230 suites
+- 1136/1136 tests PASS
+- 231 suites
 - 0 failed/skipped/cancelled
 - audit 0 vulnerabilities
 - production build PASS
 
-See `docs/package-8-t1-closure.md`.
+See `docs/package-8-t2-closure.md`.
 
 ## Package 8 Domain Invariants
 
@@ -96,38 +97,81 @@ The Package 8 revision/approval architecture must preserve these invariants:
 1. The automatic source revision is immutable.
 2. A teacher correction creates a new immutable revision; it does not overwrite its parent.
 3. Every revision preserves exact lineage to the original automatic source revision.
-4. Quality-gate `ACCEPT` is not teacher approval.
-5. Teacher approval must be represented separately from revision content.
-6. Approval must bind to one exact revision/fingerprint.
-7. A later revision must not inherit an older approval automatically.
-8. Undo/history must preserve old revisions rather than deleting or rewriting them.
-9. Stale concurrent edits must eventually fail with an explicit conflict instead of silent overwrite.
-10. Package 12 may later share only an explicitly approved exact revision.
+4. Correction operations are auditable and do not themselves imply approval.
+5. Quality-gate `ACCEPT` is not teacher approval.
+6. Teacher approval must be represented separately from revision content.
+7. Approval must bind to one exact revision identity/content fingerprint.
+8. A later revision must not inherit an older approval automatically.
+9. Undo/history must preserve old revisions rather than deleting or rewriting them.
+10. Stale concurrent edits must eventually fail with an explicit conflict instead of silent overwrite.
+11. Package 12 may later share only an explicitly approved exact revision.
 
-T1 already enforces immutable revision snapshots and rejects approval-field injection. T2 must add controlled correction operations without weakening T1.
+T1 enforces immutable revision snapshots and rejects approval-field injection. T2 enforces controlled replace-only corrections, creates a new T1 revision, and returns a separate immutable audit event.
 
-## Package 8-T2 Allowed Direction
+## Verified Package 8-T1/T2 Boundary
 
-T2 should remain small, pure and dependency-free unless evidence proves otherwise.
+### T1 already provides
+
+- `automatic` and `teacher_corrected` immutable revision records;
+- exact parent and root-source lineage;
+- deterministic content fingerprints;
+- strict deep-frozen plain-data snapshots;
+- fail-closed revision recognition;
+- no embedded teacher-approval field.
+
+### T2 already provides
+
+- one bounded operation kind: `replace_value`;
+- replacement of existing paths only; no insertion/deletion;
+- deterministic independent-path batches;
+- no overwrite of the automatic/parent source;
+- new corrected revision creation through T1;
+- separate correction audit event with actor/event identity, exact parent/result identity and fingerprint, and before/after values;
+- rejection of invalid/no-op/overlapping/prototype-sensitive/unsafe corrections;
+- no approval claim, persistence, history, concurrency or UI.
+
+T2 review hardening additionally canonicalizes `-0` and `0` as the same array target and rejects unsupported primitive values in audit validation.
+
+## Package 8-T3 Allowed Direction
+
+T3 should remain small, pure and dependency-free unless fresh evidence proves otherwise.
 
 It may add:
 
-- explicit correction-operation vocabulary;
-- validation of correction operations;
-- deterministic application of approved correction operations to a parent revision snapshot;
-- creation of a new immutable corrected revision through the existing T1 model;
-- audit-friendly operation metadata that does not claim approval;
-- focused tests.
+- a separate immutable `TeacherApprovalRecord`-style domain record;
+- an explicit versioned approval vocabulary/status if needed for exact binding semantics;
+- approval creation bound to one valid exact revision ID and exact content fingerprint;
+- preservation of source/root identity sufficient to prevent cross-source binding;
+- caller-supplied approval/event/actor identity and optional timestamp; no generated identity;
+- deterministic validation that an approval applies only to the exact bound revision/fingerprint;
+- deterministic evaluation showing a later corrected revision is **not covered** by the older approval;
+- explicit invalidation/non-applicability semantics when the candidate revision identity/fingerprint differs from the approved one;
+- focused fail-closed tests.
 
-T2 must not yet add:
+T3 must not silently turn correction history or quality evidence into approval. Approval must be an explicit teacher action represented by its own record.
 
-- teacher approval or approval invalidation;
+## Package 8-T3 Required Safety Questions
+
+Before implementing T3, resolve in code/tests without broadening architecture:
+
+1. What exact fields make an approval record valid and immutable?
+2. How is the approval bound simultaneously to source identity, revision ID and content fingerprint?
+3. How does validation distinguish `APPROVED_EXACT_REVISION` from `NOT_APPLICABLE_TO_REVISION` without mutating the old approval record?
+4. How are forged fields, accessors, symbols, mutable records and unsupported primitive data rejected?
+5. How is approval prevented from bypassing existing structural/quality safety?
+6. How is it kept separate from authentication/authorization, which is not yet implemented?
+
+## Package 8-T3 Explicitly Deferred
+
+T3 must not yet add:
+
 - persistence/backend APIs;
-- undo/version-history storage;
-- optimistic concurrency;
-- teacher UI;
-- student sharing;
-- Audiveris training data.
+- undo/version-history storage — T4;
+- optimistic concurrency/stale-base conflict — T5;
+- teacher UI — T6;
+- student sharing — Package 12;
+- Audiveris training data — Package 8B;
+- authentication/authorization implementation unless separately scoped later.
 
 ## Protected Integration Boundaries
 
@@ -164,7 +208,8 @@ A parent package is not Completed merely because one sub-stage is Completed. Pac
 - Never bypass the quality gate for TTS, playback, MIDI, Guitar TAB or other definitive consumers.
 - Never turn an `ACCEPT` quality decision into teacher approval implicitly.
 - Never add a mutable approval flag to a T1 revision record.
-- Never make an approval survive a new corrected revision unless it is explicitly re-approved.
+- Never make an approval survive a new corrected revision unless that exact revision is explicitly re-approved.
+- Never mutate an old approval record merely to express that it does not apply to a later revision.
 - Never describe skipped, unavailable, or unexecuted tests as successful.
 
 ## Current Development Rule
