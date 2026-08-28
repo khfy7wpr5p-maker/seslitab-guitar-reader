@@ -3,6 +3,7 @@
 **Belge sürümü:** 2.0.0  
 **Güncelleme tarihi:** 2026-08-28  
 **Doğrulanan başlangıç main:** `c096f0daa43eb20c79fea46d1d76211b8fcb49dc`  
+**T1 kapanış main:** `218c3e18eed3a82861a4a1c24efd5458445ea9ca`  
 **Durum:** Mevcut kod ve kapanmış paketlerle uzlaştırılmış mimari yönlendirme belgesi.
 
 Bu belge ürünün güncel mimarisini açıklar. Paket kapanış kanıtları için `docs/package-status.md` ve ilgili `docs/package-*-closure.md` belgeleri; güncel repository gerçeği için kaynak kod, testler ve fresh CI kanıtı esas alınır.
@@ -50,7 +51,7 @@ Guitar TAB metni ----------------------┐   │
                                                                     |
 MusicXML <harmony> -> source-only chord parser/presentation/TTS <---+
 
-Next safe layer:
+Package 8 revision layer:
 canonical/source revision
   -> teacher correction revision(s)
   -> validation/quality per revision
@@ -187,8 +188,8 @@ Kurallar:
 
 Package 8 tek seferde geniş bir UI/backend refactor olarak uygulanmamalıdır. Güvenli sıra:
 
-- **8-T1 — Revision domain contract:** immutable automatic snapshot, revision id, parent id, status ve fingerprint.
-- **8-T2 — Correction operations:** kontrollü düzeltme işlemleri ve deterministic revision creation.
+- **8-T1 — Revision domain contract: COMPLETED.** Immutable automatic snapshot, revision id, parent id, source lineage ve deterministic fingerprint sınırı protected main üzerinde kapanmıştır.
+- **8-T2 — Correction operations: NEXT.** Kontrollü düzeltme işlemleri ve deterministic revision creation.
 - **8-T3 — Approval binding/invalidation:** exact revision approval ve değişiklik sonrası invalidation.
 - **8-T4 — Undo/version history:** kayıpsız tarihçe ve geri alma.
 - **8-T5 — Optimistic concurrency:** stale base revision conflict.
@@ -241,13 +242,13 @@ Yeni öğretmen arayüzü eklenmeden önce domain kuralları testlerle kapanmal�
 - Deployment: `Dockerfile`, `render.yaml`
 - Mimari/status belgeleri: `docs/`
 
-Package 8-T1 için başlangıçta backend, OMR, deployment veya Render değişikliği gerekmemelidir. İlk güvenli hedef saf, deterministic ve dependency-free revision domain modelidir.
+Package 8-T1 protected main üzerinde tamamlandı. Sıradaki 8-T2 aşaması yalnız kontrollü düzeltme işlemleri ve deterministic corrected-revision üretimi sınırında kalmalıdır; backend, OMR, Audiveris, deployment veya mevcut Render bağlantısına değişiklik gerektirmemelidir.
 
 ## 9. Mevcut durum
 
 - Package 0–7: kapanış/statü belgelerine göre tamamlanmış.
-- Package 8: henüz uygulanmamış; sıradaki güvenli ürün paketi.
+- Package 8: **Partially implemented** — **8-T1 Completed**; sıradaki güvenli aşama **8-T2**.
 - Package 8B, 9–13: başlamamış.
 - Package 14: kısmi web/mobile temeli var; cihaz seviyesinde ürünleştirme tamamlanmış kabul edilmez.
 
-Bu belge gelecekteki implementasyon için izin belgesi değildir. Her yeni aşama fresh-read, ayrı branch, focused test, tam regression ve production build kanıtı ile yürütülmelidir.
+T1 kapanış kanıtı: protected main `218c3e18eed3a82861a4a1c24efd5458445ea9ca`; exact-main CI #222 başarılıdır. Bu belge gelecekteki implementasyon için izin belgesi değildir. Her yeni aşama fresh-read, ayrı branch, focused test, tam regression ve production build kanıtı ile yürütülmelidir.
