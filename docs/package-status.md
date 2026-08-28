@@ -1,8 +1,8 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-28  
-Latest verified protected main: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`  
-Latest exact-main CI: **#230 / `33163126080`, job `98822108194` — SUCCESS**
+Latest verified protected main: `70a02589206eeea9c3defec4d5f544e9222cbe3a`  
+Latest exact-main CI: **#234 / `33164575331`, job `98826810765` — SUCCESS**
 
 This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main GitHub workflow evidence are satisfied. Dedicated closure documents remain authoritative.
 
@@ -20,7 +20,8 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 6 final closure baseline: `99232915ebcd5089055d0f8695b6c1b08c697739`
 - Package 7 final closure baseline: `9f49a07c83bd6dac853fc7aa0131c7df336b2b05`
 - Package 8-T1 bounded closure: `218c3e18eed3a82861a4a1c24efd5458445ea9ca`; exact-main CI #222 SUCCESS.
-- Package 8-T2 bounded closure: **`f6d80b4614654ee63a4fd2d51101e4961476a1ee`**; exact-main CI **#230**: **1136/1136 tests**, 231 suites, 0 fail/skipped/cancelled, audit 0 vulnerabilities, production build PASS.
+- Package 8-T2 bounded closure: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`; exact-main CI #230 SUCCESS.
+- Package 8-T3 bounded closure: **`70a02589206eeea9c3defec4d5f544e9222cbe3a`**; exact-main CI **#234**: **1150/1150 tests**, 232 suites, 0 fail/skipped/cancelled, audit 0 vulnerabilities, production build PASS.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -39,11 +40,11 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 5 — Basic violin | Completed | Conservative first-position quality-gated violin pipeline and accessible UI verified. |
 | 6 — Chord-symbol parser | Completed | Source-only MusicXML `<harmony>` parser verified. |
 | 7 — Chord display and Turkish TTS | Completed | Source-only accessible chord presentation/TTS closure verified. |
-| 8 — Teacher correction and approval | **Partially implemented** | **8-T1 revision domain and 8-T2 controlled correction operations completed; 8-T3..T6 remain unimplemented.** |
+| 8 — Teacher correction and approval | **Partially implemented** | **8-T1 revision domain, 8-T2 controlled corrections and 8-T3 exact-revision approval completed; 8-T4..T6 remain unimplemented.** |
 | 8-T1 — Revision domain contract | **Completed** | PR #86 → merge `218c3e18…` → exact-main CI #222 SUCCESS. |
-| 8-T2 — Correction operations | **Completed** | PR #89 → final head `c47ce6ba…` → merge `f6d80b46…` → exact-main CI #230: 1136/1136 tests, build PASS. |
-| 8-T3 — Approval binding/invalidation | Not started | **Next safe stage.** Approval must be a separate immutable record bound to one exact revision/fingerprint; later revisions must not inherit it. |
-| 8-T4 — Undo/version history | Not started | No verified lossless revision-history/undo store yet. |
+| 8-T2 — Correction operations | **Completed** | PR #89 → final head `c47ce6ba…` → merge `f6d80b46…` → exact-main CI #230 SUCCESS. |
+| 8-T3 — Approval binding/invalidation | **Completed** | PR #91 → head `d1805c05…` → merge `70a02589…` → exact-main CI #234: 1150/1150 tests, build PASS. |
+| 8-T4 — Undo/version history | Not started | **Next safe stage.** No verified lossless revision-history/undo contract yet. |
 | 8-T5 — Optimistic concurrency | Not started | No verified stale-base edit conflict handling yet. |
 | 8-T6 — Accessible teacher UI | Not started | UI must wait for domain/approval/history/concurrency contracts. |
 | 8B — Audiveris training dataset | Not started | Separate roadmap package; no teacher-approved reproducible training dataset yet. |
@@ -65,7 +66,6 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 
 ## Package 8-T2 evidence
 
-- implementation baseline: `cd7e4686c88d2428d7a1a095539de2d87f9551e5`
 - PR #89 final accepted head: `c47ce6ba259e50bee8c71453c044650538535a14`
 - exact-head CI #229 / run `33162963010`: SUCCESS
 - protected-main squash merge: `f6d80b4614654ee63a4fd2d51101e4961476a1ee`
@@ -73,14 +73,27 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - exact-main tests: **1136/1136 PASS**, 231 suites, 0 fail/skipped/cancelled
 - audit: **0 vulnerabilities**
 - production build: **PASS**
-- two review findings were fixed and regression-tested before merge: `-0`/`0` path aliasing and unsupported primitive audit values
-- all review threads resolved before merge
+- review hardening covered `-0`/`0` path aliasing and unsupported primitive audit values
+- closure: `docs/package-8-t2-closure.md`
 
-T2 implements controlled correction mechanics only. It does not add teacher approval, authentication/authorization, persistence, history/undo, concurrency, UI, sharing or Audiveris training.
+## Package 8-T3 evidence
+
+- PR #91 final head: `d1805c054e490e71e3d266471ad158defbcd49e1`
+- exact-head CI #233 / run `33164496653`, job `98826560680`: SUCCESS
+- protected-main squash merge: `70a02589206eeea9c3defec4d5f544e9222cbe3a`
+- exact-main CI #234 / run `33164575331`, job `98826810765`: SUCCESS
+- exact-main tests: **1150/1150 PASS**, 232 suites, 0 fail/skipped/cancelled
+- audit: **0 vulnerabilities**
+- production build: **PASS**
+- all 14 T3 focused tests PASS
+- no review threads at the merge gate
+- closure: `docs/package-8-t3-closure.md`
+
+T3 implements exact-revision approval applicability only. It does not add authentication/authorization, persistence, history/undo, concurrency, UI, sharing or Audiveris training.
 
 ## Protected integration boundary
 
-Package 8-T1/T2 did not modify and later Package 8 stages must not modify without separate explicit authorization:
+Package 8-T1/T2/T3 did not modify and later Package 8 stages must not modify without separate explicit authorization:
 
 - Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
@@ -97,4 +110,4 @@ Package 8-T1/T2 did not modify and later Package 8 stages must not modify withou
 - **Not started:** no meaningful verified package implementation evidence.
 - **Not verified:** related code may exist, but available evidence is insufficient to assign another status safely.
 
-Current strict next implementation stage: **Package 8-T3 only**.
+Current strict next implementation stage: **Package 8-T4 only**.
