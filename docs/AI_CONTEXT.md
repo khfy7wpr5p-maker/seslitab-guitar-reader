@@ -8,11 +8,9 @@ SesliTab
 
 SesliTab is an inclusive and accessible music education project for blind, low-vision, and sighted students. It supports individual teaching, group learning, inclusive classrooms, and independent student practice.
 
-The product must be developed as a teacher-supervised, semi-automatic system. It must not present unverified musical data as definitively correct.
+The product must remain teacher-supervised and semi-automatic. Unverified musical data must not be presented as definitively correct.
 
 ## Sources of Truth
-
-Use different sources for different questions:
 
 ### Product and safety rules
 
@@ -26,7 +24,7 @@ Use different sources for different questions:
 2. Tests and fresh test results
 3. `docs/current-status.md`
 4. `docs/package-status.md`
-5. Architecture and API documents
+5. Architecture and package closure documents
 
 If documentation conflicts with code, report the conflict. Do not silently choose one interpretation.
 
@@ -35,22 +33,23 @@ If documentation conflicts with code, report the conflict. Do not silently choos
 Before every implementation task:
 
 1. Perform a read-only repository inspection.
-2. Record the repository, branch, commit SHA, and repository/PR freshness state.
-3. Confirm the exact package or bounded sub-stage and its prerequisites.
-4. List the files allowed to change.
-5. Identify mandatory tests and the production build command.
+2. Record repository, branch, protected-main SHA, open PR/issue state and fresh CI evidence.
+3. Confirm the exact package/bounded stage and prerequisites.
+4. List files allowed to change.
+5. Identify focused tests, full regression and production build commands.
 6. Confirm protected boundaries and unrelated systems that must remain unchanged.
-7. Confirm explicit or already-granted write authority for the bounded task.
+7. Confirm explicit or already-granted write authority.
 
 ## Repository Map
 
 - Frontend application: `src/`, `index.html`, `main.js`
-- Music parsing and canonical model: root-level parser/theory/canonical modules and `src/services/`
+- Music parsing/canonical model: root-level music modules and `src/services/`
+- Teacher revision/correction/approval domain: `src/services/teacherRevisionModel.js`, `teacherCorrectionOperations.js`, `teacherApprovalModel.js`
 - Backend and OMR gateway: `backend/`
 - Tests: `tests/`
-- Architecture and project documents: `docs/`
+- Architecture/project documents: `docs/`
 - CI workflows: `.github/workflows/`
-- Deployment configuration: `Dockerfile`, `render.yaml`
+- Deployment: `Dockerfile`, `render.yaml`
 
 ## Main Commands
 
@@ -66,116 +65,134 @@ Node.js requirement: `>=24.0.0 <25`.
 
 ## Current Roadmap Position
 
-Fresh status must still be verified before work starts. As of the Package 8-T2 protected-main closure on 2026-08-28:
+Fresh status must still be verified before work starts. As of the final review-hardened Package 8-T3 protected-main closure on 2026-08-28:
 
-- Package 0–7 are Completed.
-- Package 8 is **Partially implemented**.
-- Package 8-T1 — immutable revision domain contract — is **Completed**.
-- Package 8-T2 — controlled teacher correction operations — is **Completed**.
-- Package 8-T3 — exact-revision approval binding/invalidation — is the **next safe implementation stage**.
-- Package 8-T4..T6 are Not started.
-- Package 8B — Audiveris training dataset — is a later, separate roadmap package and must not be confused with Package 8-T1..T6.
+- Package 0–7: **Completed**.
+- Package 8: **Partially implemented**.
+- Package 8-T1 — immutable revision domain: **Completed**.
+- Package 8-T2 — controlled teacher correction operations: **Completed**.
+- Package 8-T3 — exact-revision approval binding/invalidation: **Completed**.
+- Package 8-T4 — lossless undo/version history: **NEXT / Not started**.
+- Package 8-T5 — optimistic concurrency: Not started.
+- Package 8-T6 — accessible teacher UI: Not started.
+- Package 8B — Audiveris training dataset: later separate package, Not started.
 
-Verified Package 8-T2 implementation main:
+Verified T3 final implementation main:
 
-`f6d80b4614654ee63a4fd2d51101e4961476a1ee`
+`c57966598d2d6fe34418119670bea42a9cdcf369`
 
-Exact-main CI #230 / run `33163126080`, job `98822108194`:
+Exact-main CI #240 / run `33175019324`, job `98861276737`:
 
-- 1136/1136 tests PASS
-- 231 suites
+- **1154/1154 tests PASS**
+- **232 suites**
 - 0 failed/skipped/cancelled
-- audit 0 vulnerabilities
-- production build PASS
+- audit **0 vulnerabilities**
+- production build **PASS**
+- multi-hop revision-ID replay regression **PASS**
+- recursive lineage regression **PASS**
 
-See `docs/package-8-t2-closure.md`.
+See `docs/package-8-t3-closure.md`.
 
 ## Package 8 Domain Invariants
 
-The Package 8 revision/approval architecture must preserve these invariants:
-
-1. The automatic source revision is immutable.
-2. A teacher correction creates a new immutable revision; it does not overwrite its parent.
-3. Every revision preserves exact lineage to the original automatic source revision.
-4. Correction operations are auditable and do not themselves imply approval.
+1. Automatic source revision is immutable.
+2. A correction creates a new immutable revision and never overwrites its parent.
+3. Every revision preserves root-source identity and deterministic recursive lineage identity.
+4. Correction operations are auditable and do not imply approval.
 5. Quality-gate `ACCEPT` is not teacher approval.
-6. Teacher approval must be represented separately from revision content.
-7. Approval must bind to one exact revision identity/content fingerprint.
-8. A later revision must not inherit an older approval automatically.
-9. Undo/history must preserve old revisions rather than deleting or rewriting them.
-10. Stale concurrent edits must eventually fail with an explicit conflict instead of silent overwrite.
-11. Package 12 may later share only an explicitly approved exact revision.
+6. Teacher approval is a separate immutable record, never a mutable revision flag.
+7. Approval binds to one exact revision identity/content **and recursive lineage**.
+8. A later or replayed revision must not inherit an older approval automatically.
+9. Historical approval evidence remains immutable when non-applicable to a later revision.
+10. Undo/history must preserve old revisions rather than rewriting/deleting them.
+11. Stale concurrent edits must eventually fail with explicit conflict rather than silent overwrite.
+12. Package 12 may later share only an exact approved revision together with required quality/safety evidence.
 
-T1 enforces immutable revision snapshots and rejects approval-field injection. T2 enforces controlled replace-only corrections, creates a new T1 revision, and returns a separate immutable audit event.
+## Verified T1 / T2 / T3 Boundary
 
-## Verified Package 8-T1/T2 Boundary
-
-### T1 already provides
+### T1 now provides
 
 - `automatic` and `teacher_corrected` immutable revision records;
-- exact parent and root-source lineage;
-- deterministic content fingerprints;
+- schema version **2**;
+- root source identity and exact parent identity;
+- deterministic `contentFingerprint`;
+- deterministic `parentLineageFingerprint` and recursive `lineageFingerprint`;
 - strict deep-frozen plain-data snapshots;
 - fail-closed revision recognition;
-- no embedded teacher-approval field.
+- no embedded approval field.
 
-### T2 already provides
+The recursive lineage token incorporates exact parent lineage plus the current revision metadata/content fingerprint. It is a deterministic drift/version identity, **not** a cryptographic signature or authorization credential.
 
-- one bounded operation kind: `replace_value`;
-- replacement of existing paths only; no insertion/deletion;
-- deterministic independent-path batches;
-- no overwrite of the automatic/parent source;
-- new corrected revision creation through T1;
-- separate correction audit event with actor/event identity, exact parent/result identity and fingerprint, and before/after values;
+### T2 provides
+
+- bounded `replace_value` operations only;
+- existing-path replacement, no insertion/deletion;
+- parent source never overwritten;
+- new corrected revision via T1;
+- separate immutable correction audit event;
 - rejection of invalid/no-op/overlapping/prototype-sensitive/unsafe corrections;
-- no approval claim, persistence, history, concurrency or UI.
+- no approval/persistence/history/concurrency/UI claim.
 
-T2 review hardening additionally canonicalizes `-0` and `0` as the same array target and rejects unsupported primitive values in audit validation.
+### T3 provides
 
-## Package 8-T3 Allowed Direction
+- separate immutable teacher approval record;
+- approval schema version **3**;
+- caller-supplied `approvalId`, `actorId` and optional timestamp;
+- exact source/root-source, revision ID/kind, parent revision ID, revision timestamp and content fingerprint binding;
+- `approvedLineageFingerprint` binding to recursive T1 lineage;
+- deterministic `APPROVED_EXACT_REVISION` vs `NOT_APPLICABLE_TO_REVISION` evaluation;
+- old approval evidence stays immutable when later revision is non-applicable;
+- no quality, authorization or sharing claim.
 
-T3 should remain small, pure and dependency-free unless fresh evidence proves otherwise.
+## T3 Security Review History
+
+T3 required two review-hardening cycles before final acceptance:
+
+1. Initial approval implementation PR #91 was green, but PR #92 review found a one-hop ancestor revision-ID reuse path. PR #92 was not merged.
+2. PR #93 hardened approval schema to v2, but PR #94 review found a deeper replay:
+
+```text
+A0 -> R1 -> R2 (approved) -> replay R1 -> replay R2
+```
+
+The replayed R2 could reconstruct all former schema-v2 approval dimensions.
+3. PR #95 fixed this at the revision-domain level with recursive lineage identity and approval schema v3 binding.
+
+Final evidence:
+
+- PR #95 head `77f5035a85dfd6895490198d2160107b28479320`
+- exact-head CI #239 SUCCESS
+- protected-main merge `c57966598d2d6fe34418119670bea42a9cdcf369`
+- exact-main CI #240 SUCCESS
+- 1154/1154 tests, 232 suites, 0 vulnerabilities, build PASS
+
+## Package 8-T4 Allowed Direction
+
+T4 is now the next bounded stage. It should remain small, deterministic and fail-closed.
 
 It may add:
 
-- a separate immutable `TeacherApprovalRecord`-style domain record;
-- an explicit versioned approval vocabulary/status if needed for exact binding semantics;
-- approval creation bound to one valid exact revision ID and exact content fingerprint;
-- preservation of source/root identity sufficient to prevent cross-source binding;
-- caller-supplied approval/event/actor identity and optional timestamp; no generated identity;
-- deterministic validation that an approval applies only to the exact bound revision/fingerprint;
-- deterministic evaluation showing a later corrected revision is **not covered** by the older approval;
-- explicit invalidation/non-applicability semantics when the candidate revision identity/fingerprint differs from the approved one;
-- focused fail-closed tests.
+- explicit lossless revision-history representation;
+- ordering/linkage validation over immutable T1 revisions;
+- undo as selection/creation of explicit revision state without rewriting old revisions;
+- preservation of T2 audit and T3 approval historical evidence;
+- deterministic validation that undo does not silently resurrect an approval that is not applicable to the exact selected revision;
+- focused history/undo regressions.
 
-T3 must not silently turn correction history or quality evidence into approval. Approval must be an explicit teacher action represented by its own record.
+## Package 8-T4 Explicitly Deferred
 
-## Package 8-T3 Required Safety Questions
+T4 must not yet add:
 
-Before implementing T3, resolve in code/tests without broadening architecture:
-
-1. What exact fields make an approval record valid and immutable?
-2. How is the approval bound simultaneously to source identity, revision ID and content fingerprint?
-3. How does validation distinguish `APPROVED_EXACT_REVISION` from `NOT_APPLICABLE_TO_REVISION` without mutating the old approval record?
-4. How are forged fields, accessors, symbols, mutable records and unsupported primitive data rejected?
-5. How is approval prevented from bypassing existing structural/quality safety?
-6. How is it kept separate from authentication/authorization, which is not yet implemented?
-
-## Package 8-T3 Explicitly Deferred
-
-T3 must not yet add:
-
-- persistence/backend APIs;
-- undo/version-history storage — T4;
 - optimistic concurrency/stale-base conflict — T5;
-- teacher UI — T6;
+- accessible teacher UI — T6;
 - student sharing — Package 12;
 - Audiveris training data — Package 8B;
-- authentication/authorization implementation unless separately scoped later.
+- authentication/authorization implementation unless separately scoped;
+- OMR/Audiveris or deployment changes.
 
 ## Protected Integration Boundaries
 
-Unless a separate task explicitly authorizes them, do not change:
+Unless separately and explicitly authorized, do not change:
 
 - Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
@@ -184,34 +201,34 @@ Unless a separate task explicitly authorizes them, do not change:
 - `render.yaml`;
 - current Render service/deployment connection.
 
-Teacher revision/approval work must sit above the existing source/canonical/quality layers rather than rewriting OMR or deployment infrastructure.
+Teacher revision/history work sits above existing source/canonical/quality layers.
 
 ## Status Vocabulary
 
-Use only these labels when reviewing packages:
+Use only:
 
 - Completed
 - Partially implemented
 - Not started
 - Not verified
 
-A parent package is not Completed merely because one sub-stage is Completed. Package 8 stays Partially implemented until all required correction, approval, history, concurrency and accessible teacher-workflow criteria are verified.
+Package 8 remains Partially implemented until T4–T6 and the parent acceptance criteria are verified.
 
 ## Never Do
 
 - Never modify `main` directly.
 - Never work on more than one implementation stage at a time.
-- Never invent missing notes, rhythms, measures, voices, pitches, or MusicXML data.
+- Never invent missing notes, rhythms, measures, voices, pitches or MusicXML data.
 - Never treat valid XML as proof of musical correctness.
-- Never overwrite original PDF, OMR, MusicXML, corrected, or approved data.
-- Never present source-unverified OMR data as definitively correct.
-- Never bypass the quality gate for TTS, playback, MIDI, Guitar TAB or other definitive consumers.
-- Never turn an `ACCEPT` quality decision into teacher approval implicitly.
-- Never add a mutable approval flag to a T1 revision record.
-- Never make an approval survive a new corrected revision unless that exact revision is explicitly re-approved.
-- Never mutate an old approval record merely to express that it does not apply to a later revision.
-- Never describe skipped, unavailable, or unexecuted tests as successful.
+- Never overwrite original PDF, OMR, MusicXML, corrected or approved data.
+- Never bypass quality gates for definitive consumers.
+- Never turn quality `ACCEPT` into teacher approval implicitly.
+- Never add a mutable approval flag to revision content.
+- Never make an old approval survive a new/replayed revision unless the exact approved revision identity and recursive lineage match.
+- Never treat lineage/content fingerprints as cryptographic authentication or authorization.
+- Never mutate old approval evidence merely to express non-applicability.
+- Never describe skipped/unexecuted tests as successful.
 
 ## Current Development Rule
 
-Run a fresh read-only audit before each new implementation stage. Keep each stage on a dedicated branch, preserve unrelated behavior, resolve review findings, require exact-head CI before merge and exact-main CI after merge before updating status or proceeding to the next stage.
+Run a fresh read-only audit before each stage. Use a dedicated branch, preserve unrelated behavior, resolve review findings, require exact-head CI before merge and exact-main CI after merge before status advancement.
