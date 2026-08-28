@@ -126,7 +126,13 @@ function cloneSnapshotValue(value, seen, path) {
   rejectUnsupportedObjectShape(value, path)
   const result = {}
   for (const key of Object.keys(value).sort()) {
-    result[key] = cloneSnapshotValue(value[key], seen, `${path}.${key}`)
+    const clonedValue = cloneSnapshotValue(value[key], seen, `${path}.${key}`)
+    Object.defineProperty(result, key, {
+      value: clonedValue,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
   }
 
   seen.delete(value)
@@ -284,6 +290,7 @@ function validateRevisionShape(value) {
       )
       if (parentRevisionId !== value.parentRevisionId) return false
       if (parentRevisionId === value.revisionId) return false
+      if (sourceRevisionId === value.revisionId) return false
     }
 
     const snapshot = cloneRevisionContent(value.content)
@@ -345,8 +352,13 @@ export function createTeacherCorrectedRevision({
     throw new TypeError('parentRevision must be a valid immutable teacher revision.')
   }
 
-  if (normalizedRevisionId === parentRevision.revisionId) {
-    throw new Error('A corrected revision must use a new revisionId.')
+  if (
+    normalizedRevisionId === parentRevision.revisionId ||
+    normalizedRevisionId === parentRevision.sourceRevisionId
+  ) {
+    throw new Error(
+      'A corrected revision must use a new revisionId distinct from parent and source revisions.',
+    )
   }
 
   return buildFrozenRevision({
