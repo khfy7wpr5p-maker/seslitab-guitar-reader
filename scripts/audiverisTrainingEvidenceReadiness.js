@@ -115,6 +115,16 @@ function requiredString(value, fieldName, maxLength = 1024) {
   return normalized
 }
 
+function requiredRawPath(value, fieldName, maxLength = 1024) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new TypeError(`${fieldName} must be a non-empty string.`)
+  }
+  if (value.length > maxLength || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new TypeError(`${fieldName} contains unsupported text.`)
+  }
+  return value
+}
+
 function evidenceArtifact(candidate, field) {
   if (field === AUDIVERIS_EVIDENCE_FIELD.TRAINING_APPROVAL_EVIDENCE) {
     return candidate.trainingApproval?.evidence ?? null
@@ -220,7 +230,7 @@ export function evaluateAudiverisEvidenceReadiness(candidate, evidenceEntries = 
     if (!EVIDENCE_FIELDS.includes(field)) {
       throw new TypeError(`${label}.field is unsupported.`)
     }
-    const path = requiredString(entry.path, `${label}.path`)
+    const path = requiredRawPath(entry.path, `${label}.path`)
     const bytes = normalizeEvidenceBytes(entry.bytes, label)
 
     if (seenFields.has(field)) {
