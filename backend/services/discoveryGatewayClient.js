@@ -1,9 +1,11 @@
 import { GatewayError, ValidationError } from '../utils/errors.js'
 
 const ALLOWED_HANDOFF_MODES = new Set(['direct-import', 'external-open', 'blocked'])
-const ALLOWED_FORMATS = new Set(['pdf', 'musicxml', 'mxl', 'mei'])
+const ALLOWED_FORMATS = new Set(['pdf', 'musicxml', 'mxl', 'mei', 'web'])
+const ALLOWED_LOCATOR_CAPABILITIES = new Set(['notation', 'chords', 'lyrics', 'tablature', 'audio', 'metadata'])
 const MAX_QUERY_LENGTH = 160
 const MAX_ARRAY_ITEMS = 20
+const MAX_SOURCE_LOCATORS = 10
 
 function normalizeText(value, maxLength = 300) {
   if (typeof value !== 'string') return null
@@ -167,6 +169,7 @@ function sanitizeResult(raw) {
   const handoffMode = normalizeText(raw.handoffMode, 30)?.toLowerCase()
   if (!id || !title || !ALLOWED_FORMATS.has(format) || !ALLOWED_HANDOFF_MODES.has(handoffMode)) return null
 
+  const sourcePageUrl = safeHttpsSourcePage(raw.sourcePageUrl)
   return Object.freeze({
     id,
     title,
@@ -182,14 +185,38 @@ function sanitizeResult(raw) {
     ensembleType: normalizeText(raw.ensembleType, 60),
     scoreRole: normalizeText(raw.scoreRole, 60),
     source: normalizeText(raw.source, 160),
-    sourcePageUrl: safeHttpsSourcePage(raw.sourcePageUrl),
+    sourcePageUrl,
     rightsStatus: normalizeText(raw.rightsStatus, 60),
     rightsLicense: normalizeText(raw.rightsLicense, 100),
     handoffMode,
     // Remote asset URLs intentionally never cross this consumer boundary.
     // A future authenticated/opaque handoff package must own direct import.
-    canOpenSource: handoffMode === 'external-open' && Boolean(safeHttpsSourcePage(raw.sourcePageUrl)),
+    canOpenSource: handoffMode === 'external-open' && Boolean(sourcePageUrl),
     canDirectImport: false,
+  })
+}
+
+function sanitizeSourceLocator(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const id = normalizeText(raw.id, 160)
+  const source = normalizeText(raw.source, 120)
+  const label = normalizeText(raw.label, 200)
+  const sourcePageUrl = safeHttpsSourcePage(raw.sourcePageUrl)
+  if (!id || !source || !label || !sourcePageUrl) return null
+
+  const capabilities = normalizeStringArray(raw.capabilities, 8)
+    .filter((value) => ALLOWED_LOCATOR_CAPABILITIES.has(value))
+  if (capabilities.length === 0) return null
+
+  return Object.freeze({
+    id,
+    source,
+    label,
+    sourcePageUrl,
+    capabilities: Object.freeze(capabilities),
+    queryApplied: raw.queryApplied === true,
+    availability: raw.availability === 'search-unverified' ? 'search-unverified' : 'search-unverified',
+    note: normalizeText(raw.note, 300),
   })
 }
 
@@ -252,8 +279,12 @@ export function createDiscoveryGatewayClient({
       }
 
       const results = payload.results.map(sanitizeResult).filter(Boolean)
+      const sourceLocators = Array.isArray(payload.sourceLocators)
+        ? payload.sourceLocators.slice(0, MAX_SOURCE_LOCATORS).map(sanitizeSourceLocator).filter(Boolean)
+        : []
       return Object.freeze({
         results: Object.freeze(results),
+        sourceLocators: Object.freeze(sourceLocators),
         totalResults: Number.isInteger(payload.totalResults) && payload.totalResults >= results.length
           ? payload.totalResults
           : results.length,

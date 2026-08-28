@@ -3,22 +3,26 @@
   gap: 1rem;
 }
 
-.discovery-panel[hidden] {
+.discovery-panel[hidden],
+.discovery-source-section[hidden] {
   display: none;
 }
 
-.discovery-intro h3 {
+.discovery-intro h3,
+.discovery-source-section h3 {
   margin: 0 0 0.35rem;
 }
 
 .discovery-intro p,
 .discovery-help,
-.discovery-rights {
+.discovery-rights,
+.discovery-source-state {
   margin: 0;
   line-height: 1.5;
 }
 
-.discovery-form {
+.discovery-form,
+.discovery-source-section {
   display: grid;
   gap: 0.9rem;
 }
@@ -109,6 +113,10 @@
   gap: 0.55rem;
 }
 
+.discovery-source-card {
+  padding-block: 0.8rem;
+}
+
 .discovery-result-title,
 .discovery-result-artist {
   margin: 0;
@@ -132,6 +140,10 @@
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 0.15rem 0.55rem;
+  font-size: 0.9rem;
+}
+
+.discovery-source-state {
   font-size: 0.9rem;
 }
 

@@ -45,9 +45,11 @@ export async function searchScores(request, {
     }
 
     const results = Array.isArray(payload.data.results) ? payload.data.results : []
+    const sourceLocators = Array.isArray(payload.data.sourceLocators) ? payload.data.sourceLocators : []
     return {
       success: true,
       results,
+      sourceLocators,
       totalResults: Number.isInteger(payload.data.totalResults) ? payload.data.totalResults : results.length,
       truncated: payload.data.truncated === true,
       partial: payload.data.partial === true,
