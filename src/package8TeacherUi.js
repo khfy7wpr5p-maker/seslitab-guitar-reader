@@ -4,7 +4,6 @@
 // never edits source notes in place, never auto-merges stale edits, and never
 // treats teacher approval as quality-gate acceptance or sharing authorization.
 
-import './package8TeacherUi.css'
 import {
   getPackage3MeasureSnapshot,
   subscribePackage3Measures,
