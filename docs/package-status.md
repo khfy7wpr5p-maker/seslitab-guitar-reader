@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-28
-Latest verified Package 7 technical baseline: `7c37057713aa8a975edafdb0928d64f575d7cd5f`
+Latest verified Package 7 closure baseline: `9f49a07c83bd6dac853fc7aa0131c7df336b2b05`
 
 This table is an orientation snapshot, not standalone completion evidence. A package is **Completed** only when its acceptance criteria, focused tests, full regression suite, production build, protected-main merge and required exact-main GitHub workflow evidence are satisfied, including package-specific closure evidence. Dedicated closure documents remain authoritative.
 
@@ -17,7 +17,7 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 - Package 4 implementation baseline: `424653c60ff35326ae137cdf8b72b43eeb7d25e1`; exact-main CI #155 / `33111922206`: 961/961 tests, 229 suites, audit 0, build PASS.
 - Package 5 implementation baseline: `0465dba0c40e66ad0d8c77ea47b62fbd421209de`; exact-main CI #177 / `33119971061`: 1031/1031 tests, 229 suites, audit 0, build PASS.
 - Package 6 final closure baseline: `99232915ebcd5089055d0f8695b6c1b08c697739`; exact-main CI #188 / `33142995146`: 1057/1057 tests, 229 suites, audit 0, build PASS.
-- Package 7 final technical baseline before package closure: `7c37057713aa8a975edafdb0928d64f575d7cd5f`; exact-main CI #205 / `33146058408`, job `98767251803`: **1105/1105 tests**, 229 suites, audit 0, build PASS. PR #83 is the active documentation closure gate.
+- Package 7 final closure baseline: **`9f49a07c83bd6dac853fc7aa0131c7df336b2b05`**; exact-main CI **#212 / `33146602481`, job `98768923009`**: **1105/1105 tests**, 229 suites, audit 0, production build PASS.
 
 | Package | Status | Current evidence or limitation |
 |---|---|---|
@@ -31,12 +31,12 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 2C — Quality and error report | Completed | Deterministic quality/error reporting is verified. |
 | 2D — Quality gate integration | Completed | Fail-closed `ACCEPT` / `REVIEW` / `BLOCK` consumer policy verified. |
 | 2E — OMR benchmark | Completed | Deterministic benchmark/evidence framework completed without universal accuracy claims. |
-| 3 — Accessible measure playback and MIDI | Completed | PRs #51–#58; exact measure identity, selected-measure TTS/playback and deterministic MIDI are verified. |
+| 3 — Accessible measure playback and MIDI | Completed | Exact measure identity, selected-measure TTS/playback and deterministic MIDI are verified. |
 | 4 — Basic Guitar TAB | Completed | Candidates → deterministic policy → conservative projection → ASCII renderer → quality-gated consumer → accessible UI. |
 | 5 — Basic violin | Completed | First-position candidates → conservative fingering → quality-gated consumer → accessible UI. |
 | 6 — Chord-symbol parser | Completed | Source-only MusicXML `<harmony>` parser; final closure main `99232915…`, CI #188 green. |
-| 7 — Chord display and Turkish TTS | **Closure pending** | 7A–7F and the 7C stale-source hotfix are technically verified. PR #83 must merge and its exact-main `test-and-build` must succeed before package-level `Completed`. |
-| 8 — Teacher correction and approval | Not started | Teacher correction, revision history and approval remain product requirements. |
+| 7 — Chord display and Turkish TTS | **Completed** | PRs #78–#83 plus stale-source hotfix #82. Closure trigger `9f49a07c…`; exact-main CI #212 passed 1105/1105 tests, 229 suites, audit 0 and build PASS. |
+| 8 — Teacher correction and approval | **Not started** | Teacher correction, revision history and approval require a separate architecture/security package. |
 | 8B — Audiveris training dataset | Not started | No teacher-approved reproducible training-dataset package. |
 | 9 — Advanced Guitar TAB | Not started | Chord/polyphonic/pedagogical fingering remains intentionally outside Package 4. |
 | 10 — Advanced violin | Not started | Advanced positions, alternatives and double stops remain planned. |
@@ -45,32 +45,32 @@ This table is an orientation snapshot, not standalone completion evidence. A pac
 | 13 — Simplified rhythm mode | Not started | City-name rhythm training remains planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web foundations exist; device-level VoiceOver/audio/privacy/productisation criteria remain incomplete. |
 
-## Package 7 stage evidence
-
-Authoritative detail:
-
-- `docs/package-7ab-chord-presentation.md` — 7A–7B **Completed**
-- `docs/package-7c-chord-source-handoff.md` — 7C **Completed**, including PR #82 hotfix
-- `docs/package-7def-accessible-chord-ui-tts.md` — 7D–7F **Completed**
-- `docs/package-7-closure.md` — package-level **closure pending** until PR #83 exact-main gate
-
-Verified sequence:
+## Package 7 final evidence
 
 - 7A–7B PR #78 → merge `ee9a95a02a75c357e74647a09b1c2b27dafdcc6c` → exact-main CI #197 SUCCESS.
 - 7C PR #79 → merge `56ba563d47f3eec45ea0de88435706c121316a0d` → exact-main CI #199 SUCCESS.
-- 7D–7F PR #80 → merge `fae1b102eae24926ac48f429124c96f8c58899fe` → exact-main CI #201 SUCCESS with 1103/1103 tests.
+- 7D–7F PR #80 → merge `fae1b102eae24926ac48f429124c96f8c58899fe` → exact-main CI #201 SUCCESS.
 - 7G closure-pending PR #81 → merge `fef1464c882878fd1dd9921959887b9080f30927` → exact-main CI #203 SUCCESS.
-- Late valid P2 stale-source finding → hotfix PR #82 → accepted head `0968a439a8e5b2a8712d216277f7466c8ba84daa` → merge `7c37057713aa8a975edafdb0928d64f575d7cd5f` → exact-head #204 and exact-main #205 SUCCESS.
-- Current PR #83 exact-head CI #206 / `33146234567`, job `98767794592`: SUCCESS with **1105/1105 PASS**, 229 suites, audit 0, build PASS.
+- Late valid P2 stale-source finding → hotfix PR #82 → merge `7c37057713aa8a975edafdb0928d64f575d7cd5f` → exact-head CI #204 and exact-main CI #205 SUCCESS.
+- Final closure gate PR #83 → final head `5c0f9aa902c53d9f300ac512c534ff38ea7201e3` → exact-head CI #211 SUCCESS → merge **`9f49a07c83bd6dac853fc7aa0131c7df336b2b05`** → exact-main CI **#212 SUCCESS**.
 
-Package 7 remains **source-only presentation**. `sourceOnly=true`, `definitive=false`, `teacherApproved=false`. It does not infer chords from note content and does not prove that source harmony is musically correct.
+CI #212 verified:
+
+- **1105 / 1105 tests PASS**
+- **229 suites**
+- **0 failures / skipped / cancelled**
+- **120 packages audited**
+- **0 vulnerabilities**
+- **Vite 8.2.0 build PASS**
+- **55 modules transformed**
+
+Package 7 remains **source-only presentation**: `sourceOnly=true`, `definitive=false`, `teacherApproved=false`. It does not infer chords from notes and does not prove source harmony is musically correct.
 
 ## Interpretation rules
 
 - **Completed:** acceptance criteria, focused tests, full regression, production build and required protected-main workflow evidence are satisfied, including package-specific closure evidence.
-- **Closure pending:** implementation stages are verified, but the active package-level closure PR still requires protected-main merge and exact-main CI.
 - **Partially implemented:** relevant implementation exists, but package acceptance or closure is incomplete.
 - **Not started:** no meaningful verified package implementation evidence.
 - **Not verified:** related code may exist, but available evidence is insufficient to assign another status safely.
 
-Package 8 must not be treated as started by the current Package 7 closure gate.
+The current docs-only evidence-recording change records the already-completed Package 7 closure event; it does not redefine or extend that closure gate. Package 8 remains not started.
