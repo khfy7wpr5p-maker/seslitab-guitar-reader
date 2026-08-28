@@ -1,10 +1,10 @@
 # Package 7 — Chord Display and Turkish TTS Closure
 
-Status: **Completed**.
+Status: **closure pending**.
 
-Package 7 is closed on protected `main` after implementation, accessibility/TTS integration, closure-pending evidence, and the late Package 7C stale-source security hotfix all passed the required `test-and-build` gates.
+Package 7 implementation stages are technically complete, including the late Package 7C stale-source security hotfix. Package-level closure remains pending until this documentation closure PR (#83) merges through protected `main` and its exact-main `test-and-build` succeeds.
 
-## Completed chain
+## Verified implementation chain
 
 ```text
 Package 6 MusicXML <harmony> evidence
@@ -21,7 +21,7 @@ Package 6 MusicXML <harmony> evidence
         ↓
 7F — existing voiceService Turkish TTS ✅
         ↓
-7G — regression / documentation closure ✅
+7G — package documentation closure 🟡
 ```
 
 ## 7A–7B evidence
@@ -48,7 +48,7 @@ The implementation binds raw MusicXML to the exact `NoteObject[]` identity throu
 
 ### Late 7C P2 security hotfix
 
-A valid late review found that a previous successful MusicXML association could survive a later failed preparation for the same exact note array. Package 7 was not considered finally closed until this was corrected.
+A valid late review found that a previous successful MusicXML association could survive a later failed preparation for the same exact note array. Package 7 was not considered finally closed while this remained possible.
 
 PR #82 — `Package 7C: invalidate stale MusicXML source evidence`
 
@@ -56,14 +56,14 @@ PR #82 — `Package 7C: invalidate stale MusicXML source evidence`
 - merge on protected main: `7c37057713aa8a975edafdb0928d64f575d7cd5f`
 - exact-head CI #204 / `33145943788`: SUCCESS
 - exact-main CI #205 / `33146058408`, job `98767251803`: SUCCESS
-- final regression: **1105 / 1105 tests PASS**
+- final technical regression: **1105 / 1105 tests PASS**
 - suites: **229**
 - failed / skipped / cancelled: **0 / 0 / 0**
 - dependency audit: **120 packages, 0 vulnerabilities**
 - Vite 8.2.0 production build: **PASS**
 - transformed modules: **55**
 
-The source registry is now atomic with each preparation attempt: old exact-array source evidence is invalidated first, and the current source is registered only after the current structural validation and quality-report construction succeed. Blank, malformed, structurally rejected or thrown preparation work leaves no stale chord source consumable.
+The source registry is atomic with each preparation attempt: old exact-array source evidence is invalidated first, and the current source is registered only after current structural validation and quality-report construction succeed.
 
 ## 7D–7F evidence
 
@@ -87,16 +87,22 @@ Verified behavior includes:
 - Package 7 stops shared speech only when it owns the active chord utterance;
 - Package 7-owned TTS is capture-phase preempted before another existing audio consumer starts.
 
-## 7G closure evidence
+## 7G closure evidence so far
 
 Closure-pending documentation PR #81 merged as:
 
 - merge `fef1464c882878fd1dd9921959887b9080f30927`
 - exact-main CI #203: SUCCESS
 
-PR #81 deliberately kept the package in `closure pending` state while the package-level evidence was being reconciled. The subsequent PR #82 security hotfix and exact-main CI #205 are the final technical evidence that allows this reconciliation to mark Package 7 **Completed**.
+The late P2 was then corrected by PR #82 and exact-main CI #205.
 
-## Final safety boundary
+Current package-level closure gate:
+
+- PR #83 — documentation reconciliation
+- current exact head after review corrections: determined by PR metadata
+- exact-head CI #206 on the earlier PR #83 head passed 1105/1105 tests, audit 0 and production build; because review corrections changed the head, a fresh exact-head run is required before merge.
+
+## Safety boundary
 
 Package 7 did **not** change:
 
@@ -110,13 +116,20 @@ Package 7 did **not** change:
 
 No deployment was performed.
 
-Package 7 does not prove that a source chord is musically correct, does not infer chords from notes, and does not convert source harmony into teacher-approved truth. Teacher correction and approval remain Package 8.
+Package 7 does not prove that a source chord is musically correct, does not infer chords from notes, and does not convert source harmony into teacher-approved truth. Teacher correction and approval remain Package 8 and are **not started**.
 
-## Final closure baseline before evidence-reconciliation merge
+## Closure rule
 
-Technical Package 7 baseline:
+Technical Package 7 baseline before PR #83:
 `7c37057713aa8a975edafdb0928d64f575d7cd5f`
 
 Exact-main CI #205 / `33146058408`, job `98767251803`: SUCCESS with **1105/1105 tests**, **229 suites**, **0 vulnerabilities**, and production build PASS.
 
-This final evidence-reconciliation PR is documentation-only. Its own exact-head and exact-main required CI remain mandatory before the user-facing Package 7 closure is declared final.
+Package 7 may be changed from **closure pending** to **Completed** only after PR #83 itself:
+
+1. passes fresh exact-head `test-and-build` on its final reviewed head;
+2. has no unresolved review threads and remains current with protected `main`;
+3. merges through protected `main` with an expected-head lock;
+4. passes exact-main `test-and-build` on that merge SHA.
+
+A subsequent documentation evidence reconciliation may record that already-completed closure event; that recording does not redefine or extend the closure gate.
