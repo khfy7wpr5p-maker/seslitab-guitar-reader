@@ -9,7 +9,7 @@ import {
   isTeacherRevision,
 } from './teacherRevisionModel.js'
 
-export const TEACHER_APPROVAL_SCHEMA_VERSION = 2
+export const TEACHER_APPROVAL_SCHEMA_VERSION = 3
 export const TEACHER_APPROVAL_STATE = 'teacher_approved'
 
 export const TEACHER_APPROVAL_APPLICABILITY = Object.freeze({
@@ -29,6 +29,7 @@ const APPROVAL_FIELDS = Object.freeze([
   'approvedParentRevisionId',
   'approvedRevisionCreatedAt',
   'approvedContentFingerprint',
+  'approvedLineageFingerprint',
   'createdAt',
 ])
 
@@ -121,6 +122,7 @@ function validateApprovalRecord(value) {
       'sourceRevisionId',
       'approvedRevisionId',
       'approvedContentFingerprint',
+      'approvedLineageFingerprint',
     ]) {
       if (normalizeRequiredString(value[field], field) !== value[field]) return false
     }
@@ -176,6 +178,7 @@ export function createTeacherApprovalRecord({
     approvedParentRevisionId: revision.parentRevisionId,
     approvedRevisionCreatedAt: revision.createdAt,
     approvedContentFingerprint: revision.contentFingerprint,
+    approvedLineageFingerprint: revision.lineageFingerprint,
     createdAt: normalizedCreatedAt,
   })
 }
@@ -185,10 +188,11 @@ export function createTeacherApprovalRecord({
  * revision. A changed/new revision makes the old approval non-applicable; the
  * historical approval record itself is not mutated or deleted.
  *
- * Exact binding covers the immutable T1 revision identity, lineage metadata,
- * revision timestamp and content fingerprint. This prevents a later correction
- * from reviving an older approval by reusing an ancestor revisionId and restoring
- * the ancestor's content.
+ * Exact binding covers source identity, revision metadata, content fingerprint,
+ * and the recursive immutable revision-lineage fingerprint. The lineage token
+ * incorporates the exact parent lineage, so replaying ancestor revision IDs and
+ * restoring content/timestamps at multiple hops cannot reproduce an earlier
+ * approved revision through the normal T1 creator path.
  *
  * The returned value is approval applicability only. It is deliberately not a
  * quality decision, authorization decision, or student-sharing permission.
@@ -208,7 +212,8 @@ export function evaluateTeacherApprovalForRevision({ approval, revision } = {}) 
     approval.approvedRevisionKind === revision.revisionKind &&
     approval.approvedParentRevisionId === revision.parentRevisionId &&
     approval.approvedRevisionCreatedAt === revision.createdAt &&
-    approval.approvedContentFingerprint === revision.contentFingerprint
+    approval.approvedContentFingerprint === revision.contentFingerprint &&
+    approval.approvedLineageFingerprint === revision.lineageFingerprint
 
   return exact
     ? TEACHER_APPROVAL_APPLICABILITY.APPROVED_EXACT_REVISION
