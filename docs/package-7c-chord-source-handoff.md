@@ -13,7 +13,7 @@ raw MusicXML + exact NoteObject[]
         ↓
 prepareMusicXmlQualityGate()
         ↓
-exact-array MusicXML source registry
+atomic exact-array MusicXML source registry
         ↓
 Package 6 parseMusicXmlHarmony()
         ↓
@@ -34,6 +34,18 @@ The registry:
 - does not change Package 2D quality decisions,
 - does not promote source verification.
 
+## Atomic source preparation
+
+A new `prepareMusicXmlQualityGate()` attempt first invalidates any older raw-MusicXML association for that exact note-array identity. The current source is registered only after the current MusicXML passes structural validation and quality-report construction.
+
+Therefore:
+
+- blank replacement MusicXML leaves no source association,
+- malformed or structurally rejected replacement MusicXML leaves no source association,
+- thrown preparation work leaves no source association,
+- an older successful MusicXML source cannot survive a later failed preparation for the same exact array,
+- invalidating one array never clears another array's source evidence.
+
 ## Source-only truth boundary
 
 A successful chord result is explicitly:
@@ -51,6 +63,7 @@ The consumer presents only MusicXML `<harmony>` evidence. It never derives a cho
 - Package 6 invalid → `invalid`, zero display/speech bytes
 - valid MusicXML with no `<harmony>` → `empty`, no invented chord
 - contradictory Package 7A/B provenance/teacher state → `invalid`
+- failed replacement source preparation → prior source invalidated, zero stale chord output
 
 ## Safety boundary
 
