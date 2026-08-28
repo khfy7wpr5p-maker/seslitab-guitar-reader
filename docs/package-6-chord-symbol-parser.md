@@ -1,6 +1,6 @@
 # Package 6 — MusicXML Chord-Symbol Parser
 
-Status: implementation candidate; closure requires protected-main merge and exact-main CI.
+Status: implementation merged and exact-main implementation CI verified. Final package closure evidence: `docs/package-6-closure.md`.
 
 ## Scope
 
@@ -144,6 +144,19 @@ Package 6 tests cover:
 25. malformed explicit divisions invalidates stale inherited timing
 26. timed source event without divisions fails timing closed
 
+## Verified implementation evidence
+
+- implementation PR: #75
+- accepted feature head after review fixes: `3bb822d2df750079359c2c8c9e43060f6b0fedd2`
+- implementation merge: `4417a32f3ddaa46dacf149dc1317f6a83d19403c`
+- exact-head CI #183 / `33124475810`: PASS
+- exact implementation-main CI #184 / `33124708562`: PASS
+- tests: 1057/1057 PASS; 229 suites; 0 failures/skips/cancellations
+- dependency audit: 0 vulnerabilities
+- Vite 8.2.0 production build: PASS
+
+The first green feature head was not merged after two valid review findings in divisions handling. Both findings were fixed, dedicated regressions were added, the exact corrected head passed full CI, the review threads were resolved, and merge used expected-head locking.
+
 ## Safety claims
 
 Package 6 does **not** claim:
@@ -157,17 +170,6 @@ Package 6 does **not** claim:
 
 Those concerns remain separate packages or human-review responsibilities.
 
-## Closure gate
+## Closure evidence
 
-Package 6 may be marked Completed only after:
-
-- focused parser tests pass
-- full repository regression passes
-- dependency audit reports zero vulnerabilities
-- production build passes
-- exact PR head passes required `test-and-build`
-- review threads are clean
-- branch is zero-behind protected main at merge time
-- merge uses expected-head locking
-- exact merged main passes required `test-and-build`
-- status/closure documentation is reconciled from fresh evidence
+Detailed closure and boundary evidence is recorded in `docs/package-6-closure.md`. Package 7 is not implemented by Package 6.
