@@ -248,7 +248,17 @@ function solveAssignments(measures) {
 
   function recurse(groupIndex, active, tieLocks, currentMeasureOrder) {
     if (counter.count > ADVANCED_GUITAR_TAB_MAX_SEARCH_NODES) return { state: 'limit' }
-    if (groupIndex >= groups.length) return { state: 'solved' }
+    if (groupIndex >= groups.length) {
+      if (tieLocks.size > 0) {
+        const dangling = tieLocks.values().next().value
+        return {
+          state: 'blocked',
+          reason: 'dangling-tie-start',
+          noteIndex: dangling?.noteIndex ?? null,
+        }
+      }
+      return { state: 'solved' }
+    }
 
     const current = groups[groupIndex]
     const { group, measureOrder } = current
@@ -274,7 +284,13 @@ function solveAssignments(measures) {
 
         const key = tieKey(event)
         if (event.tieStop && !event.tieStart) nextTieLocks.delete(key)
-        if (event.tieStart) nextTieLocks.set(key, position)
+        if (event.tieStart) {
+          nextTieLocks.set(key, {
+            stringNumber: position.stringNumber,
+            fret: position.fret,
+            noteIndex: event.noteIndex,
+          })
+        }
 
         if (!event.isGrace && event.beats > 0) {
           nextActive.push({
