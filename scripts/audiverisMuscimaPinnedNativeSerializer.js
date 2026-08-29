@@ -41,6 +41,7 @@ const MASK_TOKEN_RE = /^([01]):([1-9][0-9]*)$/u
 const FIXED_ZIP_DATE = new Date('2000-01-01T00:00:00.000Z')
 const CONTAINER_PATH = 'META-INF/container.xml'
 const SAMPLE_FILE_NAME = 'samples.xml'
+const BUILD_RESULT_FIELDS = Object.freeze(['report', 'archiveBytes'])
 const BUILD_REPORT_FIELDS = Object.freeze([
   'schemaVersion', 'status', 'upstreamRevision', 'stagingManifestFingerprint',
   'archiveSha256', 'archiveByteLength', 'sampleCount', 'sheetCount',
@@ -120,7 +121,7 @@ function requiredSha256(value, fieldName) {
 }
 
 function requiredGitSha1(value, fieldName) {
-  const normalized = requiredString(value, fieldName, 40).toLowerCase()
+  const normalized = requiredString(value, fieldName, 128).toLowerCase()
   if (!GIT_SHA1_RE.test(normalized)) throw new TypeError(`${fieldName} must be a Git SHA-1 revision.`)
   return normalized
 }
@@ -330,7 +331,8 @@ export async function buildMuscimaAudiverisNativeSamplesArchive(stagingReport) {
 }
 
 export function bindPinnedAudiverisAcceptance(buildResult, probeEvidence) {
-  if (!isPinnedAudiverisNativeArchiveBuild(buildResult?.report) || !Buffer.isBuffer(buildResult?.archiveBytes)) {
+  assertSupportedInputObject(buildResult, BUILD_RESULT_FIELDS, 'archive build result')
+  if (!isPinnedAudiverisNativeArchiveBuild(buildResult.report) || !Buffer.isBuffer(buildResult.archiveBytes)) {
     throw new TypeError('a valid T6 archive build result is required.')
   }
   const build = buildResult.report
