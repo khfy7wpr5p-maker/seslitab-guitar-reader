@@ -35,27 +35,38 @@
 .score-view-surface {
   width: 100%;
   max-width: 100%;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  touch-action: pan-x pan-y;
+}
+.score-view-surface:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
 }
 .score-view-runtime-frame {
   display: block;
   width: 100%;
   max-width: none;
 }
+.score-view-mobile-hint {
+  margin: 0.5rem 0;
+  color: var(--neutral-700);
+}
 
 @media (max-width: 600px) {
   .review-inspector-grid { grid-template-columns: 1fr; }
   .review-inspector .btn { width: 100%; min-height: 48px; }
-  .score-view-panel { overflow: hidden; }
+  .score-view-panel { min-width: 0; }
   .score-view-runtime-frame {
-    transform: scale(0.82);
-    transform-origin: top left;
-    width: 121.96% !important;
-    min-height: 780px !important;
-    margin-bottom: -140px;
+    min-width: 720px;
+    min-height: 700px !important;
   }
   .score-view-status,
   .score-view-measure-sync,
+  .score-view-mobile-hint,
   .score-view-provenance {
     overflow-wrap: anywhere;
   }
