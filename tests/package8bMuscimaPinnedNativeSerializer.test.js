@@ -117,6 +117,23 @@ test('Package 8B-T6 blocks real/current non-ready T5 evidence without producing 
   assert.ok(isPinnedAudiverisNativeArchiveBuild(build.report))
 })
 
+test('Package 8B-T6 fails closed on invalid accessor-bearing staging input without executing the accessor', async () => {
+  let executed = false
+  const malicious = {}
+  Object.defineProperty(malicious, 'manifestFingerprint', {
+    enumerable: true,
+    get() {
+      executed = true
+      throw new Error('accessor must not execute')
+    },
+  })
+  const build = await buildMuscimaAudiverisNativeSamplesArchive(malicious)
+  assert.equal(executed, false)
+  assert.equal(build.archiveBytes, null)
+  assert.equal(build.report.stagingManifestFingerprint, null)
+  assert.equal(build.report.status, AUDIVERIS_PINNED_NATIVE_SERIALIZER_STATUS.BLOCKED_STAGING_INPUT)
+})
+
 test('Package 8B-T6 serializes exact T5 evidence into the pinned Audiveris container/samples/run-table contract', async () => {
   const build = await buildMuscimaAudiverisNativeSamplesArchive(stagingReady())
   assert.equal(build.report.status, AUDIVERIS_PINNED_NATIVE_SERIALIZER_STATUS.ARCHIVE_BUILT_PENDING_PINNED_ACCEPTANCE)
@@ -188,10 +205,11 @@ test('Package 8B-T6 requires exact pinned SampleRepository receipt binding befor
   assert.ok(isPinnedAudiverisAcceptanceReport(accepted))
 })
 
-test('Package 8B-T6 rejects stale revision, wrong archive/count, failed load and wrong probe API', async () => {
+test('Package 8B-T6 rejects stale revision, malformed revision, wrong archive/count, failed load and wrong probe API', async () => {
   const build = await buildMuscimaAudiverisNativeSamplesArchive(stagingReady())
   const cases = [
-    [{ upstreamRevision: 'c'.repeat(64) }, /exact pinned Audiveris revision/u],
+    [{ upstreamRevision: 'c'.repeat(40) }, /exact pinned Audiveris revision/u],
+    [{ upstreamRevision: 'c'.repeat(64) }, /Git SHA-1 revision/u],
     [{ archiveSha256: 'd'.repeat(64) }, /exact archive SHA-256/u],
     [{ loadedSampleCount: build.report.sampleCount + 1 }, /loaded sample count/u],
     [{ repositoryLoaded: false }, /did not report a loaded repository/u],
@@ -220,11 +238,13 @@ test('Package 8B-T6 validators reject authorization escalation and malformed acc
   assert.equal(isPinnedAudiverisAcceptanceReport(Object.freeze({ ...accepted, loadedSampleCount: accepted.sampleCount + 1 })), false)
 })
 
-test('Package 8B-T6 acceptance runner is pinned to the real SampleRepository API and stays outside production wiring', () => {
+test('Package 8B-T6 acceptance runner is pinned to the real SampleRepository API and a clean exact checkout', () => {
   const runner = readFileSync(new URL('../scripts/runPinnedAudiverisSampleRepositoryAcceptance.js', import.meta.url), 'utf8')
   assert.match(runner, /SampleRepository\.getInstance\(archive, true\)/u)
   assert.match(runner, /repo\.getAllSamples\(\)\.size\(\)/u)
-  assert.match(runner, new RegExp(AUDIVERIS_PINNED_REVISION, 'u'))
+  assert.match(runner, /AUDIVERIS_PINNED_REVISION/u)
+  assert.match(runner, /--porcelain=v1/u)
+  assert.match(runner, /--untracked-files=all/u)
   for (const forbidden of [
     '../backend/', 'Dockerfile', 'render.yaml', 'classifier.train', 'modelReplacementAuthorized: true',
   ]) {
