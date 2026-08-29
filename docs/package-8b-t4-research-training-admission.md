@@ -1,8 +1,10 @@
 # Package 8B-T4 — Research-Only Audiveris Training Admission
 
-Status: **Candidate implementation. Do not mark Completed until protected-main merge and exact-main CI succeed.**
+Status: **Completed.**
 
-Stage-start protected-main baseline: `35d3e9f475d15922ee0eef77b9804467622e5e27`.
+Stage-start protected-main baseline: `35d3e9f475d15922ee0eef77b9804467622e5e27`.  
+Verified implementation main: `08bb9a1d909c20445cc0dbcaf1a5514e48470ee8`.  
+Exact-main implementation CI: **#290 / run `33247398205`, job `99087145954` — SUCCESS**.
 
 ## Purpose
 
@@ -16,7 +18,7 @@ T4 does **not** build `samples.zip`, run the Audiveris trainer, produce `basic-c
 
 ### Audiveris technical classifier input
 
-Current Audiveris documentation describes the basic classifier as a **Glyph classifier**. A training sample is basically a glyph plus its related shape. The global `samples.zip` repository is the only source used for glyph-classifier training. Audiveris can populate book sample repositories from reviewed sheet/book data and later merge them into the global repository.
+Current Audiveris documentation describes the basic classifier as a **Glyph classifier**. A training sample is basically a glyph plus its related shape. The global `samples.zip` repository is the source used for glyph-classifier training. Audiveris can populate book sample repositories from reviewed sheet/book data and later merge them into the global repository.
 
 This means an Audiveris `.omr` project is an important standard provenance/curation route, but `.omr` is **not itself the neural classifier's final technical input format**. The final classifier-training source is the global glyph+shape sample repository.
 
@@ -41,7 +43,7 @@ This repository record is a technical policy/provenance boundary, **not legal ad
 
 ## T1 remains intentionally stricter
 
-Package 8B-T1 currently requires exact image, label, `.omr`, approval and other evidence before a candidate can become a genuine T1 trainable sample.
+Package 8B-T1 requires exact image, label, `.omr`, approval and other evidence before a candidate can become a genuine T1 trainable sample.
 
 T4 does **not** revise that contract.
 
@@ -93,7 +95,7 @@ T4 exposes three states:
 3. `ready_for_isolated_samples_zip_build`
    - non-commercial research intent;
    - every mapped sample has an exact T4 research approval;
-   - this authorizes only the **next isolated artifact-preparation step**, not training execution.
+   - authorizes only the **next isolated artifact-preparation step**, not training execution.
 
 No T4 state ever sets:
 
@@ -106,9 +108,9 @@ modelReplacementAuthorized: true
 
 The T3 pilot contains 2,714 mapped accidental samples over 100 matched pages, with a page-disjoint 2,247/467 mapping split.
 
-At T4 stage start there are **no exact T4 per-sample research approval records** for those 2,714 mapped samples.
+At T4 closure there are **no exact T4 per-sample research approval records** for those 2,714 mapped samples.
 
-Therefore the current pilot outcome is:
+Therefore the current pilot outcome remains:
 
 ```text
 mapped experimental samples: 2,714
@@ -134,7 +136,7 @@ No T4 approval may upgrade this evidence into a writer-independent benchmark cla
 
 ## Security and no-touch boundary
 
-`scripts/audiverisMuscimaResearchTrainingAdmission.js` is pure data-domain code. It must not:
+`scripts/audiverisMuscimaResearchTrainingAdmission.js` is pure data-domain code. It does not:
 
 - write files;
 - create `samples.zip`;
@@ -148,23 +150,39 @@ No T4 approval may upgrade this evidence into a writer-independent benchmark cla
 - change production model selection;
 - publish source/derived MUSCIMA images.
 
-## Mandatory verification
+## Verification evidence
 
-Before merge:
+Implementation PR #115:
 
-- focused T4 approval/admission tests PASS;
-- full repository regression PASS;
+- final head: `9142e9b3f81f75e0f0f1e44450c0ee9294e1f640`;
+- exact-head CI #289: **SUCCESS**;
+- 1287/1287 tests PASS;
+- 232 suites;
+- 0 failures / skipped / cancelled;
+- 0 vulnerabilities;
 - production build PASS;
 - real-browser score runtime proof PASS;
-- exact-head required CI PASS;
-- no unresolved valid P1/P2 review blocker;
-- branch fresh against protected `main`;
-- expected-head SHA merge locking.
+- unresolved review threads: 0;
+- branch fresh against protected main;
+- merged with expected-head SHA locking.
 
-After merge:
+Protected-main implementation merge:
 
-- exact protected-main push CI must PASS before T4 can be declared Completed.
+- `08bb9a1d909c20445cc0dbcaf1a5514e48470ee8`;
+- exact-main CI #290 / run `33247398205`, job `99087145954`: **SUCCESS**;
+- 1287/1287 tests PASS;
+- 232 suites;
+- 0 failures / skipped / cancelled;
+- 0 vulnerabilities;
+- production build PASS;
+- real-browser score runtime proof PASS using Google Chrome.
+
+## Result
+
+**Package 8B-T4 is Completed.**
+
+**Package 8B remains Partially implemented.** T4 closes the research-admission architecture and safety contract but does not create sample approvals, build an Audiveris sample repository, execute training, evaluate a trained classifier or authorize production model replacement.
 
 ## Deferred next step
 
-Only after explicit approval of the required research samples may a later package build an **isolated research-only Audiveris `samples.zip` adapter/harness**. That later package must still keep the production classifier untouched and must independently gate any actual training run and evaluation.
+Only after explicit approval of the required research samples may a later package build an **isolated research-only Audiveris `samples.zip` adapter/harness**. That later package must keep the production classifier untouched and must independently gate actual training, evaluation, classifier artifact creation and any later production-model comparison/replacement.

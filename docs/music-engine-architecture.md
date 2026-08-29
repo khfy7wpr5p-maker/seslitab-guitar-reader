@@ -1,14 +1,14 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 3.3.0  
+**Belge sürümü:** 3.4.0  
 **Güncelleme tarihi:** 2026-08-29  
-**Package 8B-T3 verified implementation main:** `258ac27262aa4715164aafebe8fce97bb89f9dfb`  
-**Exact-main CI:** #286 / run `33246461356` — SUCCESS  
-**Durum:** Package 0–8 Completed; Package 8B Partially implemented; 8B-T1, 8B-T2 ve 8B-T3 Completed.
+**Package 8B-T4 verified implementation main:** `08bb9a1d909c20445cc0dbcaf1a5514e48470ee8`  
+**Exact-main CI:** #290 / run `33247398205` — SUCCESS  
+**Durum:** Package 0–8 Completed; Package 8B Partially implemented; 8B-T1, 8B-T2, 8B-T3 ve 8B-T4 Completed.
 
 ## 1. Değişmez ürün ilkesi
 
-SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Yapısal geçerlilik, kaynak doğrulama, kalite `ACCEPT`, öğretmen düzeltmesi, öğretmen onayı, Audiveris-training onayı ve öğrenci paylaşım yetkisi birbirinden ayrı katmanlardır.
+SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Yapısal geçerlilik, kaynak doğrulama, kalite `ACCEPT`, öğretmen düzeltmesi, öğretmen onayı, Audiveris-training onayı, research-sample onayı ve öğrenci paylaşım yetkisi birbirinden ayrı katmanlardır.
 
 ## 2. Ana veri akışı
 
@@ -46,12 +46,22 @@ Experimental Audiveris evidence (Package 8B):
        -> exact bbox/mask validation
        -> Audiveris accidental shape evidence
        -> page-disjoint research split
-       -> explicit blockers remain
+  -> 8B-T4 separate research-only admission gate
+       mapped sample
+       -> exact T4 research approval binding
+       -> non-commercial-use gate
+       -> blocked OR ready only for isolated samples.zip preparation
 
-No T3 record bypasses T1/T2.
-No training/model replacement is in this flow.
+No T3/T4 record bypasses T1/T2.
+No T4 state authorizes training execution or model replacement.
 
-Later:
+Later, only after separate explicit approval:
+  isolated research samples.zip builder/harness
+  -> separately gated training experiment
+  -> separately gated evaluation
+  -> no production model replacement without another explicit decision
+
+Later product feature:
   Package 12 -> exact-approved-revision student sharing with its own authorization/quality rules
 ```
 
@@ -59,9 +69,9 @@ Later:
 
 All musical consumers derive from the shared canonical note/time model. Missing music must not be invented. Source-unverified or unsafe evidence must not be promoted to definitive student truth.
 
-Quality `ACCEPT` does not create teacher approval. Teacher approval does not bypass quality validation. Golden/reference approval or engineering-stage approval does not automatically create Audiveris-training approval.
+Quality `ACCEPT` does not create teacher approval. Teacher approval does not bypass quality validation. Golden/reference approval or engineering-stage approval does not automatically create Audiveris-training approval or research-sample approval.
 
-Package 8B training evidence is isolated from the production MusicXML consumer flow. T1–T3 do not train Audiveris or modify production OMR behavior.
+Package 8B evidence remains isolated from the production MusicXML consumer flow. T1–T4 do not train Audiveris or modify production OMR behavior.
 
 ## 4. Package 8 architecture — COMPLETED
 
@@ -81,7 +91,7 @@ Package 8 remains Completed. Teacher approval is exact-revision evidence; it is 
 
 `trainingApproval` must use scope `audiveris_training_sample` and bind to the exact deterministic candidate fingerprint. A dataset manifest accepts only T1-trainable candidates and rejects train/evaluation provenance/evidence leakage.
 
-`scripts/audiverisTrainingDatasetInventory.js` inventories existing repository evidence without promotion. The Plan 0 golden chain remains incomplete as a training sample because training-specific page/glyph/shape/coordinate/approval/split evidence is absent.
+T1 deliberately remains stricter than the later T4 research-only classifier-preparation boundary. T4 does not remove or reinterpret T1's `.omr` requirement.
 
 ## 6. Package 8B-T2 architecture — COMPLETED
 
@@ -102,7 +112,7 @@ Package 8 remains Completed. Teacher approval is exact-revision evidence; it is 
 
 `scripts/audiverisMuscimaAccidentalMapping.js`
 
-T3 consumes normalized annotation evidence and maps only:
+T3 maps only:
 
 | Source class | Audiveris shape |
 |---|---|
@@ -112,21 +122,9 @@ T3 consumes normalized annotation evidence and maps only:
 | `accidentalDoubleSharp` | `DOUBLE_SHARP` |
 | `accidentalDoubleFlat` | `DOUBLE_FLAT` |
 
-The mapper:
+The mapper binds page/annotation hashes, validates exact bbox and binary mask evidence, fingerprints decoded mask pixels, creates deterministic identities, ignores unrelated classes and preserves a page-disjoint-only evaluation claim.
 
-- binds caller-supplied page image + annotation SHA-256;
-- requires positive integer image/glyph dimensions;
-- rejects bbox overflow;
-- decodes and validates binary RLE against exact glyph area;
-- fingerprints decoded mask pixels;
-- creates deterministic sample identity;
-- rejects duplicate page/object/sample identity;
-- ignores unrelated MUSCIMA notation classes;
-- supports deterministic caller-bounded page-disjoint train/evaluation assignment;
-- never claims writer-independent evaluation;
-- imports no production OMR/model/deployment surface.
-
-### Measured supplied pilot
+Measured supplied pilot:
 
 ```text
 matched pages:                 100 PNG + 100 XML
@@ -140,43 +138,95 @@ bounded accidental mappings:   2,714
 bbox overruns:                    0
 local page-disjoint split:      2,247 mapped train / 467 mapped evaluation
 T1/T2 admitted trainable:           0
-training executed:                   NO
-production model changed:            NO
 ```
 
-The normalized research pilot is kept outside the public repository. Source/derived MUSCIMA images are not committed in T3.
+The annotation XML is not represented as `.omr`; engineering approval is not per-sample training approval; writer-independent evaluation is not claimed.
 
-### Why 2,714 mapped is not 2,714 trainable
+## 8. Package 8B-T4 architecture — COMPLETED
 
-Every mapped T3 record explicitly retains:
+### Research-only admission gate
 
-- `missing_omr_artifact`;
-- `missing_training_approval`;
-- `external_license_review_required`.
+`scripts/audiverisMuscimaResearchTrainingAdmission.js`
 
-The supplied annotation XML is **not** an Audiveris `.omr` project. User approval to proceed with engineering is **not** per-sample `audiveris_training_sample` approval. T3 therefore creates shape-mapping evidence without weakening T1/T2 admission.
+T4 separates three questions that must not be conflated:
 
-### Verification
+1. **Audiveris technical classifier evidence** — glyph + shape samples destined for the global `samples.zip` training repository.
+2. **SesliTab T1 production-oriented provenance** — stricter evidence contract that still includes exact `.omr` evidence.
+3. **External-corpus research admission** — a separate, non-commercial, exact per-sample approval boundary.
 
-- PR #113 final head `b3f4b71a9748f2b8281abe5f0d9e6fb925a0fd9a`
-- exact-head CI #285 / run `33246314925`: SUCCESS
+T4 therefore does **not** revise T1. It introduces the separate scope:
+
+```text
+audiveris_classifier_research_sample
+```
+
+Each approval binds exact:
+
+- `sampleId`;
+- `audiverisShape`;
+- decoded-mask SHA-256;
+- approval identity;
+- reviewer identity;
+- exact ISO-8601 approval timestamp;
+- fixed MUSCIMA research-only licence profile.
+
+### T4 admission state machine
+
+```text
+commercial / production intent
+  -> blocked_license_use
+  -> admitted = 0
+
+non-commercial research + incomplete exact approvals
+  -> blocked_missing_sample_approvals
+  -> admitted = 0
+
+non-commercial research + complete exact approvals
+  -> ready_for_isolated_samples_zip_build
+  -> only artifact-preparation readiness
+  -> training execution still NOT authorized
+```
+
+Every T4 report retains:
+
+```text
+t1TrainableSampleCount: 0
+t1OmrEvidenceSatisfied: false
+t1Blockers: [missing_omr_artifact]
+writerIndependentEvaluation: false
+productionAuthorized: false
+modelReplacementAuthorized: false
+```
+
+### Current pilot state after T4
+
+```text
+mapped experimental samples:     2,714
+T4 exact research approvals:          0
+T4 research samples admitted:         0
+T1/T2 trainable samples:              0
+samples.zip built:                    NO
+Audiveris training executed:          NO
+production model changed:             NO
+```
+
+User approval to implement T4 is an engineering-stage authorization only. It is not expanded into 2,714 sample approvals.
+
+### T4 verification
+
+- implementation PR #115 final head `9142e9b3f81f75e0f0f1e44450c0ee9294e1f640`
+- exact-head CI #289: SUCCESS
 - review threads: 0 unresolved
-- protected-main merge `258ac27262aa4715164aafebe8fce97bb89f9dfb`
-- exact-main CI #286 / run `33246461356`: **1275/1275 PASS**, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS, real-browser proof PASS
+- protected-main squash merge `08bb9a1d909c20445cc0dbcaf1a5514e48470ee8`
+- exact-main CI #290 / run `33247398205`: **1287/1287 PASS**, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS, real-browser proof PASS
 
-## 8. Package 8B continuing boundary
+## 9. Package 8B continuing boundary
 
-Package 8B remains **Partially implemented**. T3 materially improves experimental accidental evidence, but it does not produce a T1/T2-admitted training corpus or a trained model.
+Package 8B remains **Partially implemented**. T4 solves the research-admission architecture boundary, but it does not create sample approvals, build an Audiveris sample repository, execute training or produce an evaluated classifier.
 
-Before a later training stage, explicitly review:
+A later isolated research package may proceed only after separate explicit authorization and the required exact sample approvals. It must keep artifact preparation, training execution, evaluation and production-model adoption as separate gates.
 
-1. whether third-party classifier glyph corpora require the same T1 `.omr` evidence or a separately approved contract extension;
-2. compatible per-sample training authorization under the external licence boundary;
-3. evaluation design beyond page-disjoint-only evidence when writer identity is unavailable.
-
-Do not infer model-training authorization from T3 completion.
-
-## 9. Protected production boundary
+## 10. Protected production boundary
 
 Without separate explicit authorization, keep unchanged:
 
@@ -189,7 +239,7 @@ Without separate explicit authorization, keep unchanged:
 - current Render deployment connection;
 - production model selection/replacement.
 
-## 10. Security dependency summary
+## 11. Security dependency summary
 
 | Feature | Canonical/source data | Quality/evidence gate | Approval/authorization |
 |---|---:|---:|---:|
@@ -198,8 +248,11 @@ Without separate explicit authorization, keep unchanged:
 | MIDI export | Yes | Quality gate | Student sharing later has separate rules |
 | Basic Guitar TAB | Yes | Quality gate | Generated result is not teacher truth |
 | Basic Violin | Yes | Quality gate | Generated result is not teacher truth |
-| Package 8B T1 candidate | Training-specific evidence | T1 completeness | **Exact training approval required** |
+| Package 8B T1 candidate | Training-specific evidence | T1 completeness | **Exact T1 training approval required** |
 | Package 8B T2 readiness | Exact supplied bytes/path/hash | T1 remains authoritative | **No new approval inferred** |
-| Package 8B T3 mapped accidental | Exact annotation/hash/bbox/mask evidence | Experimental mapping only | **Still blocked; no training authorization** |
-| Package 8B dataset manifest | T1-trainable candidates only | T1 admission | **Required per sample** |
+| Package 8B T3 mapped accidental | Exact annotation/hash/bbox/mask evidence | Experimental mapping only | **No training authorization** |
+| Package 8B T4 research admission | Exact T3 sample + licence/use evidence | Fail-closed research admission | **Separate exact T4 sample approval required** |
+| Later isolated samples.zip builder | Only admitted T4 samples | Not implemented | **Not authorized by T4 completion** |
+| Actual Audiveris training | Not implemented | Separate future gate required | **Not authorized** |
+| Production model replacement | Not implemented | Measured comparison required | **Separate explicit authorization required** |
 | Package 12 student sharing | Yes | Quality gate | **Exact approved revision required** |
