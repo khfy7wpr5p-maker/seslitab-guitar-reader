@@ -1,8 +1,9 @@
 # SesliTab Product Architecture
 
 **Architecture review:** 2026-08-29  
-**Source baseline:** protected `main` at `fe940cd0b633055845e06504eeeb4287aed3f4d1`  
-**Roadmap position:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 Completed.
+**Verified repository baseline for this review:** protected `main` at `2a6fa9c981b85861895692df99887d46e768822e`  
+**Latest verified code-equivalent CI evidence:** PR #140 `test-and-build` — 1411/1411 tests, production build PASS, score render + cursor real-browser proof PASS.  
+**Roadmap position:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 merged; T4 remains a separate open PR (#138).
 
 ## 1. Product definition
 
@@ -10,7 +11,7 @@ SesliTab is an inclusive, accessible and teacher-supervised music learning platf
 
 The product combines:
 
-- score discovery and library intake;
+- score discovery and source intake;
 - PDF / MusicXML / Guitar TAB input;
 - OMR and MusicXML processing;
 - one canonical note/timing model;
@@ -19,67 +20,81 @@ The product combines:
 - Guitar TAB and violin guidance;
 - Turkish rhythmic text, TTS, Web Audio playback and MIDI;
 - accessible tuner;
-- secure teacher-to-student sharing;
-- simplified rhythm training;
-- mobile-first accessible PWA delivery for iOS, Android and desktop browsers.
+- bounded teacher-to-student sharing contracts;
+- future simplified rhythm training;
+- mobile-first accessible web delivery for iOS, Android and desktop browsers.
 
-## 2. Top-level product map
+## 2. Official product decision — approval is conditional
+
+**Teacher approval is not universally mandatory.**
+
+The product route is:
+
+```text
+validated canonical evidence
+        |
+        +-- PASS   -> bounded automatic consumer routing may proceed
+        |             only where the existing consumer gate authorizes it
+        |
+        +-- REVIEW -> teacher review/correction is required before
+        |             definitive downstream use
+        |
+        +-- BLOCK  -> definitive downstream output remains prohibited
+```
+
+User-facing language:
+
+- PASS: **Otomatik kontrollerden geçti**
+- REVIEW: **Kontrol gerekiyor**
+- BLOCK: **Bu eserde önce düzeltilmesi gereken yapısal bir sorun bulundu.**
+
+`Auto-Pass != teacher-approved` is a permanent product rule.
+
+PASS is not a claim that OMR/MusicXML is visually identical to the original PDF. Presentation code must never create a stronger verification claim than the quality/provenance evidence supports.
+
+## 3. Top-level product map
 
 ```text
 SesliTab
-├── Discovery / Score Search        [planned product module]
-├── Teacher Studio                  [teacher workflow]
-├── Student Practice                [student workflow]
-├── Library                         [planned application surface]
-├── Music Processing Core           [verified foundations]
-├── Guitar Engine                   [Package 9 Completed]
-├── Violin Engine                   [Package 10 Completed]
-├── Accessible Tuner                [Package 11 Completed]
-├── Secure Sharing                  [Package 12 Partially implemented]
-├── Simplified Rhythm Mode          [Package 13 Not started]
-└── Mobile / PWA Productisation     [Package 14 Partially implemented]
+├── Çalışma Alanı                  [implemented primary shell entry]
+├── Nota Ara / Discovery           [implemented bounded source-finding UI]
+├── Teacher correction workspace  [implemented domain + partial product UI]
+├── Score view                     [measure cursor implemented; note editor planned]
+├── Guitar Engine                  [Package 9 Completed]
+├── Violin Engine                  [Package 10 Completed]
+├── Accessible Tuner               [Package 11 Completed]
+├── Secure Sharing                 [Package 12 Partially implemented]
+├── Simplified Rhythm Mode         [Package 13 Not started]
+└── Mobile productisation          [partial responsive work; device closure pending]
 ```
 
-`Discovery / Score Search` is an accepted product-architecture module. It is not yet an implemented repository package and does not change the current strict package order. It must be scheduled through a separate reviewed package before implementation.
+A persistent **Eserlerim/Library** surface is still planned. Stage A must not show it as available until a real persistence/library contract exists.
 
-## 3. Discovery / score search boundary
+## 4. Discovery / score search boundary
 
-Discovery exists to help a teacher or student locate repertoire and admissible score sources. It may eventually support search by:
-
-- work title;
-- composer;
-- instrument;
-- difficulty;
-- PDF / MusicXML availability;
-- public-domain or licence state;
-- existing SesliTab library records.
-
-Discovery is a source-finding layer only.
+Discovery is implemented as a bounded source-finding surface. It does not verify musical truth.
 
 ```text
 FOUND
-  != SOURCE-VERIFIED
+  != SOURCE VERIFIED
   != MUSICALLY VERIFIED
-  != TEACHER-APPROVED
+  != TEACHER APPROVED
 ```
 
-An external PDF or MusicXML result must not become student-trusted content merely because it was found by Discovery. External intake must re-enter the normal SesliTab verification pipeline.
+External intake must re-enter the normal SesliTab validation pipeline.
 
 ```text
 Discovery
-  -> source selection
-  -> intake
+  -> source selection / external open
+  -> future safe intake when supported
   -> OMR / MusicXML processing
   -> structural + quality validation
-  -> teacher review/correction
-  -> exact teacher approval
-  -> secure sharing
-  -> student practice
+  -> PASS / REVIEW / BLOCK
 ```
 
-Discovery must not silently download, redistribute, republish or treat third-party copyrighted scores as SesliTab-owned content. Licence and source metadata must remain distinct from musical correctness evidence.
+Discovery must not silently download, redistribute, republish or treat third-party copyrighted scores as SesliTab-owned content. If a source cannot be safely imported/viewed, use **Kaynak Sitesinde Aç** instead of forcing an iframe/embed path.
 
-## 4. Input and OMR boundary
+## 5. Input and OMR boundary
 
 Current supported inputs:
 
@@ -93,9 +108,9 @@ The existing Audiveris provider/runtime, OMR worker/provider selection, Cloud OM
 
 OMR output is untrusted evidence. Valid XML is not proof of musical correctness.
 
-## 5. Canonical music core
+## 6. Canonical music core
 
-All student-facing musical projections must consume the same canonical note and timing data.
+All musical projections must consume the same canonical note and timing data.
 
 ```text
 MusicXML
@@ -106,80 +121,71 @@ MusicXML
   -> bounded projections
 ```
 
-The UI, TTS, playback, MIDI, Guitar TAB and violin systems must not independently invent pitch, duration, octave, voice, tie or measure semantics.
+The UI, renderer, TTS, playback, MIDI, Guitar TAB and violin systems must not independently invent pitch, duration, octave, voice, tie or measure semantics.
 
-## 6. Teacher Studio
+## 7. Teacher workspace and score-editor target
 
-Teacher Studio is the authority surface for supervised correction and approval.
+Current Package 8 provides immutable automatic/corrected revisions, bounded correction operations, exact-revision approval, history/undo and stale-edit conflict protection.
+
+Stage A simplifies the product presentation while preserving those contracts:
+
+- primary actions use **Düzeltmeyi Kaydet**, **Eseri Onayla**, **Geri Al**;
+- revision IDs, raw revision JSON and detailed history are not primary user tasks and are grouped under **Detaylar**;
+- audit actor input remains required by the current Package 8 contract and is not silently invented;
+- Stage A does not claim a visual note editor.
+
+Target score workflow:
 
 ```text
-Teacher Studio
-├── New work
-│   ├── PDF
-│   ├── MusicXML
-│   └── Guitar TAB
-├── Processing result
-├── Source / provenance view
-├── Quality warnings
-├── Score / text / TAB projections
-├── Correction
-├── Revision history / undo
-├── Exact-revision approval
-└── Share with student
+ESERİ AÇ
+  -> GÖRSEL NOTAYI GÖR
+  -> PROBLEMİ / ŞÜPHEYİ GÖR
+  -> ÖLÇÜ / NOTA SEÇ
+  -> BOUNDED DÜZELTME
+  -> KAYDET
+  -> REVALIDATE
+  -> RERENDER
+  -> GEREKİRSE ONAYLA
 ```
 
-The system must preserve distinct states:
+Detailed status and boundary decisions are recorded in `docs/teacher-score-editor-architecture.md`.
+
+## 8. Renderer boundary
+
+The current SesliTab score-view integration uses a pinned ST Score Rendering Layer runtime. Current verified behavior includes score rendering and canonical measure-cursor synchronization.
+
+Renderer authority is presentation-only.
+
+Current contract status:
+
+- measure cursor: implemented;
+- responsive product scaling: incomplete;
+- note hit-test / stable note selection identity: not yet established in SesliTab's verified contract;
+- quality overlay: not implemented;
+- note-level accessible selection: not implemented.
+
+If Stage C requires an ST Score Rendering Layer contract extension, that work must be fresh-read and separately reviewed before any cross-repository change. Stage A does not expand renderer semantics.
+
+## 9. Correction, revalidation and approval
 
 ```text
 AUTOMATIC SOURCE
       -> TEACHER-CORRECTED REVISION
       -> POST-CORRECTION REVALIDATION
-      -> TEACHER-APPROVED EXACT REVISION
+      -> OPTIONAL/REQUIRED APPROVAL ACCORDING TO PRODUCT ROUTE
 ```
 
-A later edit must not inherit an older approval automatically.
+Rules:
 
-## 7. Secure teacher-to-student sharing
+- the automatic source is immutable;
+- correction creates a new immutable revision;
+- a later correction cannot inherit an earlier approval;
+- teacher approval does not bypass structural quality failures;
+- exact approval and sharing authorization remain separate evidence.
 
-Package 12 remains the current application boundary.
+Corrected-revision revalidation is currently partial. T3 covers a bounded correction class. T4 structural/rhythmic revalidation is under separate review in open PR #138 and must not be treated as merged.
 
-```text
-approved exact revision
-  -> exact authorization binding            [T1 Completed]
-  -> exact-revision safety/quality gate      [T2 Completed]
-  -> post-correction revalidation            [T3 Completed]
-  -> authenticated recipient access          [later]
-  -> persistence                             [later]
-  -> network delivery                        [later]
-  -> Student Practice
-```
-
-No UI may treat T1, T2 or T3 metadata as proof that student payload delivery is already implemented.
-
-## 8. Student Practice
-
-Student Practice should expose learning actions rather than internal OMR/debug/provenance implementation detail.
-
-Target surface:
-
-```text
-Student Practice
-├── My works
-├── Open approved work
-├── Accessible score / note representation
-├── Guitar TAB where eligible
-├── Turkish rhythmic text
-├── TTS
-├── Web Audio playback
-├── selected-measure practice
-├── tempo / repetition controls
-├── MIDI where eligible
-└── Tuner
-```
-
-Only content that passes the applicable safety and exact-approval boundaries may be presented as trusted teacher-shared content.
-
-## 9. Guitar and violin engines
+## 10. Guitar TAB and violin authority
 
 ### Guitar
 
@@ -187,9 +193,59 @@ Package 9 is Completed. The advanced path supports quality-gated chords, simulta
 
 ### Violin
 
-Package 10 is Completed. The advanced path supports bounded first/second/third-position alternatives, string crossings, two-note double stops, simultaneous voices/staves, sustain locking and tie continuity. Generated positions remain explicit non-teacher evidence.
+Package 10 is Completed. The advanced path supports bounded positions, string crossings, two-note double stops, simultaneous voices/staves, sustain locking and tie continuity. Generated positions remain explicit non-teacher evidence.
 
-## 10. Accessible tuner
+Both consumers remain subordinate to canonical evidence and their quality gates. BLOCK must produce no definitive output.
+
+## 11. Review playback
+
+Definitive normal playback already follows the canonical/quality model. A distinct **İnceleme İçin Dinle** product route for REVIEW is not yet implemented.
+
+Future provisional playback must:
+
+- be permitted only when the underlying structure is safe enough to render/play;
+- be labelled **Doğrulanmamış önizleme**;
+- never bypass BLOCK;
+- reuse canonical timing/pitch authority rather than creating a separate musical truth.
+
+## 12. Secure teacher-to-student sharing
+
+Package 12 remains partial.
+
+```text
+exact teacher/revision evidence
+  -> exact authorization binding            [T1 Completed]
+  -> exact-revision safety/quality gate      [T2 Completed]
+  -> bounded corrected revalidation          [T3 Completed]
+  -> structural/rhythmic corrected gate      [T4 open PR #138; not merged]
+  -> authentication/persistence/delivery     [not implemented here]
+```
+
+No UI may claim that student payload delivery, authentication or persistence already exists.
+
+The new product policy allows a future safe Auto-Pass sharing route only if Package 12 is explicitly revised to authorize it. Existing approval-based sharing contracts must not be bypassed by UI code.
+
+## 13. Student Practice
+
+Target student surface:
+
+```text
+Student Practice
+├── approved/authorized work where applicable
+├── safe Auto-Pass work only if future sharing policy authorizes it
+├── accessible score/note representation
+├── Guitar TAB where eligible
+├── Turkish rhythmic text
+├── TTS
+├── playback / selected-measure practice
+├── tempo / repetition controls
+├── MIDI where eligible
+└── tuner
+```
+
+Current repository does not yet provide a complete account/persistence/delivery product.
+
+## 14. Accessible tuner
 
 Package 11 is Completed.
 
@@ -201,48 +257,33 @@ device microphone
   -> Pes / Çok yakın / Akortta / Tiz
 ```
 
-Microphone audio remains local and must not be uploaded, persisted or recorded by SesliTab.
+Microphone audio remains local and must not be uploaded, persisted or recorded by SesliTab. Stage K may compact the UI without changing this privacy boundary.
 
-## 11. Rhythm mode
+## 15. Rhythm mode
 
-Package 13 remains Not started. Simplified rhythm training should remain a bounded learning mode rather than a second music-semantic authority. It may consume verified musical timing or teacher-authored rhythm patterns but must not silently rewrite canonical score facts.
+Package 13 remains Not started. Simplified rhythm training must remain a bounded learning mode rather than a second music-semantic authority.
 
-## 12. Frontend architecture
+## 16. Frontend architecture
 
-The production frontend source of truth is the GitHub repository, not Bolt. Bolt may be used only as a disposable prototype/reference environment.
+The production frontend source of truth is this GitHub repository. Current framework direction remains Vite + browser technologies. Do not migrate to React, Next.js or another framework merely for UI work.
 
-Current framework direction remains Vite + browser technologies. Do not migrate to React, Next.js or another framework merely to begin UI architecture.
+Stage A deliberately uses a presentation-only layer over existing verified Package 8 behavior. Broader file/folder refactors remain out of scope unless separately reviewed.
 
-Target logical structure:
+## 17. Primary navigation policy
 
-```text
-src/
-├── ui/
-│   ├── app-shell/
-│   ├── discovery/
-│   ├── teacher/
-│   ├── student/
-│   ├── library/
-│   ├── rhythm/
-│   ├── tuner/
-│   ├── shared/
-│   └── accessibility/
-├── services/
-│   ├── api/
-│   ├── discovery/
-│   ├── omr/
-│   ├── audio/
-│   ├── speech/
-│   └── sharing/
-└── domain/
-    └── existing verified music/domain modules
-```
+Primary navigation should expose product tasks rather than implementation internals.
 
-This is a target UI architecture, not permission to refactor current verified domain modules without a bounded implementation package.
+Current Stage A shell exposes only implemented primary surfaces:
 
-## 13. Accessibility and mobile target
+- **Çalışma Alanı**
+- **Nota Ara**
+- **Akort**
 
-SesliTab should be mobile-first and progressively productised as an accessible PWA.
+Teacher correction remains reachable in the results/product workflow but is no longer a top-level technical shell item. `Eserlerim` is withheld until a real library/persistence surface exists.
+
+Technical output such as raw MusicXML, revision details and diagnostics may remain under **Detaylar** while backwards compatibility is preserved.
+
+## 18. Accessibility and mobile target
 
 Primary compatibility target:
 
@@ -252,58 +293,57 @@ Android / Chrome / TalkBack
 Desktop modern browsers / keyboard + screen reader
 ```
 
-Common requirements include:
+Requirements include:
 
-- semantic HTML and native controls where practical;
+- semantic HTML and native controls;
 - full keyboard operability;
 - visible focus;
-- low-vision responsive layouts;
-- large touch targets;
-- bounded and meaningful live-region announcements;
+- approximately 44px touch targets;
+- responsive low-vision layouts;
+- bounded live-region announcements;
 - Turkish TTS;
-- browser audio lifecycle handling;
-- microphone permission and privacy handling;
-- no semantic dependence on visual-only colour or position.
+- no color-only state;
+- score-specific controlled overflow rather than page-level horizontal overflow.
 
-Android/TalkBack is part of the product target. Device-level closure still belongs to later reviewed mobile-productisation work.
+Stage A adds basic teacher-form mobile bounds and 44px targets. Real iPhone/VoiceOver and Android/TalkBack closure remains pending device/browser verification.
 
-## 14. Deployment target
+## 19. Deployment target
 
-Near-term product deployment should keep the architecture simple:
+Near-term deployment remains:
 
 ```text
 GitHub
-  -> Vite/PWA frontend -> Render Static Site
-  -> Express/Docker API -> existing Render Web Service
-                         -> Audiveris
+  -> Vite frontend
+  -> existing Express/Docker API
+  -> existing Render/Audiveris boundary
 ```
 
-Future persistence and identity infrastructure must be introduced only after Package 12 contracts define their exact semantics. A managed database may later store accounts, library metadata, revisions and sharing state, but selecting an identity provider or database does not belong in current domain code by assumption.
+Stage A does not change deployment, Audiveris, Render, authentication or database infrastructure.
 
-## 15. Non-negotiable safety rules
+## 20. Non-negotiable safety rules
 
 - UI is not a musical semantic authority.
+- Renderer is not a musical semantic authority.
 - Discovery is not a verification authority.
 - Valid XML is not proof of musical correctness.
 - Never invent missing pitch, duration, octave, voice, tie or source evidence.
 - Preserve automatic, corrected and approved revisions separately.
-- Do not share unapproved or stale-approved content.
-- Do not make Package 12 T1/T2/T3 expose content they intentionally do not deliver.
+- A stale approval cannot transfer to a new revision.
+- Teacher approval cannot override structural BLOCK evidence.
+- Do not make Package 12 metadata claim payload delivery that is not implemented.
 - Do not silently change Audiveris/Render production boundaries.
 - Do not add external dependencies or identity semantics without explicit review.
 - Keep development bounded, reversible, tested and branch-based.
 
-## 16. Current implementation sequence
-
-The architecture does not replace the strict implementation order.
+## 21. Current implementation sequence
 
 ```text
-NOW: remaining Package 12 authenticated recipient access
-THEN: Package 12 persistence / delivery stages
-THEN: Package 13 simplified rhythm mode
-THEN: Package 14 iOS + Android + desktop accessibility/PWA closure
-SEPARATE REVIEWED PACKAGE: Discovery / Score Search
-UI ARCHITECTURE WORK: may define the accessible product shell without bypassing those domain/security prerequisites
+CURRENT UI WORK: Stage A — teacher UI/product shell simplification
+NEXT AFTER GREEN CI: Stage B — reproduce/stabilize score runtime + responsive scaling
+THEN: Stage C — measure/note selection contract (renderer fresh-read if required)
+THEN: Stage D–K in bounded PRs
+SHARING UI: only after existing Package 12 gates permit the exact route
+PACKAGE 12 T4: remains separate open PR #138 and is not folded into Stage A
 ```
 
-This document is the top-level product-architecture reference. Package-specific status and evidence remain authoritative in `docs/current-status.md` and `docs/package-status.md`.
+This document is the top-level product-architecture reference. Package-specific status remains authoritative in `docs/current-status.md`, `docs/package-status.md`, `docs/music-engine-architecture.md`, `docs/AI_CONTEXT.md` and `docs/teacher-score-editor-architecture.md`.
