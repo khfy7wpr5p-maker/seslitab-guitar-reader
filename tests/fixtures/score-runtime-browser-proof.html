@@ -7,7 +7,7 @@
 </head>
 <body>
   <div id="st-score-root"></div>
-  <div id="status" data-score-render-pass="false">PENDING</div>
+  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false">PENDING</div>
 
   <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
   <script type="importmap">
@@ -48,8 +48,8 @@
           throw new Error('runtime not ready')
         }
         const host = globalThis.__ST_SCORE_RENDER_HOST__
-        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function') {
-          throw new Error('ST runtime host missing')
+        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function') {
+          throw new Error('cursor-capable ST runtime host missing')
         }
         await host.renderMusicXml({
           ticket: '1',
@@ -65,11 +65,17 @@
           throw new Error('SVG evidence missing')
         }
         status.dataset.scoreRenderPass = 'true'
+
+        await host.moveCursor({ partId: 'P1', measureIndex: 0 })
+        status.dataset.scoreCursorPass = 'true'
+        status.dataset.cursorPartId = 'P1'
+        status.dataset.cursorMeasureIndex = '0'
         status.dataset.contractVersion = '0.2.0'
         status.textContent = 'PASS'
       } catch (error) {
         root.replaceChildren()
         status.dataset.scoreRenderPass = 'false'
+        status.dataset.scoreCursorPass = 'false'
         status.dataset.renderError = String(error?.message ?? error)
         status.textContent = 'FAIL'
       }
