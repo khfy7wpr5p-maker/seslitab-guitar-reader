@@ -1,16 +1,15 @@
 // Package 12-T2 — exact-revision safety/quality eligibility for sharing.
 //
-// T2 combines the explicit Package 12-T1 authorization boundary with the
-// existing Package 2D quality gate and Package 7C exact-array MusicXML source
-// provenance. It returns eligibility metadata only. It never returns revision
-// content, builds a student payload, authenticates identities, persists grants,
-// creates links/tokens, or performs network delivery.
+// T2 combines Package 12-T1 authorization with Package 2D quality gates and
+// Package 7C exact-array MusicXML provenance. Package 8 revisions are immutable
+// snapshots, so their `content` arrays are deliberately not treated as the
+// original exact arrays that own Package 2C/7C evidence. The caller must supply
+// the exact source NoteObject[] separately; T2 verifies that its deterministic
+// Package 8 snapshot matches the automatic revision before reading evidence.
 //
-// Important: Package 8 teacher corrections do not currently recompute source
-// verification metadata. Therefore T2 v1 deliberately supports quality
-// eligibility evidence only for AUTOMATIC revisions. A teacher-corrected
-// revision fails closed until a separately reviewed post-correction revalidation
-// contract exists; old automatic-source evidence must never be reused.
+// T2 returns eligibility metadata only. It never returns revision content,
+// builds a student payload, authenticates identities, persists grants, creates
+// links/tokens, or performs network delivery.
 
 import {
   QUALITY_GATE_DECISION,
@@ -26,6 +25,7 @@ import {
 } from './musicXmlSourceRegistry.js'
 import {
   TEACHER_REVISION_KIND,
+  createAutomaticRevision,
   isTeacherRevision,
 } from './teacherRevisionModel.js'
 import {
@@ -138,9 +138,35 @@ function fingerprintMusicXml(musicXml) {
   return `musicxml-fnv1a64-v1:${fnv1a64(text)}:${text.length}`
 }
 
-function isAcceptedPackage2cReport(report, revision) {
+function sourceNotesMatchAutomaticRevision(revision, sourceNotes) {
+  if (
+    revision.revisionKind !== TEACHER_REVISION_KIND.AUTOMATIC ||
+    !Array.isArray(sourceNotes)
+  ) {
+    return false
+  }
+
+  try {
+    const replay = createAutomaticRevision({
+      revisionId: revision.revisionId,
+      sourceId: revision.sourceId,
+      createdAt: revision.createdAt,
+      content: sourceNotes,
+    })
+
+    return (
+      replay.sourceRevisionId === revision.sourceRevisionId &&
+      replay.contentFingerprint === revision.contentFingerprint &&
+      replay.lineageFingerprint === revision.lineageFingerprint
+    )
+  } catch {
+    return false
+  }
+}
+
+function isAcceptedPackage2cReport(report, sourceNotes) {
   if (!isPlainObject(report) || !Object.isFrozen(report)) return false
-  if (!Array.isArray(revision.content)) return false
+  if (!Array.isArray(sourceNotes)) return false
 
   if (report.qualityState !== QUALITY_STATE.SOURCE_VERIFIED) return false
   if (report.structuralState !== QUALITY_STATE.STRUCTURALLY_VALID) return false
@@ -163,25 +189,25 @@ function isAcceptedPackage2cReport(report, revision) {
   if (!Array.isArray(report.findings) || !Object.isFrozen(report.findings)) return false
   if (report.summary.errors !== 0 || report.summary.warnings !== 0) return false
   if (report.summary.unverifiedNotes !== 0) return false
-  if (report.summary.verifiedNotes !== revision.content.length) return false
+  if (report.summary.verifiedNotes !== sourceNotes.length) return false
   if (report.summary.totalFindings !== report.findings.length) return false
   if (report.findings.length !== 0) return false
 
   return true
 }
 
-function resolveExactSource(revision) {
-  if (!Array.isArray(revision.content)) return null
-  const source = resolveMusicXmlSourceForNotes(revision.content)
+function resolveExactSource(sourceNotes) {
+  if (!Array.isArray(sourceNotes)) return null
+  const source = resolveMusicXmlSourceForNotes(sourceNotes)
   if (!source || !Object.isFrozen(source)) return null
-  if (source.notes !== revision.content) return null
+  if (source.notes !== sourceNotes) return null
   if (source.provenance !== MUSICXML_SOURCE_PROVENANCE) return null
   if (typeof source.musicXml !== 'string' || source.musicXml.trim() === '') return null
   return source
 }
 
-function resolveLiveQuality(revision) {
-  if (!Array.isArray(revision.content)) {
+function resolveLiveQuality(sourceNotes) {
+  if (!Array.isArray(sourceNotes)) {
     return Object.freeze({
       source: null,
       report: null,
@@ -190,12 +216,21 @@ function resolveLiveQuality(revision) {
     })
   }
 
-  return Object.freeze({
-    source: resolveExactSource(revision),
-    report: getRegisteredQualityReport(revision.content),
-    ttsGate: resolveTtsQualityGate(revision.content),
-    playbackGate: resolvePlaybackQualityGate(revision.content),
-  })
+  try {
+    return Object.freeze({
+      source: resolveExactSource(sourceNotes),
+      report: getRegisteredQualityReport(sourceNotes),
+      ttsGate: resolveTtsQualityGate(sourceNotes),
+      playbackGate: resolvePlaybackQualityGate(sourceNotes),
+    })
+  } catch {
+    return Object.freeze({
+      source: resolveExactSource(sourceNotes),
+      report: getRegisteredQualityReport(sourceNotes),
+      ttsGate: null,
+      playbackGate: null,
+    })
+  }
 }
 
 function qualityEvidenceBindingMatches(evidence, revision) {
@@ -290,19 +325,17 @@ export function isTeacherShareQualityEvidenceRecord(value) {
 }
 
 /**
- * Create immutable quality eligibility evidence for one exact AUTOMATIC
- * revision. The exact revision content must already have both:
+ * Create immutable T2 evidence for one exact AUTOMATIC revision.
  *
- * - Package 7C exact-array MusicXML source provenance; and
- * - a genuine frozen Package 2C accepted quality report registered against the
- *   exact same array identity.
- *
- * TTS and playback Package 2D gates must both resolve ACCEPT. No report/source
- * is invented here and no payload is produced.
+ * `sourceNotes` must be the exact NoteObject[] that owns current Package 7C and
+ * Package 2C/2D evidence. T2 recreates the automatic Package 8 snapshot from
+ * that array and requires its content + lineage fingerprints to match the
+ * supplied revision before any eligibility evidence can be issued.
  */
 export function createTeacherShareQualityEvidence({
   evidenceId,
   revision,
+  sourceNotes,
   createdAt = null,
 } = {}) {
   const normalizedEvidenceId = normalizeRequiredString(evidenceId, 'evidenceId')
@@ -316,24 +349,27 @@ export function createTeacherShareQualityEvidence({
       'Teacher-corrected revisions require explicit post-correction revalidation before share quality evidence can be created.',
     )
   }
-  if (!Array.isArray(revision.content)) {
-    throw new TypeError('Share quality evidence requires revision.content to be a NoteObject array.')
+  if (!Array.isArray(sourceNotes)) {
+    throw new TypeError('sourceNotes must be the exact source NoteObject array.')
+  }
+  if (!sourceNotesMatchAutomaticRevision(revision, sourceNotes)) {
+    throw new Error('Exact source NoteObject array does not match the automatic revision snapshot.')
   }
 
-  const live = resolveLiveQuality(revision)
+  const live = resolveLiveQuality(sourceNotes)
   if (!live.source) {
     throw new Error('Exact-array MusicXML source evidence is required for share quality eligibility.')
   }
-  if (!isAcceptedPackage2cReport(live.report, revision)) {
-    throw new Error('A genuine accepted Package 2C report is required for the exact revision array.')
+  if (!isAcceptedPackage2cReport(live.report, sourceNotes)) {
+    throw new Error('A genuine accepted Package 2C report is required for the exact source array.')
   }
   if (
-    live.ttsGate.decision !== QUALITY_GATE_DECISION.ACCEPT ||
-    live.playbackGate.decision !== QUALITY_GATE_DECISION.ACCEPT ||
-    live.ttsGate.reason !== QUALITY_GATE_REASON.ACCEPT_VERIFIED ||
-    live.playbackGate.reason !== QUALITY_GATE_REASON.ACCEPT_VERIFIED
+    live.ttsGate?.decision !== QUALITY_GATE_DECISION.ACCEPT ||
+    live.playbackGate?.decision !== QUALITY_GATE_DECISION.ACCEPT ||
+    live.ttsGate?.reason !== QUALITY_GATE_REASON.ACCEPT_VERIFIED ||
+    live.playbackGate?.reason !== QUALITY_GATE_REASON.ACCEPT_VERIFIED
   ) {
-    throw new Error('TTS and playback quality gates must both ACCEPT the exact revision.')
+    throw new Error('TTS and playback quality gates must both ACCEPT the exact source array.')
   }
 
   return Object.freeze({
@@ -361,14 +397,14 @@ export function createTeacherShareQualityEvidence({
 
 /**
  * Evaluate whether one exact T1 authorization also satisfies T2 quality/safety
- * eligibility. This function returns metadata only and never exposes revision
- * content or student payload bytes.
+ * eligibility. This returns metadata only; no student payload bytes are exposed.
  */
 export function evaluateTeacherShareEligibility({
   authorization,
   revision,
   approval,
   recipientId,
+  sourceNotes = null,
   qualityEvidence = null,
   revocation = null,
 } = {}) {
@@ -451,7 +487,26 @@ export function evaluateTeacherShareEligibility({
     })
   }
 
-  const live = resolveLiveQuality(revision)
+  if (!Array.isArray(sourceNotes)) {
+    return result({
+      status: TEACHER_SHARE_ELIGIBILITY_STATUS.SOURCE_EVIDENCE_MISSING,
+      authorizationApplicability,
+      revision,
+      recipientId: normalizedRecipientId,
+      qualityEvidenceId: qualityEvidence.evidenceId,
+    })
+  }
+  if (!sourceNotesMatchAutomaticRevision(revision, sourceNotes)) {
+    return result({
+      status: TEACHER_SHARE_ELIGIBILITY_STATUS.SOURCE_EVIDENCE_STALE,
+      authorizationApplicability,
+      revision,
+      recipientId: normalizedRecipientId,
+      qualityEvidenceId: qualityEvidence.evidenceId,
+    })
+  }
+
+  const live = resolveLiveQuality(sourceNotes)
   if (!live.source) {
     return result({
       status: TEACHER_SHARE_ELIGIBILITY_STATUS.SOURCE_EVIDENCE_MISSING,
@@ -506,7 +561,7 @@ export function evaluateTeacherShareEligibility({
       playbackGate: live.playbackGate,
     })
   }
-  if (!isAcceptedPackage2cReport(live.report, revision)) {
+  if (!isAcceptedPackage2cReport(live.report, sourceNotes)) {
     return result({
       status: TEACHER_SHARE_ELIGIBILITY_STATUS.QUALITY_EVIDENCE_INVALID,
       authorizationApplicability,
