@@ -1,15 +1,15 @@
-// Package 4F — accessible quality-gated Guitar TAB result panel.
+// Package 4F + Package 9 — accessible quality-gated Guitar TAB result panel.
 //
 // The UI consumes the exact NoteObject[] reference already published by the
 // Package 3 Rhythmic HTML handoff. It never clones, reparses, or promotes note
-// data. Only the Package 4E `rendered` state may expose generated TAB text.
+// data. Only a definitive quality-gated consumer result may expose TAB text.
 
 import {
   getPackage3MeasureSnapshot,
   subscribePackage3Measures,
 } from '../package3MeasureBridge.js'
 import {
-  buildQualityGatedBasicGuitarTab,
+  buildQualityGatedGuitarTab,
   GUITAR_TAB_CONSUMER_STATE,
 } from './services/guitarTabConsumer.js'
 
@@ -25,20 +25,22 @@ export const GUITAR_TAB_UI_STATE = Object.freeze({
 export const GUITAR_TAB_UI_MESSAGE = Object.freeze({
   EMPTY: 'Gitar TAB için nota verisi bulunamadı.',
   RENDERED: 'Kalite kontrolünden geçen temel gitar TAB hazır.',
+  ADVANCED_RENDERED: 'Kalite kontrolünden geçen gelişmiş gitar TAB hazır.',
   REVIEW_REQUIRED: 'Bu nota verisi inceleme gerektiriyor. Gitar TAB oluşturulmadı.',
   BLOCKED: 'Nota verisi kalite kontrolünden geçmedi. Gitar TAB oluşturulmadı.',
-  NOT_AVAILABLE: 'Bu müzik temel tek sesli gitar TAB kapsamının dışında. Kısmi veya tahmini TAB üretilmedi.',
+  NOT_AVAILABLE: 'Bu müzik güvenli gitar TAB çözücüsünün mevcut kapsamının dışında. Kısmi veya tahmini TAB üretilmedi.',
   INVALID: 'Gitar TAB güvenli biçimde oluşturulamadı. Tahmini çıktı gösterilmedi.',
 })
 
 const rootSubscriptions = new WeakMap()
 const existingTabBindings = new WeakSet()
 
-function freezeModel(state, status, text = '') {
+function freezeModel(state, status, text = '', mode = null) {
   return Object.freeze({
     state,
     status,
     text,
+    mode,
     rendered: state === GUITAR_TAB_UI_STATE.RENDERED,
   })
 }
@@ -51,8 +53,11 @@ export function buildGuitarTabUiModel(notes, adapters = {}) {
     )
   }
 
-  const buildConsumer = adapters.buildQualityGatedBasicGuitarTab
-    ?? buildQualityGatedBasicGuitarTab
+  // Keep the Package 4F adapter name as a backwards-compatible test/host seam,
+  // while production now defaults to the Package 9 basic->advanced consumer.
+  const buildConsumer = adapters.buildQualityGatedGuitarTab
+    ?? adapters.buildQualityGatedBasicGuitarTab
+    ?? buildQualityGatedGuitarTab
 
   let result
   try {
@@ -71,10 +76,12 @@ export function buildGuitarTabUiModel(notes, adapters = {}) {
     typeof result.text === 'string' &&
     result.text.trim().length > 0
   ) {
+    const advanced = result.mode === 'advanced'
     return freezeModel(
       GUITAR_TAB_UI_STATE.RENDERED,
-      GUITAR_TAB_UI_MESSAGE.RENDERED,
+      advanced ? GUITAR_TAB_UI_MESSAGE.ADVANCED_RENDERED : GUITAR_TAB_UI_MESSAGE.RENDERED,
       result.text,
+      advanced ? 'advanced' : 'basic',
     )
   }
 
@@ -167,7 +174,7 @@ export function ensureGuitarTabPanel(root) {
 
   const heading = root.createElement('h3')
   heading.id = 'guitar-tab-heading'
-  heading.textContent = 'Temel Gitar TAB'
+  heading.textContent = 'Gitar TAB'
 
   const status = root.createElement('div')
   status.id = 'guitar-tab-status'
@@ -179,6 +186,8 @@ export function ensureGuitarTabPanel(root) {
   output.id = 'guitar-tab-output'
   output.className = 'rhythmic-text guitar-tab-output'
   output.hidden = true
+  // Preserve the original accessible label for backwards compatibility. The
+  // live status announces when the output came from the advanced solver.
   output.setAttribute('aria-label', 'Oluşturulan temel gitar TAB')
   output.setAttribute('tabindex', '0')
 
@@ -217,6 +226,7 @@ export function renderGuitarTabPanel(root, notes, adapters = {}) {
   output.hidden = !model.rendered
   status.textContent = model.status
   panel.setAttribute('data-guitar-tab-state', model.state)
+  panel.setAttribute('data-guitar-tab-mode', model.mode ?? 'none')
   return model
 }
 
@@ -231,8 +241,6 @@ export function initPackage4Ui(root = document, adapters = {}) {
   })
   rootSubscriptions.set(root, unsubscribe)
 
-  // Render synchronously even if a caller initializes after notes were already
-  // published. The exact published array reference is preserved.
   const current = getPackage3MeasureSnapshot()
   renderGuitarTabPanel(root, current.notes, adapters)
   return true
