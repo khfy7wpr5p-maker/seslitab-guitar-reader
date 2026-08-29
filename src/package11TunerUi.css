@@ -1,0 +1,137 @@
+.tuner-card {
+  border: 2px solid var(--border-color, #d1d5db);
+}
+
+.tuner-header {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.tuner-subtitle {
+  margin: 0.35rem 0 0;
+  max-width: 62rem;
+}
+
+.tuner-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tuner-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.tuner-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.tuner-calibration {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.tuner-reference-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+#tuner-reference-a4 {
+  width: 7rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  border: 2px solid var(--border-color, #9ca3af);
+  border-radius: 0.5rem;
+  background: var(--card-bg, #fff);
+  color: inherit;
+}
+
+.tuner-display {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  border: 2px solid currentColor;
+  border-radius: 0.85rem;
+  text-align: center;
+}
+
+.tuner-display[data-state='in-tune'] {
+  border-width: 4px;
+}
+
+.tuner-note {
+  font-size: clamp(3rem, 9vw, 6rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.tuner-octave,
+.tuner-direction {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.tuner-direction {
+  min-height: 1.5em;
+}
+
+.tuner-readout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tuner-meter {
+  width: min(100%, 38rem);
+  height: 1.5rem;
+}
+
+.tuner-scale {
+  width: min(100%, 38rem);
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.tuner-help,
+.tuner-status {
+  margin: 0;
+}
+
+.tuner-card :is(button, input):focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .tuner-controls {
+    display: grid;
+  }
+
+  .tuner-controls .btn,
+  .tuner-calibration,
+  #tuner-reference-a4 {
+    width: 100%;
+  }
+
+  .tuner-reference-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+}
