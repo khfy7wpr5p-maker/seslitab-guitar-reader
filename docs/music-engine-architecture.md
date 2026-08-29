@@ -1,25 +1,32 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 3.6.0  
+**Belge sürümü:** 3.7.0  
 **Güncelleme tarihi:** 2026-08-29  
-**Package 8B-T6 verified implementation main:** `eb711fa0483b87d841b4381e242b4d19ae95d189`  
-**Exact-main CI:** #308 / run `33251255425` — SUCCESS  
-**Durum:** Package 0–8 Completed; Package 8B Partially implemented; 8B-T1 through 8B-T6 Completed.
+**Güncel ürün baseline:** protected `main` `139963335243085877d1d003b56e6a2dc3aada50`  
+**Güncel ürün durumu:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T2 Completed; Package 12-T3 next.  
+**8B research state:** Partially implemented; T1–T6 engineering gates Completed, genuine admitted/training evidence still absent.
+
+> Bu belge müzik/OMR domain mimarisini tanımlar. Üst seviye ürün, Discovery, Teacher Studio, Student Practice, PWA ve deployment haritası için `docs/product-architecture.md` esas alınır. Güncel uygulama durumu için `docs/current-status.md` ve `docs/package-status.md` yetkilidir.
 
 ## 1. Değişmez ürün ilkesi
 
 SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Yapısal geçerlilik, kaynak doğrulama, kalite `ACCEPT`, öğretmen düzeltmesi, öğretmen onayı, Audiveris-training onayı, research-sample onayı, native-archive kabulü ve öğrenci paylaşım yetkisi ayrı katmanlardır.
 
+UI, Discovery veya renderer müzikal semantik otorite değildir. Dışarıdan bulunan bir kaynak, yalnızca bulunmuş olması nedeniyle doğrulanmış ya da öğretmen-onaylı sayılamaz.
+
 ## 2. Ana veri akışı
 
 ```text
+Discovery / direct input
+  -> PDF / MusicXML / Guitar TAB intake
+
 PDF
   -> mevcut Cloud OMR Gateway
   -> mevcut Audiveris provider/runtime
   -> MusicXML
   -> canonical NoteObject[]
   -> structural validation + quality gate
-  -> rhythmic text/HTML | TTS/playback | MIDI | Basic Guitar TAB | Basic Violin
+  -> rhythmic text/HTML | TTS/playback | MIDI | Guitar TAB | Violin
 
 Package 8 teacher layer — Completed
   -> immutable revision
@@ -28,6 +35,13 @@ Package 8 teacher layer — Completed
   -> lossless history/undo
   -> optimistic concurrency
   -> accessible teacher UI
+
+Package 12 sharing layer — Partially implemented
+  -> T1 exact share authorization — Completed
+  -> T2 exact-revision safety/quality eligibility — Completed
+  -> T3 post-correction revalidation/provenance — next
+  -> authenticated recipient access — later
+  -> persistence / network delivery — later
 
 Package 8B experimental Audiveris evidence
   -> T1 strict trainable-candidate contract
@@ -53,13 +67,45 @@ Package 8B experimental Audiveris evidence
 
 No T3/T4/T5/T6 record bypasses T1/T2. No Package 8B state through T6 authorizes production model replacement.
 
-## 3. Package 8B-T1 through T5
+## 3. Canonical music authority boundary
+
+All student-facing musical projections must consume the same canonical note/timing authority. UI, TTS, playback, MIDI, Guitar TAB, violin guidance and future rhythm projections must not independently invent pitch, duration, octave, voice, tie or measure identity.
+
+```text
+MusicXML
+  -> parser
+  -> structural/rhythmic validation
+  -> canonical NoteObject[] / timing model
+  -> provenance + quality gates
+  -> bounded projections
+```
+
+Valid XML remains structural evidence only and is not proof of musical correctness.
+
+## 4. Teacher revision and sharing boundary
+
+Automatic source, teacher-corrected revision and teacher-approved exact revision remain distinct states.
+
+```text
+AUTOMATIC SOURCE
+  -> TEACHER-CORRECTED REVISION
+  -> TEACHER-APPROVED EXACT REVISION
+  -> SHARE AUTHORIZATION
+  -> QUALITY/PROVENANCE ELIGIBILITY
+  -> STUDENT DELIVERY (later)
+```
+
+A later correction must not inherit an older approval, authorization or stale automatic-source quality evidence.
+
+Package 12-T1 and T2 do not expose revision payload content, create public links/tokens, authenticate recipients, persist sharing grants or perform actual network delivery. Those remain later reviewed stages.
+
+## 5. Package 8B-T1 through T5
 
 T1 remains the strict production-oriented evidence contract and keeps exact `.omr` evidence mandatory for a genuine T1 trainable sample. T2 verifies supplied bytes/path/digest. T3 maps only five accidental classes and keeps its evaluation page-disjoint only. T4 adds the distinct research approval scope `audiveris_classifier_research_sample` and admits only non-commercial research intent with complete exact per-sample approval. T5 requires exact admitted-sample identity, raw mask evidence matching the T3 SHA-256 and explicit Audiveris `interline` before producing a serializer-ready staging manifest.
 
 Current real population remains 2,714 mapped samples, 0 exact T4 approvals, 0 T4 admitted samples and 0 T5 serializer-ready real samples.
 
-## 4. Package 8B-T6 architecture — COMPLETED
+## 6. Package 8B-T6 architecture — COMPLETED
 
 ### Pinned upstream requirement
 
@@ -153,15 +199,39 @@ The executable serializer and acceptance gate are verified with bounded evidence
 - expected-head-locked squash merge `eb711fa0483b87d841b4381e242b4d19ae95d189`;
 - exact-main CI #308 / run `33251255425`: **1315/1315 PASS**, 232 suites, 0 vulnerabilities, build PASS, real-browser score render + cursor proof PASS.
 
-## 5. Continuing Package 8B boundary
+## 7. Package 8B continuing boundary
 
 Package 8B remains **Partially implemented**. T6 closes the serializer/acceptance engineering contract but no real Package 8B record currently reaches T5 serializer-ready state because exact T4 approvals remain 0.
 
-The next evidence-supported boundary is real teacher/research evidence acquisition and exact T4/T5 admission. Only after genuine real samples pass T4/T5 may T6 create a real archive and bind a real pinned-Audiveris acceptance receipt.
+The next evidence-supported 8B boundary is real teacher/research evidence acquisition and exact T4/T5 admission. Only after genuine real samples pass T4/T5 may T6 create a real archive and bind a real pinned-Audiveris acceptance receipt.
 
-Classifier training, evaluation and production-model adoption remain separate later gates. Do not invent a new substage to bypass missing evidence. Package 9 remains sequentially blocked while Package 8B is incomplete unless the roadmap is explicitly changed.
+Classifier training, evaluation and production-model adoption remain separate later gates. Do not invent a new substage to bypass missing evidence. Package 8B is deferred research and does not currently block the approved application roadmap.
 
-## 6. Protected production boundary
+## 8. Discovery boundary
+
+Discovery / Score Search is a product-architecture module, not part of the canonical music engine and not currently an implemented package.
+
+It may locate candidate PDF/MusicXML sources, but any external source must re-enter normal intake and verification. Discovery may not:
+
+- mark a source as musically verified;
+- generate teacher approval;
+- bypass OMR/provenance/quality gates;
+- silently redistribute copyrighted material;
+- become a second canonical music authority.
+
+## 9. Mobile / PWA boundary
+
+The music engine remains platform-independent domain logic. Mobile productisation should expose it through the browser/PWA application without moving musical authority into device-specific UI code.
+
+Primary target environments are:
+
+- iPhone / Safari / VoiceOver;
+- Android / Chrome / TalkBack;
+- modern desktop browsers.
+
+Device-level microphone, TTS and audio lifecycle behavior belongs to the application/accessibility layer; the Package 11 tuner keeps microphone audio local-only.
+
+## 10. Protected production boundary
 
 Without separate explicit authorization, keep unchanged:
 
@@ -174,11 +244,15 @@ Without separate explicit authorization, keep unchanged:
 - production model selection/replacement;
 - CI workflow/dependencies.
 
-## 7. Security dependency summary
+## 11. Security dependency summary
 
 | Feature | Evidence gate | Authorization |
 |---|---|---|
 | Package 8 teacher revision | Exact revision/history | Exact teacher approval only |
+| Package 12-T1 sharing | Exact revision + approval + recipient binding | Exact share authorization only; no payload |
+| Package 12-T2 eligibility | Exact source-array + provenance + 2C/2D evidence | Eligibility metadata only; no delivery |
+| Package 12-T3 | Fresh post-correction provenance/quality | Next implementation boundary |
+| Discovery | Source/licence metadata only | No musical or student-delivery authority |
 | 8B-T1 candidate | Strict T1 evidence including `.omr` | Exact T1 training approval |
 | 8B-T2 readiness | Exact supplied bytes/path/hash | No approval inferred |
 | 8B-T3 mapping | Exact annotation/bbox/mask hash | No training authorization |
@@ -188,3 +262,16 @@ Without separate explicit authorization, keep unchanged:
 | 8B-T6 pinned acceptance | Validated build + exact revision/archive/count/API receipt | Repository acceptance only; no training authorization |
 | Actual Audiveris training | Not executed | Separate explicit gate required |
 | Production model replacement | Not implemented | Measured comparison + separate explicit authorization required |
+
+## 12. Current next step
+
+The current application sequence remains:
+
+```text
+Package 12-T3
+  -> remaining Package 12 authenticated access / persistence / delivery stages
+  -> Package 13 simplified rhythm mode
+  -> Package 14 iOS + Android + desktop accessibility/PWA closure
+```
+
+Discovery / Score Search requires a separate reviewed package and must not bypass that active sequence unless the roadmap is explicitly changed.
