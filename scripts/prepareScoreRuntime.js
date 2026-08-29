@@ -62,7 +62,10 @@ export async function prepareScoreRuntime() {
     run('git', ['remote', 'add', 'origin', SCORE_RENDERER_REPOSITORY], rendererRoot)
     run('git', ['fetch', '--depth=1', 'origin', SCORE_RENDERER_REVISION], rendererRoot)
     run('git', ['checkout', '--detach', 'FETCH_HEAD'], rendererRoot)
-    run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], rendererRoot)
+    // The reviewed renderer revision intentionally has no package-lock.json.
+    // package.json pins every external dependency exactly, so use npm install
+    // with lockfile generation disabled while keeping lifecycle scripts disabled.
+    run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], rendererRoot)
     run('npm', ['run', 'export:workstation-runtime'], rendererRoot, {
       ...process.env,
       ST_SCORE_RENDERER_SOURCE_REVISION: SCORE_RENDERER_REVISION,
