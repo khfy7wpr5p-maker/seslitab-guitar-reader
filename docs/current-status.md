@@ -45,7 +45,7 @@ For qualifying evidence T6 can deterministically construct Audiveris-native `sam
 
 Archive construction and acceptance are separate states. A built archive is only `archive_built_pending_pinned_acceptance`. Acceptance requires a receipt from an exact, clean checkout at the pinned Audiveris revision using the real `SampleRepository.getInstance(Path, true)` API and an exact loaded-sample-count check.
 
-T6 binds acceptance to the exact archive SHA-256, T5 staging-manifest fingerprint, pinned revision and sample count. It rejects revision drift, dirty pinned checkouts, archive mutation, path/API mismatch, count mismatch, malformed receipts and authorization escalation.
+The acceptance report preserves the validated T5 staging-manifest fingerprint from the build. The external probe receipt must match the exact archive SHA-256, pinned revision, probe API identity and sample count. T6 rejects revision drift, dirty pinned checkouts, archive mutation, probe/API mismatch, count mismatch, malformed receipts and authorization escalation.
 
 Even an accepted archive keeps:
 
