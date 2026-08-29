@@ -15,6 +15,7 @@ export const STAGE_A_TEACHER_COPY = Object.freeze({
   actorHelp: 'Bu ad yalnız denetim kaydı içindir; kimlik doğrulama değildir.',
   start: 'Düzenlemeye Başla',
   correctionLegend: 'Düzeltme',
+  correctionHelp: 'Yalnız desteklenen alan değişir. Sistem eksik veya bağlı müzik verisini tahmin etmez. Kaydın ardından yeniden doğrulama gerekir.',
   correctionSave: 'Düzeltmeyi Kaydet',
   approve: 'Eseri Onayla',
   details: 'Detaylar',
@@ -64,6 +65,12 @@ export function simplifyTeacherApprovalSummary(text) {
 
 export function simplifyTeacherStatus(text) {
   const value = typeof text === 'string' ? text : ''
+  if (/Öğretmen çalışma alanı için önce bir eser analiz edin/i.test(value)) {
+    return 'Başlamak için önce bir eser açın.'
+  }
+  if (/^Kaynak hazır:.*Çalışma alanını başlatabilirsiniz/i.test(value)) {
+    return 'Eser hazır. Düzenlemeye başlayabilirsiniz.'
+  }
   if (/Öğretmen kayıt etiketi gereklidir/i.test(value)) return 'Kayıt adı gereklidir.'
   if (/Öğretmen çalışma alanı oluşturuldu/i.test(value)) {
     return 'Düzenleme alanı hazır. Otomatik kaynak korunuyor.'
@@ -131,8 +138,10 @@ export function applyStageATeacherPresentation(root = document) {
   setText(root.getElementById('teacher-start-btn'), STAGE_A_TEACHER_COPY.start)
 
   setText(findLegend(root.getElementById('teacher-correction-group')), STAGE_A_TEACHER_COPY.correctionLegend)
+  setText(root.getElementById('teacher-correction-help'), STAGE_A_TEACHER_COPY.correctionHelp)
   setText(root.getElementById('teacher-correction-btn'), STAGE_A_TEACHER_COPY.correctionSave)
   setText(root.getElementById('teacher-approve-btn'), STAGE_A_TEACHER_COPY.approve)
+  root.getElementById('teacher-approval-group')?.setAttribute?.('aria-label', 'Eser onayı')
 
   setText(findLegend(root.getElementById('teacher-undo-group')), STAGE_A_TEACHER_COPY.undoLegend)
   setText(findLabel(root, 'teacher-undo-select'), STAGE_A_TEACHER_COPY.undoLabel)
