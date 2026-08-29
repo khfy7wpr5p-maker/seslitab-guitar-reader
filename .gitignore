@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Generated ST score renderer assets
+.score-runtime-build/
+public/st-score-runtime/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
