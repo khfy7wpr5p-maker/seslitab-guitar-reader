@@ -36,6 +36,7 @@ const ALLOWED_SHAPES = Object.freeze(new Set([
   'SHARP', 'FLAT', 'NATURAL', 'DOUBLE_SHARP', 'DOUBLE_FLAT',
 ]))
 const SHA256_RE = /^[0-9a-f]{64}$/u
+const GIT_SHA1_RE = /^[0-9a-f]{40}$/u
 const MASK_TOKEN_RE = /^([01]):([1-9][0-9]*)$/u
 const FIXED_ZIP_DATE = new Date('2000-01-01T00:00:00.000Z')
 const CONTAINER_PATH = 'META-INF/container.xml'
@@ -115,6 +116,12 @@ function requiredString(value, fieldName, maxLength = 256) {
 function requiredSha256(value, fieldName) {
   const normalized = requiredString(value, fieldName, 64).toLowerCase()
   if (!SHA256_RE.test(normalized)) throw new TypeError(`${fieldName} must be a SHA-256 digest.`)
+  return normalized
+}
+
+function requiredGitSha1(value, fieldName) {
+  const normalized = requiredString(value, fieldName, 40).toLowerCase()
+  if (!GIT_SHA1_RE.test(normalized)) throw new TypeError(`${fieldName} must be a Git SHA-1 revision.`)
   return normalized
 }
 
@@ -239,15 +246,15 @@ function renderContainerXml(sheetNames) {
   return lines.join('\n')
 }
 
-function blockedBuildReport(stagingReport) {
+function blockedBuildReport(validStagingReport = null) {
   return Object.freeze({
     schemaVersion: AUDIVERIS_PINNED_NATIVE_SERIALIZER_SCHEMA_VERSION,
     status: AUDIVERIS_PINNED_NATIVE_SERIALIZER_STATUS.BLOCKED_STAGING_INPUT,
     upstreamRevision: AUDIVERIS_PINNED_REVISION,
-    stagingManifestFingerprint: stagingReport?.manifestFingerprint ?? null,
+    stagingManifestFingerprint: validStagingReport?.manifestFingerprint ?? null,
     archiveSha256: null,
     archiveByteLength: 0,
-    sampleCount: stagingReport?.mappedSampleCount ?? 0,
+    sampleCount: validStagingReport?.mappedSampleCount ?? 0,
     sheetCount: 0,
     samplesZipBuilt: false,
     pinnedAudiverisAccepted: false,
@@ -259,8 +266,11 @@ function blockedBuildReport(stagingReport) {
 }
 
 export async function buildMuscimaAudiverisNativeSamplesArchive(stagingReport) {
+  const validStaging = isMuscimaAudiverisNativeStagingReport(stagingReport)
+  if (!validStaging) {
+    return Object.freeze({ report: blockedBuildReport(), archiveBytes: null })
+  }
   if (
-    !isMuscimaAudiverisNativeStagingReport(stagingReport) ||
     stagingReport.status !== MUSCIMA_NATIVE_STAGING_STATUS.READY_FOR_AUDIVERIS_NATIVE_SERIALIZER ||
     stagingReport.manifest === null
   ) {
@@ -334,7 +344,7 @@ export function bindPinnedAudiverisAcceptance(buildResult, probeEvidence) {
   assertSupportedInputObject(probeEvidence, ACCEPTANCE_INPUT_FIELDS, 'acceptance evidence')
   const probeKind = requiredString(probeEvidence.probeKind, 'acceptanceEvidence.probeKind', 128)
   const probeApi = requiredString(probeEvidence.probeApi, 'acceptanceEvidence.probeApi', 128)
-  const upstreamRevision = requiredSha256(probeEvidence.upstreamRevision, 'acceptanceEvidence.upstreamRevision')
+  const upstreamRevision = requiredGitSha1(probeEvidence.upstreamRevision, 'acceptanceEvidence.upstreamRevision')
   const archiveSha256 = requiredSha256(probeEvidence.archiveSha256, 'acceptanceEvidence.archiveSha256')
   if (probeKind !== AUDIVERIS_PINNED_ACCEPTANCE_PROBE.kind || probeApi !== AUDIVERIS_PINNED_ACCEPTANCE_PROBE.api) {
     throw new TypeError('acceptance evidence was not produced by the required SampleRepository probe contract.')
@@ -383,7 +393,14 @@ export function isPinnedAudiverisNativeArchiveBuild(value) {
     if (value.trainingExecuted !== false || value.productionAuthorized !== false || value.modelReplacementAuthorized !== false) return false
     if (!Array.isArray(value.blockers) || !Object.isFrozen(value.blockers)) return false
     if (value.status === AUDIVERIS_PINNED_NATIVE_SERIALIZER_STATUS.BLOCKED_STAGING_INPUT) {
-      return value.samplesZipBuilt === false && value.pinnedAudiverisAccepted === false && value.archiveSha256 === null && value.archiveByteLength === 0
+      return (
+        value.samplesZipBuilt === false && value.pinnedAudiverisAccepted === false &&
+        value.archiveSha256 === null && value.archiveByteLength === 0 &&
+        value.sheetCount === 0 && Number.isSafeInteger(value.sampleCount) && value.sampleCount >= 0 &&
+        (value.stagingManifestFingerprint === null || SHA256_RE.test(value.stagingManifestFingerprint)) &&
+        value.blockers.length === 1 &&
+        value.blockers[0] === AUDIVERIS_PINNED_NATIVE_SERIALIZER_BLOCKER.T5_SERIALIZER_READY_REPORT_REQUIRED
+      )
     }
     return (
       value.samplesZipBuilt === true && value.pinnedAudiverisAccepted === false &&
