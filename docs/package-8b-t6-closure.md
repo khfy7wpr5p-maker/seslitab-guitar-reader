@@ -34,8 +34,9 @@ Pinned repository acceptance is separate from serialization. The acceptance runn
 - `repo.isLoaded() == true`;
 - exact `getAllSamples().size()` match;
 - exact archive SHA-256;
-- exact T5 staging-manifest fingerprint;
 - expected probe API identity.
+
+The external receipt does not contain the T5 staging-manifest fingerprint. The acceptance binder first validates the exact archive build, which already binds that staging fingerprint, then verifies the receipt revision/archive/API/count fields and carries the build fingerprint into the final acceptance report.
 
 Revision drift, dirty worktree, changed archive bytes, failed load, count mismatch, wrong probe API, malformed receipt or authorization escalation fails closed.
 
@@ -71,7 +72,7 @@ T6 preserves these boundaries:
 - no T5-blocked record yields archive bytes;
 - identical valid input yields deterministic archive bytes;
 - archive mutation invalidates acceptance binding;
-- acceptance is tied to exact pinned revision, archive SHA-256, staging fingerprint and sample count;
+- the acceptance report is tied to the validated build plus exact pinned revision, archive SHA-256, probe API and sample count;
 - a dirty pinned checkout is rejected;
 - no trainer method is invoked;
 - no classifier evaluation is claimed;
