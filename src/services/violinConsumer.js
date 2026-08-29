@@ -1,8 +1,7 @@
-// Package 5E — production canonical Basic Violin consumer boundary.
+// Package 5E + Package 10 — production canonical Violin consumer boundary.
 //
-// This adapter is the only production entry point that may turn the exact
-// canonical NoteObject[] into generated basic first-position violin fingering.
-// Package 2D ACCEPT is required before Package 5C projection may run.
+// The exact canonical NoteObject[] must pass Package 2D VIOLIN quality gating
+// before either the Basic Violin or generated Advanced Violin solver may run.
 
 import {
   QUALITY_GATE_DECISION,
@@ -12,6 +11,10 @@ import {
   BASIC_VIOLIN_PROJECTION_STATE,
   projectCanonicalNotesToBasicViolin,
 } from '../../violinBasicProjection.js'
+import {
+  ADVANCED_VIOLIN_PROJECTION_STATE,
+  projectCanonicalNotesToAdvancedViolin,
+} from '../../violinAdvancedProjection.js'
 
 export const VIOLIN_CONSUMER_STATE = Object.freeze({
   PROJECTED: 'projected',
@@ -35,48 +38,38 @@ function terminalResult(state, reason, gate = null, projection = null) {
   })
 }
 
-/**
- * Build definitive basic first-position violin projection only after the exact
- * canonical array has passed Package 2D for the VIOLIN consumer.
- *
- * A quality-gate REVIEW/BLOCK produces no projection. A Package 5C string
- * crossing ambiguity remains REVIEW_REQUIRED even after gate ACCEPT and emits
- * no finalized measure. Advanced structures and out-of-range notes remain
- * unavailable for Basic Violin instead of being flattened or guessed.
- */
-export function buildQualityGatedBasicViolin(notes, options = {}) {
+function resolveGate(notes, options) {
   if (!Array.isArray(notes)) {
-    return terminalResult(
-      VIOLIN_CONSUMER_STATE.INVALID,
-      'canonical-note-array-required',
-    )
+    return { terminal: terminalResult(VIOLIN_CONSUMER_STATE.INVALID, 'canonical-note-array-required') }
   }
 
   let gate
   try {
     gate = resolveViolinQualityGate(notes, options)
   } catch {
-    return terminalResult(
-      VIOLIN_CONSUMER_STATE.INVALID,
-      'quality-gate-resolution-failed',
-    )
+    return { terminal: terminalResult(VIOLIN_CONSUMER_STATE.INVALID, 'quality-gate-resolution-failed') }
   }
 
   if (gate.decision === QUALITY_GATE_DECISION.REVIEW) {
-    return terminalResult(
-      VIOLIN_CONSUMER_STATE.REVIEW_REQUIRED,
-      gate.reason,
-      gate,
-    )
+    return { terminal: terminalResult(VIOLIN_CONSUMER_STATE.REVIEW_REQUIRED, gate.reason, gate) }
   }
 
   if (gate.decision !== QUALITY_GATE_DECISION.ACCEPT) {
-    return terminalResult(
-      VIOLIN_CONSUMER_STATE.BLOCKED,
-      gate.reason,
-      gate,
-    )
+    return { terminal: terminalResult(VIOLIN_CONSUMER_STATE.BLOCKED, gate.reason, gate) }
   }
+
+  return { gate }
+}
+
+/**
+ * Package 5E conservative basic first-position consumer. Kept unchanged as the
+ * public basic-only boundary so existing callers and pedagogical semantics do
+ * not silently widen.
+ */
+export function buildQualityGatedBasicViolin(notes, options = {}) {
+  const gateResult = resolveGate(notes, options)
+  if (gateResult.terminal) return gateResult.terminal
+  const gate = gateResult.gate
 
   const projection = projectCanonicalNotesToBasicViolin(notes)
 
@@ -120,5 +113,84 @@ export function buildQualityGatedBasicViolin(notes, options = {}) {
     measureCount: projection.measureCount,
     gate,
     projection,
+  })
+}
+
+/**
+ * Package 10 full Violin boundary.
+ *
+ * The conservative Package 5 path is always attempted first. Only when that
+ * path is review-required because of generated string-choice ambiguity, or
+ * unavailable because the structure/range needs advanced handling, does the
+ * bounded Package 10 solver run. A Package 2D REVIEW/BLOCK never reaches either
+ * solver.
+ *
+ * Advanced output is definitive only as generated output under its explicit
+ * policy. It is never teacher-approved, recovered source fingering or a claim
+ * of pedagogical optimum.
+ */
+export function buildQualityGatedViolin(notes, options = {}) {
+  const gateResult = resolveGate(notes, options)
+  if (gateResult.terminal) return gateResult.terminal
+  const gate = gateResult.gate
+
+  const basic = projectCanonicalNotesToBasicViolin(notes)
+  if (basic.state === BASIC_VIOLIN_PROJECTION_STATE.PROJECTED) {
+    return Object.freeze({
+      state: VIOLIN_CONSUMER_STATE.PROJECTED,
+      reason: null,
+      allowed: true,
+      definitive: true,
+      teacherApproved: false,
+      mode: 'basic',
+      noteCount: basic.noteCount,
+      measureCount: basic.measureCount,
+      gate,
+      projection: basic,
+    })
+  }
+
+  const advancedEligible = basic.state === BASIC_VIOLIN_PROJECTION_STATE.REVIEW_REQUIRED ||
+    basic.state === BASIC_VIOLIN_PROJECTION_STATE.ADVANCED_REQUIRED ||
+    basic.state === BASIC_VIOLIN_PROJECTION_STATE.OUT_OF_RANGE
+
+  if (!advancedEligible) {
+    return terminalResult(
+      VIOLIN_CONSUMER_STATE.INVALID,
+      basic.reason || 'basic-violin-projection-invalid',
+      gate,
+      basic,
+    )
+  }
+
+  const advanced = projectCanonicalNotesToAdvancedViolin(notes)
+  if (advanced.state === ADVANCED_VIOLIN_PROJECTION_STATE.UNPLAYABLE) {
+    return terminalResult(
+      VIOLIN_CONSUMER_STATE.NOT_AVAILABLE,
+      advanced.reason || 'advanced-violin-projection-not-available',
+      gate,
+      advanced,
+    )
+  }
+  if (advanced.state !== ADVANCED_VIOLIN_PROJECTION_STATE.PROJECTED) {
+    return terminalResult(
+      VIOLIN_CONSUMER_STATE.INVALID,
+      advanced.reason || 'advanced-violin-projection-invalid',
+      gate,
+      advanced,
+    )
+  }
+
+  return Object.freeze({
+    state: VIOLIN_CONSUMER_STATE.PROJECTED,
+    reason: null,
+    allowed: true,
+    definitive: true,
+    teacherApproved: false,
+    mode: 'advanced',
+    noteCount: advanced.noteCount,
+    measureCount: advanced.measureCount,
+    gate,
+    projection: advanced,
   })
 }
