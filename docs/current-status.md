@@ -1,16 +1,16 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected `main` implementation baseline: `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`  
-Latest exact-main implementation CI: **#338 / run `33260876272`, job `99122486469` — SUCCESS**  
-Current package state: **Package 0–11 Completed. Package 12 is Partially implemented with T1 and T2 Completed. Package 8B remains Partially implemented as deferred research.**
+Latest verified protected `main` implementation baseline: `fe940cd0b633055845e06504eeeb4287aed3f4d1`  
+Latest exact-main implementation CI: **#343 / run `33262154615`, job `99125825785` — SUCCESS**  
+Current package state: **Package 0–11 Completed. Package 12 is Partially implemented with T1, T2 and T3 Completed. Package 8B remains Partially implemented as deferred research.**
 
 ## Verified baseline
 
-Exact-main CI #338 checked out protected-main SHA `a5c2c2b9bd1a59898a74312270dc09766c6bad2e` and verified:
+Exact-main CI #343 checked out protected-main SHA `fe940cd0b633055845e06504eeeb4287aed3f4d1` and verified:
 
-- **1390 / 1390 tests PASS**;
-- **234 suites**;
+- **1406 / 1406 tests PASS**;
+- **235 suites**;
 - **0 failed / skipped / cancelled**;
 - **0 vulnerabilities**;
 - Vite production build **PASS**;
@@ -22,14 +22,7 @@ Exact-main CI #338 checked out protected-main SHA `a5c2c2b9bd1a59898a74312270dc0
 
 Status: **Completed.**
 
-Package 10 extends the exact-array Package 2D `VIOLIN` quality-gated path with bounded generated first/second/third-position alternatives, string-crossing choices, two-note double stops, simultaneous voices/staves, sustained-string locking and exact tie continuity. Generated positions remain explicit non-teacher evidence and unsupported/impossible structures fail closed with zero partial output.
-
-Evidence:
-
-- implementation PR **#124** merged;
-- protected-main implementation SHA `590abcaa523c9fc83dbf0f0483586a9fdf0d984c`;
-- exact-main CI **#324 — SUCCESS**;
-- **1340 / 1340 tests PASS**, 232 suites, 0 vulnerabilities, production build PASS, Chrome proof PASS.
+Package 10 provides bounded generated first/second/third-position violin alternatives, double stops, simultaneous voices/staves, sustained-string locking and exact tie continuity behind the shared quality gate. Implementation PR **#124** merged at `590abcaa523c9fc83dbf0f0483586a9fdf0d984c`; exact-main CI **#324 — SUCCESS**.
 
 Detailed contract: `docs/package-10-advanced-violin.md`.
 
@@ -37,30 +30,7 @@ Detailed contract: `docs/package-10-advanced-violin.md`.
 
 Status: **Completed.**
 
-Package 11 adds a browser-local, instrument-agnostic chromatic tuner covering all 12 equal-tempered pitch classes. It uses Web Audio microphone time-domain samples and a bounded YIN-style detector with RMS noise gating, confidence gating, parabolic lag refinement and stable same-note smoothing.
-
-Current tuner capabilities:
-
-- all 12 chromatic note classes with Turkish enharmonic naming;
-- note + octave, Hz and signed cent display;
-- explicit `Pes / Çok yakın / Akortta / Tiz` guidance;
-- ±2 cent in-tune threshold and ±5 cent near threshold;
-- A4 calibration **415.0–466.2 Hz**, default 440 Hz;
-- bounded live range **40–2000 Hz**;
-- responsive low-vision layout and keyboard-visible focus;
-- throttled screen-reader live announcements;
-- microphone audio remains local and is never uploaded, persisted or recorded by SesliTab;
-- microphone tracks are stopped on Stop, page exit and setup failure.
-
-Evidence:
-
-- implementation PR **#125** merged;
-- protected-main implementation SHA `160c3bcadfc634f7b1300627993e89ebda764576`;
-- exact-head CI **#325 — SUCCESS**;
-- exact-main CI **#326 / run `33258600115`, job `99116529789` — SUCCESS**;
-- **1352 / 1352 tests PASS**, 232 suites, 0 failed/skipped/cancelled;
-- **0 vulnerabilities**;
-- production build PASS and Chrome proof PASS.
+Package 11 provides a browser-local 12-note chromatic tuner with Hz/cents guidance, A4 calibration, accessible live status and local-only microphone processing. Implementation PR **#125** merged at `160c3bcadfc634f7b1300627993e89ebda764576`; exact-main CI **#326 — SUCCESS**.
 
 Detailed contract: `docs/package-11-chromatic-tuner.md`.
 
@@ -72,26 +42,14 @@ Status: **Partially implemented.**
 
 Status: **Completed.**
 
-T1 adds a pure immutable sharing-domain boundary that remains separate from Package 8 teacher approval. Explicit authorization is bound to:
-
-- one exact immutable teacher revision;
-- its exact Package 8 approval record;
-- one caller-supplied recipient identity;
-- one caller-supplied issuer identity and authorization ID.
-
-A later correction, undo-created revision, identical-content revision with different recursive lineage, another source, another approval record or another recipient does not inherit the authorization. Exact revocation is represented separately and fails closed as `REVOKED`.
+T1 separates explicit sharing authorization from Package 8 teacher approval. Authorization is bound to one exact immutable revision, its exact approval record and one caller-supplied recipient identity; later revisions, another approval, another recipient or exact revocation fail closed.
 
 Evidence:
 
 - implementation PR **#127** merged;
-- final PR head SHA `10c877ade4ced2a80b6dc102afd2285e114e6672`;
 - protected-main implementation SHA `8bb797ac8c8f01697669e875ecc6d7df13ea878f`;
 - exact-main CI **#330 / run `33259462116`, job `99118792913` — SUCCESS**;
-- **1369 / 1369 tests PASS**, 233 suites, 0 failed/skipped/cancelled;
-- **0 vulnerabilities**;
-- production build PASS and Chrome proof PASS.
-
-Important boundary: `AUTHORIZED_EXACT_BINDING` is not final student-delivery permission. T1 does not expose content, generate links/tokens/invite codes, authenticate users, persist authorization, add backend endpoints, send network requests or bypass quality/safety evidence.
+- **1369 / 1369 tests PASS**, 233 suites, 0 vulnerabilities, build PASS, Chrome proof PASS.
 
 Detailed contract: `docs/package-12-t1-share-authorization.md`.
 
@@ -99,11 +57,7 @@ Detailed contract: `docs/package-12-t1-share-authorization.md`.
 
 Status: **Completed.**
 
-T2 preserves the separation between immutable Package 8 revision snapshots and Package 7C/2D exact-array evidence. It requires the caller to supply the exact source `NoteObject[]`, deterministically reproduces the automatic revision fingerprint/lineage from that array, and only then accepts current Package 7C MusicXML provenance plus strict Package 2C/2D quality evidence.
-
-T2 live-rechecks source/report/gate state. Missing source evidence, source-array drift, replaced source evidence, missing/downgraded reports, cross-source quality evidence, stale authorization, recipient mismatch or revocation all fail closed. A result exposes eligibility metadata only and never revision content, MusicXML, payload bytes, links or tokens.
-
-Teacher-corrected revisions remain explicitly blocked as `corrected_revision_revalidation_required` until a separately reviewed post-correction revalidation/provenance contract exists.
+T2 preserves the distinction between immutable Package 8 snapshots and Package 7C/2D exact-array evidence. It requires the exact original `NoteObject[]`, reproduces the automatic revision fingerprint/lineage, and live-rechecks Package 7C source provenance plus strict Package 2C/2D quality evidence. Missing/stale source or report evidence, recipient mismatch and revocation fail closed.
 
 Evidence:
 
@@ -111,15 +65,38 @@ Evidence:
 - protected-main implementation SHA `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`;
 - implementation-branch CI **#337 — SUCCESS**;
 - exact-main CI **#338 / run `33260876272`, job `99122486469` — SUCCESS**;
-- **1390 / 1390 tests PASS**, 234 suites, 0 failed/skipped/cancelled;
-- **0 vulnerabilities**;
-- production build PASS and Chrome proof PASS.
+- **1390 / 1390 tests PASS**, 234 suites, 0 vulnerabilities, build PASS, Chrome proof PASS.
 
 Detailed contract: `docs/package-12-t2-share-quality-eligibility.md`.
 
+### T3 — Bounded Teacher-Corrected Revalidation / Provenance
+
+Status: **Completed.**
+
+T3 establishes separate post-correction provenance without pretending that the original raw MusicXML contains a later teacher edit. It replays the automatic root's exact T2 quality evidence live, binds evidence to the exact Package 8 history and correction audit chain, and mechanically revalidates only a bounded v1 set of corrected pitch/position fields:
+
+- `step`, `alter`, `octave`, `noteName`, `midi`, `frequency`, `fret`.
+
+Inherited `sourceVerificationState` is never sufficient by itself. Final corrected pitch must remain internally consistent, and an existing guitar string/fret position must remain a real Package 4A candidate. Pitch-identity edits also receive conservative tie-topology validation.
+
+Duration/rhythm, voice/staff, tie-state, string-identity and undo correction chains remain explicitly unsupported in T3 and fail closed for a later structural stage. T3 exposes metadata only; no revision content, MusicXML, payload bytes, links or tokens are returned.
+
+Evidence:
+
+- issue **#131** defined the bounded scope;
+- implementation PR **#133** merged;
+- protected-main implementation SHA `fe940cd0b633055845e06504eeeb4287aed3f4d1`;
+- implementation-branch CI **#342 / run `33262049864`, job `99125548995` — SUCCESS**;
+- exact-main CI **#343 / run `33262154615`, job `99125825785` — SUCCESS**;
+- **1406 / 1406 tests PASS**, 235 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build PASS and real Chrome score render + cursor proof PASS.
+
+Detailed contract: `docs/package-12-t3-corrected-revalidation.md`.
+
 ## Package 8B — deferred research state
 
-Package 8B remains **Partially implemented**, but missing research evidence no longer blocks application packages.
+Package 8B remains **Partially implemented**, but missing research evidence does not block the application packages.
 
 Current genuine research state:
 
@@ -132,16 +109,16 @@ Current genuine research state:
 - Audiveris training executed: **NO**;
 - production model changed: **NO**.
 
-T1–T6 engineering gates remain intact. Do not fabricate sample approval, native mask/interline evidence, acceptance receipts or training results. Research may resume when genuine evidence exists.
+T1–T6 engineering gates remain intact. Do not fabricate sample approval, native mask/interline evidence, acceptance receipts or training results.
 
 ## Next application boundary
 
-**Package 12-T3 — Post-correction revalidation/provenance** is the next active substage.
+**Package 12-T4 — Structural/Rhythmic Post-Correction Revalidation** is the next safe substage.
 
-T3 must define how a `teacher_corrected` Package 8 revision can be revalidated after an edit without inheriting stale automatic-source verification. It must preserve the exact revision/approval/authorization boundaries from T1–T2, recompute or explicitly establish trustworthy post-correction provenance, and fail closed until the corrected revision has fresh quality evidence.
+T4 must cover the correction classes intentionally excluded from T3 v1: duration/rhythm fields, `durationValue`, `beats`, dots, voice/staff identity, tie semantics, string-identity changes and undo-created histories. It must recompute or explicitly establish trustworthy structural/timing evidence from the corrected revision rather than inheriting stale automatic-source claims.
 
-Authenticated recipient access, persistence/database decisions and actual network delivery remain later security/application stages and require separate architecture review if they introduce new infrastructure, dependencies or permission semantics.
+T4 must remain fail-closed and metadata-only until its own verified boundary exists. Authenticated recipient access, persistence/database decisions and actual network delivery remain later security/application stages and require separate architecture review if they introduce new infrastructure, dependencies or permission semantics.
 
 ## Protected OMR and deployment boundary
 
-Package 12 and later application work must not silently change production Audiveris provider/runtime/preflight, OMR worker/provider selection, Cloud OMR Gateway, backend production OMR path, `Dockerfile`, `render.yaml`, current Render service/deployment connection, or production model selection/replacement.
+Package 12 and later application work must not silently change production Audiveris provider/runtime/preflight, OMR worker/provider selection, Cloud OMR Gateway, backend production OMR path, `Dockerfile`, `render.yaml`, current Render service/deployment connection, Package 8B research/training state, or production model selection/replacement.
