@@ -4,15 +4,18 @@
 // teacher approval remain owned by SesliTab. This UI only exposes a place for
 // the ST renderer runtime to draw notation.
 
+import { subscribePackage3Measures } from '../package3MeasureBridge.js'
 import {
   clearScoreView,
   renderScoreView,
   resolveStScoreRuntime,
   ST_SCORE_RENDERER_REVIEWED_REVISION,
 } from './services/scoreRendererConsumer.js'
+import { deriveScoreMeasureSelection } from './services/scoreMeasureSync.js'
 
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
+const scoreMeasureSubscriptions = new WeakMap()
 let ticketCounter = 0
 
 function nextTicket() {
@@ -75,6 +78,29 @@ async function waitForRuntime(frame, timeoutMs = SCORE_RUNTIME_READY_TIMEOUT_MS)
   return null
 }
 
+export function renderScoreMeasureSelection(root, bridgeSnapshot) {
+  if (!root || typeof root.getElementById !== 'function') return false
+  const status = root.getElementById('score-view-measure-sync')
+  if (!status) return false
+
+  const selection = deriveScoreMeasureSelection(bridgeSnapshot)
+  status.dataset.measureKey = selection.measureKey ?? ''
+  status.dataset.measureSelected = selection.selected ? 'true' : 'false'
+  status.textContent = selection.selected
+    ? `SesliTab seçimi: Ölçü ${selection.visibleLabel ?? selection.measureKey}. Görsel highlight sonraki güvenli aşamada bağlanacak.`
+    : 'SesliTab ölçü seçimi yok. Görsel nota yalnızca sunum yapıyor.'
+  return true
+}
+
+function bindScoreMeasureSelection(root) {
+  if (scoreMeasureSubscriptions.has(root)) return true
+  const unsubscribe = subscribePackage3Measures((snapshot) => {
+    renderScoreMeasureSelection(root, snapshot)
+  })
+  scoreMeasureSubscriptions.set(root, unsubscribe)
+  return true
+}
+
 export function ensureScoreViewPanel(root = document) {
   if (!root || typeof root.getElementById !== 'function' || typeof root.createElement !== 'function') {
     return null
@@ -115,6 +141,12 @@ export function ensureScoreViewPanel(root = document) {
   status.setAttribute('aria-live', 'polite')
   status.textContent = 'ST score renderer hazırlanıyor.'
 
+  const measureSync = root.createElement('p')
+  measureSync.id = 'score-view-measure-sync'
+  measureSync.className = 'score-view-measure-sync'
+  measureSync.dataset.measureSelected = 'false'
+  measureSync.textContent = 'SesliTab ölçü seçimi yok. Görsel nota yalnızca sunum yapıyor.'
+
   const surface = root.createElement('div')
   surface.id = 'score-view-surface'
   surface.className = 'score-view-surface'
@@ -127,6 +159,7 @@ export function ensureScoreViewPanel(root = document) {
 
   panel.appendChild(heading)
   panel.appendChild(status)
+  panel.appendChild(measureSync)
   panel.appendChild(surface)
   panel.appendChild(provenance)
   tabList.appendChild(button)
@@ -141,6 +174,7 @@ export async function activateScoreView(root = document) {
   const panel = ensureScoreViewPanel(root)
   if (!panel) return false
 
+  bindScoreMeasureSelection(root)
   setExistingResultTabs(root, 'score-view')
   panel.hidden = false
   const status = root.getElementById('score-view-status')
@@ -174,7 +208,10 @@ export async function activateScoreView(root = document) {
 }
 
 export function initScoreViewUi(root = document) {
-  return Boolean(ensureScoreViewPanel(root))
+  const panel = ensureScoreViewPanel(root)
+  if (!panel) return false
+  bindScoreMeasureSelection(root)
+  return true
 }
 
 if (typeof document !== 'undefined') {
