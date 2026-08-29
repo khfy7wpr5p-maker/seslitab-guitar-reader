@@ -2,7 +2,7 @@
 
 SesliTab is an inclusive and accessible music education application for blind, low-vision, and sighted students.
 
-It helps students read, hear, understand, and practise musical notation, rhythm, and guitar tablature in individual, group, and inclusive learning environments.
+It helps students read, hear, understand, and practise musical notation, rhythm, guitar tablature, violin guidance and tuning in individual, group, and inclusive learning environments.
 
 ## Goals
 
@@ -13,8 +13,11 @@ It helps students read, hear, understand, and practise musical notation, rhythm,
 - Rhythmic text and musical playback
 - One shared note and timing model
 - Clear warnings for uncertain or unverified music data
-- Teacher review, correction, and approval
-- Accessible student practice on mobile devices
+- Teacher review, correction, and exact-revision approval
+- Secure teacher-to-student sharing
+- Accessible student practice on iOS, Android and desktop browsers
+- Progressive PWA productisation
+- Future Discovery / score-search and library intake under a separate reviewed package
 
 ## Intended Users
 
@@ -23,13 +26,15 @@ It helps students read, hear, understand, and practise musical notation, rhythm,
 - Guitar and music teachers
 - Inclusive music education groups
 - Students with additional learning needs
-- Violin and rhythm-training users as those product areas mature
+- Violin and rhythm-training users
 
-## Project Approach
+## Product Approach
 
 SesliTab is not intended to claim fully automatic or error-free PDF-to-MusicXML or MusicXML-to-Guitar-TAB conversion.
 
-Its goal is to provide a reliable, teacher-supervised, semi-automatic learning system. Unverified notes, rhythms, string positions, or fret positions must not be presented to students as definitively correct.
+Its goal is to provide a reliable, teacher-supervised, semi-automatic learning system. Unverified notes, rhythms, string positions, fret positions or other musical claims must not be presented to students as definitively correct.
+
+Discovery / score search is a source-finding concept, not a musical-verification authority. A found external score must re-enter the normal SesliTab intake, provenance, quality, teacher-review and approval pipeline before trusted student use.
 
 ## Current Inputs
 
@@ -47,37 +52,78 @@ Its goal is to provide a reliable, teacher-supervised, semi-automatic learning s
 - Web Audio musical playback
 - Accessible selected-measure TTS/playback
 - Quality-gated deterministic SMF0 MIDI download
-- Quality-gated Basic Guitar TAB output
-- Quality-gated Basic Violin first-position guidance
+- Quality-gated advanced Guitar TAB path
+- Quality-gated advanced violin guidance
 - Source-only MusicXML chord display and Turkish chord TTS
+- Accessible browser-local chromatic tuner
 - Audiveris `.omr` download when available
 
 These outputs are not automatically teacher-approved. Structural validity, quality-gate acceptance, source evidence and teacher approval remain separate concepts.
 
+## Product Surfaces
+
+The target product architecture separates the following surfaces:
+
+- Discovery / Score Search — planned, not yet implemented
+- Teacher Studio — intake, review, correction, approval and sharing
+- Student Practice — approved work, accessible score/TAB/rhythm, TTS, playback and tuner
+- Library — planned application surface for admitted and shared works
+- Simplified Rhythm Mode — Package 13, not started
+- Mobile / PWA Productisation — Package 14, partially implemented
+
+The production frontend source of truth is this GitHub repository. Bolt may be used only as a disposable prototype/reference environment and is not the authoritative application source.
+
 ## Roadmap Position
 
-Packages 0–7 are recorded as completed in the repository status/closure documents. The next strict roadmap package is **Package 8 — Teacher correction, revision history and approval**.
+Verified current state:
 
-Package 8 must preserve three distinct layers:
+- Packages 0–11: **Completed**
+- Package 8B — Audiveris training dataset: **Partially implemented** as deferred research
+- Package 12 — Teacher-to-student sharing: **Partially implemented**
+  - T1 exact share authorization: **Completed**
+  - T2 exact-revision safety/quality eligibility: **Completed**
+  - T3 post-correction revalidation/provenance: **Completed**
+- Package 13 — Simplified rhythm mode: **Not started**
+- Package 14 — Mobile productisation: **Partially implemented**
+
+Authenticated recipient access, persistence/database decisions and actual network delivery remain later Package 12 stages. Discovery / Score Search is now part of the product architecture but is not yet an implemented roadmap package and must be introduced through a separate reviewed package.
+
+## Teacher / Student Safety Boundary
+
+Each work must preserve distinct layers:
 
 1. immutable automatic source/revision;
 2. teacher-corrected revision(s);
-3. teacher approval bound to one exact revision.
+3. teacher approval bound to one exact revision;
+4. sharing authorization bound to the exact approved revision and recipient.
 
-A later change must not inherit an older approval automatically. Secure teacher-to-student sharing remains a later Package 12 concern and must only consume explicitly approved revisions.
+A later change must not inherit an older approval or authorization automatically. Student delivery must not bypass provenance, quality or approval gates.
 
 ## Protected OMR / Deployment Boundary
 
-The current Audiveris OMR path and the existing Render connection are established infrastructure boundaries. Routine music-engine, teacher-revision, TAB, violin, MIDI or chord work must not rewrite or reconfigure them unless a separate, explicitly approved package requires it.
+The current Audiveris OMR path and the existing Render connection are established infrastructure boundaries. Routine UI, music-engine, teacher-revision, TAB, violin, MIDI, chord, tuner or sharing-domain work must not rewrite or reconfigure them unless a separate, explicitly approved package requires it.
 
-In particular, Package 8 architecture work does not require changes to:
+In particular, current application work does not silently change:
 
 - Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
 - Cloud OMR Gateway;
+- backend production OMR path;
 - `Dockerfile`;
 - `render.yaml`;
-- Render deployment/service configuration.
+- current Render service/deployment configuration.
+
+## Frontend / Mobile Direction
+
+SesliTab remains a browser-first Vite application and should progress toward an accessible PWA before a native rewrite is considered.
+
+Primary device targets:
+
+- iPhone / Safari / VoiceOver
+- Android / Chrome / TalkBack
+- modern desktop browsers / keyboard and screen reader
+
+Do not migrate to React, Next.js or another framework merely to begin UI architecture. The verified domain/music layers must remain isolated from presentation concerns.
 
 ## Development
 
@@ -118,15 +164,17 @@ npm run backend:start
 
 ## Safety Principles
 
+- UI is not a musical semantic authority.
+- Discovery is not a verification authority.
 - Do not treat valid XML as proof of musical correctness.
-- Do not automatically invent missing notes or rhythms.
-- Preserve original PDF, OMR, and MusicXML data.
-- Keep automatic, teacher-corrected, and teacher-approved data separate.
-- Do not share unapproved content with students.
+- Do not automatically invent missing notes, rhythms, pitch, octave, voice, tie or fingering evidence.
+- Preserve original PDF, OMR, MusicXML and teacher revision data.
+- Keep automatic, teacher-corrected and teacher-approved data separate.
+- Do not share unapproved or stale-approved content with students.
 - Develop one limited package at a time.
 - Never modify the `main` branch directly.
 - Require focused tests, full regression and a production build for development packages.
-- Do not bypass the quality gate by setting teacher approval flags directly on canonical source data.
+- Do not bypass quality or approval gates by setting authority flags directly on canonical source data.
 
 ## License and Commercial Use
 
@@ -147,11 +195,10 @@ See [`docs/proprietary-extension-boundary.md`](docs/proprietary-extension-bounda
 
 ## Status and Architecture
 
-SesliTab is under active development. The repository has verified foundations for OMR processing, canonical note/time handling, quality gating, accessible playback, MIDI export, Basic Guitar TAB, Basic Violin and source-only chord presentation/TTS. Teacher correction/approval, secure student sharing, advanced Guitar TAB, advanced violin, tuner functionality, simplified rhythm mode and full mobile productisation remain later roadmap work.
+Use the following documents as the current architecture/status references:
 
-See:
-
-- [`docs/project-charter.md`](docs/project-charter.md)
-- [`docs/current-status.md`](docs/current-status.md)
-- [`docs/package-status.md`](docs/package-status.md)
-- [`docs/music-engine-architecture.md`](docs/music-engine-architecture.md)
+- [`docs/product-architecture.md`](docs/product-architecture.md) — top-level product and UI/application architecture
+- [`docs/project-charter.md`](docs/project-charter.md) — product purpose and non-negotiable safety principles
+- [`docs/current-status.md`](docs/current-status.md) — current verified implementation state
+- [`docs/package-status.md`](docs/package-status.md) — authoritative package/substage status
+- [`docs/music-engine-architecture.md`](docs/music-engine-architecture.md) — music/OMR domain architecture
