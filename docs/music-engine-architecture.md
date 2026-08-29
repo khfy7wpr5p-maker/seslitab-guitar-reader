@@ -110,13 +110,14 @@ SampleRepository.getInstance(archive, true)
 repo.getAllSamples().size()
 ```
 
-The resulting receipt must bind:
+The external probe receipt must bind:
 
 - exact pinned revision;
 - exact archive SHA-256;
-- exact T5 staging-manifest fingerprint;
 - exact expected/loaded sample count;
 - required probe API identity.
+
+The receipt does not carry the T5 staging-manifest fingerprint. Instead, `bindPinnedAudiverisAcceptance` first validates the exact serializer build and then copies that already-bound staging fingerprint into the acceptance report while independently verifying the receipt fields above.
 
 Revision drift, a dirty checkout, archive mutation, failed load, count mismatch, wrong API identity or malformed receipt fails closed.
 
@@ -184,6 +185,6 @@ Without separate explicit authorization, keep unchanged:
 | 8B-T4 admission | Exact T3 sample + licence/use | Exact T4 research approval |
 | 8B-T5 staging | Exact T4 admission + raw mask + interline | Serializer-ready only |
 | 8B-T6 native ZIP | Exact T5 staging manifest | Archive built pending pinned acceptance only |
-| 8B-T6 pinned acceptance | Exact SHA/revision/count/API receipt | Repository acceptance only; no training authorization |
+| 8B-T6 pinned acceptance | Validated build + exact revision/archive/count/API receipt | Repository acceptance only; no training authorization |
 | Actual Audiveris training | Not executed | Separate explicit gate required |
 | Production model replacement | Not implemented | Measured comparison + separate explicit authorization required |
