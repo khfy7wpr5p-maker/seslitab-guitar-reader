@@ -12,7 +12,10 @@ import {
   evaluateTeacherApprovalForRevision,
   isTeacherApprovalRecord,
 } from './teacherApprovalModel.js'
-import { isTeacherRevision } from './teacherRevisionModel.js'
+import {
+  TEACHER_REVISION_KIND,
+  isTeacherRevision,
+} from './teacherRevisionModel.js'
 
 export const TEACHER_SHARE_AUTHORIZATION_SCHEMA_VERSION = 1
 export const TEACHER_SHARE_AUTHORIZATION_STATE = 'share_authorized'
@@ -132,6 +135,7 @@ function validateAuthorizationRecord(value) {
   if (!hasStrictFrozenShape(value, AUTHORIZATION_FIELDS)) return false
   if (value.schemaVersion !== TEACHER_SHARE_AUTHORIZATION_SCHEMA_VERSION) return false
   if (value.authorizationState !== TEACHER_SHARE_AUTHORIZATION_STATE) return false
+  if (!Object.values(TEACHER_REVISION_KIND).includes(value.revisionKind)) return false
 
   try {
     for (const field of [
@@ -172,7 +176,14 @@ function validateAuthorizationRecord(value) {
       return false
     }
 
-    if (value.parentRevisionId === value.revisionId) return false
+    if (value.revisionKind === TEACHER_REVISION_KIND.AUTOMATIC) {
+      if (value.parentRevisionId !== null) return false
+      if (value.revisionId !== value.sourceRevisionId) return false
+    } else {
+      if (value.parentRevisionId === null) return false
+      if (value.parentRevisionId === value.revisionId) return false
+      if (value.revisionId === value.sourceRevisionId) return false
+    }
     return true
   } catch {
     return false
