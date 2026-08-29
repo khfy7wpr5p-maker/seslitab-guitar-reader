@@ -107,7 +107,7 @@ export function evaluateTuningCents(cents, options = {}) {
 }
 
 function downsampleByAveraging(samples, sampleRate, targetSampleRate = 24000) {
-  const factor = Math.max(1, Math.floor(sampleRate / targetSampleRate))
+  const factor = Math.max(1, Math.round(sampleRate / targetSampleRate))
   if (factor === 1) return { samples, sampleRate }
 
   const outputLength = Math.floor(samples.length / factor)
@@ -171,10 +171,10 @@ export function detectFundamentalYin(samples, sampleRate, options = {}) {
   const cmnd = new Float64Array(maxLag + 1)
   cmnd[0] = 1
 
+  const windowSize = signal.length - maxLag
   for (let tau = 1; tau <= maxLag; tau += 1) {
     let sum = 0
-    const limit = signal.length - tau
-    for (let i = 0; i < limit; i += 1) {
+    for (let i = 0; i < windowSize; i += 1) {
       const delta = signal[i] - signal[i + tau]
       sum += delta * delta
     }
