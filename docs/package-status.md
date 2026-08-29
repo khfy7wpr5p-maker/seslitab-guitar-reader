@@ -1,8 +1,8 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected-main implementation baseline: `160c3bcadfc634f7b1300627993e89ebda764576`  
-Latest exact-main implementation CI: **#326 / run `33258600115`, job `99116529789` — SUCCESS**
+Latest verified protected-main implementation baseline: `8bb797ac8c8f01697669e875ecc6d7df13ea878f`  
+Latest exact-main implementation CI: **#330 / run `33259462116`, job `99118792913` — SUCCESS**
 
 A package/substage is **Completed** only after bounded acceptance criteria, focused tests, full regression suite, production build, protected-main merge and exact-main workflow evidence are satisfied.
 
@@ -22,7 +22,8 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 | 9 — Advanced Guitar TAB | **Completed** | PR #122 → protected main `f01e67d…` → exact-main CI #319; quality-gated chords, simultaneous voices, sustained polyphony, tie continuity and bounded deterministic string assignment. |
 | 10 — Advanced violin | **Completed** | PR #124 → protected main `590abcaa…` → exact-main CI #324; bounded first/second/third-position alternatives, double stops, simultaneous voices/staves, sustain locks and tie continuity. |
 | 11 — Accessible chromatic tuner | **Completed** | PR #125 → protected main `160c3bca…` → exact-main CI #326; browser-local 12-note chromatic tuner with A4 calibration, Hz/cents guidance, accessible live status and local-only microphone processing. |
-| 12 — Teacher-to-student sharing | Not started | Exact-approved-revision sharing/authorization remains the next application package. |
+| 12 — Teacher-to-student sharing | **Partially implemented** | T1 completed in PR #127 → protected main `8bb797ac…` → exact-main CI #330. Exact revision + exact approval + exact recipient authorization and revocation are implemented; final safety/quality eligibility, authenticated recipient access, persistence and network delivery are not yet implemented. |
+| 12-T1 — Exact share authorization | **Completed** | PR #127; immutable exact revision/approval/recipient authorization + revocation, stale/replay/cross-source fail-closed behavior, no payload delivery. |
 | 13 — Simplified rhythm mode | Not started | Separate simplified rhythm-training mode planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web exists; device accessibility/privacy/productisation closure remains. |
 
@@ -69,7 +70,26 @@ Verified implementation evidence:
 - production build **PASS**;
 - real Chrome score render + cursor runtime proof **PASS**.
 
-Packages 10 and 11 did not change Audiveris/provider/runtime, OMR Gateway/worker, backend production OMR path, `Dockerfile`, `render.yaml`, Render wiring, Package 8B training/model code, or production model selection.
+## Package 12-T1 verified result
+
+Package 12-T1 introduces an explicit sharing authorization boundary separate from teacher approval. A share authorization is valid only for one exact immutable Package 8 revision, one exact approval record and one caller-supplied recipient identity. Later correction, identical-content replay with different lineage, cross-source reuse, another approval record or another recipient cannot inherit the authorization.
+
+T1 also adds immutable exact revocation evidence. Exact revocation returns `REVOKED`; mismatched revocation evidence fails closed rather than falling through to an authorized state.
+
+Verified implementation evidence:
+
+- implementation PR **#127** merged to protected `main`;
+- final PR head SHA `10c877ade4ced2a80b6dc102afd2285e114e6672`;
+- protected-main implementation SHA `8bb797ac8c8f01697669e875ecc6d7df13ea878f`;
+- exact-main CI **#330 / run `33259462116`, job `99118792913` — SUCCESS**;
+- **1369 / 1369 tests PASS**, 233 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
+
+T1 does **not** expose revision content, create public links/tokens/invite codes, authenticate users, persist grants, add backend endpoints, send network requests, bypass quality evidence, or change OMR/Audiveris/Render/Docker/model configuration.
+
+Packages 10, 11 and 12-T1 did not change Audiveris/provider/runtime, OMR Gateway/worker, backend production OMR path, `Dockerfile`, `render.yaml`, Render wiring, Package 8B training/model code, or production model selection.
 
 ## Package 8B deferred research state
 
@@ -87,13 +107,15 @@ Audiveris training executed:                 NO
 production model changed:                    NO
 ```
 
-Do not invent missing glyph/native/approval evidence. Package 8B remains separate research work and may resume when genuine evidence is available; it no longer blocks Packages 10–14 under the user-approved roadmap change.
+Do not invent missing glyph/native/approval evidence. Package 8B remains separate research work and may resume when genuine evidence is available; it no longer blocks Packages 10–14 under the approved roadmap.
 
-## Next application package
+## Next application substage
 
-**Package 12 — Teacher-to-student sharing** is next.
+**Package 12-T2 — Exact-revision safety/quality eligibility** is next.
 
-The sharing layer must bind to an exact Package 8 approved revision and must not treat teacher approval itself as share authorization. Stale revisions, later corrections, revoked/invalid evidence or missing explicit share eligibility must fail closed. Recipient/authentication identity must not be invented by domain code.
+T2 must decide whether the exact revision already bound by T1 is eligible to leave the teacher boundary. `AUTHORIZED_EXACT_BINDING` alone must never mean `safeToShare`. Missing/stale quality evidence, a different exact revision, non-applicable approval, recipient mismatch or revocation must fail closed with zero student payload bytes.
+
+Authenticated recipient access, persistence and actual network delivery remain later reviewed stages. Domain code must not invent identity or silently widen authorization.
 
 ## Status vocabulary
 
