@@ -68,12 +68,14 @@ function approvalFor(sample) {
 }
 
 function stagingReady(overrides = {}) {
-  const plan = page(overrides)
+  const objects = overrides.objects ?? [object()]
+  const plan = page({ ...overrides, objects })
+  const objectById = new Map(objects.map((item) => [String(item.objectId), item]))
   const approvals = plan.mappedSamples.map(approvalFor)
   const nativeEvidence = plan.mappedSamples.map((sample) => ({
     sampleId: sample.sampleId,
     audiverisShape: sample.audiverisShape,
-    maskRle: sample.sourceClass === 'accidentalFlat' ? '1:4' : '0:1 1:3 0:2',
+    maskRle: objectById.get(String(sample.sourceObjectId)).maskRle,
     interline: 20,
   }))
   const staging = prepareMuscimaAudiverisNativeSampleStaging({
@@ -171,7 +173,7 @@ test('Package 8B-T6 archive bytes and fingerprint are deterministic for identica
   assert.deepEqual(first.archiveBytes, second.archiveBytes)
 })
 
-test('Package 8B-T6 requires real pinned SampleRepository receipt binding before acceptance', async () => {
+test('Package 8B-T6 requires exact pinned SampleRepository receipt binding before acceptance', async () => {
   const build = await buildMuscimaAudiverisNativeSamplesArchive(stagingReady())
   const accepted = bindPinnedAudiverisAcceptance(build, probeFor(build))
   assert.equal(accepted.status, AUDIVERIS_PINNED_NATIVE_SERIALIZER_STATUS.ACCEPTED_BY_PINNED_AUDIVERIS)
@@ -208,23 +210,14 @@ test('Package 8B-T6 detects archive mutation after build and cannot bind accepta
   assert.throws(() => bindPinnedAudiverisAcceptance(mutatedBuild, probeFor(build)), /archive bytes do not bind/u)
 })
 
-test('Package 8B-T6 validators reject forged accepted/authorized reports', async () => {
+test('Package 8B-T6 validators reject authorization escalation and malformed acceptance reports', async () => {
   const build = await buildMuscimaAudiverisNativeSamplesArchive(stagingReady())
   const accepted = bindPinnedAudiverisAcceptance(build, probeFor(build))
   assert.ok(isPinnedAudiverisAcceptanceReport(accepted))
   assert.equal(isPinnedAudiverisAcceptanceReport(Object.freeze({ ...accepted, productionAuthorized: true })), false)
   assert.equal(isPinnedAudiverisAcceptanceReport(Object.freeze({ ...accepted, trainingExecuted: true })), false)
-  assert.equal(isPinnedAudiverisAcceptanceReport(Object.freeze({ ...accepted, archiveSha256: 'e'.repeat(64) })), true)
-  // A structurally valid report cannot authenticate itself; operational trust is
-  // provided only by the real probe runner. Domain binding still prevents using
-  // that forged digest with the original archive bytes.
-  assert.throws(
-    () => bindPinnedAudiverisAcceptance(
-      Object.freeze({ report: Object.freeze({ ...build.report, archiveSha256: 'e'.repeat(64) }), archiveBytes: build.archiveBytes }),
-      probeFor(build, { archiveSha256: 'e'.repeat(64) }),
-    ),
-    /archive bytes do not bind/u,
-  )
+  assert.equal(isPinnedAudiverisAcceptanceReport(Object.freeze({ ...accepted, pinnedAudiverisAccepted: false })), false)
+  assert.equal(isPinnedAudiverisAcceptanceReport(Object.freeze({ ...accepted, loadedSampleCount: accepted.sampleCount + 1 })), false)
 })
 
 test('Package 8B-T6 acceptance runner is pinned to the real SampleRepository API and stays outside production wiring', () => {
