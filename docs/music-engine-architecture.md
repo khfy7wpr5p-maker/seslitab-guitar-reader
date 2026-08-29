@@ -1,18 +1,28 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 3.7.1  
+**Belge sürümü:** 3.8.0  
 **Güncelleme tarihi:** 2026-08-29  
-**Güncel ürün baseline:** protected `main` `fe940cd0b633055845e06504eeeb4287aed3f4d1`  
-**Güncel ürün durumu:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 Completed.  
-**8B research state:** Partially implemented; T1–T6 engineering gates Completed, genuine admitted/training evidence still absent.
+**Fresh-read ürün baseline:** protected `main` `2a6fa9c981b85861895692df99887d46e768822e`  
+**Ürün durumu:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 merged; T4 separate open PR #138.  
+**8B research state:** Partially implemented; engineering gates exist, genuine admitted/training evidence remains absent.
 
-> Bu belge müzik/OMR domain mimarisini tanımlar. Üst seviye ürün, Discovery, Teacher Studio, Student Practice, PWA ve deployment haritası için `docs/product-architecture.md` esas alınır. Güncel uygulama durumu için `docs/current-status.md` ve `docs/package-status.md` yetkilidir.
+> Bu belge müzik/OMR domain otoritesini tanımlar. Üst seviye ürün ve UI haritası için `docs/product-architecture.md`, görsel öğretmen editörü için `docs/teacher-score-editor-architecture.md`, gerçek durum için `docs/current-status.md` ve `docs/package-status.md` esas alınır.
 
-## 1. Değişmez ürün ilkesi
+## 1. Değişmez müzik otoritesi ilkesi
 
-SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Yapısal geçerlilik, kaynak doğrulama, kalite `ACCEPT`, öğretmen düzeltmesi, öğretmen onayı, Audiveris-training onayı, research-sample onayı, native-archive kabulü ve öğrenci paylaşım yetkisi ayrı katmanlardır.
+SesliTab öğretmen denetimli, yarı otomatik ve erişilebilir bir müzik eğitimi sistemidir. Aşağıdaki kanıtlar birbirinden ayrıdır:
 
-UI, Discovery veya renderer müzikal semantik otorite değildir. Dışarıdan bulunan bir kaynak, yalnızca bulunmuş olması nedeniyle doğrulanmış ya da öğretmen-onaylı sayılamaz.
+- yapısal geçerlilik;
+- kaynak/provenance doğrulaması;
+- kalite kapısı sonucu;
+- öğretmen düzeltmesi;
+- exact-revision öğretmen onayı;
+- paylaşım yetkisi;
+- Audiveris research/training kabulü.
+
+UI, Discovery ve score renderer müzikal semantik otorite değildir.
+
+Valid XML, başarılı render veya OMR'ın hata vermemesi tek başına müzikal doğruluk kanıtı değildir.
 
 ## 2. Ana veri akışı
 
@@ -21,201 +31,226 @@ Discovery / direct input
   -> PDF / MusicXML / Guitar TAB intake
 
 PDF
-  -> mevcut Cloud OMR Gateway
-  -> mevcut Audiveris provider/runtime
+  -> existing Cloud OMR Gateway
+  -> existing Audiveris provider/runtime
   -> MusicXML
-  -> canonical NoteObject[]
-  -> structural validation + quality gate
-  -> rhythmic text/HTML | TTS/playback | MIDI | Guitar TAB | Violin
 
-Package 8 teacher layer — Completed
-  -> immutable revision
-  -> bounded correction/audit
-  -> exact approval
-  -> lossless history/undo
-  -> optimistic concurrency
-  -> accessible teacher UI
-
-Package 12 sharing layer — Partially implemented
-  -> T1 exact share authorization — Completed
-  -> T2 exact-revision safety/quality eligibility — Completed
-  -> T3 bounded post-correction revalidation/provenance — Completed
-  -> authenticated recipient access — later
-  -> persistence / network delivery — later
-
-Package 8B experimental Audiveris evidence
-  -> T1 strict trainable-candidate contract
-  -> T2 exact byte/path/hash readiness
-  -> T3 bounded MUSCIMA accidental mapping
-  -> T4 research-only exact sample admission
-  -> T5 isolated native-sample staging harness
-       recompute exact T4 admission
-       require exact raw mask/RLE matching T3 mask SHA-256
-       require explicit Audiveris interline
-       derive location only from exact T3 bbox
-       emit deterministic immutable staging manifest
-  -> T6 pinned native serializer + acceptance gate
-       accept only exact T5 serializer-ready evidence
-       deterministically emit Audiveris-native samples.zip bytes
-       bind archive SHA-256 + T5 manifest fingerprint
-       require clean exact pinned Audiveris checkout for acceptance
-       load via SampleRepository.getInstance(Path, true)
-       require exact loaded sample count
-       never execute classifier training
-       never authorize production-model replacement
+MusicXML
+  -> parser / normalization
+  -> canonical NoteObject[] + timing authority
+  -> structural/rhythmic validation
+  -> quality + provenance evidence
+  -> PASS / REVIEW / BLOCK product mapping
+  -> bounded consumers
 ```
 
-No Package 8B T3/T4/T5/T6 record bypasses T1/T2. No Package 8B state through T6 authorizes production model replacement.
+Consumers include rhythmic text/HTML, Turkish TTS, Web Audio/MIDI, Guitar TAB, violin and score presentation. They may not build independent pitch/timing truth.
 
 ## 3. Canonical music authority boundary
 
-All student-facing musical projections must consume the same canonical note/timing authority. UI, TTS, playback, MIDI, Guitar TAB, violin guidance and future rhythm projections must not independently invent pitch, duration, octave, voice, tie or measure identity.
+All musical projections must consume shared canonical note/timing authority.
 
 ```text
-MusicXML
+source evidence
   -> parser
-  -> structural/rhythmic validation
-  -> canonical NoteObject[] / timing model
-  -> provenance + quality gates
-  -> bounded projections
+  -> canonical event identity/timing
+  -> validator
+  -> quality/provenance
+  -> consumer gate
+  -> presentation/output
 ```
 
-Valid XML remains structural evidence only and is not proof of musical correctness.
+The UI, renderer, TTS, playback, MIDI, Guitar TAB and violin systems must not independently invent:
 
-## 4. Teacher revision and sharing boundary
+- pitch;
+- octave;
+- duration;
+- onset;
+- voice;
+- staff;
+- tie;
+- tuplet;
+- measure identity;
+- source verification.
 
-Automatic source, teacher-corrected revision and teacher-approved exact revision remain distinct states.
+Unsupported or missing semantic evidence must fail closed rather than be repaired by presentation code.
+
+## 4. Auto-Pass / Review / Block relation to the music engine
+
+Official product decision: **Teacher approval is not universally mandatory.**
+
+This is a product-routing decision, not permission to weaken the music engine.
+
+### PASS
+
+A bounded consumer may proceed automatically only when its existing quality/provenance gate accepts the exact canonical evidence required by that consumer.
+
+User-facing meaning: **Otomatik kontrollerden geçti.**
+
+PASS does not mean:
+
+- teacher approved;
+- visually identical to the original PDF;
+- universally safe for every consumer;
+- authorized for student sharing under every current Package 12 contract.
+
+### REVIEW
+
+The evidence requires teacher review/correction before definitive downstream use. Future provisional playback may be allowed only by a separately defined safe preview policy.
+
+### BLOCK
+
+Critical/unsupported evidence remains prohibited from definitive downstream output. Teacher approval cannot convert structural BLOCK into PASS.
+
+Invariant: `Auto-Pass != teacher-approved`.
+
+## 5. Package 8 teacher revision boundary
+
+Package 8 remains Completed at the domain level.
 
 ```text
 AUTOMATIC SOURCE
-  -> TEACHER-CORRECTED REVISION
-  -> POST-CORRECTION REVALIDATION
-  -> TEACHER-APPROVED EXACT REVISION
-  -> SHARE AUTHORIZATION
-  -> QUALITY/PROVENANCE ELIGIBILITY
-  -> STUDENT DELIVERY (later)
+  -> BOUNDED TEACHER CORRECTION
+  -> NEW IMMUTABLE REVISION
+  -> EXACT APPROVAL WHEN APPLICABLE
+  -> LOSSLESS HISTORY / UNDO
+  -> STALE EDIT / CONCURRENCY PROTECTION
 ```
 
-A later correction must not inherit an older approval, authorization or stale automatic-source quality evidence.
+Stage A UI simplification does not modify this model. It only changes presentation labels/grouping.
 
-Package 12-T1 and T2 do not expose revision payload content, create public links/tokens, authenticate recipients, persist sharing grants or perform actual network delivery. Package 12-T3 adds bounded corrected-revision revalidation/provenance; it does not itself implement recipient authentication, persistence or delivery.
+Rules:
 
-## 5. Package 8B-T1 through T5
+- automatic source is immutable;
+- correction creates new lineage;
+- old approval does not transfer to a later revision;
+- undo does not rewrite history;
+- audit identity is not silently invented;
+- approval is not quality acceptance or sharing authorization.
 
-T1 remains the strict production-oriented evidence contract and keeps exact `.omr` evidence mandatory for a genuine T1 trainable sample. T2 verifies supplied bytes/path/digest. T3 maps only five accidental classes and keeps its evaluation page-disjoint only. T4 adds the distinct research approval scope `audiveris_classifier_research_sample` and admits only non-commercial research intent with complete exact per-sample approval. T5 requires exact admitted-sample identity, raw mask evidence matching the T3 SHA-256 and explicit Audiveris `interline` before producing a serializer-ready staging manifest.
+## 6. Corrected-revision revalidation and Package 12
 
-Current real population remains 2,714 mapped samples, 0 exact T4 approvals, 0 T4 admitted samples and 0 T5 serializer-ready real samples.
-
-## 6. Package 8B-T6 architecture — COMPLETED
-
-### Pinned upstream requirement
-
-T6 remains pinned to Audiveris revision `7a36078e7ba0c006052c1f661b949cf9b729f505`.
-
-The verified native persistence/acceptance chain establishes:
-
-- global classifier sample repository file `samples.zip`;
-- `META-INF/container.xml` points to deterministic sample sheets;
-- each sample sheet persists `samples.xml`;
-- native `Sample` contains shape and `interline`;
-- glyph persistence contains location and `RunTable` pixel evidence;
-- ordered `RunTable` sequences preserve row identity, including empty rows;
-- real repository acceptance can be tested through `SampleRepository.getInstance(Path, true)` and `getAllSamples()`.
-
-### T6 serializer contract
-
-`scripts/audiverisMuscimaPinnedNativeSerializer.js`
-
-T6 accepts only a strict immutable T5 report in `ready_for_audiveris_native_serializer`. It:
-
-- re-decodes exact T5 mask evidence and rechecks SHA-256;
-- supports only the five bounded accidental shapes;
-- derives deterministic path-safe sheet names from source page identity;
-- assigns deterministic positive sample IDs within generated sheets;
-- emits horizontal Audiveris `RunTable` RLE with one sequence for every bbox row;
-- preserves all-background rows as explicit empty `<runs/>` sequences;
-- emits stable ZIP entry ordering and fixed metadata;
-- computes archive byte length and SHA-256;
-- binds the archive to the exact T5 staging-manifest fingerprint.
-
-A successful serializer output is only:
+Package 12 remains partial.
 
 ```text
-archive_built_pending_pinned_acceptance
+T1 exact sharing authorization                 [merged]
+T2 exact source/provenance/quality eligibility [merged]
+T3 bounded corrected pitch/position evidence   [merged]
+T4 structural/rhythmic corrected revalidation  [open PR #138; not merged]
+auth/persistence/network delivery              [later]
 ```
 
-It is not repository acceptance, training authorization, evaluation evidence or production authorization.
+T3 must not be interpreted as proof for correction classes it explicitly excludes.
 
-### T6 pinned acceptance contract
+T4 is separate domain-security work. Stage A neither duplicates nor modifies it. Protected main must continue to fail closed for unsupported corrected structural/rhythmic classes until a verified merged boundary exists.
 
-`scripts/runPinnedAudiverisSampleRepositoryAcceptance.js`
+The new product Auto-Pass policy does not automatically authorize student sharing. Existing Package 12 authorization semantics remain in force until separately revised.
 
-Acceptance requires an isolated checkout whose `git rev-parse HEAD` equals the exact pinned Audiveris revision and whose worktree is clean. The runner invokes the real repository API:
+## 7. Score renderer boundary
+
+Score rendering is presentation-only.
+
+Current verified SesliTab integration supports:
+
+- pinned ST Score Rendering Layer runtime;
+- rendered score display;
+- canonical measure cursor synchronization;
+- real-browser render/cursor proof in the latest verified PR #140 CI.
+
+Not yet established in the verified SesliTab contract:
+
+- note-level hit-test;
+- stable note selection identity mapping;
+- quality finding overlay;
+- note-level accessible selection;
+- final mobile scaling/overflow policy.
+
+Renderer code may not create pitch/duration/voice/tie/octave values to avoid a crash. The reported `Invalid note initialization object: {}` symptom must be reproduced in Stage B and fixed at its true source.
+
+Any `st-score-rendering-layer` contract expansion requires fresh-read and separate review before cross-repository changes.
+
+## 8. Guitar and violin consumers
+
+Package 9 Guitar TAB and Package 10 violin remain bounded quality-gated consumers of canonical data.
+
+Generated fingering/position evidence:
+
+- is not teacher approval;
+- cannot bypass structural BLOCK;
+- cannot repair missing canonical musical semantics;
+- must remain deterministic/fail-closed under unsupported input.
+
+Later product Stage I may connect PASS/REVIEW/BLOCK routing to these existing consumer gates without changing their musical authority.
+
+## 9. Playback / TTS / MIDI
+
+TTS, Web Audio, selected-measure playback and MIDI must remain consumers of the same canonical timing/pitch model.
+
+Normal definitive playback belongs to PASS or otherwise safely revalidated/authorized content under the applicable gate.
+
+A future **İnceleme İçin Dinle** route for REVIEW is not yet a completed music-engine capability. If added, it must be explicitly provisional and must not allow unsafe BLOCK material to play.
+
+## 10. Discovery boundary
+
+Discovery is implemented as a product source-finding surface but remains outside musical verification authority.
 
 ```text
-SampleRepository.getInstance(archive, true)
-repo.getAllSamples().size()
+FOUND
+!= SOURCE VERIFIED
+!= MUSICALLY VERIFIED
+!= TEACHER APPROVED
 ```
 
-The external probe receipt must bind exact pinned revision, exact archive SHA-256, exact expected/loaded sample count and required probe API identity. Revision drift, a dirty checkout, archive mutation, failed load, count mismatch, wrong API identity or malformed receipt fails closed.
+A discovered source must re-enter normal intake/validation before downstream musical trust is granted.
 
-Even `accepted_by_pinned_audiveris` retains:
+## 11. Package 11 tuner boundary
+
+The chromatic tuner remains browser-local and separate from canonical score authority.
 
 ```text
-trainingExecuted: false
-productionAuthorized: false
-modelReplacementAuthorized: false
+microphone
+ -> local Web Audio analysis
+ -> bounded pitch estimate
+ -> note / Hz / cents guidance
 ```
 
-### Current real-data result
+Microphone audio is not uploaded or persisted by the tuner contract. Stage K may change presentation size only; it must not weaken this privacy boundary.
+
+## 12. Package 8B research/training boundary
+
+Package 8B is deferred research and must never be used to fabricate production-model confidence.
+
+Pinned Audiveris research serializer/acceptance engineering remains bound to revision:
+
+`7a36078e7ba0c006052c1f661b949cf9b729f505`
+
+The engineering chain retains separate gates for:
+
+- trainable-candidate evidence;
+- exact byte/path/hash readiness;
+- bounded accidental mapping;
+- research-only sample admission;
+- native sample staging;
+- deterministic native serializer;
+- pinned `SampleRepository` acceptance.
+
+Current genuine population must not be overstated:
 
 ```text
 mapped experimental samples:             2,714
-T4 exact approvals:                          0
-T4 admitted samples:                         0
-T1/T2 trainable samples:                     0
-T5 serializer-ready real samples:            0
+exact research approvals:                   0
+admitted real samples:                      0
+trainable real samples:                     0
+serializer-ready real samples:              0
 real samples.zip built:                      NO
 real pinned-Audiveris acceptance receipt:    NO
 Audiveris training executed:                 NO
 production model changed:                    NO
 ```
 
-The executable serializer and acceptance gate are verified with bounded evidence fixtures only. They do not convert the current 2,714 mapped records into approved training data.
+A successful engineering fixture is not evidence that real training occurred and never authorizes production model replacement.
 
-## 7. Package 8B continuing boundary
-
-Package 8B remains **Partially implemented**. T6 closes the serializer/acceptance engineering contract but no real Package 8B record currently reaches T5 serializer-ready state because exact T4 approvals remain 0.
-
-The next evidence-supported 8B boundary is real teacher/research evidence acquisition and exact T4/T5 admission. Only after genuine real samples pass T4/T5 may T6 create a real archive and bind a real pinned-Audiveris acceptance receipt.
-
-Classifier training, evaluation and production-model adoption remain separate later gates. Do not invent a new substage to bypass missing evidence. Package 8B is deferred research and does not currently block the approved application roadmap.
-
-## 8. Discovery boundary
-
-Discovery / Score Search is a product-architecture module, not part of the canonical music engine and not currently an implemented package.
-
-It may locate candidate PDF/MusicXML sources, but any external source must re-enter normal intake and verification. Discovery may not:
-
-- mark a source as musically verified;
-- generate teacher approval;
-- bypass OMR/provenance/quality gates;
-- silently redistribute copyrighted material;
-- become a second canonical music authority.
-
-## 9. Mobile / PWA boundary
-
-The music engine remains platform-independent domain logic. Mobile productisation should expose it through the browser/PWA application without moving musical authority into device-specific UI code.
-
-Primary target environments are:
-
-- iPhone / Safari / VoiceOver;
-- Android / Chrome / TalkBack;
-- modern desktop browsers.
-
-Device-level microphone, TTS and audio lifecycle behavior belongs to the application/accessibility layer; the Package 11 tuner keeps microphone audio local-only.
-
-## 10. Protected production boundary
+## 13. Protected production boundary
 
 Without separate explicit authorization, keep unchanged:
 
@@ -224,38 +259,46 @@ Without separate explicit authorization, keep unchanged:
 - Cloud OMR Gateway and backend production OMR path;
 - `Dockerfile`;
 - `render.yaml`;
-- current Render deployment connection;
+- Render deployment connection;
 - production model selection/replacement;
-- CI workflow/dependencies.
+- framework/dependency set;
+- authentication/database infrastructure.
 
-## 11. Security dependency summary
+## 14. Security dependency summary
 
-| Feature | Evidence gate | Authorization |
+| Feature | Evidence gate | Authority granted |
 |---|---|---|
-| Package 8 teacher revision | Exact revision/history | Exact teacher approval only |
-| Package 12-T1 sharing | Exact revision + approval + recipient binding | Exact share authorization only; no payload |
-| Package 12-T2 eligibility | Exact source-array + provenance + 2C/2D evidence | Eligibility metadata only; no delivery |
-| Package 12-T3 | Fresh bounded post-correction provenance/quality | Completed revalidation boundary; no delivery |
-| Discovery | Source/licence metadata only | No musical or student-delivery authority |
-| 8B-T1 candidate | Strict T1 evidence including `.omr` | Exact T1 training approval |
-| 8B-T2 readiness | Exact supplied bytes/path/hash | No approval inferred |
-| 8B-T3 mapping | Exact annotation/bbox/mask hash | No training authorization |
-| 8B-T4 admission | Exact T3 sample + licence/use | Exact T4 research approval |
-| 8B-T5 staging | Exact T4 admission + raw mask + interline | Serializer-ready only |
-| 8B-T6 native ZIP | Exact T5 staging manifest | Archive built pending pinned acceptance only |
-| 8B-T6 pinned acceptance | Validated build + exact revision/archive/count/API receipt | Repository acceptance only; no training authorization |
-| Actual Audiveris training | Not executed | Separate explicit gate required |
-| Production model replacement | Not implemented | Measured comparison + separate explicit authorization required |
+| Canonical music | parser + structural evidence | shared music-event authority only |
+| Quality gate | exact quality/provenance evidence | bounded consumer eligibility |
+| PASS product mapping | accepted consumer-specific evidence | automatic route for that bounded consumer only |
+| Package 8 correction | exact immutable revision/history | new corrected revision only |
+| Package 8 approval | exact current revision | teacher approval only |
+| Package 12-T1 | exact revision + approval + recipient | share authorization metadata only |
+| Package 12-T2 | exact source/provenance/quality | eligibility metadata only |
+| Package 12-T3 | bounded corrected revalidation | corrected evidence metadata only |
+| Package 12-T4 | not merged | no new protected-main authority yet |
+| Discovery | source/licence metadata | no musical verification |
+| Renderer | canonical presentation contract | presentation/interaction only |
+| Tuner | local microphone estimate | tuning guidance only |
+| 8B research | staged exact research evidence | research/acceptance state only |
 
-## 12. Current next step
+## 15. Current safe development sequence
 
-The application sequence now continues with the remaining reviewed Package 12 stages:
+For the UI/product architecture requested on 2026-08-29:
 
 ```text
-Package 12 authenticated recipient access
-  -> Package 12 persistence / delivery stages
-  -> Package 13 simplified rhythm mode
-  -> Package 14 iOS + Android + desktop accessibility/PWA closure
+Stage A  teacher UI + product shell simplification
+  -> Stage B score runtime stabilization/responsive scaling
+  -> Stage C note/measure selection contract
+  -> Stage D quality overlay
+  -> Stage E bounded visual editor
+  -> Stage F undo + revalidation + rerender
+  -> Stage G PASS/REVIEW/BLOCK product routing
+  -> Stage H provisional REVIEW playback
+  -> Stage I Guitar TAB + violin product integration
+  -> Stage J Discovery presentation
+  -> Stage K compact tuner
+  -> Stage L sharing UI only when Package 12 gates allow it
 ```
 
-Discovery / Score Search requires a separate reviewed package and must not bypass the active sequence unless the roadmap is explicitly changed.
+Package 12-T4 remains a separate open PR and must keep its own domain-security review/CI lifecycle.
