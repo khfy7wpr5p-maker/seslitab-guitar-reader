@@ -348,12 +348,23 @@ export function isMuscimaResearchAdmissionReport(value) {
       if (value.approvalCount !== value.mappedSampleCount) return false
       if (value.researchExperimentAdmittedSampleCount !== value.mappedSampleCount) return false
       if (value.experimentBlockers.length !== 0) return false
-    } else {
-      if (value.researchExperimentAdmittedSampleCount !== 0) return false
-      if (value.experimentBlockers.length !== 1) return false
+      return true
     }
 
-    return true
+    if (value.researchExperimentAdmittedSampleCount !== 0 || value.experimentBlockers.length !== 1) return false
+
+    if (value.status === MUSCIMA_RESEARCH_ADMISSION_STATUS.BLOCKED_LICENSE_USE) {
+      if (value.intendedUse === MUSCIMA_RESEARCH_INTENDED_USE.NONCOMMERCIAL_RESEARCH) return false
+      return value.experimentBlockers[0] === MUSCIMA_RESEARCH_EXPERIMENT_BLOCKER.NONCOMMERCIAL_LICENSE_ONLY
+    }
+
+    if (value.status === MUSCIMA_RESEARCH_ADMISSION_STATUS.BLOCKED_MISSING_SAMPLE_APPROVALS) {
+      if (value.intendedUse !== MUSCIMA_RESEARCH_INTENDED_USE.NONCOMMERCIAL_RESEARCH) return false
+      if (value.approvalCount >= value.mappedSampleCount) return false
+      return value.experimentBlockers[0] === MUSCIMA_RESEARCH_EXPERIMENT_BLOCKER.MISSING_EXPLICIT_SAMPLE_APPROVALS
+    }
+
+    return false
   } catch {
     return false
   }
