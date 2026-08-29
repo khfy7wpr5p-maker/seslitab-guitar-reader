@@ -2,11 +2,11 @@
 
 Date: 2026-08-29
 
-Status: implementation candidate; completion requires protected-main merge and exact-main CI.
+Status: **Completed.**
 
 ## Roadmap decision
 
-Package 8B remains a separate partially implemented Audiveris-training research package because real per-sample approval/native-evidence gates are still unsatisfied. The user explicitly authorized continuing application development into Package 9 instead of blocking the product roadmap on that research data.
+Package 8B remains a separate partially implemented Audiveris-training research package because real per-sample approval/native-evidence gates are still unsatisfied. The user explicitly authorized continuing application development instead of blocking the product roadmap on that research data.
 
 This does not mark Package 8B completed and does not authorize Audiveris training or production-model replacement.
 
@@ -33,6 +33,7 @@ Package 9 does not guess or flatten:
 - multiple score parts into one guitar;
 - malformed canonical physical identity/timing;
 - a tie stop without an established prior guitar position;
+- a dangling tie start;
 - a fingering search that exceeds the fixed solver-node limit.
 
 In those cases no partial TAB text is emitted.
@@ -65,6 +66,20 @@ exact canonical NoteObject[]
 ```
 
 `REVIEW` and `BLOCK` quality decisions terminate before Package 9 executes.
+
+## Verification evidence
+
+- implementation PR **#122** merged to protected `main`;
+- protected-main implementation SHA `f01e67d6488cedf192333d6ba2c528330841d5d8`;
+- exact-main CI **#319 / run `33256393182`, job `99110780497` — SUCCESS**;
+- **1326 / 1326 tests PASS**;
+- **232 suites**;
+- **0 failed / skipped / cancelled**;
+- **0 vulnerabilities**;
+- Vite production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
+
+Focused Package 9 regression evidence covers quality-gated three-note chords, simultaneous independent voices, sustained-string locking, tie continuation, dangling-tie failure, more-than-six-note failure, REVIEW gate enforcement, multiple-part rejection, deterministic immutable projection, simultaneous-onset rendering, and isolation from OMR/backend/network/deployment boundaries.
 
 ## Protected boundaries
 

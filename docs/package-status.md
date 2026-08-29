@@ -1,8 +1,8 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected-main implementation baseline: `eb711fa0483b87d841b4381e242b4d19ae95d189`  
-Latest exact-main implementation CI: **#308 / run `33251255425`, job `99097200088` — SUCCESS**
+Latest verified protected-main implementation baseline: `f01e67d6488cedf192333d6ba2c528330841d5d8`  
+Latest exact-main implementation CI: **#319 / run `33256393182`, job `99110780497` — SUCCESS**
 
 A package/substage is **Completed** only after bounded acceptance criteria, focused tests, full regression suite, production build, protected-main merge and exact-main workflow evidence are satisfied.
 
@@ -12,31 +12,41 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 |---|---|---|
 | 0–7 | Completed | Existing verified product foundations remain intact. |
 | 8 — Teacher correction and approval | **Completed** | T1–T6 verified, merged and docs closed. |
-| 8B — Audiveris training dataset | **Partially implemented** | T1–T6 completed; 2,714 experimental mappings exist, but exact T4 approvals, admitted samples, T1/T2 trainable samples and real T5 serializer-ready samples remain 0. No real archive/training/evaluation exists. |
+| 8B — Audiveris training dataset | **Partially implemented** | T1–T6 engineering path completed; 2,714 experimental mappings exist, but exact T4 approvals, admitted samples, T1/T2 trainable samples and real T5 serializer-ready samples remain 0. Research/data work is deferred and no longer blocks the application roadmap. |
 | 8B-T1 — Verified dataset contract | **Completed** | PR #104; exact training-evidence contract. |
 | 8B-T2 — Verified evidence intake/readiness | **Completed** | PR #106; exact byte/path/hash verification. |
 | 8B-T3 — MUSCIMA accidental mapping | **Completed** | PR #113; 2,714 bounded experimental mappings. |
 | 8B-T4 — Research-only training admission | **Completed** | PR #115; non-commercial exact per-sample admission gate. |
 | 8B-T5 — Isolated native sample staging harness | **Completed** | PR #118; exact approval + mask/interline gate to serializer-ready staging. |
-| 8B-T6 — Pinned native serializer + acceptance gate | **Completed** | PR #120 → merge `eb711fa0…` → exact-main CI #308; deterministic Audiveris-native ZIP contract and exact pinned `SampleRepository` receipt binding. |
-| 9 — Advanced Guitar TAB | Not started | Sequentially blocked while Package 8B remains incomplete unless roadmap is explicitly changed. |
-| 10 — Advanced violin | Not started | Advanced positions/alternatives/double stops remain planned. |
+| 8B-T6 — Pinned native serializer + acceptance gate | **Completed** | PR #120; deterministic Audiveris-native ZIP contract and exact pinned `SampleRepository` receipt binding. |
+| 9 — Advanced Guitar TAB | **Completed** | PR #122 → protected main `f01e67d…` → exact-main CI #319; quality-gated chords, simultaneous voices, sustained polyphony, tie continuity and bounded deterministic string assignment. |
+| 10 — Advanced violin | Not started | Next active application package: generated advanced alternatives/double stops with fail-closed physical and quality gates. |
 | 11 — Accessible tuner | Not started | Microphone pitch/accessibility package absent. |
 | 12 — Teacher-to-student sharing | Not started | Exact-approved-revision sharing/authorization not implemented. |
 | 13 — Simplified rhythm mode | Not started | Separate simplified rhythm-training mode planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web exists; device accessibility/privacy/productisation closure remains. |
 
-## Package 8B-T6 verified result
+## Package 9 verified result
 
-T6 closes the engineering boundary between exact T5 serializer-ready evidence and a pinned Audiveris sample-repository acceptance receipt.
+Package 9 extends the exact-array Package 2D `GUITAR_TAB` quality-gated production path beyond the conservative Package 4 projection. It supports one guitar part with chords, independent simultaneous events, multiple voices/staves, sustained polyphony and tie continuity while assigning distinct guitar strings with a bounded deterministic solver.
 
-The serializer accepts only a valid immutable T5 report in `ready_for_audiveris_native_serializer`. It re-verifies exact mask evidence and deterministically emits the Audiveris-native container/sample-sheet/RunTable structure. Identical valid evidence produces identical archive bytes and SHA-256.
+The policy remains explicitly generated evidence (`seslitab-advanced-guitar-v1`, provenance `generated-advanced`), never source fingering, teacher approval or pedagogical optimum. More than six simultaneous pitched notes, multiple score parts, invalid timing/identity, impossible string assignments, malformed ties and solver-limit exhaustion fail closed with zero partial TAB.
 
-Archive construction remains distinct from acceptance. `archive_built_pending_pinned_acceptance` becomes `accepted_by_pinned_audiveris` only when a separate clean checkout at exact Audiveris revision `7a36078e7ba0c006052c1f661b949cf9b729f505` loads the exact archive using `SampleRepository.getInstance(Path, true)` and reports the exact expected sample count. The acceptance report is bound to the archive SHA-256, staging-manifest fingerprint, pinned revision and count.
+Verified implementation evidence:
 
-T6 does not authorize or execute training, evaluation, production use or model replacement.
+- implementation PR **#122** merged to protected `main`;
+- protected-main implementation SHA `f01e67d6488cedf192333d6ba2c528330841d5d8`;
+- exact-main CI **#319 / run `33256393182`, job `99110780497` — SUCCESS**;
+- **1326 / 1326 tests PASS**, 232 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
 
-Current real state remains:
+Package 9 did not change Audiveris/provider/runtime, OMR Gateway/worker, backend production OMR path, `Dockerfile`, `render.yaml`, Render wiring, Package 8B training/model code, or production model selection.
+
+## Package 8B deferred research state
+
+Current genuine state remains:
 
 ```text
 mapped experimental samples:             2,714
@@ -50,22 +60,7 @@ Audiveris training executed:                 NO
 production model changed:                    NO
 ```
 
-## 8B-T6 evidence
-
-- stage-start main `a771c27d9359c2fbcd4b126272287cf0ca82d875`;
-- PR #120 final head `9f7806c6eb6079dfc5ee929d270dfb39b063e8a4`;
-- exact-head CI #307 / run `33251176354`, job `99096993296`: SUCCESS;
-- final merge gate: 0 behind, mergeable, 0 unresolved review threads;
-- expected-head-locked squash merge `eb711fa0483b87d841b4381e242b4d19ae95d189`;
-- exact-main CI #308 / run `33251255425`, job `99097200088`: SUCCESS, **1315/1315 tests**, 232 suites, 0 vulnerabilities, production build PASS, real-browser score runtime proof PASS.
-
-## Package 8B continuing safeguards
-
-Accept only actual supplied and approved evidence. Never invent glyphs, interline, raw masks, `.omr`, approvals, licences, acceptance receipts or metrics. Page-disjoint evaluation is not writer-independent evaluation.
-
-T6 code existence is not evidence that the current 2,714 mappings can be trained. Real serialization remains blocked before T6 because T4/T5 real-data gates are unsatisfied. Training execution, evaluation and production-model adoption remain separate gates.
-
-No Package 8B work may silently change production Audiveris/provider/runtime, Gateway/worker, backend production path, `Dockerfile`, `render.yaml`, Render deployment connection, CI dependencies, or production model selection.
+Do not invent missing glyph/native/approval evidence. Package 8B remains separate research work and may resume when genuine evidence is available; it no longer blocks Packages 10–14 under the user-approved roadmap change.
 
 ## Status vocabulary
 
