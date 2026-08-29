@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>SesliTab score runtime browser proof</title>
+  <style>body{margin:0}#st-score-root{width:960px}</style>
+</head>
+<body>
+  <div id="st-score-root"></div>
+  <div id="status" data-score-render-pass="false">PENDING</div>
+
+  <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "@st/score-renderer-contracts": "../../public/st-score-runtime/modules/contracts.js",
+      "@st/score-renderer-core": "../../public/st-score-runtime/modules/renderer-core.js",
+      "@st/score-renderer-osmd": "../../public/st-score-runtime/modules/adapter-osmd.js",
+      "@st/score-renderer-browser-host": "../../public/st-score-runtime/modules/browser-host.js",
+      "opensheetmusicdisplay": "../../public/st-score-runtime/modules/osmd-module-shim.mjs"
+    }
+  }
+  </script>
+  <script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
+  <script type="module">
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes>
+      <divisions>1</divisions>
+      <key><fifths>0</fifths></key>
+      <time><beats>4</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef>
+    </attributes>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    <note><rest/><duration>2</duration><type>half</type></note>
+  </measure></part>
+</score-partwise>`
+
+    const status = document.getElementById('status')
+    const root = document.getElementById('st-score-root')
+
+    ;(async () => {
+      try {
+        if (document.documentElement.dataset.stScoreRuntimeReady !== 'true') {
+          throw new Error('runtime not ready')
+        }
+        const host = globalThis.__ST_SCORE_RENDER_HOST__
+        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function') {
+          throw new Error('ST runtime host missing')
+        }
+        await host.renderMusicXml({
+          ticket: '1',
+          contractVersion: '0.2.0',
+          musicxml: xml,
+          pageMode: 'continuous',
+          autoResize: false,
+          drawTitle: false,
+          drawComposer: false,
+        })
+        const svgPages = await host.exportSvg()
+        if (!Array.isArray(svgPages) || svgPages.length === 0 || !root.querySelector('svg')) {
+          throw new Error('SVG evidence missing')
+        }
+        status.dataset.scoreRenderPass = 'true'
+        status.dataset.contractVersion = '0.2.0'
+        status.textContent = 'PASS'
+      } catch (error) {
+        root.replaceChildren()
+        status.dataset.scoreRenderPass = 'false'
+        status.dataset.renderError = String(error?.message ?? error)
+        status.textContent = 'FAIL'
+      }
+    })()
+  </script>
+</body>
+</html>
