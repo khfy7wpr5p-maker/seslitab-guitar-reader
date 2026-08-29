@@ -8,6 +8,13 @@ function visibleMeasureLabel(group) {
   return null
 }
 
+function cursorTarget(group) {
+  const partId = typeof group?.partId === 'string' ? group.partId.trim() : ''
+  const measureIndex = group?.measureIndex
+  if (!partId || !Number.isSafeInteger(measureIndex) || measureIndex < 0) return null
+  return Object.freeze({ partId, measureIndex })
+}
+
 export function deriveScoreMeasureSelection(snapshot) {
   const notes = snapshot?.notes
   const selectedMeasureKey = typeof snapshot?.selectedMeasureKey === 'string'
@@ -19,6 +26,7 @@ export function deriveScoreMeasureSelection(snapshot) {
       selected: false,
       measureKey: null,
       visibleLabel: null,
+      cursorTarget: null,
     })
   }
 
@@ -34,6 +42,7 @@ export function deriveScoreMeasureSelection(snapshot) {
       selected: false,
       measureKey: null,
       visibleLabel: null,
+      cursorTarget: null,
     })
   }
 
@@ -41,5 +50,6 @@ export function deriveScoreMeasureSelection(snapshot) {
     selected: true,
     measureKey: selectedMeasureKey,
     visibleLabel: visibleMeasureLabel(group),
+    cursorTarget: cursorTarget(group),
   })
 }

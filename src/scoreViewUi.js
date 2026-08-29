@@ -4,9 +4,13 @@
 // teacher approval remain owned by SesliTab. This UI only exposes a place for
 // the ST renderer runtime to draw notation.
 
-import { subscribePackage3Measures } from '../package3MeasureBridge.js'
+import {
+  getPackage3MeasureSnapshot,
+  subscribePackage3Measures,
+} from '../package3MeasureBridge.js'
 import {
   clearScoreView,
+  moveScoreCursor,
   renderScoreView,
   resolveStScoreRuntime,
   ST_SCORE_RENDERER_REVIEWED_REVISION,
@@ -16,6 +20,8 @@ import { deriveScoreMeasureSelection } from './services/scoreMeasureSync.js'
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
 const scoreMeasureSubscriptions = new WeakMap()
+const scoreRuntimeHosts = new WeakMap()
+const scoreCursorSelections = new WeakMap()
 let ticketCounter = 0
 
 function nextTicket() {
@@ -86,16 +92,60 @@ export function renderScoreMeasureSelection(root, bridgeSnapshot) {
   const selection = deriveScoreMeasureSelection(bridgeSnapshot)
   status.dataset.measureKey = selection.measureKey ?? ''
   status.dataset.measureSelected = selection.selected ? 'true' : 'false'
-  status.textContent = selection.selected
-    ? `SesliTab seçimi: Ölçü ${selection.visibleLabel ?? selection.measureKey}. Görsel highlight sonraki güvenli aşamada bağlanacak.`
-    : 'SesliTab ölçü seçimi yok. Görsel nota yalnızca sunum yapıyor.'
+  status.dataset.cursorSynced = 'false'
+  status.dataset.cursorPartId = selection.cursorTarget?.partId ?? ''
+  status.dataset.cursorMeasureIndex = selection.cursorTarget ? String(selection.cursorTarget.measureIndex) : ''
+  if (!selection.selected) {
+    status.textContent = 'SesliTab ölçü seçimi yok. Görsel nota yalnızca sunum yapıyor.'
+  } else if (!selection.cursorTarget) {
+    status.textContent = `SesliTab seçimi: Ölçü ${selection.visibleLabel ?? selection.measureKey}. Görsel cursor için güvenli part/ölçü kimliği bulunamadı.`
+  } else {
+    status.textContent = `SesliTab seçimi: Ölçü ${selection.visibleLabel ?? selection.measureKey}. Görsel cursor canonical ölçü kimliğiyle eşlenmeye hazır.`
+  }
   return true
+}
+
+export async function syncScoreMeasureCursor(root, bridgeSnapshot, runtime = scoreRuntimeHosts.get(root)) {
+  if (!root || typeof root.getElementById !== 'function' || !runtime) return false
+  const status = root.getElementById('score-view-measure-sync')
+  if (!status) return false
+
+  const selection = deriveScoreMeasureSelection(bridgeSnapshot)
+  if (!selection.selected || !selection.cursorTarget) {
+    status.dataset.cursorSynced = 'false'
+    scoreCursorSelections.delete(root)
+    return false
+  }
+
+  const signature = `${selection.cursorTarget.partId}:${selection.cursorTarget.measureIndex}`
+  if (scoreCursorSelections.get(root) === signature && status.dataset.cursorSynced === 'true') {
+    return true
+  }
+
+  try {
+    await moveScoreCursor(runtime, selection.cursorTarget)
+    scoreCursorSelections.set(root, signature)
+    status.dataset.cursorSynced = 'true'
+    status.dataset.cursorPartId = selection.cursorTarget.partId
+    status.dataset.cursorMeasureIndex = String(selection.cursorTarget.measureIndex)
+    status.textContent = `SesliTab seçimi: Ölçü ${selection.visibleLabel ?? selection.measureKey}. Görsel cursor bu canonical ölçüyle eşlendi.`
+    return true
+  } catch {
+    scoreCursorSelections.delete(root)
+    scoreRuntimeHosts.delete(root)
+    try { await clearScoreView(runtime) } catch {}
+    status.dataset.cursorSynced = 'false'
+    status.textContent = 'Görsel cursor uygulanamadı; yanıltıcı eski nota gösterimi güvenli şekilde temizlendi.'
+    return false
+  }
 }
 
 function bindScoreMeasureSelection(root) {
   if (scoreMeasureSubscriptions.has(root)) return true
   const unsubscribe = subscribePackage3Measures((snapshot) => {
     renderScoreMeasureSelection(root, snapshot)
+    const runtime = scoreRuntimeHosts.get(root)
+    if (runtime) void syncScoreMeasureCursor(root, snapshot, runtime)
   })
   scoreMeasureSubscriptions.set(root, unsubscribe)
   return true
@@ -145,6 +195,7 @@ export function ensureScoreViewPanel(root = document) {
   measureSync.id = 'score-view-measure-sync'
   measureSync.className = 'score-view-measure-sync'
   measureSync.dataset.measureSelected = 'false'
+  measureSync.dataset.cursorSynced = 'false'
   measureSync.textContent = 'SesliTab ölçü seçimi yok. Görsel nota yalnızca sunum yapıyor.'
 
   const surface = root.createElement('div')
@@ -198,9 +249,14 @@ export async function activateScoreView(root = document) {
   if (status) status.textContent = 'Nota görünümü hazırlanıyor…'
   try {
     await renderScoreView(runtime, musicxml, { ticket: nextTicket() })
+    scoreRuntimeHosts.set(root, runtime)
+    scoreCursorSelections.delete(root)
     if (status) status.textContent = 'Görsel nota hazır.'
+    await syncScoreMeasureCursor(root, getPackage3MeasureSnapshot(), runtime)
     return true
   } catch (error) {
+    scoreRuntimeHosts.delete(root)
+    scoreCursorSelections.delete(root)
     try { await clearScoreView(runtime) } catch {}
     if (status) status.textContent = `Görsel nota oluşturulamadı: ${error?.message || 'bilinmeyen hata'}`
     return false

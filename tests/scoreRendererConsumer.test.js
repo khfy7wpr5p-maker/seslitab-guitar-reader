@@ -3,17 +3,20 @@ import assert from 'node:assert/strict'
 
 import {
   SCORE_VIEW_MAX_MUSICXML_BYTES,
+  SCORE_VIEW_MAX_PART_ID_CHARS,
   ST_SCORE_RENDERER_CONTRACT_VERSION,
   ST_SCORE_RENDERER_REVIEWED_REVISION,
   clearScoreView,
+  moveScoreCursor,
   renderScoreView,
   resolveStScoreRuntime,
+  validateScoreCursorTarget,
   validateScoreViewMusicXml,
 } from '../src/services/scoreRendererConsumer.js'
 
 test('score renderer consumer pins the reviewed ST boundary', () => {
   assert.equal(ST_SCORE_RENDERER_CONTRACT_VERSION, '0.2.0')
-  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '717c0c2f32cebf11350104020d9d12ff88c59e94')
+  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '8b469b7f40a4dbea9c097cda49a79dff132071cb')
 })
 
 test('MusicXML validation is bounded and fail closed', () => {
@@ -27,12 +30,30 @@ test('MusicXML validation is bounded and fail closed', () => {
   assert.equal(validateScoreViewMusicXml('<score-partwise/>'), '<score-partwise/>')
 })
 
-test('runtime resolution accepts only the ST-owned host shape', () => {
+test('cursor target validation is bounded and preserves canonical locator only', () => {
+  assert.throws(() => validateScoreCursorTarget(null), TypeError)
+  assert.throws(() => validateScoreCursorTarget({ partId: '', measureIndex: 0 }), TypeError)
+  assert.throws(
+    () => validateScoreCursorTarget({ partId: 'x'.repeat(SCORE_VIEW_MAX_PART_ID_CHARS + 1), measureIndex: 0 }),
+    TypeError,
+  )
+  assert.throws(() => validateScoreCursorTarget({ partId: 'P1', measureIndex: -1 }), RangeError)
+  assert.deepEqual(validateScoreCursorTarget({ partId: ' P1 ', measureIndex: 3, ignored: true }), {
+    partId: 'P1',
+    measureIndex: 3,
+  })
+})
+
+test('runtime resolution accepts only the cursor-capable ST-owned host shape', () => {
   assert.equal(resolveStScoreRuntime({}), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: {} }), null)
+  assert.equal(resolveStScoreRuntime({
+    __ST_SCORE_RENDER_HOST__: { renderMusicXml() {}, dispose() {} },
+  }), null)
 
   const host = {
     renderMusicXml() {},
+    moveCursor() {},
     dispose() {},
   }
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: host }), host)
@@ -45,6 +66,7 @@ test('renderScoreView forwards only the bounded ST runtime payload', async () =>
       captured = payload
       return { ok: true }
     },
+    async moveCursor() {},
     async dispose() {},
   }
 
@@ -67,6 +89,20 @@ test('renderScoreView forwards only the bounded ST runtime payload', async () =>
     drawComposer: false,
     ticket: '42',
   })
+})
+
+test('moveScoreCursor forwards only bounded canonical renderer target', async () => {
+  let captured = null
+  const host = {
+    async moveCursor(payload) {
+      captured = payload
+      return { ok: true }
+    },
+  }
+  const result = await moveScoreCursor(host, { partId: ' P2 ', measureIndex: 4, ignored: 'x' })
+  assert.deepEqual(result, { ok: true })
+  assert.deepEqual(captured, { partId: 'P2', measureIndex: 4 })
+  await assert.rejects(() => moveScoreCursor({}, { partId: 'P1', measureIndex: 0 }), TypeError)
 })
 
 test('renderScoreView rejects missing runtime and malformed tickets', async () => {

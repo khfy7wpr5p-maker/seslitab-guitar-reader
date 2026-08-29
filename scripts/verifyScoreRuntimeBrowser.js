@@ -37,4 +37,9 @@ if (!dom.includes('data-score-render-pass="true"') || !dom.includes('<svg')) {
   console.error(dom.slice(-6000))
   process.exit(1)
 }
-console.log(`Score browser proof PASS using ${chrome}`)
+if (!dom.includes('data-score-cursor-pass="true"') || !dom.includes('data-cursor-part-id="P1"') || !dom.includes('data-cursor-measure-index="0"')) {
+  console.error('Score browser proof failed: bounded runtime cursor evidence missing.')
+  console.error(dom.slice(-6000))
+  process.exit(1)
+}
+console.log(`Score render + cursor browser proof PASS using ${chrome}`)
