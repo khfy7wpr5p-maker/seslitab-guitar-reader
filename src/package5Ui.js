@@ -1,15 +1,16 @@
-// Package 5F — accessible quality-gated Basic Violin result panel.
+// Package 5F + Package 10 — accessible quality-gated Violin result panel.
 //
 // The UI consumes the exact NoteObject[] reference already published by the
 // Package 3 measure bridge. It never clones, reparses, or promotes note data.
-// Only the Package 5E `projected` state may expose generated basic fingering.
+// Package 10 may expose generated advanced suggestions only after the same
+// Package 2D VIOLIN quality gate used by Package 5.
 
 import {
   getPackage3MeasureSnapshot,
   subscribePackage3Measures,
 } from '../package3MeasureBridge.js'
 import {
-  buildQualityGatedBasicViolin,
+  buildQualityGatedViolin,
   VIOLIN_CONSUMER_STATE,
 } from './services/violinConsumer.js'
 
@@ -25,10 +26,11 @@ export const VIOLIN_UI_STATE = Object.freeze({
 export const VIOLIN_UI_MESSAGE = Object.freeze({
   EMPTY: 'Temel keman pozisyonu için nota verisi bulunamadı.',
   RENDERED: 'Kalite kontrolünden geçen temel keman tel ve parmak önerisi hazır.',
+  ADVANCED_RENDERED: 'Kalite kontrolünden geçen gelişmiş keman tel, pozisyon ve parmak önerisi hazır. Bu otomatik bir öneridir.',
   REVIEW_REQUIRED: 'Bu nota verisi inceleme gerektiriyor. Keman tel veya parmak seçimi gösterilmedi.',
   BLOCKED: 'Nota verisi kalite kontrolünden geçmedi. Keman tel veya parmak seçimi gösterilmedi.',
-  NOT_AVAILABLE: 'Bu müzik temel birinci pozisyon keman kapsamının dışında. Kısmi veya tahmini seçim gösterilmedi.',
-  INVALID: 'Temel keman pozisyonu güvenli biçimde oluşturulamadı. Tahmini seçim gösterilmedi.',
+  NOT_AVAILABLE: 'Bu müzik desteklenen keman kapsamının dışında. Kısmi veya tahmini seçim gösterilmedi.',
+  INVALID: 'Keman pozisyonu güvenli biçimde oluşturulamadı. Tahmini seçim gösterilmedi.',
 })
 
 const rootSubscriptions = new WeakMap()
@@ -63,6 +65,12 @@ const FINGER_LABEL = Object.freeze({
   4: 'dördüncü parmak',
 })
 
+const POSITION_LABEL = Object.freeze({
+  1: 'birinci pozisyon',
+  2: 'ikinci pozisyon',
+  3: 'üçüncü pozisyon',
+})
+
 const FINGER_BY_SEMITONE_OFFSET = Object.freeze([
   0,
   1, 1,
@@ -73,12 +81,15 @@ const FINGER_BY_SEMITONE_OFFSET = Object.freeze([
 
 const BASIC_VIOLIN_POLICY_ID = 'first-position-semitone-zone-v1'
 const BASIC_VIOLIN_PROVENANCE = 'generated-basic-first-position-fingering'
+const ADVANCED_VIOLIN_POLICY_ID = 'violin-position-zones-v1'
+const ADVANCED_VIOLIN_PROVENANCE = 'generated-advanced'
 
-function freezeModel(state, status, text = '') {
+function freezeModel(state, status, text = '', mode = null) {
   return Object.freeze({
     state,
     status,
     text,
+    mode,
     rendered: state === VIOLIN_UI_STATE.RENDERED,
   })
 }
@@ -120,84 +131,65 @@ function hasConsistentGeneratedFingering(event) {
     return false
   }
 
-  if (
-    Number.isInteger(event.note?.midi) &&
-    event.note.midi !== fingering.writtenMidi
-  ) {
-    return false
-  }
-
+  if (Number.isInteger(event.note?.midi) && event.note.midi !== fingering.writtenMidi) return false
   return true
 }
 
+function hasConsistentAdvancedPosition(event) {
+  const position = event?.position
+  if (!position || typeof position !== 'object') return false
+  const expectedOpenMidi = STRING_OPEN_MIDI[position.stringNumber]
+  return (
+    event.policyId === ADVANCED_VIOLIN_POLICY_ID &&
+    event.provenance === ADVANCED_VIOLIN_PROVENANCE &&
+    event.teacherApproved === false &&
+    position.policyId === ADVANCED_VIOLIN_POLICY_ID &&
+    position.provenance === ADVANCED_VIOLIN_PROVENANCE &&
+    position.teacherApproved === false &&
+    position.sourceFingeringClaimed === false &&
+    position.stringName === STRING_NAME[position.stringNumber] &&
+    Number.isInteger(expectedOpenMidi) &&
+    position.openMidi === expectedOpenMidi &&
+    Number.isInteger(position.writtenMidi) &&
+    Number.isInteger(position.semitoneOffset) &&
+    position.writtenMidi === expectedOpenMidi + position.semitoneOffset &&
+    Number.isInteger(position.positionNumber) &&
+    POSITION_LABEL[position.positionNumber] !== undefined &&
+    Number.isInteger(position.fingerNumber) &&
+    FINGER_LABEL[position.fingerNumber] !== undefined
+  )
+}
+
 function formatEvent(event, measureKey) {
-  if (!event || typeof event !== 'object' || event.measureKey !== measureKey) {
-    return null
-  }
-
-  if (event.isRest === true) {
-    return event.fingering === null ? 'sus' : null
-  }
-
+  if (!event || typeof event !== 'object' || event.measureKey !== measureKey) return null
+  if (event.isRest === true) return event.fingering === null ? 'sus' : null
   if (!hasConsistentGeneratedFingering(event)) return null
 
   const fingering = event.fingering
   const position = `${STRING_LABEL[fingering.stringNumber]}, ${FINGER_LABEL[fingering.fingerNumber]}`
-  const noteName = typeof event.note?.noteName === 'string'
-    ? event.note.noteName.trim()
-    : ''
-
+  const noteName = typeof event.note?.noteName === 'string' ? event.note.noteName.trim() : ''
   return noteName ? `${noteName} notası: ${position}` : position
 }
 
-/**
- * Convert only a finalized Package 5C projection into deterministic plain text.
- * Physical measure identity is kept in every line so duplicate displayed
- * measure numbers are never collapsed in the accessible output.
- */
 export function formatBasicViolinProjectionForUi(projection) {
   if (
-    !projection ||
-    typeof projection !== 'object' ||
-    projection.state !== 'projected' ||
-    projection.teacherApproved !== false ||
-    projection.provenance !== BASIC_VIOLIN_PROVENANCE ||
-    projection.policyId !== BASIC_VIOLIN_POLICY_ID ||
-    !Array.isArray(projection.measures) ||
-    !validIndex(projection.measureCount) ||
-    projection.measureCount !== projection.measures.length ||
-    !validIndex(projection.noteCount) ||
-    projection.noteCount < 1
-  ) {
-    return null
-  }
+    !projection || typeof projection !== 'object' || projection.state !== 'projected' ||
+    projection.teacherApproved !== false || projection.provenance !== BASIC_VIOLIN_PROVENANCE ||
+    projection.policyId !== BASIC_VIOLIN_POLICY_ID || !Array.isArray(projection.measures) ||
+    !validIndex(projection.measureCount) || projection.measureCount !== projection.measures.length ||
+    !validIndex(projection.noteCount) || projection.noteCount < 1
+  ) return null
 
   const lines = []
   const observedNoteIndexes = new Set()
-
   for (const measure of projection.measures) {
-    if (
-      !measure ||
-      typeof measure !== 'object' ||
-      typeof measure.measureKey !== 'string' ||
-      measure.measureKey.trim() === '' ||
-      !validIndex(measure.measureIndex) ||
-      !Array.isArray(measure.events) ||
-      measure.events.length === 0
-    ) {
-      return null
-    }
+    if (!measure || typeof measure !== 'object' || typeof measure.measureKey !== 'string' ||
+      measure.measureKey.trim() === '' || !validIndex(measure.measureIndex) ||
+      !Array.isArray(measure.events) || measure.events.length === 0) return null
 
     const eventText = []
     for (const event of measure.events) {
-      if (
-        !validIndex(event?.noteIndex) ||
-        event.noteIndex >= projection.noteCount ||
-        observedNoteIndexes.has(event.noteIndex)
-      ) {
-        return null
-      }
-
+      if (!validIndex(event?.noteIndex) || event.noteIndex >= projection.noteCount || observedNoteIndexes.has(event.noteIndex)) return null
       const text = formatEvent(event, measure.measureKey)
       if (!text) return null
       observedNoteIndexes.add(event.noteIndex)
@@ -205,62 +197,76 @@ export function formatBasicViolinProjectionForUi(projection) {
     }
 
     const visibleNumber = measure.measureNumber === null || measure.measureNumber === undefined
-      ? String(measure.measureIndex + 1)
-      : String(measure.measureNumber)
-
-    lines.push(
-      `Ölçü ${visibleNumber}; fiziksel kimlik ${measure.measureKey}. ${eventText.join('; ')}.`,
-    )
+      ? String(measure.measureIndex + 1) : String(measure.measureNumber)
+    lines.push(`Ölçü ${visibleNumber}; fiziksel kimlik ${measure.measureKey}. ${eventText.join('; ')}.`)
   }
 
   if (observedNoteIndexes.size !== projection.noteCount) return null
   for (let noteIndex = 0; noteIndex < projection.noteCount; noteIndex += 1) {
     if (!observedNoteIndexes.has(noteIndex)) return null
   }
+  return lines.join('\n')
+}
 
+export function formatAdvancedViolinProjectionForUi(projection) {
+  if (!projection || typeof projection !== 'object' || projection.state !== 'projected' ||
+    projection.policyId !== ADVANCED_VIOLIN_POLICY_ID || projection.provenance !== ADVANCED_VIOLIN_PROVENANCE ||
+    projection.teacherApproved !== false || projection.sourceFingeringClaimed !== false ||
+    !Array.isArray(projection.measures) || projection.measureCount !== projection.measures.length ||
+    !Number.isInteger(projection.noteCount) || projection.noteCount < 1) return null
+
+  const seen = new Set()
+  const lines = []
+  for (const measure of projection.measures) {
+    if (!measure || typeof measure.measureKey !== 'string' || !Array.isArray(measure.groups) || measure.groups.length === 0) return null
+    const parts = []
+    for (const group of measure.groups) {
+      if (group.measureKey !== measure.measureKey || !Array.isArray(group.events) || group.events.length === 0) return null
+      const simultaneous = []
+      for (const event of group.events) {
+        if (!validIndex(event?.noteIndex) || event.noteIndex >= projection.noteCount || seen.has(event.noteIndex)) return null
+        seen.add(event.noteIndex)
+        if (event.isRest === true) {
+          if (event.position !== null) return null
+          simultaneous.push('sus')
+          continue
+        }
+        if (!hasConsistentAdvancedPosition(event)) return null
+        const p = event.position
+        const noteName = typeof event.note?.noteName === 'string' && event.note.noteName.trim() !== ''
+          ? `${event.note.noteName.trim()} notası: ` : ''
+        simultaneous.push(`${noteName}${STRING_LABEL[p.stringNumber]}, ${POSITION_LABEL[p.positionNumber]}, ${FINGER_LABEL[p.fingerNumber]}`)
+      }
+      parts.push(simultaneous.length > 1 ? `aynı anda ${simultaneous.join(' + ')}` : simultaneous[0])
+    }
+    const visibleNumber = measure.measureNumber === null || measure.measureNumber === undefined
+      ? String(measure.measureIndex + 1) : String(measure.measureNumber)
+    lines.push(`Ölçü ${visibleNumber}; fiziksel kimlik ${measure.measureKey}. ${parts.join('; ')}.`)
+  }
+
+  if (seen.size !== projection.noteCount) return null
   return lines.join('\n')
 }
 
 export function buildViolinUiModel(notes, adapters = {}) {
-  if (!Array.isArray(notes) || notes.length === 0) {
-    return freezeModel(VIOLIN_UI_STATE.EMPTY, VIOLIN_UI_MESSAGE.EMPTY)
-  }
+  if (!Array.isArray(notes) || notes.length === 0) return freezeModel(VIOLIN_UI_STATE.EMPTY, VIOLIN_UI_MESSAGE.EMPTY)
 
-  const buildConsumer = adapters.buildQualityGatedBasicViolin
-    ?? buildQualityGatedBasicViolin
-
+  const buildConsumer = adapters.buildQualityGatedViolin ?? adapters.buildQualityGatedBasicViolin ?? buildQualityGatedViolin
   let result
-  try {
-    result = buildConsumer(notes)
-  } catch {
+  try { result = buildConsumer(notes) } catch { return freezeModel(VIOLIN_UI_STATE.INVALID, VIOLIN_UI_MESSAGE.INVALID) }
+
+  if (result?.state === VIOLIN_CONSUMER_STATE.PROJECTED && result.allowed === true && result.definitive === true && result.teacherApproved === false) {
+    const advanced = result.mode === 'advanced'
+    const text = advanced
+      ? formatAdvancedViolinProjectionForUi(result.projection)
+      : formatBasicViolinProjectionForUi(result.projection)
+    if (text) return freezeModel(VIOLIN_UI_STATE.RENDERED, advanced ? VIOLIN_UI_MESSAGE.ADVANCED_RENDERED : VIOLIN_UI_MESSAGE.RENDERED, text, advanced ? 'advanced' : 'basic')
     return freezeModel(VIOLIN_UI_STATE.INVALID, VIOLIN_UI_MESSAGE.INVALID)
   }
 
-  if (
-    result?.state === VIOLIN_CONSUMER_STATE.PROJECTED &&
-    result.allowed === true &&
-    result.definitive === true &&
-    result.teacherApproved === false
-  ) {
-    const text = formatBasicViolinProjectionForUi(result.projection)
-    if (text) {
-      return freezeModel(VIOLIN_UI_STATE.RENDERED, VIOLIN_UI_MESSAGE.RENDERED, text)
-    }
-    return freezeModel(VIOLIN_UI_STATE.INVALID, VIOLIN_UI_MESSAGE.INVALID)
-  }
-
-  if (result?.state === VIOLIN_CONSUMER_STATE.REVIEW_REQUIRED) {
-    return freezeModel(VIOLIN_UI_STATE.REVIEW_REQUIRED, VIOLIN_UI_MESSAGE.REVIEW_REQUIRED)
-  }
-
-  if (result?.state === VIOLIN_CONSUMER_STATE.BLOCKED) {
-    return freezeModel(VIOLIN_UI_STATE.BLOCKED, VIOLIN_UI_MESSAGE.BLOCKED)
-  }
-
-  if (result?.state === VIOLIN_CONSUMER_STATE.NOT_AVAILABLE) {
-    return freezeModel(VIOLIN_UI_STATE.NOT_AVAILABLE, VIOLIN_UI_MESSAGE.NOT_AVAILABLE)
-  }
-
+  if (result?.state === VIOLIN_CONSUMER_STATE.REVIEW_REQUIRED) return freezeModel(VIOLIN_UI_STATE.REVIEW_REQUIRED, VIOLIN_UI_MESSAGE.REVIEW_REQUIRED)
+  if (result?.state === VIOLIN_CONSUMER_STATE.BLOCKED) return freezeModel(VIOLIN_UI_STATE.BLOCKED, VIOLIN_UI_MESSAGE.BLOCKED)
+  if (result?.state === VIOLIN_CONSUMER_STATE.NOT_AVAILABLE) return freezeModel(VIOLIN_UI_STATE.NOT_AVAILABLE, VIOLIN_UI_MESSAGE.NOT_AVAILABLE)
   return freezeModel(VIOLIN_UI_STATE.INVALID, VIOLIN_UI_MESSAGE.INVALID)
 }
 
@@ -275,18 +281,10 @@ function setActiveTabState(root, activeName) {
 
 export function activateViolinResultTab(root) {
   if (!root || typeof root.getElementById !== 'function') return false
-
   const panel = root.getElementById('tab-violin')
   if (!panel) return false
-
   setActiveTabState(root, 'violin')
-  for (const id of [
-    'tab-rhythmic',
-    'tab-html',
-    'tab-notes',
-    'tab-xml',
-    'tab-guitar-tab',
-  ]) {
+  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-xml', 'tab-guitar-tab']) {
     const existingPanel = root.getElementById(id)
     if (existingPanel) existingPanel.hidden = true
   }
@@ -295,14 +293,7 @@ export function activateViolinResultTab(root) {
 }
 
 export function ensureViolinPanel(root) {
-  if (
-    !root ||
-    typeof root.getElementById !== 'function' ||
-    typeof root.createElement !== 'function'
-  ) {
-    return null
-  }
-
+  if (!root || typeof root.getElementById !== 'function' || typeof root.createElement !== 'function') return null
   const existing = root.getElementById('tab-violin')
   if (existing) return existing
 
@@ -312,44 +303,20 @@ export function ensureViolinPanel(root) {
   if (!tabList || !host) return null
 
   const button = root.createElement('button')
-  button.id = 'result-violin-btn'
-  button.type = 'button'
-  button.className = 'tab-btn'
-  button.dataset.tab = 'violin'
-  button.textContent = 'Keman'
-  button.setAttribute('role', 'tab')
-  button.setAttribute('aria-selected', 'false')
-  button.setAttribute('aria-controls', 'tab-violin')
-  button.addEventListener('click', () => activateViolinResultTab(root))
-  tabList.appendChild(button)
+  button.id = 'result-violin-btn'; button.type = 'button'; button.className = 'tab-btn'; button.dataset.tab = 'violin'; button.textContent = 'Keman'
+  button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', 'false'); button.setAttribute('aria-controls', 'tab-violin')
+  button.addEventListener('click', () => activateViolinResultTab(root)); tabList.appendChild(button)
 
   const panel = root.createElement('div')
-  panel.id = 'tab-violin'
-  panel.className = 'tab-content violin-panel'
-  panel.hidden = true
-  panel.setAttribute('role', 'tabpanel')
-  panel.setAttribute('aria-labelledby', 'result-violin-btn')
+  panel.id = 'tab-violin'; panel.className = 'tab-content violin-panel'; panel.hidden = true
+  panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'result-violin-btn')
 
-  const heading = root.createElement('h3')
-  heading.id = 'violin-heading'
-  heading.textContent = 'Temel Keman — Birinci Pozisyon'
+  const heading = root.createElement('h3'); heading.id = 'violin-heading'; heading.textContent = 'Keman — Tel ve Parmak Önerisi'
+  const status = root.createElement('div'); status.id = 'violin-status'; status.className = 'rhythm-warning violin-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite')
+  const output = root.createElement('pre'); output.id = 'violin-output'; output.className = 'rhythmic-text violin-output'; output.hidden = true
+  output.setAttribute('aria-label', 'Oluşturulan temel keman tel ve parmak önerisi'); output.setAttribute('tabindex', '0')
 
-  const status = root.createElement('div')
-  status.id = 'violin-status'
-  status.className = 'rhythm-warning violin-status'
-  status.setAttribute('role', 'status')
-  status.setAttribute('aria-live', 'polite')
-
-  const output = root.createElement('pre')
-  output.id = 'violin-output'
-  output.className = 'rhythmic-text violin-output'
-  output.hidden = true
-  output.setAttribute('aria-label', 'Oluşturulan temel keman tel ve parmak önerisi')
-  output.setAttribute('tabindex', '0')
-
-  panel.appendChild(heading)
-  panel.appendChild(status)
-  panel.appendChild(output)
+  panel.appendChild(heading); panel.appendChild(status); panel.appendChild(output)
   if (notesSummary && notesSummary.parentElement === host) host.insertBefore(panel, notesSummary)
   else host.appendChild(panel)
 
@@ -358,51 +325,33 @@ export function ensureViolinPanel(root) {
     for (const existingButton of buttons) {
       if (existingButton === button) continue
       existingButton.addEventListener?.('click', () => {
-        panel.hidden = true
-        button.classList?.remove?.('active')
-        button.setAttribute('aria-selected', 'false')
+        panel.hidden = true; button.classList?.remove?.('active'); button.setAttribute('aria-selected', 'false')
       })
     }
     existingTabBindings.add(root)
   }
-
   return panel
 }
 
 export function renderViolinPanel(root, notes, adapters = {}) {
   const panel = ensureViolinPanel(root)
   if (!panel) return null
-
-  const output = root.getElementById('violin-output')
-  const status = root.getElementById('violin-status')
+  const output = root.getElementById('violin-output'); const status = root.getElementById('violin-status')
   if (!output || !status) return null
-
   const model = buildViolinUiModel(notes, adapters)
-  output.textContent = model.rendered ? model.text : ''
-  output.hidden = !model.rendered
-  status.textContent = model.status
+  output.textContent = model.rendered ? model.text : ''; output.hidden = !model.rendered; status.textContent = model.status
   panel.setAttribute('data-violin-state', model.state)
+  panel.setAttribute('data-violin-mode', model.mode ?? 'none')
   return model
 }
 
 export function initPackage5Ui(root = document, adapters = {}) {
   if (!ensureViolinPanel(root)) return false
-
-  const oldUnsubscribe = rootSubscriptions.get(root)
-  if (oldUnsubscribe) oldUnsubscribe()
-
-  const unsubscribe = subscribePackage3Measures((snapshot) => {
-    renderViolinPanel(root, snapshot?.notes ?? null, adapters)
-  })
+  const oldUnsubscribe = rootSubscriptions.get(root); if (oldUnsubscribe) oldUnsubscribe()
+  const unsubscribe = subscribePackage3Measures((snapshot) => renderViolinPanel(root, snapshot?.notes ?? null, adapters))
   rootSubscriptions.set(root, unsubscribe)
-
-  const current = getPackage3MeasureSnapshot()
-  renderViolinPanel(root, current.notes, adapters)
+  const current = getPackage3MeasureSnapshot(); renderViolinPanel(root, current.notes, adapters)
   return true
 }
 
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    initPackage5Ui(document)
-  })
-}
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => initPackage5Ui(document))
