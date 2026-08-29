@@ -21,10 +21,15 @@ export const ADVANCED_VIOLIN_PROJECTION_STATE = Object.freeze({
 const MAX_SIMULTANEOUS_PITCHED = 2
 const MAX_SOLVER_NODES = 4096
 
+// Freeze projection-owned containers, but never freeze/mutate the exact
+// caller-owned NoteObject reference stored under `note`.
 function freezeDeep(value, seen = new WeakSet()) {
   if (!value || typeof value !== 'object' || seen.has(value)) return value
   seen.add(value)
-  for (const key of Reflect.ownKeys(value)) freezeDeep(value[key], seen)
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === 'note') continue
+    freezeDeep(value[key], seen)
+  }
   return Object.freeze(value)
 }
 
@@ -159,10 +164,6 @@ function normalizeEntries(notes) {
   return { entries }
 }
 
-/**
- * Project canonical notes into a bounded generated advanced violin plan.
- * No partial plan is returned when any group is impossible or malformed.
- */
 export function projectCanonicalNotesToAdvancedViolin(notes) {
   if (!Array.isArray(notes) || notes.length === 0) {
     return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.INVALID, 'canonical-note-array-required')
@@ -194,9 +195,7 @@ export function projectCanonicalNotesToAdvancedViolin(notes) {
   try {
     for (const group of groups) {
       const sample = group[0].note
-      if (previousMeasureIndex !== null && sample.measureIndex !== previousMeasureIndex) {
-        activeUntil = new Map()
-      }
+      if (previousMeasureIndex !== null && sample.measureIndex !== previousMeasureIndex) activeUntil = new Map()
       previousMeasureIndex = sample.measureIndex
 
       const pitched = group.filter((entry) => entry.note.isRest !== true)
@@ -218,9 +217,7 @@ export function projectCanonicalNotesToAdvancedViolin(notes) {
           const lock = tieLocks.get(tieKey)
           if (!lock) return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.UNPLAYABLE, 'tie-stop-without-established-position')
           fixed.push({ entry, position: lock.position, tieKey })
-        } else {
-          newEntries.push(entry)
-        }
+        } else newEntries.push(entry)
       }
 
       const fixedStrings = new Set(fixed.map((item) => item.position.stringNumber))
@@ -241,7 +238,7 @@ export function projectCanonicalNotesToAdvancedViolin(notes) {
       const assignments = [...fixed, ...chosenNew].sort((a, b) => a.entry.noteIndex - b.entry.noteIndex)
       const events = []
 
-      for (const entry of group.sort((a, b) => a.noteIndex - b.noteIndex)) {
+      for (const entry of group.slice().sort((a, b) => a.noteIndex - b.noteIndex)) {
         if (entry.note.isRest === true) {
           events.push(freezeDeep({
             noteIndex: entry.noteIndex,
@@ -291,15 +288,11 @@ export function projectCanonicalNotesToAdvancedViolin(notes) {
       }))
     }
   } catch (error) {
-    if (error?.message === 'solver-node-limit') {
-      return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.UNPLAYABLE, 'solver-node-limit')
-    }
+    if (error?.message === 'solver-node-limit') return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.UNPLAYABLE, 'solver-node-limit')
     return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.INVALID, 'advanced-violin-solver-failed')
   }
 
-  if (tieLocks.size > 0) {
-    return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.UNPLAYABLE, 'dangling-tie-start')
-  }
+  if (tieLocks.size > 0) return terminal(ADVANCED_VIOLIN_PROJECTION_STATE.UNPLAYABLE, 'dangling-tie-start')
 
   const measureMap = new Map()
   for (const group of projectedGroups) {
