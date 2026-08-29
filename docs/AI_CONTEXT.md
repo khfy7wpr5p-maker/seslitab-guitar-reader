@@ -1,182 +1,264 @@
 # SesliTab AI Context
 
-## Official project and purpose
+**Context review:** 2026-08-29  
+**Fresh-read protected main:** `2a6fa9c981b85861895692df99887d46e768822e`  
+**Current application state:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 merged; T4 is a separate open PR #138.  
+**Current UI work:** Stage A teacher/product-shell simplification on a dedicated branch; not yet protected-main truth until its PR is green and merged.
 
-SesliTab is an inclusive, teacher-supervised and semi-automatic music-education system for blind, low-vision and sighted students. Unverified musical or training data must never be presented as definitively correct.
+## 1. Official project purpose
 
-## Sources of truth
+SesliTab is an inclusive, teacher-supervised and semi-automatic music-education system for blind, low-vision and sighted students. Unverified musical, source or training evidence must never be presented as definitively correct.
 
-Product/safety truth: `docs/project-charter.md`, this file, and approved package instructions.  
-Implementation truth: source code, tests/fresh CI, `docs/current-status.md`, `docs/package-status.md`, architecture and closure documents.
+The product goal is not merely PDF → MusicXML conversion. The goal is safe, accessible learning output without presenting uncertain pitch, rhythm, string/fret or provenance as fact.
 
-If documentation conflicts with code or fresh repository state, report the conflict rather than guessing.
+## 2. Sources of truth
 
-## Required development procedure
+Product/safety truth:
 
-Before each implementation stage:
+- `docs/project-charter.md`
+- `docs/product-architecture.md`
+- `docs/teacher-score-editor-architecture.md`
+- approved bounded package/stage instructions
+
+Implementation truth:
+
+- fresh repository state;
+- source code;
+- tests/fresh CI;
+- `docs/current-status.md`;
+- `docs/package-status.md`;
+- package closure documents.
+
+If documentation conflicts with fresh code/repository evidence, report the conflict and update documentation rather than guessing.
+
+## 3. Required development procedure
+
+Before every implementation stage:
 
 1. fresh read-only repository inspection;
-2. verify protected-main SHA, open PR/issues and current CI;
-3. confirm exact package and prerequisites;
-4. define allowed files and protected boundaries;
-5. define focused tests, full regression, production build and any required browser proof;
-6. confirm write/merge authority;
-7. use a dedicated branch and never direct-commit to main;
-8. resolve review findings and require exact-head CI before merge;
-9. merge with exact expected head;
-10. require exact-main CI before status advancement.
+2. verify protected-main SHA, protection/rules, open PR/issues and current CI;
+3. confirm exact bounded stage/package and prerequisites;
+4. check for duplicate/overlapping open PRs;
+5. define allowed files and protected boundaries;
+6. define focused tests, full regression, production build and browser/accessibility proof where applicable;
+7. use a dedicated branch; never direct-commit to main;
+8. do not add dependencies/framework changes unless separately approved;
+9. resolve CI/review failures before calling a stage complete;
+10. do not advance documentation status beyond real merged/tested evidence.
 
-Only one implementation package may be active at a time.
+A separate open domain/security PR must not be silently folded into unrelated UI work.
 
-## Current roadmap position
+## 4. Current roadmap position
 
-As of verified Package 8B-T3 implementation closure on 2026-08-29:
+- Packages 0–7: **Completed**
+- Package 8 — teacher correction/versioning/approval: **Completed**
+- Package 8B — Audiveris research/training evidence: **Partially implemented / deferred research**
+- Package 9 — Advanced Guitar TAB: **Completed**
+- Package 10 — Advanced Violin: **Completed**
+- Package 11 — Accessible Chromatic Tuner: **Completed**
+- Package 12 — Teacher-to-student sharing: **Partially implemented**
+  - T1 exact share authorization: **Completed**
+  - T2 exact-revision quality/provenance eligibility: **Completed**
+  - T3 bounded corrected-revision revalidation: **Completed**
+  - T4 structural/rhythmic corrected-revision revalidation: **open PR #138; not merged**
+  - authentication/persistence/network delivery: **not complete product capabilities**
+- Package 13 — Simplified rhythm mode: **Not started**
+- Package 14 — Mobile productisation: **Partially implemented**
 
-- Package 0–7: **Completed**
-- Package 8 / T1–T6: **Completed**
-- Package 8B: **Partially implemented**
-- Package 8B-T1 — verified dataset contract: **Completed**
-- Package 8B-T2 — verified evidence intake/readiness: **Completed**
-- Package 8B-T3 — bounded MUSCIMA accidental mapping: **Completed**
-- Package 9 — Advanced Guitar TAB: Not started / sequentially blocked while Package 8B is incomplete unless roadmap changes explicitly
-- Package 10 — Advanced Violin: Not started
-- Package 11 — Accessible Tuner: Not started
-- Package 12 — Teacher-to-student sharing: Not started
-- Package 13 — Simplified rhythm mode: Not started
-- Package 14 — Mobile productisation: Partially implemented
+The old Package 8B-era statement that Packages 9–12 were not started is obsolete and must not be reused.
 
-Verified Package 8B-T3 implementation main:
-`258ac27262aa4715164aafebe8fce97bb89f9dfb`
+## 5. Latest verified baseline evidence
 
-Exact-main CI #286 / run `33246461356`, job `99084669804`:
+Fresh-read current protected main is `2a6fa9c981b85861895692df99887d46e768822e`.
 
-- **1275/1275 tests PASS**
-- **232 suites**
-- 0 failed/skipped/cancelled
-- **0 vulnerabilities**
-- production build PASS
-- real-browser score runtime proof PASS
-- Package 8B-T1/T2/T3 focused regressions PASS
-- existing OMR/Audiveris, Render Blueprint and Dockerfile security regressions PASS
+The current merge commit does not expose a separate exact-main workflow run in the Actions query used for the 2026-08-29 review. The latest verified code-equivalent CI is PR #140 head `2c684b7ffb1bdb4cef9e8f5b0de408800cce0534`, whose merge produced the current main.
 
-## Package 8 invariants retained
+Verified PR #140 CI:
+
+- 1411 / 1411 tests PASS;
+- 235 suites;
+- 0 failed/skipped/cancelled/todo;
+- npm ci PASS;
+- 0 vulnerabilities;
+- Vite production build PASS;
+- pinned score runtime preparation PASS;
+- real Chrome score-render + measure-cursor proof PASS.
+
+Do not call this a distinct exact-main workflow run.
+
+## 6. Product decision — Auto-Pass / Review / Block
+
+Official decision:
+
+**Teacher approval is not universally mandatory.**
+
+### PASS
+
+A bounded consumer may proceed automatically only if its existing quality/provenance gate accepts the exact evidence required by that consumer.
+
+User wording: **Otomatik kontrollerden geçti.**
+
+PASS is not teacher approval and is not proof that OMR/MusicXML is visually identical to the original PDF.
+
+### REVIEW
+
+Teacher review/correction is required before definitive downstream use.
+
+User wording: **Kontrol gerekiyor.**
+
+### BLOCK
+
+Definitive downstream output is prohibited.
+
+User wording: **Bu eserde önce düzeltilmesi gereken yapısal bir sorun bulundu.**
+
+Permanent invariant: `Auto-Pass != teacher-approved`.
+
+This product decision does not silently widen Package 12 sharing authorization. A future Auto-Pass student-sharing route requires separate Package 12 review.
+
+## 7. Musical authority invariants
+
+1. UI is not musical semantic authority.
+2. Renderer is not musical semantic authority.
+3. Discovery is not verification authority.
+4. OMR is untrusted automatic evidence.
+5. Valid MusicXML is not proof of musical correctness.
+6. Do not invent pitch, duration, onset, octave, voice, staff, tie, tuplet, measure or source evidence.
+7. Canonical note/time data is shared across TTS, playback, MIDI, Guitar TAB, violin and score presentation.
+8. Missing/unsupported semantic evidence fails closed.
+9. Teacher approval cannot bypass structural BLOCK.
+
+## 8. Package 8 invariants
 
 1. Automatic source revision is immutable.
 2. Correction creates a new immutable revision and never overwrites its parent.
 3. Correction audit evidence is separate from approval.
-4. Quality-gate `ACCEPT` is not teacher approval.
-5. Teacher approval binds to one exact revision and does not survive later revision/undo automatically.
-6. History is lossless; undo creates new lineage.
-7. Stale teacher mutation conflicts with zero partial domain write.
-8. Package 12 later needs its own student-sharing authorization/quality contract.
+4. Quality acceptance is not teacher approval.
+5. Teacher approval binds to one exact current revision.
+6. A later correction/undo does not inherit old approval automatically.
+7. History is lossless; undo creates new lineage.
+8. Stale teacher mutation conflicts with zero partial domain write.
+9. Audit actor identity must not be silently invented by UI simplification.
+10. Approval is not student-sharing authorization.
 
-## Package 8B-T1 invariants
+## 9. Stage A teacher/product UI boundary
 
-1. T1 is research/data-domain only; it does not run or train Audiveris.
-2. MusicXML alone is not an Audiveris training sample.
-3. Candidate evidence is explicit: PDF, page image, `.omr`, MusicXML, glyph, shape label, coordinates, licence, Audiveris version and split.
-4. `trainingApproval` is separate from golden/reference or engineering-stage approval.
-5. Training approval scope is `audiveris_training_sample`.
-6. Training approval binds to the exact deterministic candidate-evidence SHA-256 fingerprint.
-7. Any exact evidence change prevents reuse of prior training approval.
-8. Dataset manifests accept only T1-trainable candidates and reject train/evaluation leakage.
-9. IDs/timestamps and missing evidence are never invented.
-10. No production Audiveris/provider/runtime/gateway/worker/Docker/Render integration is activated.
+Stage A is presentation-only and must not modify Package 8 domain semantics.
 
-## Package 8B-T2 invariants
+Target changes:
 
-1. T2 accepts only a strict T1 candidate plus dense exact `{ field, path, bytes }` evidence observations.
-2. Raw evidence bytes are hashed by T2 itself.
-3. Exact path/hash mismatch, duplicate fields and undeclared evidence are rejected.
-4. Missing declared observations remain incomplete.
-5. T2 cannot promote a T1-incomplete candidate.
-6. `eligible` means eligible for manifest review only, not training authorization or production readiness.
-7. Raw evidence bytes are not retained in readiness reports.
-8. T2 does not infer shape-label or coordinate truth from pixels.
-9. No production Audiveris/model/deployment boundary is activated.
+- primary product nav: **Çalışma Alanı / Nota Ara / Akort**;
+- remove technical `Öğretmen`/`Sonuçlar` from primary shell navigation without deleting functionality;
+- user actions: **Düzeltmeyi Kaydet / Eseri Onayla / Geri Al**;
+- move raw revision JSON/history/IDs under **Detaylar**;
+- simplify actor wording while preserving the explicit current audit requirement;
+- basic mobile width/focus/44px control treatment;
+- no framework/dependency/domain change.
 
-## Package 8B-T3 invariants
+`Eserlerim` must not be shown as available until a real library/persistence surface exists.
 
-1. T3 is a bounded **experimental mapping** stage, not a training stage.
-2. Only five source classes map to Audiveris accidental shapes:
-   - `accidentalSharp` → `SHARP`
-   - `accidentalFlat` → `FLAT`
-   - `accidentalNatural` → `NATURAL`
-   - `accidentalDoubleSharp` → `DOUBLE_SHARP`
-   - `accidentalDoubleFlat` → `DOUBLE_FLAT`
-3. Unrelated classes such as noteheads/stems/barlines are ignored rather than relabelled.
-4. Exact page/annotation SHA-256, bbox bounds and binary RLE mask area are validated.
-5. Mask fingerprints are computed from decoded pixels; deterministic sample IDs bind exact source evidence.
-6. Deterministic split is **page-disjoint only**; writer independence is not claimed.
-7. Supplied annotation XML is not an Audiveris `.omr` project and must never be represented as one.
-8. User approval to perform T3 engineering is not per-sample `audiveris_training_sample` approval.
-9. Every mapped record retains blockers: `missing_omr_artifact`, `missing_training_approval`, `external_license_review_required`.
-10. T3 mappings do not bypass T1/T2 trainability/readiness admission.
-11. Source/derived MUSCIMA images are not published into this public repo in T3.
-12. No Audiveris training, model replacement, provider/runtime, gateway, Docker or Render change occurs.
+## 10. Score renderer status
 
-## User-supplied T3 evidence measured outside the repository
+Current verified SesliTab score integration provides:
 
-Conversation uploads:
+- pinned ST Score Rendering Layer runtime;
+- score rendering;
+- canonical measure cursor synchronization;
+- real-browser render/cursor proof.
 
-- `Images.rar` SHA-256 `7732e6fece20a5928dc19c45c008b24f1899a1a7510c9d7cac30cb7d18fb1a04`
-- `Parsed_by_page_omr_xml.rar` SHA-256 `ffa0caaf1c87b2f34011f42943a8f897701030ddcea9e57a24d6a9735ae24cca`
+Not yet verified/implemented as a complete contract:
 
-Measured:
+- note hit-test;
+- stable canonical/source note identity selection;
+- note quality overlays;
+- accessible note selection;
+- final responsive/mobile score scaling.
 
-- 100 PNG images + 100 XML annotations, 100/100 page matches;
-- 10,109 annotation objects;
-- **2,714 accidental annotations**;
-- 0 accidental bbox overruns;
-- local research-only normalized split: 2,247 mapped train / 467 mapped evaluation across 80/20 pages;
-- normalized manifest SHA-256 `1e5ae9441f7d1e02d39f24c4851545eb34b8587428365c5f2b44ebb1ef494a40`.
+Reported runtime errors such as `Invalid note initialization object: {}` must be reproduced and traced in Stage B. Never fabricate note values to hide renderer crashes.
 
-These 2,714 are **not** T1/T2-admitted trainable samples. Current actual T1/T2 eligible/trainable sample count remains **0**.
+Any cross-repository renderer contract change requires a fresh-read and explicit separate review.
 
-## Package 8B implementation map
+## 11. Package 12 boundary
 
-- `scripts/audiverisTrainingDatasetContract.js` — T1 strict candidate/manifest validation
-- `scripts/audiverisTrainingDatasetInventory.js` — T1 read-only current-evidence inventory
-- `scripts/audiverisTrainingEvidenceReadiness.js` — T2 exact byte/path/hash readiness evaluator
-- `scripts/audiverisMuscimaAccidentalMapping.js` — T3 bounded accidental mapping evidence
-- `tests/package8bDatasetContract.test.js` — T1 regressions
-- `tests/package8bEvidenceReadiness.test.js` / `tests/package8bEvidenceReadinessReview.test.js` — T2 regressions
-- `tests/package8bMuscimaAccidentalMapping.test.js` — T3 mapping/boundary regressions
-- `docs/package-8b-t1-closure.md`, `docs/package-8b-t2-closure.md`, `docs/package-8b-t3-closure.md` — closure evidence
+Current merged sharing contracts are deliberately metadata/gate focused. Do not claim complete authenticated student delivery, persistence or public share links unless fresh code proves them.
 
-## Package 8B-T3 evidence
+T1/T2/T3 must remain fail closed on stale/mismatched evidence. T4 is separate open PR #138 and cannot be treated as protected-main behavior before merge.
 
-- PR #113 final head `b3f4b71a9748f2b8281abe5f0d9e6fb925a0fd9a`
-- exact-head CI #285 / run `33246314925`, job `99084280341`: SUCCESS
-- review threads: 0 unresolved
-- protected-main merge `258ac27262aa4715164aafebe8fce97bb89f9dfb`
-- exact-main CI #286 / run `33246461356`, job `99084669804`: SUCCESS
-- 1275/1275 tests, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS, real-browser proof PASS
+Stage A must not edit Package 12 domain code.
 
-## Current blocker / next safe action
+## 12. Discovery boundary
 
-Package 8B remains **Partially implemented**. T3 provides useful experimental accidental mapping evidence but does not satisfy T1/T2 trainability.
+Discovery is implemented as a bounded source-finding surface.
 
-Before any training stage, fresh-read and explicitly decide:
+```text
+FOUND
+!= SOURCE VERIFIED
+!= MUSICALLY VERIFIED
+!= TEACHER APPROVED
+```
 
-1. whether T1's `.omr` requirement applies unchanged to third-party classifier-glyph corpora or needs a separately reviewed contract extension;
-2. how exact per-sample training authorization is represented under the external MUSCIMA/CVC-MUSCIMA licence boundary;
-3. how evaluation avoids overstating generalization when only page-disjoint, not writer-independent, split evidence is known.
+External sources must re-enter normal validation before musical trust. Prefer **Kaynak Sitesinde Aç** when safe import/viewing is unavailable; do not force external viewers into iframes.
 
-Do not run training, claim accuracy improvement, or replace/tune the production model from T3 mappings alone.
+## 13. Tuner boundary
 
-Under the current sequential roadmap, do not start Package 9 while Package 8B remains incomplete unless the user explicitly changes the roadmap.
+Package 11 tuner uses browser-local microphone/Web Audio processing. Audio must not be uploaded/stored under the existing contract. Stage K may compact presentation but not change microphone privacy semantics.
 
-## Protected integration boundaries
+## 14. Package 8B research invariants
 
-Unless separately and explicitly authorized with measured evidence, do not change:
+Package 8B remains deferred research. Engineering gates do not prove real training or production-model improvement.
+
+Pinned Audiveris research revision remains:
+
+`7a36078e7ba0c006052c1f661b949cf9b729f505`
+
+Current genuine state must not be overstated:
+
+```text
+mapped experimental samples:             2,714
+exact research approvals:                   0
+admitted real samples:                      0
+trainable real samples:                     0
+serializer-ready real samples:              0
+real samples.zip built:                      NO
+real pinned-Audiveris acceptance receipt:    NO
+Audiveris training executed:                 NO
+production model changed:                    NO
+```
+
+Do not invent glyph/native/approval/licence/training/performance evidence.
+
+## 15. Protected integration boundaries
+
+Unless separately authorized and reviewed, do not change:
 
 - production Audiveris provider/runtime/preflight;
 - OMR worker/provider selection;
-- Cloud OMR Gateway or production OMR path;
+- Cloud OMR Gateway / backend production OMR path;
 - `Dockerfile`;
 - `render.yaml`;
-- current Render service/deployment connection;
-- production model selection/replacement.
+- Render service/deployment connection;
+- production model selection/replacement;
+- framework;
+- dependencies;
+- database/auth provider;
+- public API contracts;
+- security policy.
 
-Do not add dependencies unless necessary and approved. Do not invent notes, rhythms, symbols, training labels, coordinates, `.omr` evidence, approvals, licences or performance metrics.
+## 16. Current safe UI stage sequence
+
+```text
+Stage A — teacher UI/product shell simplification
+Stage B — score runtime stabilization + responsive scaling
+Stage C — measure/note selection contract
+Stage D — quality overlay
+Stage E — bounded visual note editor
+Stage F — undo + revalidation + rerender
+Stage G — PASS/REVIEW/BLOCK product routing
+Stage H — provisional REVIEW playback
+Stage I — Guitar TAB + violin product integration
+Stage J — Discovery presentation simplification
+Stage K — compact tuner UI
+Stage L — student/share UI only when Package 12 gates permit it
+```
+
+After each stage: focused tests, full regression, production build, applicable browser/accessibility checks, PR and CI evidence are required before advancement.

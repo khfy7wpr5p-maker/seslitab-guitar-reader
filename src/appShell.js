@@ -1,8 +1,6 @@
 export const APP_SHELL_FEATURES = Object.freeze([
   Object.freeze({ id: 'workspace', label: 'Çalışma Alanı', targetId: 'input-section', kind: 'section' }),
   Object.freeze({ id: 'discovery', label: 'Nota Ara', targetId: 'input-section', controlId: 'discovery-tab-btn', kind: 'tab' }),
-  Object.freeze({ id: 'teacher', label: 'Öğretmen', targetId: 'results-section', controlId: 'teacher-tab-btn', kind: 'tab' }),
-  Object.freeze({ id: 'results', label: 'Sonuçlar', targetId: 'results-section', kind: 'section' }),
   Object.freeze({ id: 'tuner', label: 'Akort', targetId: 'chromatic-tuner-section', kind: 'section' }),
 ])
 
@@ -49,39 +47,20 @@ function createFeatureButton(root, feature) {
   return button
 }
 
-function createStatusCard(root) {
+function createProductIntro(root) {
   const card = root.createElement('section')
   card.className = 'app-shell-status'
   card.setAttribute('aria-labelledby', 'app-shell-status-heading')
 
   const heading = root.createElement('h2')
   heading.id = 'app-shell-status-heading'
-  heading.textContent = 'Özellik testi'
+  heading.textContent = 'SesliTab çalışma alanı'
   card.appendChild(heading)
 
   const text = root.createElement('p')
-  text.textContent = 'Bu arayüz mevcut SesliTab özelliklerini tek noktadan açmak içindir. Hesap ve gerçek öğrenci paylaşımı henüz etkin değildir.'
+  text.textContent = 'Bir eser açın, nota kaynağı arayın veya akort aracını kullanın. Hesap ve gerçek öğrenci paylaşımı henüz etkin değildir.'
   card.appendChild(text)
 
-  const list = root.createElement('ul')
-  list.className = 'app-shell-feature-list'
-  const checks = [
-    ['PDF / MusicXML / TAB', 'input-section'],
-    ['Ritimli metin / TTS / playback', 'voice-section'],
-    ['Öğretmen düzeltme ve onay', 'teacher-tab-btn'],
-    ['Nota arama', 'discovery-tab-btn'],
-    ['Kromatik akort', 'chromatic-tuner-section'],
-  ]
-
-  for (const [label, elementId] of checks) {
-    const item = root.createElement('li')
-    const available = Boolean(root.getElementById(elementId))
-    item.textContent = `${available ? 'Hazır' : 'Yükleniyor'} — ${label}`
-    item.dataset.available = available ? 'true' : 'false'
-    list.appendChild(item)
-  }
-
-  card.appendChild(list)
   return card
 }
 
@@ -107,7 +86,7 @@ export function ensureAppShell(root = document) {
 
   for (const feature of APP_SHELL_FEATURES) nav.appendChild(createFeatureButton(root, feature))
   shell.appendChild(nav)
-  shell.appendChild(createStatusCard(root))
+  shell.appendChild(createProductIntro(root))
 
   main.parentElement.insertBefore(shell, main)
   return shell
