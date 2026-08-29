@@ -5,8 +5,9 @@
 // rendering output as musical authority.
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
-export const ST_SCORE_RENDERER_REVIEWED_REVISION = '717c0c2f32cebf11350104020d9d12ff88c59e94'
+export const ST_SCORE_RENDERER_REVIEWED_REVISION = '8b469b7f40a4dbea9c097cda49a79dff132071cb'
 export const SCORE_VIEW_MAX_MUSICXML_BYTES = 5 * 1024 * 1024
+export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
 
 function utf8Length(value) {
   return new TextEncoder().encode(value).byteLength
@@ -28,10 +29,26 @@ export function validateScoreViewMusicXml(musicxml) {
   return musicxml
 }
 
+export function validateScoreCursorTarget(target) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) {
+    throw new TypeError('Nota görünümü cursor hedefi nesne olmalıdır.')
+  }
+  const partId = typeof target.partId === 'string' ? target.partId.trim() : ''
+  if (!partId || partId.length > SCORE_VIEW_MAX_PART_ID_CHARS) {
+    throw new TypeError('Nota görünümü cursor partId değeri geçersiz.')
+  }
+  const measureIndex = target.measureIndex
+  if (!Number.isSafeInteger(measureIndex) || measureIndex < 0) {
+    throw new RangeError('Nota görünümü cursor measureIndex değeri geçersiz.')
+  }
+  return Object.freeze({ partId, measureIndex })
+}
+
 export function resolveStScoreRuntime(globalScope = globalThis) {
   const host = globalScope?.__ST_SCORE_RENDER_HOST__
   if (!host || typeof host !== 'object') return null
   if (typeof host.renderMusicXml !== 'function') return null
+  if (typeof host.moveCursor !== 'function') return null
   if (typeof host.dispose !== 'function') return null
   return host
 }
@@ -56,6 +73,13 @@ export async function renderScoreView(host, musicxml, options = {}) {
     drawComposer: options.drawComposer !== false,
     ticket,
   })
+}
+
+export async function moveScoreCursor(host, target) {
+  if (!host || typeof host.moveCursor !== 'function') {
+    throw new TypeError('ST score renderer cursor runtime bağlı değil.')
+  }
+  return host.moveCursor(validateScoreCursorTarget(target))
 }
 
 export async function clearScoreView(host) {
