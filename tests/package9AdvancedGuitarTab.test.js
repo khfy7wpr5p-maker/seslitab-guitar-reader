@@ -122,6 +122,34 @@ test('Package 9 sustained polyphony never reuses a still-busy string', () => {
   assert.notEqual(first.stringNumber, second.stringNumber)
 })
 
+test('Package 9 tie continuation preserves the exact established string and fret', () => {
+  const notes = [
+    note({ step: 'E', octave: 4, startBeat: 0, beats: 1, voice: 1, tieStart: true }),
+    note({ step: 'E', octave: 4, startBeat: 1, beats: 1, voice: 1, tieStop: true }),
+    note({ step: 'G', octave: 4, startBeat: 1, beats: 1, voice: 2 }),
+  ]
+  const result = buildQualityGatedGuitarTab(notes, { report: verifiedReport() })
+  assert.equal(result.state, GUITAR_TAB_CONSUMER_STATE.RENDERED)
+  assert.equal(result.mode, 'advanced')
+  const first = result.projection.measures[0].groups[0].events[0].position
+  const continuation = result.projection.measures[0].groups[1].events.find((event) => event.noteIndex === 1).position
+  const independent = result.projection.measures[0].groups[1].events.find((event) => event.noteIndex === 2).position
+  assert.deepEqual(continuation, first)
+  assert.notEqual(independent.stringNumber, continuation.stringNumber)
+})
+
+test('Package 9 dangling tie start fails closed with zero partial projection', () => {
+  const notes = [
+    note({ step: 'E', octave: 4, startBeat: 0, tieStart: true }),
+    note({ step: 'G', octave: 4, startBeat: 0, voice: 2, isChordNote: true }),
+  ]
+  const projection = projectCanonicalNotesToAdvancedGuitarTab(notes)
+  assert.equal(projection.state, ADVANCED_GUITAR_TAB_PROJECTION_STATE.UNPLAYABLE)
+  assert.equal(projection.reason, 'dangling-tie-start')
+  assert.equal(projection.measureCount, 0)
+  assert.equal(projection.noteCount, 0)
+})
+
 test('Package 9 refuses more than six simultaneous pitched notes with zero partial TAB', () => {
   const pitches = [
     ['E', 4], ['F', 4], ['G', 4], ['A', 4], ['B', 4], ['C', 5], ['D', 5],
