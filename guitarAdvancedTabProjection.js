@@ -273,6 +273,7 @@ function solveAssignments(measures) {
       return { state: 'blocked', reason: generated.reason || 'no-distinct-string-assignment', noteIndex: group.firstNoteIndex }
     }
 
+    let firstBlocked = null
     for (const combination of generated.combinations) {
       const nextActive = activeNow.slice()
       const nextTieLocks = new Map(tieLocks)
@@ -305,9 +306,14 @@ function solveAssignments(measures) {
       if (solved.state === 'solved') return solved
       for (const noteIndex of touched) assignment.delete(noteIndex)
       if (solved.state === 'limit') return solved
+      if (solved.state === 'blocked' && firstBlocked === null) firstBlocked = solved
     }
 
-    return { state: 'blocked', reason: 'no-sustained-string-assignment', noteIndex: group.firstNoteIndex }
+    return firstBlocked ?? {
+      state: 'blocked',
+      reason: 'no-sustained-string-assignment',
+      noteIndex: group.firstNoteIndex,
+    }
   }
 
   return {
