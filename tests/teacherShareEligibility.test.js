@@ -53,6 +53,7 @@ const VALID_4_4_XML = `<?xml version="1.0" encoding="UTF-8"?>
 </score-partwise>`
 
 const OTHER_XML = `${VALID_4_4_XML}\n<!-- replaced source evidence -->`
+const sourceNotesByRevision = new WeakMap()
 
 function verifiedState() {
   return {
@@ -89,12 +90,21 @@ function automatic({
   sourceId = 'score-1',
   createdAt = '2026-08-29T15:20:00Z',
 } = {}) {
-  return createAutomaticRevision({
+  const sourceNotes = verifiedNotes()
+  const revision = createAutomaticRevision({
     revisionId,
     sourceId,
     createdAt,
-    content: verifiedNotes(),
+    content: sourceNotes,
   })
+  sourceNotesByRevision.set(revision, sourceNotes)
+  return revision
+}
+
+function exactSourceNotes(revision) {
+  const notes = sourceNotesByRevision.get(revision)
+  assert.ok(Array.isArray(notes))
+  return notes
 }
 
 function approve(revision, overrides = {}) {
@@ -120,7 +130,8 @@ function authorize(revision, approval = approve(revision), overrides = {}) {
 }
 
 function prepareAcceptedQuality(revision) {
-  const report = prepareMusicXmlQualityGate(revision.content, VALID_4_4_XML)
+  const sourceNotes = exactSourceNotes(revision)
+  const report = prepareMusicXmlQualityGate(sourceNotes, VALID_4_4_XML)
   assert.equal(report.qualityState, QUALITY_STATE.SOURCE_VERIFIED)
   assert.equal(report.structurallyValid, true)
   assert.equal(report.sourceVerified, true)
@@ -135,6 +146,7 @@ function evidence(revision, overrides = {}) {
   return createTeacherShareQualityEvidence({
     evidenceId: 'quality-evidence-1',
     revision,
+    sourceNotes: exactSourceNotes(revision),
     createdAt: '2026-08-29T15:23:00Z',
     ...overrides,
   })
@@ -188,15 +200,18 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     )
   })
 
-  test('creates strict immutable evidence from exact source provenance plus accepted Package 2C/2D gates', () => {
+  test('creates strict immutable evidence from exact source array plus accepted Package 2C/2D gates', () => {
     const revision = automatic()
+    const sourceNotes = exactSourceNotes(revision)
     const report = prepareAcceptedQuality(revision)
     const revisionBefore = structuredClone(revision)
+    const sourceBefore = structuredClone(sourceNotes)
     const reportBefore = structuredClone(report)
 
     const qualityEvidence = createTeacherShareQualityEvidence({
       evidenceId: ' quality-evidence-1 ',
       revision,
+      sourceNotes,
       createdAt: ' 2026-08-29T15:23:00Z ',
     })
 
@@ -216,10 +231,11 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(qualityEvidence.playbackDecision, QUALITY_GATE_DECISION.ACCEPT)
     assert.equal(qualityEvidence.playbackReason, QUALITY_GATE_REASON.ACCEPT_VERIFIED)
     assert.deepEqual(revision, revisionBefore)
+    assert.deepEqual(sourceNotes, sourceBefore)
     assert.deepEqual(report, reportBefore)
   })
 
-  test('exact T1 authorization plus exact live quality evidence is eligible but exposes no payload', () => {
+  test('exact T1 authorization plus exact live source quality is eligible and exposes no payload', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
@@ -230,6 +246,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes: exactSourceNotes(revision),
       qualityEvidence,
     })
 
@@ -244,32 +261,52 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     }
   })
 
+  test('revision snapshot is not used as exact Package 7C/2D array evidence', () => {
+    const revision = automatic()
+    prepareAcceptedQuality(revision)
+
+    assert.notEqual(revision.content, exactSourceNotes(revision))
+    assert.throws(
+      () =>
+        createTeacherShareQualityEvidence({
+          evidenceId: 'quality-evidence-wrong-array',
+          revision,
+          sourceNotes: revision.content,
+        }),
+      /Exact-array MusicXML source evidence is required/,
+    )
+  })
+
   test('quality evidence creation fails closed when exact source/report evidence is missing', () => {
     const revision = automatic()
+    const sourceNotes = exactSourceNotes(revision)
 
     assert.throws(
       () =>
         createTeacherShareQualityEvidence({
           evidenceId: 'quality-evidence-1',
           revision,
+          sourceNotes,
         }),
       /Exact-array MusicXML source evidence is required/,
     )
 
-    registerMusicXmlSourceForNotes(revision.content, VALID_4_4_XML)
+    registerMusicXmlSourceForNotes(sourceNotes, VALID_4_4_XML)
     assert.throws(
       () =>
         createTeacherShareQualityEvidence({
           evidenceId: 'quality-evidence-1',
           revision,
+          sourceNotes,
         }),
       /genuine accepted Package 2C report/,
     )
   })
 
-  test('source/report evidence attached to a clone cannot transfer to the exact revision array', () => {
+  test('fresh evidence attached to a clone never transfers to the original source array', () => {
     const revision = automatic()
-    const clone = structuredClone(revision.content)
+    const original = exactSourceNotes(revision)
+    const clone = structuredClone(original)
     prepareMusicXmlQualityGate(clone, VALID_4_4_XML)
 
     assert.throws(
@@ -277,12 +314,41 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
         createTeacherShareQualityEvidence({
           evidenceId: 'quality-evidence-1',
           revision,
+          sourceNotes: original,
         }),
       /Exact-array MusicXML source evidence is required/,
     )
+
+    const cloneEvidence = createTeacherShareQualityEvidence({
+      evidenceId: 'quality-evidence-clone',
+      revision,
+      sourceNotes: clone,
+    })
+    assert.equal(isTeacherShareQualityEvidenceRecord(cloneEvidence), true)
   })
 
-  test('teacher-corrected revisions require post-correction revalidation even if stale metadata appears optimistic', () => {
+  test('source array content must still match the immutable automatic revision snapshot', () => {
+    const revision = automatic()
+    const approval = approve(revision)
+    const authorization = authorize(revision, approval)
+    const sourceNotes = exactSourceNotes(revision)
+    const qualityEvidence = evidence(revision)
+
+    sourceNotes[0].noteName = 'Fa#'
+
+    const result = evaluateTeacherShareEligibility({
+      authorization,
+      revision,
+      approval,
+      recipientId: 'student-1',
+      sourceNotes,
+      qualityEvidence,
+    })
+    assert.equal(result.status, TEACHER_SHARE_ELIGIBILITY_STATUS.SOURCE_EVIDENCE_STALE)
+    assert.equal(result.eligible, false)
+  })
+
+  test('teacher-corrected revisions require separately reviewed post-correction revalidation', () => {
     const base = automatic()
     const changedContent = structuredClone(base.content)
     changedContent[0].noteName = 'Fa#'
@@ -295,16 +361,14 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     const approval = approve(corrected)
     const authorization = authorize(corrected, approval)
 
-    // Existing Package 2D report generation does not constitute a reviewed
-    // post-correction provenance contract. T2 must refuse to inherit it.
-    const optimistic = prepareMusicXmlQualityGate(corrected.content, VALID_4_4_XML)
-    assert.equal(optimistic.sourceVerified, true)
+    prepareMusicXmlQualityGate(corrected.content, VALID_4_4_XML)
 
     assert.throws(
       () =>
         createTeacherShareQualityEvidence({
           evidenceId: 'quality-evidence-corrected',
           revision: corrected,
+          sourceNotes: corrected.content,
         }),
       /post-correction revalidation/,
     )
@@ -335,6 +399,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes: exactSourceNotes(revision),
     })
 
     assert.equal(result.status, TEACHER_SHARE_ELIGIBILITY_STATUS.QUALITY_EVIDENCE_MISSING)
@@ -345,7 +410,6 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
-
     const other = automatic({ revisionId: 'auto-2', sourceId: 'score-2' })
     const otherEvidence = evidence(other, { evidenceId: 'quality-evidence-other' })
 
@@ -354,6 +418,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes: exactSourceNotes(revision),
       qualityEvidence: otherEvidence,
     })
 
@@ -364,13 +429,11 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(result.eligible, false)
   })
 
-  test('removing exact source provenance after evidence creation fails closed', () => {
+  test('missing exact sourceNotes at evaluation fails closed', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
     const qualityEvidence = evidence(revision)
-
-    assert.equal(clearMusicXmlSourceForNotes(revision.content), true)
 
     const result = evaluateTeacherShareEligibility({
       authorization,
@@ -383,38 +446,63 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(result.eligible, false)
   })
 
-  test('replacing exact source provenance after evidence creation is detected as stale', () => {
+  test('removing exact source provenance after evidence creation fails closed', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
+    const sourceNotes = exactSourceNotes(revision)
     const qualityEvidence = evidence(revision)
 
-    registerMusicXmlSourceForNotes(revision.content, OTHER_XML)
+    assert.equal(clearMusicXmlSourceForNotes(sourceNotes), true)
 
     const result = evaluateTeacherShareEligibility({
       authorization,
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes,
+      qualityEvidence,
+    })
+    assert.equal(result.status, TEACHER_SHARE_ELIGIBILITY_STATUS.SOURCE_EVIDENCE_MISSING)
+    assert.equal(result.eligible, false)
+  })
+
+  test('replacing exact source provenance after evidence creation is detected as stale', () => {
+    const revision = automatic()
+    const approval = approve(revision)
+    const authorization = authorize(revision, approval)
+    const sourceNotes = exactSourceNotes(revision)
+    const qualityEvidence = evidence(revision)
+
+    registerMusicXmlSourceForNotes(sourceNotes, OTHER_XML)
+
+    const result = evaluateTeacherShareEligibility({
+      authorization,
+      revision,
+      approval,
+      recipientId: 'student-1',
+      sourceNotes,
       qualityEvidence,
     })
     assert.equal(result.status, TEACHER_SHARE_ELIGIBILITY_STATUS.SOURCE_EVIDENCE_STALE)
     assert.equal(result.eligible, false)
   })
 
-  test('removing the accepted report after evidence creation returns quality review, not eligibility', () => {
+  test('removing the accepted report after evidence creation returns quality review', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
+    const sourceNotes = exactSourceNotes(revision)
     const qualityEvidence = evidence(revision)
 
-    assert.equal(unregisterQualityReportForNotes(revision.content), true)
+    assert.equal(unregisterQualityReportForNotes(sourceNotes), true)
 
     const result = evaluateTeacherShareEligibility({
       authorization,
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes,
       qualityEvidence,
     })
     assert.equal(result.status, TEACHER_SHARE_ELIGIBILITY_STATUS.QUALITY_REVIEW_REQUIRED)
@@ -427,18 +515,17 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
+    const sourceNotes = exactSourceNotes(revision)
     const qualityEvidence = evidence(revision)
 
-    registerQualityReportForNotes(
-      revision.content,
-      frozenBlockedReport(revision.content.length),
-    )
+    registerQualityReportForNotes(sourceNotes, frozenBlockedReport(sourceNotes.length))
 
     const result = evaluateTeacherShareEligibility({
       authorization,
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes,
       qualityEvidence,
     })
     assert.equal(result.status, TEACHER_SHARE_ELIGIBILITY_STATUS.QUALITY_BLOCKED)
@@ -447,22 +534,21 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(result.playbackDecision, QUALITY_GATE_DECISION.BLOCK)
   })
 
-  test('an optimistic ad-hoc registered report cannot satisfy T2 provenance shape even if Package 2D returns ACCEPT', () => {
+  test('optimistic ad-hoc report cannot satisfy stronger T2 Package 2C shape', () => {
     const revision = automatic()
     const approval = approve(revision)
     const authorization = authorize(revision, approval)
+    const sourceNotes = exactSourceNotes(revision)
     const qualityEvidence = evidence(revision)
 
-    registerQualityReportForNotes(
-      revision.content,
-      frozenOptimisticButNonPackage2cReport(),
-    )
+    registerQualityReportForNotes(sourceNotes, frozenOptimisticButNonPackage2cReport())
 
     const result = evaluateTeacherShareEligibility({
       authorization,
       revision,
       approval,
       recipientId: 'student-1',
+      sourceNotes,
       qualityEvidence,
     })
     assert.equal(result.ttsDecision, QUALITY_GATE_DECISION.ACCEPT)
@@ -485,7 +571,6 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
       qualityEvidence,
     })
     assert.equal(recipientMismatch.status, TEACHER_SHARE_ELIGIBILITY_STATUS.RECIPIENT_MISMATCH)
-    assert.equal(recipientMismatch.eligible, false)
 
     const revocation = createTeacherShareRevocation({
       revocationId: 'revoke-1',
@@ -505,7 +590,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(revoked.eligible, false)
   })
 
-  test('stale authorization fails closed before a later corrected revision can enter T2', () => {
+  test('stale authorization fails closed before later corrected revision enters T2', () => {
     const first = automatic()
     const firstApproval = approve(first)
     const authorization = authorize(first, firstApproval)
@@ -533,7 +618,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(result.eligible, false)
   })
 
-  test('strict quality evidence validator rejects mutable, extra-field, symbol and accessor records', () => {
+  test('strict quality evidence validator rejects mutable, extra, symbol and accessor records', () => {
     const revision = automatic()
     const valid = evidence(revision)
 
@@ -561,7 +646,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
     assert.equal(isTeacherShareQualityEvidenceRecord(accessor), false)
   })
 
-  test('strict validator rejects unsupported schema/state/kind and non-ACCEPT evidence claims', () => {
+  test('strict validator rejects unsupported schema/state/kind and non-ACCEPT claims', () => {
     const valid = evidence(automatic())
 
     for (const replacement of [
@@ -589,16 +674,26 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
 
   test('caller owns evidence identity/time and malformed domain inputs fail closed', () => {
     const revision = automatic()
+    const sourceNotes = exactSourceNotes(revision)
     prepareAcceptedQuality(revision)
 
     assert.throws(
-      () => createTeacherShareQualityEvidence({ revision }),
+      () => createTeacherShareQualityEvidence({ revision, sourceNotes }),
       /evidenceId/,
+    )
+    assert.throws(
+      () =>
+        createTeacherShareQualityEvidence({
+          evidenceId: 'quality-1',
+          revision,
+        }),
+      /sourceNotes/,
     )
 
     const qualityEvidence = createTeacherShareQualityEvidence({
       evidenceId: ' quality-1 ',
       revision,
+      sourceNotes,
     })
     assert.equal(qualityEvidence.evidenceId, 'quality-1')
     assert.equal(qualityEvidence.createdAt, null)
@@ -612,6 +707,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
           revision,
           approval,
           recipientId: 'student-1',
+          sourceNotes,
           qualityEvidence: structuredClone(qualityEvidence),
         }),
       /valid immutable teacher share quality evidence record/,
@@ -623,6 +719,7 @@ describe('Package 12-T2 exact-revision share quality eligibility', () => {
           revision: structuredClone(revision),
           approval,
           recipientId: 'student-1',
+          sourceNotes,
           qualityEvidence,
         }),
       /valid immutable teacher revision/,
