@@ -1,16 +1,16 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected `main` implementation baseline: `160c3bcadfc634f7b1300627993e89ebda764576`  
-Latest exact-main implementation CI: **#326 / run `33258600115`, job `99116529789` — SUCCESS**  
-Current package state: **Package 0–11 Completed. Package 8B remains Partially implemented as deferred research; Package 12 is next.**
+Latest verified protected `main` implementation baseline: `8bb797ac8c8f01697669e875ecc6d7df13ea878f`  
+Latest exact-main implementation CI: **#330 / run `33259462116`, job `99118792913` — SUCCESS**  
+Current package state: **Package 0–11 Completed. Package 12 is Partially implemented with T1 Completed. Package 8B remains Partially implemented as deferred research.**
 
 ## Verified baseline
 
-Exact-main CI #326 checked out protected-main SHA `160c3bcadfc634f7b1300627993e89ebda764576` and verified:
+Exact-main CI #330 checked out protected-main SHA `8bb797ac8c8f01697669e875ecc6d7df13ea878f` and verified:
 
-- **1352 / 1352 tests PASS**;
-- **232 suites**;
+- **1369 / 1369 tests PASS**;
+- **233 suites**;
 - **0 failed / skipped / cancelled**;
 - **0 vulnerabilities**;
 - Vite production build **PASS**;
@@ -64,6 +64,37 @@ Evidence:
 
 Detailed contract: `docs/package-11-chromatic-tuner.md`.
 
+## Package 12 — Teacher-to-Student Sharing
+
+Status: **Partially implemented.**
+
+### T1 — Exact Share Authorization
+
+Status: **Completed.**
+
+T1 adds a pure immutable sharing-domain boundary that remains separate from Package 8 teacher approval. Explicit authorization is bound to:
+
+- one exact immutable teacher revision;
+- its exact Package 8 approval record;
+- one caller-supplied recipient identity;
+- one caller-supplied issuer identity and authorization ID.
+
+A later correction, undo-created revision, identical-content revision with different recursive lineage, another source, another approval record or another recipient does not inherit the authorization. Exact revocation is represented separately and fails closed as `REVOKED`.
+
+Evidence:
+
+- implementation PR **#127** merged;
+- final PR head SHA `10c877ade4ced2a80b6dc102afd2285e114e6672`;
+- protected-main implementation SHA `8bb797ac8c8f01697669e875ecc6d7df13ea878f`;
+- exact-main CI **#330 / run `33259462116`, job `99118792913` — SUCCESS**;
+- **1369 / 1369 tests PASS**, 233 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build PASS and Chrome proof PASS.
+
+Important boundary: `AUTHORIZED_EXACT_BINDING` is not final student-delivery permission. T1 does not expose content, generate links/tokens/invite codes, authenticate users, persist authorization, add backend endpoints, send network requests or bypass quality/safety evidence.
+
+Detailed contract: `docs/package-12-t1-share-authorization.md`.
+
 ## Package 8B — deferred research state
 
 Package 8B remains **Partially implemented**, but missing research evidence no longer blocks application packages.
@@ -83,9 +114,11 @@ T1–T6 engineering gates remain intact. Do not fabricate sample approval, nativ
 
 ## Next application boundary
 
-**Package 12 — Teacher-to-student sharing** is the next active package.
+**Package 12-T2 — Exact-revision safety/quality eligibility** is the next active substage.
 
-It must reuse Package 8 exact revision/approval evidence. Sharing must not silently treat any automatic or corrected revision as authorized: only an explicitly eligible exact approved revision may enter the sharing layer, with clear revocation/staleness behavior and no weakening of the existing quality, OMR or teacher-approval boundaries.
+T2 must reuse the T1 exact authorization binding but keep authorization and safety separate. It must require exact-revision quality/safety evidence before any student payload exists. Missing or stale quality evidence, later revision changes, non-applicable approval, recipient mismatch or revocation must fail closed with zero payload bytes.
+
+Authenticated recipient access, persistence/database decisions and actual network delivery are later security/application stages and require separate architecture review if they introduce new infrastructure, dependencies or permission semantics.
 
 ## Protected OMR and deployment boundary
 

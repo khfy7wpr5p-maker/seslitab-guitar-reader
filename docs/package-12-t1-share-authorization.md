@@ -1,6 +1,6 @@
 # Package 12-T1 — Exact Teacher-to-Student Share Authorization
 
-Status: **Implementation candidate — requires PR CI and protected-main verification before closure.**
+Status: **Completed.**
 
 ## Purpose
 
@@ -113,15 +113,20 @@ The T1 regression suite covers:
 - invalid domain input rejection;
 - absence of content/token/final-share claims.
 
-## Completion rule
+## Verified completion evidence
 
-T1 is not Completed until:
+- implementation PR **#127** merged to protected `main`;
+- final PR head SHA `10c877ade4ced2a80b6dc102afd2285e114e6672`;
+- protected-main implementation SHA `8bb797ac8c8f01697669e875ecc6d7df13ea878f`;
+- exact-main CI **#330 / run `33259462116`, job `99118792913` — SUCCESS**;
+- **1369 / 1369 tests PASS** across **233 suites**;
+- **0 failed / skipped / cancelled**;
+- `npm ci` reported **0 vulnerabilities**;
+- production Vite build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
 
-1. focused tests pass;
-2. full regression suite passes;
-3. production build passes;
-4. protected-main PR is merged;
-5. exact-main required `test-and-build` succeeds;
-6. closure/status documentation records the verified SHA and CI evidence.
+## Completion result
 
-Parent Package 12 remains **Partially implemented** after T1. Actual student delivery must not be activated by T1 alone.
+T1 is **Completed**. Its authorization/revocation boundary is now part of protected `main` and has exact-main verification evidence.
+
+Parent Package 12 remains **Partially implemented**. Actual student payload delivery must not be activated by T1 alone. The next bounded substage is exact-revision safety/quality eligibility; authenticated recipient access, persistence and network delivery remain later reviewed stages.
