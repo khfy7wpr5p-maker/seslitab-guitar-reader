@@ -1,12 +1,9 @@
 // Package 12-T4 — bounded structural/rhythmic post-correction revalidation.
 //
-// T4 extends T3 only where a teacher-corrected NoteObject snapshot can be
-// mechanically revalidated against immutable structural context from the exact
-// automatic root MusicXML. The old raw MusicXML is never registered or claimed
-// as the source of the corrected values.
-//
-// Metadata only: no payload, token, authentication, persistence, network,
-// OMR/Audiveris, deployment, or UI authority is introduced here.
+// The automatic root keeps its exact Package 7C/T2 MusicXML provenance.
+// Teacher-edited values are never re-bound to that raw MusicXML. T4 uses the
+// root XML only as immutable structural context, reconstructs a validation-only
+// score from the exact current teacher revision, and fails closed on drift.
 
 import {
   beatsToDurationId,
@@ -16,19 +13,14 @@ import {
   GUITAR_POSITION_CANDIDATE_STATE,
   enumerateCanonicalGuitarPositionCandidates,
 } from '../../guitarPositionResolver.js'
-import { parseMusicXmlWithStructure } from '../../musicXmlParser.js'
 import {
-  extractMusicXmlStructuralEvidence,
-} from './musicXmlStructuralEvidence.js'
-import {
-  attachStructuralEvidence,
-} from './musicXmlStructuralValidation.js'
-import {
-  validateStructuralRhythm,
-} from './structuralRhythmValidator.js'
-import {
-  resolveMusicXmlSourceForNotes,
-} from './musicXmlSourceRegistry.js'
+  parseMusicXml,
+  parseMusicXmlWithStructure,
+} from '../../musicXmlParser.js'
+import { extractMusicXmlStructuralEvidence } from './musicXmlStructuralEvidence.js'
+import { attachStructuralEvidence } from './musicXmlStructuralValidation.js'
+import { validateStructuralRhythm } from './structuralRhythmValidator.js'
+import { resolveMusicXmlSourceForNotes } from './musicXmlSourceRegistry.js'
 import {
   getCurrentTeacherRevision,
   isTeacherRevisionHistory,
@@ -45,9 +37,7 @@ import {
   createTeacherShareQualityEvidence,
   isTeacherShareQualityEvidenceRecord,
 } from './teacherShareEligibility.js'
-import {
-  TEACHER_CORRECTION_REVALIDATION_SUPPORTED_FIELDS,
-} from './teacherCorrectionRevalidation.js'
+import { TEACHER_CORRECTION_REVALIDATION_SUPPORTED_FIELDS } from './teacherCorrectionRevalidation.js'
 
 export const TEACHER_STRUCTURAL_REVALIDATION_SCHEMA_VERSION = 1
 export const TEACHER_STRUCTURAL_REVALIDATION_STATE =
@@ -154,13 +144,12 @@ const TIMING_FIELDS = new Set([
   'startBeat',
   'isChordNote',
 ])
-const STRUCTURAL_ONLY_FIELDS = new Set(STRUCTURAL_FIELDS)
-const ROOT_IDENTITY_FIELDS = Object.freeze([
+const STRUCTURAL_FIELDS_SET = new Set(STRUCTURAL_FIELDS)
+const IDENTITY_FIELDS = Object.freeze([
   'partId',
   'partIndex',
-  'measureNumber',
-  'measureKey',
   'measureIndex',
+  'measureKey',
 ])
 const FNV_1A_64_OFFSET = 0xcbf29ce484222325n
 const FNV_1A_64_PRIME = 0x100000001b3n
@@ -226,25 +215,11 @@ function isDenseFrozenStringArray(value) {
       return false
     }
   }
-
-  for (const [key, descriptor] of Object.entries(descriptors)) {
-    if (key === 'length') continue
-    const index = Number(key)
-    if (
-      !Number.isInteger(index) ||
-      index < 0 ||
-      index >= value.length ||
-      String(index) !== key ||
-      descriptor.enumerable !== true ||
-      !Object.prototype.hasOwnProperty.call(descriptor, 'value')
-    ) {
-      return false
-    }
-  }
   return true
 }
 
 function stableSerialize(value) {
+  if (value === undefined) return 'undefined'
   if (value === null) return 'null'
   if (typeof value === 'string') return JSON.stringify(value)
   if (typeof value === 'boolean') return value ? 'true' : 'false'
@@ -268,14 +243,36 @@ function fnv1a64(text) {
   let hash = FNV_1A_64_OFFSET
   for (const byte of new TextEncoder().encode(text)) {
     hash ^= BigInt(byte)
-    hash = (hash * FNV_1A_64_PRIME) & UINT64_MASK
+    hash = (hash * FNV_1_A_64_PRIME_COMPAT()) & UINT64_MASK
   }
   return hash.toString(16).padStart(16, '0')
+}
+
+function FNV_1_A_64_PRIME_COMPAT() {
+  return FNV_1A_64_PRIME
 }
 
 function fingerprint(label, value) {
   const serialized = stableSerialize(value)
   return `${label}-fnv1a64-v1:${fnv1a64(serialized)}:${serialized.length}`
+}
+
+function approximatelyEqual(left, right) {
+  return (
+    typeof left === 'number' &&
+    typeof right === 'number' &&
+    Number.isFinite(left) &&
+    Number.isFinite(right) &&
+    Math.abs(left - right) <= EPSILON
+  )
+}
+
+function normalizedBoolean(value) {
+  return value === true
+}
+
+function measureNumberOf(note) {
+  return note?.measureNumber ?? note?.measure ?? null
 }
 
 function sameRootQualityEvidence(left, right) {
@@ -328,7 +325,10 @@ function operationValueValid(field, value) {
   if (field === 'frequency') {
     return typeof value === 'number' && Number.isFinite(value) && value > 0
   }
-  if (field === 'beats' || field === 'startBeat') {
+  if (field === 'beats') {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+  }
+  if (field === 'startBeat') {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0
   }
   if (field === 'durationValue') {
@@ -348,10 +348,9 @@ function operationValueValid(field, value) {
   ) {
     return typeof value === 'boolean'
   }
+  if (field === 'fret') return Number.isInteger(value) && value >= 0
   return (
-    ['alter', 'octave', 'midi', 'fret'].includes(field) &&
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
+    ['alter', 'octave', 'midi'].includes(field) &&
     Number.isInteger(value)
   )
 }
@@ -472,70 +471,86 @@ function collectHistoryScope(history) {
   }
 }
 
-function approximatelyEqual(left, right) {
-  return (
-    typeof left === 'number' &&
-    typeof right === 'number' &&
-    Number.isFinite(left) &&
-    Number.isFinite(right) &&
-    Math.abs(left - right) <= EPSILON
-  )
+function sameIdentity(root, parsed) {
+  for (const field of IDENTITY_FIELDS) {
+    if ((root?.[field] ?? null) !== (parsed?.[field] ?? null)) return false
+  }
+  return measureNumberOf(root) === measureNumberOf(parsed)
 }
 
-function normalizedBoolean(value) {
-  return value === true
+function sameRootNoteSemantics(root, parsed) {
+  if (!isPlainObject(root) || !isPlainObject(parsed)) return false
+  if (!sameIdentity(root, parsed)) return false
+  if (normalizedBoolean(root.isRest) !== normalizedBoolean(parsed.isRest)) return false
+  if (normalizedBoolean(root.isGrace) !== normalizedBoolean(parsed.isGrace)) return false
+  if (normalizedBoolean(root.isChordNote) !== normalizedBoolean(parsed.isChordNote)) return false
+  if (normalizedBoolean(root.tieStart) !== normalizedBoolean(parsed.tieStart)) return false
+  if (normalizedBoolean(root.tieStop) !== normalizedBoolean(parsed.tieStop)) return false
+  if (normalizedBoolean(root.tieContinue) !== normalizedBoolean(parsed.tieContinue)) return false
+  if ((root.duration ?? null) !== (parsed.duration ?? null)) return false
+  if (!approximatelyEqual(Number(root.beats), Number(parsed.beats))) return false
+  if (!approximatelyEqual(Number(root.startBeat), Number(parsed.startBeat))) return false
+  if ((root.durationValue ?? null) !== (parsed.durationValue ?? null)) return false
+  if ((root.divisions ?? null) !== (parsed.divisions ?? null)) return false
+  if ((root.dotCount ?? 0) !== (parsed.dotCount ?? 0)) return false
+  if ((root.voice ?? 1) !== (parsed.voice ?? 1)) return false
+  if ((root.staff ?? 1) !== (parsed.staff ?? 1)) return false
+
+  if (!normalizedBoolean(root.isRest)) {
+    if ((root.step ?? null) !== (parsed.step ?? null)) return false
+    if ((root.alter ?? 0) !== (parsed.alter ?? 0)) return false
+    if ((root.octave ?? null) !== (parsed.octave ?? null)) return false
+  }
+  return true
 }
 
 function rootStructuralContextMatches(rootNotes, parsedNotes) {
   if (!Array.isArray(rootNotes) || !Array.isArray(parsedNotes)) return false
   if (rootNotes.length !== parsedNotes.length) return false
-
-  for (let index = 0; index < rootNotes.length; index++) {
-    const root = rootNotes[index]
-    const parsed = parsedNotes[index]
-    if (!isPlainObject(root) || !isPlainObject(parsed)) return false
-
-    for (const field of ROOT_IDENTITY_FIELDS) {
-      if ((root[field] ?? null) !== (parsed[field] ?? null)) return false
-    }
-
-    if (normalizedBoolean(root.isRest) !== normalizedBoolean(parsed.isRest)) return false
-    if (normalizedBoolean(root.isGrace) !== normalizedBoolean(parsed.isGrace)) return false
-    if (
-      normalizedBoolean(root.isChordNote) !== normalizedBoolean(parsed.isChordNote)
-    ) {
-      return false
-    }
-    if (normalizedBoolean(root.tieStart) !== normalizedBoolean(parsed.tieStart)) return false
-    if (normalizedBoolean(root.tieStop) !== normalizedBoolean(parsed.tieStop)) return false
-    if (
-      normalizedBoolean(root.tieContinue) !== normalizedBoolean(parsed.tieContinue)
-    ) {
-      return false
-    }
-
-    if ((root.duration ?? null) !== (parsed.duration ?? null)) return false
-    if (!approximatelyEqual(Number(root.beats), Number(parsed.beats))) return false
-    if (!approximatelyEqual(Number(root.startBeat), Number(parsed.startBeat))) return false
-    if ((root.durationValue ?? null) !== (parsed.durationValue ?? null)) return false
-    if ((root.divisions ?? null) !== (parsed.divisions ?? null)) return false
-    if ((root.dotCount ?? 0) !== (parsed.dotCount ?? 0)) return false
-    if ((root.voice ?? 1) !== (parsed.voice ?? 1)) return false
-    if ((root.staff ?? 1) !== (parsed.staff ?? 1)) return false
-  }
-
-  return true
+  return rootNotes.every((note, index) => sameRootNoteSemantics(note, parsedNotes[index]))
 }
 
-function structuralContextSnapshot(score, evidence, musicXmlFingerprint) {
+function normalizedContextSnapshot(score, musicXmlFingerprint) {
+  const context = (value = {}) => ({
+    partId: value.partId ?? null,
+    partIndex: value.partIndex ?? null,
+    measureIndex: value.measureIndex ?? null,
+    measureKey: value.measureKey ?? null,
+    measureNumber: value.measureNumber ?? value.measure ?? null,
+  })
+
   return {
     musicXmlFingerprint,
-    timeSignatures: score.timeSignatures ?? [],
-    divisionsByMeasure: score.divisionsByMeasure ?? [],
-    measureMetadata: score.measureMetadata ?? [],
-    measureEvents: score.measureEvents ?? [],
-    noteEvidence: evidence.noteEvidence ?? [],
-    divisionsDeclarations: evidence.divisionsDeclarations ?? [],
+    timeSignatures: (score.timeSignatures ?? []).map((item) => ({
+      ...context(item),
+      beats: item.beats ?? null,
+      beatType: item.beatType ?? null,
+      symbol: item.symbol ?? null,
+    })),
+    divisionsByMeasure: (score.divisionsByMeasure ?? []).map((item) => ({
+      ...context(item),
+      divisions: item.divisions ?? null,
+    })),
+    measureMetadata: (score.measureMetadata ?? []).map((item) => ({
+      ...context(item),
+      implicit: item.implicit === true,
+      nonControlling: item.nonControlling === true,
+      width: item.width ?? null,
+    })),
+    measureEvents: (score.measureEvents ?? []).map((event) => ({
+      ...context(event),
+      sequenceIndex: event.sequenceIndex ?? null,
+      type: event.type ?? null,
+      isGrace: event.isGrace === true,
+      isChordNote: event.isChordNote === true,
+      isRest: event.isRest === true,
+      voice: event.voice ?? null,
+      staff: event.staff ?? null,
+      beats: event.beats ?? null,
+      durationValue: event.durationValue ?? null,
+      divisions: event.divisions ?? null,
+      durationDivisions: event.durationDivisions ?? null,
+    })),
   }
 }
 
@@ -568,14 +583,30 @@ function resolveStructuralContext({ history, sourceNotes, rootQualityEvidence })
     }
   }
 
-  const parsed = parseMusicXmlWithStructure(source.musicXml)
-  if (parsed?.error || !Array.isArray(parsed?.notes)) {
+  const flatParsed = parseMusicXml(source.musicXml)
+  const structuredParsed = parseMusicXmlWithStructure(source.musicXml)
+  if (
+    flatParsed?.error ||
+    structuredParsed?.error ||
+    !Array.isArray(flatParsed?.notes) ||
+    !Array.isArray(structuredParsed?.notes)
+  ) {
     return {
       ok: false,
       status:
         TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS
           .STRUCTURAL_CONTEXT_INVALID,
       reason: 'source-structural-context-parse-failed',
+    }
+  }
+
+  if (!rootStructuralContextMatches(rootQuality.root.content, flatParsed.notes)) {
+    return {
+      ok: false,
+      status:
+        TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS
+          .STRUCTURAL_CONTEXT_INVALID,
+      reason: 'source-structural-context-mismatch',
     }
   }
 
@@ -592,7 +623,7 @@ function resolveStructuralContext({ history, sourceNotes, rootQualityEvidence })
 
   let validationScore
   try {
-    validationScore = attachStructuralEvidence(parsed, evidence)
+    validationScore = attachStructuralEvidence(structuredParsed, evidence)
   } catch {
     return {
       ok: false,
@@ -603,20 +634,22 @@ function resolveStructuralContext({ history, sourceNotes, rootQualityEvidence })
     }
   }
 
-  if (!rootStructuralContextMatches(rootQuality.root.content, validationScore.notes)) {
+  if (validationScore.notes.length !== rootQuality.root.content.length) {
     return {
       ok: false,
       status:
         TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS
           .STRUCTURAL_CONTEXT_INVALID,
-      reason: 'source-structural-context-mismatch',
+      reason: 'source-structural-note-count-mismatch',
     }
   }
 
   const rootValidation = validateStructuralRhythm(validationScore)
   if (
     rootValidation.valid !== true ||
-    rootValidation.summary?.totalFindings !== 0
+    rootValidation.summary?.totalFindings !== 0 ||
+    rootValidation.summary?.errors !== 0 ||
+    rootValidation.summary?.warnings !== 0
   ) {
     return {
       ok: false,
@@ -631,56 +664,60 @@ function resolveStructuralContext({ history, sourceNotes, rootQualityEvidence })
     ok: true,
     root: rootQuality.root,
     rootQualityEvidence: rootQuality.live,
-    source,
     validationScore,
     structuralContextFingerprint: fingerprint(
       'teacher-structural-context',
-      structuralContextSnapshot(
+      normalizedContextSnapshot(
         validationScore,
-        evidence,
         rootQuality.live.musicXmlSourceFingerprint,
       ),
     ),
   }
 }
 
-function targetIdentityMatchesSource(targetNotes, sourceNotes) {
-  if (!Array.isArray(targetNotes) || !Array.isArray(sourceNotes)) return false
-  if (targetNotes.length !== sourceNotes.length) return false
+function targetIdentityMatchesRoot(targetNotes, rootNotes) {
+  if (!Array.isArray(targetNotes) || !Array.isArray(rootNotes)) return false
+  if (targetNotes.length !== rootNotes.length) return false
 
   for (let index = 0; index < targetNotes.length; index++) {
     const target = targetNotes[index]
-    const source = sourceNotes[index]
-    if (!isPlainObject(target) || !isPlainObject(source)) return false
-
-    for (const field of ROOT_IDENTITY_FIELDS) {
-      if ((target[field] ?? null) !== (source[field] ?? null)) return false
-    }
-    if (normalizedBoolean(target.isRest) !== normalizedBoolean(source.isRest)) return false
-    if (normalizedBoolean(target.isGrace) !== normalizedBoolean(source.isGrace)) return false
-    if ((target.divisions ?? null) !== (source.divisions ?? null)) return false
+    const root = rootNotes[index]
+    if (!isPlainObject(target) || !isPlainObject(root)) return false
+    if (!sameIdentity(target, root)) return false
+    if (normalizedBoolean(target.isRest) !== normalizedBoolean(root.isRest)) return false
+    if (normalizedBoolean(target.isGrace) !== normalizedBoolean(root.isGrace)) return false
+    if ((target.divisions ?? null) !== (root.divisions ?? null)) return false
   }
-
   return true
 }
 
-function buildCorrectedStructuralScore(sourceScore, targetNotes) {
-  if (!targetIdentityMatchesSource(targetNotes, sourceScore.notes)) {
+function buildCorrectedStructuralScore(sourceScore, rootNotes, targetNotes) {
+  if (!targetIdentityMatchesRoot(targetNotes, rootNotes)) {
     throw new Error('corrected-note-identity-drift')
   }
+  if (sourceScore.notes.length !== targetNotes.length) {
+    throw new Error('corrected-note-event-count-mismatch')
+  }
 
-  const notes = sourceScore.notes.map((sourceNote, index) => ({
-    ...sourceNote,
-    ...targetNotes[index],
-    partId: sourceNote.partId,
-    partIndex: sourceNote.partIndex,
-    measureNumber: sourceNote.measureNumber,
-    measureKey: sourceNote.measureKey,
-    measureIndex: sourceNote.measureIndex,
-    divisions: sourceNote.divisions,
-    tuplet: sourceNote.tuplet ?? null,
-    beam: sourceNote.beam ?? null,
-  }))
+  const notes = sourceScore.notes.map((sourceNote, index) => {
+    const target = targetNotes[index]
+    const measureNumber = measureNumberOf(rootNotes[index])
+    return {
+      ...sourceNote,
+      ...target,
+      measure: sourceNote.measure ?? measureNumber,
+      measureNumber,
+      partId: sourceNote.partId,
+      partIndex: sourceNote.partIndex,
+      measureIndex: sourceNote.measureIndex,
+      measureKey: sourceNote.measureKey,
+      divisions: sourceNote.divisions,
+      isRest: sourceNote.isRest === true,
+      isGrace: sourceNote.isGrace === true,
+      tuplet: sourceNote.tuplet ?? null,
+      beam: sourceNote.beam ?? null,
+    }
+  })
 
   let noteIndex = 0
   const measureEvents = sourceScore.measureEvents.map((event) => {
@@ -691,9 +728,9 @@ function buildCorrectedStructuralScore(sourceScore, targetNotes) {
     const note = targetNotes[noteIndex++]
     return {
       ...event,
-      isGrace: note.isGrace === true,
+      isGrace: event.isGrace === true,
+      isRest: event.isRest === true,
       isChordNote: note.isChordNote === true,
-      isRest: note.isRest === true,
       voice: note.voice,
       staff: note.staff,
       beats: note.beats,
@@ -713,28 +750,32 @@ function buildCorrectedStructuralScore(sourceScore, targetNotes) {
   }
 }
 
-function affectedIndexesForFields(correctedTargets, fields) {
+function affectedIndexes(correctedTargets, fields) {
   const indexes = new Set()
   for (const target of correctedTargets) {
-    const [rawIndex, field] = target.split('/')
-    if (fields.has(field)) indexes.add(Number(rawIndex))
+    const slash = target.indexOf('/')
+    const noteIndex = Number(target.slice(0, slash))
+    const field = target.slice(slash + 1)
+    if (fields.has(field)) indexes.add(noteIndex)
   }
   return indexes
 }
 
 function validateTieTopology(notes) {
   const open = new Map()
-
   for (const note of notes) {
     if (!isPlainObject(note)) return false
-    if (Boolean(note.tieContinue) !== Boolean(note.tieStart && note.tieStop)) {
+    if (
+      typeof note.tieStart !== 'boolean' ||
+      typeof note.tieStop !== 'boolean' ||
+      typeof note.tieContinue !== 'boolean' ||
+      Boolean(note.tieContinue) !== Boolean(note.tieStart && note.tieStop)
+    ) {
       return false
     }
     if (!note.tieStart && !note.tieStop) continue
     if (note.isRest === true) return false
-    if (typeof note.step !== 'string' || !Number.isInteger(note.octave)) {
-      return false
-    }
+    if (typeof note.step !== 'string' || !Number.isInteger(note.octave)) return false
 
     const key = [
       note.partId ?? '',
@@ -751,20 +792,15 @@ function validateTieTopology(notes) {
     }
     if (note.tieStart) {
       if (open.has(key)) return false
-      open.set(key, note)
+      open.set(key, true)
     }
   }
-
   return open.size === 0
 }
 
 function validatePitchPositionState(targetNotes, correctedTargets) {
-  const pitchIndexes = affectedIndexesForFields(
-    correctedTargets,
-    PITCH_POSITION_FIELDS,
-  )
-
-  for (const noteIndex of pitchIndexes) {
+  const indexes = affectedIndexes(correctedTargets, PITCH_POSITION_FIELDS)
+  for (const noteIndex of indexes) {
     const note = targetNotes[noteIndex]
     if (!isPlainObject(note) || note.isRest === true) return false
 
@@ -805,28 +841,24 @@ function validatePitchPositionState(targetNotes, correctedTargets) {
       return false
     }
   }
-
   return true
 }
 
-function validateTouchedStructuralNotes(targetNotes, correctedTargets) {
-  const structuralIndexes = affectedIndexesForFields(
-    correctedTargets,
-    STRUCTURAL_ONLY_FIELDS,
-  )
-  const timingIndexes = affectedIndexesForFields(correctedTargets, TIMING_FIELDS)
-
-  for (const noteIndex of structuralIndexes) {
-    const note = targetNotes[noteIndex]
-    if (!isPlainObject(note)) return false
-    if (!Number.isInteger(note.voice) || note.voice <= 0) return false
-    if (!Number.isInteger(note.staff) || note.staff <= 0) return false
-    if (typeof note.isChordNote !== 'boolean') return false
-    if (typeof note.tieStart !== 'boolean') return false
-    if (typeof note.tieStop !== 'boolean') return false
-    if (typeof note.tieContinue !== 'boolean') return false
+function validateStructuralFieldState(targetNotes, correctedTargets) {
+  for (const note of targetNotes) {
+    if (
+      !isPlainObject(note) ||
+      !Number.isInteger(note.voice) ||
+      note.voice <= 0 ||
+      !Number.isInteger(note.staff) ||
+      note.staff <= 0 ||
+      typeof note.isChordNote !== 'boolean'
+    ) {
+      return false
+    }
   }
 
+  const timingIndexes = affectedIndexes(correctedTargets, TIMING_FIELDS)
   for (const noteIndex of timingIndexes) {
     const note = targetNotes[noteIndex]
     if (!isPlainObject(note) || note.isGrace === true) return false
@@ -850,12 +882,11 @@ function validateTouchedStructuralNotes(targetNotes, correctedTargets) {
       return false
     }
 
-    const expectedBeats = note.durationValue / note.divisions
-    if (!approximatelyEqual(note.beats, expectedBeats)) return false
+    if (!approximatelyEqual(note.beats, note.durationValue / note.divisions)) {
+      return false
+    }
     if (note.duration !== beatsToDurationId(note.beats)) return false
-
-    const dotted = note.duration.startsWith('dotted-')
-    if ((note.dotCount === 1) !== dotted) return false
+    if ((note.dotCount === 1) !== note.duration.startsWith('dotted-')) return false
   }
 
   return validateTieTopology(targetNotes)
@@ -877,9 +908,9 @@ function timelineStartSnapshot(validation, correctedScore, targetNotes) {
   let noteIndex = 0
   for (const event of correctedScore.measureEvents) {
     if (event.type !== 'note') continue
+    if (noteIndex >= targetNotes.length) return null
     const target = targetNotes[noteIndex]
-    const key = `${event.measureKey}:${event.sequenceIndex}`
-    const resolved = eventStarts.get(key)
+    const resolved = eventStarts.get(`${event.measureKey}:${event.sequenceIndex}`)
     if (
       !resolved ||
       !Number.isFinite(resolved.startDivisions) ||
@@ -888,12 +919,8 @@ function timelineStartSnapshot(validation, correctedScore, targetNotes) {
     ) {
       return null
     }
-
     const startBeat = resolved.startDivisions / resolved.divisions
-    if (!approximatelyEqual(Number(target.startBeat), startBeat)) {
-      return null
-    }
-
+    if (!approximatelyEqual(Number(target.startBeat), startBeat)) return null
     starts.push({
       noteIndex,
       measureKey: event.measureKey,
@@ -902,9 +929,7 @@ function timelineStartSnapshot(validation, correctedScore, targetNotes) {
     })
     noteIndex++
   }
-
-  if (noteIndex !== targetNotes.length) return null
-  return starts
+  return noteIndex === targetNotes.length ? starts : null
 }
 
 function structuralValidationSnapshot(validation, starts) {
@@ -930,26 +955,17 @@ function structuralValidationSnapshot(validation, starts) {
   }
 }
 
-function validateCorrectedStructuralState({
-  structuralContext,
-  target,
-  correctedTargets,
-}) {
+function validateCorrectedStructuralState({ structuralContext, target, correctedTargets }) {
   if (!Array.isArray(target.content)) {
     return { ok: false, reason: 'teacher-corrected-note-array-required' }
   }
-
-  if (
-    !targetIdentityMatchesSource(target.content, structuralContext.validationScore.notes)
-  ) {
+  if (!targetIdentityMatchesRoot(target.content, structuralContext.root.content)) {
     return { ok: false, reason: 'corrected-note-identity-drift' }
   }
-
   if (!validatePitchPositionState(target.content, correctedTargets)) {
     return { ok: false, reason: 'corrected-pitch-position-state-invalid' }
   }
-
-  if (!validateTouchedStructuralNotes(target.content, correctedTargets)) {
+  if (!validateStructuralFieldState(target.content, correctedTargets)) {
     return { ok: false, reason: 'corrected-structural-fields-invalid' }
   }
 
@@ -957,6 +973,7 @@ function validateCorrectedStructuralState({
   try {
     correctedScore = buildCorrectedStructuralScore(
       structuralContext.validationScore,
+      structuralContext.root.content,
       target.content,
     )
   } catch (error) {
@@ -977,16 +994,13 @@ function validateCorrectedStructuralState({
   }
 
   const starts = timelineStartSnapshot(validation, correctedScore, target.content)
-  if (!starts) {
-    return { ok: false, reason: 'corrected-start-beat-mismatch' }
-  }
+  if (!starts) return { ok: false, reason: 'corrected-start-beat-mismatch' }
 
-  const snapshot = structuralValidationSnapshot(validation, starts)
   return {
     ok: true,
     structuralValidationFingerprint: fingerprint(
       'teacher-structural-validation',
-      snapshot,
+      structuralValidationSnapshot(validation, starts),
     ),
   }
 }
@@ -1094,18 +1108,11 @@ function evidenceBindingMatches(evidence, revision, history) {
 
 function validateEvidenceRecord(value) {
   if (!hasStrictFrozenShape(value, EVIDENCE_FIELDS)) return false
-  if (value.schemaVersion !== TEACHER_STRUCTURAL_REVALIDATION_SCHEMA_VERSION) {
-    return false
-  }
-  if (value.revalidationState !== TEACHER_STRUCTURAL_REVALIDATION_STATE) {
-    return false
-  }
+  if (value.schemaVersion !== TEACHER_STRUCTURAL_REVALIDATION_SCHEMA_VERSION) return false
+  if (value.revalidationState !== TEACHER_STRUCTURAL_REVALIDATION_STATE) return false
   if (value.scope !== TEACHER_STRUCTURAL_REVALIDATION_SCOPE) return false
   if (!isTeacherShareQualityEvidenceRecord(value.rootQualityEvidence)) return false
-  if (
-    !isDenseFrozenStringArray(value.correctedTargets) ||
-    value.correctedTargets.length === 0
-  ) {
+  if (!isDenseFrozenStringArray(value.correctedTargets) || value.correctedTargets.length === 0) {
     return false
   }
   if (
@@ -1131,7 +1138,6 @@ function validateEvidenceRecord(value) {
       'rootContentFingerprint',
       'rootLineageFingerprint',
       'targetRevisionId',
-      'targetParentRevisionId',
       'targetContentFingerprint',
       'targetLineageFingerprint',
       'historyChainFingerprint',
@@ -1141,12 +1147,11 @@ function validateEvidenceRecord(value) {
     ]) {
       if (requiredString(value[field], field) !== value[field]) return false
     }
-    if (nullableString(value.targetCreatedAt, 'targetCreatedAt') !== value.targetCreatedAt) {
+    if (nullableString(value.targetParentRevisionId, 'targetParentRevisionId') !== value.targetParentRevisionId) {
       return false
     }
-    if (nullableString(value.createdAt, 'createdAt') !== value.createdAt) {
-      return false
-    }
+    if (nullableString(value.targetCreatedAt, 'targetCreatedAt') !== value.targetCreatedAt) return false
+    if (nullableString(value.createdAt, 'createdAt') !== value.createdAt) return false
 
     if (
       value.sourceId !== value.rootQualityEvidence.sourceId ||
@@ -1158,7 +1163,7 @@ function validateEvidenceRecord(value) {
       return false
     }
 
-    const expected = revalidationFingerprint({
+    return value.revalidationFingerprint === revalidationFingerprint({
       historyId: value.historyId,
       sourceId: value.sourceId,
       sourceRevisionId: value.sourceRevisionId,
@@ -1171,8 +1176,7 @@ function validateEvidenceRecord(value) {
       targetContentFingerprint: value.targetContentFingerprint,
       targetLineageFingerprint: value.targetLineageFingerprint,
       rootQualityEvidenceId: value.rootQualityEvidence.evidenceId,
-      rootMusicXmlSourceFingerprint:
-        value.rootQualityEvidence.musicXmlSourceFingerprint,
+      rootMusicXmlSourceFingerprint: value.rootQualityEvidence.musicXmlSourceFingerprint,
       correctionEventCount: value.correctionEventCount,
       undoEventCount: value.undoEventCount,
       correctionOperationCount: value.correctionOperationCount,
@@ -1181,8 +1185,6 @@ function validateEvidenceRecord(value) {
       structuralContextFingerprint: value.structuralContextFingerprint,
       structuralValidationFingerprint: value.structuralValidationFingerprint,
     })
-
-    return expected === value.revalidationFingerprint
   } catch {
     return false
   }
@@ -1225,7 +1227,6 @@ export function createTeacherStructuralCorrectionRevalidationEvidence({
 } = {}) {
   const normalizedEvidenceId = requiredString(evidenceId, 'evidenceId')
   const normalizedCreatedAt = nullableString(createdAt, 'createdAt')
-
   const live = assess({ history, sourceNotes, rootQualityEvidence })
   if (!live.ok) {
     throw new Error(`Teacher structural revalidation failed: ${live.reason}.`)
@@ -1280,7 +1281,6 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
     )
   }
   const normalizedRecipientId = requiredString(recipientId, 'recipientId')
-
   const authorizationApplicability = evaluateTeacherShareAuthorization({
     authorization,
     revision,
@@ -1294,15 +1294,12 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
     TEACHER_SHARE_AUTHORIZATION_APPLICABILITY.RECIPIENT_MISMATCH
   ) {
     return result({
-      status:
-        TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS
-          .RECIPIENT_MISMATCH,
+      status: TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS.RECIPIENT_MISMATCH,
       authorizationApplicability,
       revision,
       recipientId: normalizedRecipientId,
     })
   }
-
   if (authorizationApplicability === TEACHER_SHARE_AUTHORIZATION_APPLICABILITY.REVOKED) {
     return result({
       status: TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS.REVOKED,
@@ -1311,7 +1308,6 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
       recipientId: normalizedRecipientId,
     })
   }
-
   if (
     authorizationApplicability !==
     TEACHER_SHARE_AUTHORIZATION_APPLICABILITY.AUTHORIZED_EXACT_BINDING
@@ -1328,8 +1324,7 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
 
   if (!isTeacherRevisionHistory(history) || getCurrentTeacherRevision(history) !== revision) {
     return result({
-      status:
-        TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS.HISTORY_NOT_CURRENT,
+      status: TEACHER_STRUCTURALLY_CORRECTED_SHARE_ELIGIBILITY_STATUS.HISTORY_NOT_CURRENT,
       authorizationApplicability,
       revision,
       recipientId: normalizedRecipientId,
@@ -1349,7 +1344,6 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
       recipientId: normalizedRecipientId,
     })
   }
-
   if (!isTeacherStructuralCorrectionRevalidationEvidence(revalidationEvidence)) {
     return result({
       status:
@@ -1360,7 +1354,6 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
       recipientId: normalizedRecipientId,
     })
   }
-
   if (!evidenceBindingMatches(revalidationEvidence, revision, history)) {
     return result({
       status:
@@ -1397,17 +1390,13 @@ export function evaluateTeacherStructurallyCorrectedShareEligibility({
       live.rootQualityEvidence.musicXmlSourceFingerprint ||
     revalidationEvidence.correctionEventCount !== binding.correctionEventCount ||
     revalidationEvidence.undoEventCount !== binding.undoEventCount ||
-    revalidationEvidence.correctionOperationCount !==
-      binding.correctionOperationCount ||
-    revalidationEvidence.historyChainFingerprint !==
-      binding.historyChainFingerprint ||
-    revalidationEvidence.structuralContextFingerprint !==
-      binding.structuralContextFingerprint ||
+    revalidationEvidence.correctionOperationCount !== binding.correctionOperationCount ||
+    revalidationEvidence.historyChainFingerprint !== binding.historyChainFingerprint ||
+    revalidationEvidence.structuralContextFingerprint !== binding.structuralContextFingerprint ||
     revalidationEvidence.structuralValidationFingerprint !==
       binding.structuralValidationFingerprint ||
     revalidationEvidence.revalidationFingerprint !== live.revalidationFingerprint ||
-    revalidationEvidence.correctedTargets.length !==
-      binding.correctedTargets.length ||
+    revalidationEvidence.correctedTargets.length !== binding.correctedTargets.length ||
     revalidationEvidence.correctedTargets.some(
       (target, index) => target !== binding.correctedTargets[index],
     )
