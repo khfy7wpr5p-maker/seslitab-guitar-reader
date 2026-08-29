@@ -6,17 +6,18 @@ import {
   activateAppShellFeature,
 } from '../src/appShell.js'
 
-test('app shell exposes the bounded existing feature surfaces', () => {
+test('app shell exposes only bounded primary product surfaces', () => {
   assert.deepEqual(
-    APP_SHELL_FEATURES.map(({ id, targetId }) => [id, targetId]),
+    APP_SHELL_FEATURES.map(({ id, label, targetId }) => [id, label, targetId]),
     [
-      ['workspace', 'input-section'],
-      ['discovery', 'input-section'],
-      ['teacher', 'results-section'],
-      ['results', 'results-section'],
-      ['tuner', 'chromatic-tuner-section'],
+      ['workspace', 'Çalışma Alanı', 'input-section'],
+      ['discovery', 'Nota Ara', 'input-section'],
+      ['tuner', 'Akort', 'chromatic-tuner-section'],
     ],
   )
+
+  assert.equal(APP_SHELL_FEATURES.some(({ id }) => id === 'teacher'), false)
+  assert.equal(APP_SHELL_FEATURES.some(({ id }) => id === 'results'), false)
 })
 
 test('app shell activates an existing feature without inventing availability', () => {
