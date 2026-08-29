@@ -26,7 +26,7 @@ function formatCents(cents) {
 }
 
 function parseReference(value) {
-  const numeric = Number.parseFloat(String(value).replace(',', '.'))
+  const numeric = Number(String(value).trim().replace(',', '.'))
   if (!Number.isFinite(numeric) || numeric < MIN_REFERENCE_A4_HZ || numeric > MAX_REFERENCE_A4_HZ) return null
   return Math.round(numeric * 10) / 10
 }
@@ -58,8 +58,8 @@ function createMarkup() {
       </div>
 
       <div class="tuner-display" id="tuner-display" data-state="idle">
-        <div class="tuner-note" id="tuner-note" aria-hidden="true">—</div>
-        <div class="tuner-octave" id="tuner-octave" aria-hidden="true"></div>
+        <div class="tuner-note" id="tuner-note">—</div>
+        <div class="tuner-octave" id="tuner-octave"></div>
         <div class="tuner-direction" id="tuner-direction">Mikrofon kapalı</div>
         <div class="tuner-readout" aria-label="Akort ölçümleri">
           <span><strong id="tuner-frequency">—</strong> Hz</span>
@@ -205,8 +205,8 @@ async function stopTuner(reason = 'Akort cihazı durduruldu.') {
   session.elements.start.disabled = false
   session.elements.stop.disabled = true
   session.elements.reference.disabled = false
-  session.elements.display.dataset.state = 'idle'
   resetDisplay(session.elements, 'Mikrofon kapalı')
+  session.elements.display.dataset.state = 'idle'
   session.elements.status.textContent = reason
 }
 
@@ -244,8 +244,10 @@ async function startTuner(elements) {
   elements.reference.disabled = true
   elements.status.textContent = 'Mikrofon izni bekleniyor…'
 
+  let stream = null
+  let audioContext = null
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
         echoCancellation: false,
@@ -254,7 +256,7 @@ async function startTuner(elements) {
       },
       video: false,
     })
-    const audioContext = new AudioContextCtor({ latencyHint: 'interactive' })
+    audioContext = new AudioContextCtor({ latencyHint: 'interactive' })
     if (audioContext.state === 'suspended') await audioContext.resume()
     const source = audioContext.createMediaStreamSource(stream)
     const analyser = audioContext.createAnalyser()
@@ -287,6 +289,12 @@ async function startTuner(elements) {
     resetDisplay(elements)
     session.rafId = window.requestAnimationFrame((timestamp) => runFrame(session, timestamp))
   } catch (error) {
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop()
+    }
+    if (audioContext) {
+      try { await audioContext.close() } catch {}
+    }
     elements.start.disabled = false
     elements.stop.disabled = true
     elements.reference.disabled = false
