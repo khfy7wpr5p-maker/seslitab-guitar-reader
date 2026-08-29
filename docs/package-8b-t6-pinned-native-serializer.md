@@ -61,7 +61,7 @@ and requires:
 
 The temporary probe source and receipt file are removed after the run. No training method is invoked.
 
-Only a probe receipt whose API identity, pinned revision, archive SHA-256, T5 staging-manifest fingerprint and sample count exactly match the serializer build may be bound into an `accepted_by_pinned_audiveris` report.
+The external probe receipt contains only the probe/API identity, pinned revision, archive SHA-256, repository-loaded state and loaded sample count. `bindPinnedAudiverisAcceptance` separately re-validates the serializer build, including its already-bound T5 staging-manifest fingerprint, and copies that fingerprint into the final `accepted_by_pinned_audiveris` report only when the receipt fields exactly match the build.
 
 ## Current real-data state
 
