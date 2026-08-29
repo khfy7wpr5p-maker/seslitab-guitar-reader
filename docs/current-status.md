@@ -1,16 +1,16 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected `main` implementation baseline: `8bb797ac8c8f01697669e875ecc6d7df13ea878f`  
-Latest exact-main implementation CI: **#330 / run `33259462116`, job `99118792913` — SUCCESS**  
-Current package state: **Package 0–11 Completed. Package 12 is Partially implemented with T1 Completed. Package 8B remains Partially implemented as deferred research.**
+Latest verified protected `main` implementation baseline: `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`  
+Latest exact-main implementation CI: **#338 / run `33260876272`, job `99122486469` — SUCCESS**  
+Current package state: **Package 0–11 Completed. Package 12 is Partially implemented with T1 and T2 Completed. Package 8B remains Partially implemented as deferred research.**
 
 ## Verified baseline
 
-Exact-main CI #330 checked out protected-main SHA `8bb797ac8c8f01697669e875ecc6d7df13ea878f` and verified:
+Exact-main CI #338 checked out protected-main SHA `a5c2c2b9bd1a59898a74312270dc09766c6bad2e` and verified:
 
-- **1369 / 1369 tests PASS**;
-- **233 suites**;
+- **1390 / 1390 tests PASS**;
+- **234 suites**;
 - **0 failed / skipped / cancelled**;
 - **0 vulnerabilities**;
 - Vite production build **PASS**;
@@ -95,6 +95,28 @@ Important boundary: `AUTHORIZED_EXACT_BINDING` is not final student-delivery per
 
 Detailed contract: `docs/package-12-t1-share-authorization.md`.
 
+### T2 — Exact-Revision Share Safety / Quality Eligibility
+
+Status: **Completed.**
+
+T2 preserves the separation between immutable Package 8 revision snapshots and Package 7C/2D exact-array evidence. It requires the caller to supply the exact source `NoteObject[]`, deterministically reproduces the automatic revision fingerprint/lineage from that array, and only then accepts current Package 7C MusicXML provenance plus strict Package 2C/2D quality evidence.
+
+T2 live-rechecks source/report/gate state. Missing source evidence, source-array drift, replaced source evidence, missing/downgraded reports, cross-source quality evidence, stale authorization, recipient mismatch or revocation all fail closed. A result exposes eligibility metadata only and never revision content, MusicXML, payload bytes, links or tokens.
+
+Teacher-corrected revisions remain explicitly blocked as `corrected_revision_revalidation_required` until a separately reviewed post-correction revalidation/provenance contract exists.
+
+Evidence:
+
+- implementation PR **#129** merged;
+- protected-main implementation SHA `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`;
+- implementation-branch CI **#337 — SUCCESS**;
+- exact-main CI **#338 / run `33260876272`, job `99122486469` — SUCCESS**;
+- **1390 / 1390 tests PASS**, 234 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build PASS and Chrome proof PASS.
+
+Detailed contract: `docs/package-12-t2-share-quality-eligibility.md`.
+
 ## Package 8B — deferred research state
 
 Package 8B remains **Partially implemented**, but missing research evidence no longer blocks application packages.
@@ -114,11 +136,11 @@ T1–T6 engineering gates remain intact. Do not fabricate sample approval, nativ
 
 ## Next application boundary
 
-**Package 12-T2 — Exact-revision safety/quality eligibility** is the next active substage.
+**Package 12-T3 — Post-correction revalidation/provenance** is the next active substage.
 
-T2 must reuse the T1 exact authorization binding but keep authorization and safety separate. It must require exact-revision quality/safety evidence before any student payload exists. Missing or stale quality evidence, later revision changes, non-applicable approval, recipient mismatch or revocation must fail closed with zero payload bytes.
+T3 must define how a `teacher_corrected` Package 8 revision can be revalidated after an edit without inheriting stale automatic-source verification. It must preserve the exact revision/approval/authorization boundaries from T1–T2, recompute or explicitly establish trustworthy post-correction provenance, and fail closed until the corrected revision has fresh quality evidence.
 
-Authenticated recipient access, persistence/database decisions and actual network delivery are later security/application stages and require separate architecture review if they introduce new infrastructure, dependencies or permission semantics.
+Authenticated recipient access, persistence/database decisions and actual network delivery remain later security/application stages and require separate architecture review if they introduce new infrastructure, dependencies or permission semantics.
 
 ## Protected OMR and deployment boundary
 

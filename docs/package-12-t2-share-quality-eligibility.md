@@ -1,6 +1,17 @@
 # Package 12-T2 — Exact-Revision Share Safety / Quality Eligibility
 
-Status: **Implementation candidate — requires PR CI and protected-main verification before closure.**
+Status: **Completed.**
+
+Verified implementation evidence:
+
+- implementation PR **#129** merged to protected `main`;
+- protected-main implementation SHA `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`;
+- implementation-branch CI **#337 — SUCCESS**;
+- exact-main CI **#338 / run `33260876272`, job `99122486469` — SUCCESS**;
+- **1390 / 1390 tests PASS**, 234 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
 
 ## Purpose
 
@@ -158,9 +169,9 @@ T2 does **not**:
 - change `Dockerfile`, `render.yaml` or Render wiring;
 - add dependencies.
 
-## Required regressions
+## Verified regressions
 
-The T2 regression suite covers:
+The completed T2 regression suite verifies:
 
 - exact source + report + TTS/playback accepted evidence creation;
 - revision snapshot vs exact source-array identity separation;
@@ -184,16 +195,8 @@ The T2 regression suite covers:
 - caller-owned evidence IDs/timestamps;
 - malformed inputs fail closed.
 
-## Completion rule
+## Closure
 
-T2 is not Completed until:
-
-1. focused regressions pass;
-2. full repository tests pass;
-3. production build passes;
-4. real-browser score runtime proof passes;
-5. protected-main PR is merged;
-6. exact-main required CI succeeds;
-7. closure/status documentation records final verified evidence.
+All T2 completion gates are satisfied: focused regressions, full repository tests, production build, real-browser proof, protected-main merge and exact-main CI are green.
 
 Parent Package 12 remains **Partially implemented** after T2. The next safe stage is post-correction revalidation/provenance for teacher-corrected revisions. Authentication, persistence and real student delivery remain later architecture/security stages.
