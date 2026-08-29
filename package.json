@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "score:prepare-runtime": "node scripts/prepareScoreRuntime.js",
+    "build": "npm run score:prepare-runtime && vite build",
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
     "backend:start": "node backend/server.js",

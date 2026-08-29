@@ -2,7 +2,7 @@
 //
 // Existing TTS, keyboard navigation, measure selection, quality gating and
 // teacher approval remain owned by SesliTab. This UI only exposes a place for
-// the ST renderer runtime to draw notation when that reviewed runtime is bound.
+// the ST renderer runtime to draw notation.
 
 import {
   clearScoreView,
@@ -11,6 +11,8 @@ import {
   ST_SCORE_RENDERER_REVIEWED_REVISION,
 } from './services/scoreRendererConsumer.js'
 
+const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
+const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
 let ticketCounter = 0
 
 function nextTicket() {
@@ -38,6 +40,39 @@ function currentMusicXml(root) {
   const value = typeof xmlOutput?.textContent === 'string' ? xmlOutput.textContent : ''
   if (!value.trim() || value.startsWith('(TAB modunda')) return null
   return value
+}
+
+function ensureRuntimeFrame(root, surface) {
+  let frame = root.getElementById('score-view-runtime-frame')
+  if (frame) return frame
+
+  frame = root.createElement('iframe')
+  frame.id = 'score-view-runtime-frame'
+  frame.className = 'score-view-runtime-frame'
+  frame.title = 'ST görsel nota renderer'
+  frame.src = SCORE_RUNTIME_URL
+  frame.loading = 'eager'
+  frame.setAttribute('aria-label', 'Görsel nota sayfası')
+  frame.style.width = '100%'
+  frame.style.minHeight = '640px'
+  frame.style.border = '0'
+  frame.style.background = '#fff'
+  surface.replaceChildren(frame)
+  return frame
+}
+
+async function waitForRuntime(frame, timeoutMs = SCORE_RUNTIME_READY_TIMEOUT_MS) {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const runtime = resolveStScoreRuntime(frame?.contentWindow)
+      if (runtime) return runtime
+    } catch {
+      return null
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return null
 }
 
 export function ensureScoreViewPanel(root = document) {
@@ -78,7 +113,7 @@ export function ensureScoreViewPanel(root = document) {
   status.className = 'score-view-status'
   status.setAttribute('role', 'status')
   status.setAttribute('aria-live', 'polite')
-  status.textContent = 'ST score renderer bağlantısı bekleniyor.'
+  status.textContent = 'ST score renderer hazırlanıyor.'
 
   const surface = root.createElement('div')
   surface.id = 'score-view-surface'
@@ -102,7 +137,7 @@ export function ensureScoreViewPanel(root = document) {
   return panel
 }
 
-export async function activateScoreView(root = document, globalScope = globalThis) {
+export async function activateScoreView(root = document) {
   const panel = ensureScoreViewPanel(root)
   if (!panel) return false
 
@@ -114,14 +149,15 @@ export async function activateScoreView(root = document, globalScope = globalThi
 
   if (!musicxml) {
     if (status) status.textContent = 'Görsel nota için MusicXML bulunamadı.'
-    if (surface?.replaceChildren) surface.replaceChildren()
     return false
   }
+  if (!surface) return false
 
-  const runtime = resolveStScoreRuntime(globalScope)
+  const frame = ensureRuntimeFrame(root, surface)
+  if (status) status.textContent = 'ST renderer runtime başlatılıyor…'
+  const runtime = await waitForRuntime(frame)
   if (!runtime) {
-    if (status) status.textContent = 'Nota görünümü hazır; ST renderer runtime henüz bağlanmadı.'
-    if (surface?.replaceChildren) surface.replaceChildren()
+    if (status) status.textContent = 'Görsel nota renderer başlatılamadı.'
     return false
   }
 
@@ -132,7 +168,6 @@ export async function activateScoreView(root = document, globalScope = globalThi
     return true
   } catch (error) {
     try { await clearScoreView(runtime) } catch {}
-    if (surface?.replaceChildren) surface.replaceChildren()
     if (status) status.textContent = `Görsel nota oluşturulamadı: ${error?.message || 'bilinmeyen hata'}`
     return false
   }
