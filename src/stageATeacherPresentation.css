@@ -1,0 +1,70 @@
+.teacher-workspace,
+.teacher-workspace * {
+  box-sizing: border-box;
+}
+
+.teacher-workspace {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.teacher-workspace input,
+.teacher-workspace select,
+.teacher-workspace button,
+.teacher-technical-details summary {
+  min-height: 44px;
+}
+
+.teacher-workspace input,
+.teacher-workspace select {
+  width: 100%;
+  max-width: 100%;
+}
+
+.teacher-workspace fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.teacher-technical-details {
+  margin-top: 1rem;
+  max-width: 100%;
+}
+
+.teacher-technical-details summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.teacher-technical-details summary:focus-visible,
+.teacher-workspace button:focus-visible,
+.teacher-workspace input:focus-visible,
+.teacher-workspace select:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+#teacher-current-content {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre;
+}
+
+@media (max-width: 640px) {
+  .teacher-workspace {
+    overflow-wrap: anywhere;
+  }
+
+  .teacher-workspace .btn,
+  .teacher-workspace button {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .teacher-workspace fieldset,
+  .teacher-technical-details {
+    padding-inline: 0.75rem;
+  }
+}
