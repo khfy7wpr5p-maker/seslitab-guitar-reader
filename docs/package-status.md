@@ -1,8 +1,8 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected-main implementation baseline: `ce5210476c5957595a9159abff6fd3b64afd10bd`  
-Latest exact-main implementation CI: **#273 / run `33207881028`, job `98973500868` — SUCCESS**
+Latest verified protected-main implementation baseline: `258ac27262aa4715164aafebe8fce97bb89f9dfb`  
+Latest exact-main implementation CI: **#286 / run `33246461356`, job `99084669804` — SUCCESS**
 
 A package/substage is **Completed** only after bounded acceptance criteria, focused tests, full regression suite, production build, protected-main merge and exact-main workflow evidence are satisfied.
 
@@ -26,10 +26,11 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 | 6 — Chord-symbol parser | Completed | Source-only MusicXML harmony parser verified. |
 | 7 — Chord display and Turkish TTS | Completed | Accessible source-only chord presentation/TTS verified. |
 | 8 — Teacher correction and approval | **Completed** | T1–T6 verified, merged and docs closed. |
-| 8B — Audiveris training dataset | **Partially implemented** | T1/T2 contracts completed; zero real eligible/trainable samples currently admitted. |
-| 8B-T1 — Verified dataset contract | **Completed** | PR #104 → merge `278b69ed…` → exact-main CI #266, 1228/1228 PASS. |
-| 8B-T2 — Verified evidence intake/readiness | **Completed** | PR #106 → merge `ce521047…` → exact-main CI #273, 1244/1244 PASS. |
-| 9 — Advanced Guitar TAB | Not started | Sequentially blocked while Package 8B remains incomplete. |
+| 8B — Audiveris training dataset | **Partially implemented** | T1/T2/T3 completed; T3 has 2,714 experimental accidental mappings, but T1/T2-admitted trainable sample count remains 0. |
+| 8B-T1 — Verified dataset contract | **Completed** | PR #104 → merge `278b69ed…` → exact-main CI #266. |
+| 8B-T2 — Verified evidence intake/readiness | **Completed** | PR #106 → merge `ce521047…` → exact-main CI #273. |
+| 8B-T3 — MUSCIMA accidental mapping | **Completed** | PR #113 → merge `258ac272…` → exact-main CI #286; 1275/1275 PASS + browser proof PASS. |
+| 9 — Advanced Guitar TAB | Not started | Sequentially blocked while Package 8B remains incomplete unless roadmap is explicitly changed. |
 | 10 — Advanced violin | Not started | Advanced positions/alternatives/double stops remain planned. |
 | 11 — Accessible tuner | Not started | Microphone pitch/accessibility package absent. |
 | 12 — Teacher-to-student sharing | Not started | Exact-approved-revision sharing/authorization not implemented. |
@@ -38,54 +39,58 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 
 ## Package 8B-T1 verified result
 
-T1 provides the immutable admission contract required before a real Audiveris training dataset can exist:
-
-1. MusicXML alone cannot become a training sample.
-2. Explicit training approval is required and is bound to exact candidate evidence by SHA-256 fingerprint.
-3. Candidate evidence includes source PDF/page image/.omr/MusicXML/glyph/shape/coordinates/licence/Audiveris version.
-4. Train/evaluation leakage is rejected through provenance and shared source/glyph evidence hashes.
-5. Dataset manifests are immutable, deterministic and reproducible.
-6. Missing or malformed evidence fails closed.
-7. No production OMR/model/deployment wiring changed.
+T1 defines the strict immutable admission contract. MusicXML alone is not a training sample; exact training approval binds to exact candidate evidence; candidate evidence, licence/version/split and train/evaluation leakage rules are explicit; missing evidence fails closed; production OMR/model/deployment wiring remains unchanged.
 
 ## Package 8B-T2 verified result
 
-T2 proves whether actual supplied artifact bytes match the exact T1 evidence declarations without changing the evidence:
+T2 verifies actual supplied artifact bytes against exact T1 declarations. Exact path and digest must match; missing observations remain incomplete; duplicate/undeclared/path/hash mismatch is rejected; `eligible` means manifest-review eligibility only; raw evidence bytes are not retained.
 
-1. T2 computes SHA-256 from raw non-empty `Uint8Array` bytes itself.
-2. Exact declared path and digest must match; paths are not silently trimmed or normalized into equivalence.
-3. Missing observations remain `incomplete`.
-4. Duplicate, undeclared, path-mismatched or hash-mismatched observations become `rejected`.
-5. Only a T1-trainable candidate with all declared artifacts verified can be `eligible`.
-6. `eligible` means only eligible for dataset-manifest review, not authorized training or production use.
-7. Raw evidence bytes are not retained in reports.
-8. Readiness reports are deterministic, immutable and semantically fail-closed.
-9. Existing production OMR/model/deployment wiring remains unchanged.
+## Package 8B-T3 verified result
 
-The current repository owner/teacher-approved golden-reference chain verifies its currently declared PDF/.omr/MusicXML/reference approval/licence bytes, but it still lacks separate page/glyph/shape/coordinate evidence, explicit training approval and split membership.
+T3 adds a bounded research-only mapping contract for the user-supplied MUSCIMA-style accidental annotations.
 
-Therefore current real eligible/trainable sample count is **0**.
+Measured supplied evidence:
 
-## 8B-T2 evidence
+- 100 matched PNG/XML pages;
+- 10,109 total annotation objects;
+- 2,714 accidentals;
+- accidental counts: 1,131 sharp, 821 flat, 350 natural, 220 double-sharp, 192 double-flat;
+- 0 accidental bbox overruns;
+- local page-disjoint split: 2,247 mapped train / 467 mapped evaluation across 80/20 pages.
 
-- implementation PR #106 final head `8d333a4bc3de2b58731b6c0360e5d0923b9728fb`
-- exact-head CI #272 / run `33207712313`, job `98972982291`: SUCCESS
-- 1244/1244 tests, 232 suites, 0 failures/skips/cancellations, 0 vulnerabilities, build PASS
-- review P2 exact-path issue fixed and regression-tested
-- protected-main merge `ce5210476c5957595a9159abff6fd3b64afd10bd`
-- exact-main CI #273 / run `33207881028`, job `98973500868`: SUCCESS
-- 1244/1244 tests, 232 suites, 0 fail/skipped/cancelled, 0 vulnerabilities, build PASS
+Only these mappings are admitted:
+
+- `accidentalSharp` → `SHARP`
+- `accidentalFlat` → `FLAT`
+- `accidentalNatural` → `NATURAL`
+- `accidentalDoubleSharp` → `DOUBLE_SHARP`
+- `accidentalDoubleFlat` → `DOUBLE_FLAT`
+
+T3 validates exact page/annotation hashes, bbox bounds and binary RLE mask area, hashes decoded mask pixels, creates deterministic sample identities and ignores unrelated notation classes rather than relabelling them.
+
+The 2,714 records remain **experimental mapping evidence**, not T1/T2 trainable samples. Each remains blocked by missing `.omr`, missing exact per-sample training approval and external-license review. The annotation XML is not treated as `.omr`; engineering approval is not treated as training approval; page-disjoint evaluation is not called writer-independent.
+
+## 8B-T3 evidence
+
+- implementation PR #113 final head `b3f4b71a9748f2b8281abe5f0d9e6fb925a0fd9a`
+- exact-head CI #285 / run `33246314925`, job `99084280341`: SUCCESS
+- review threads: 0 unresolved
+- protected-main merge `258ac27262aa4715164aafebe8fce97bb89f9dfb`
+- exact-main CI #286 / run `33246461356`, job `99084669804`: SUCCESS
+- **1275/1275 tests**, 232 suites, 0 failed/skipped/cancelled, 0 vulnerabilities, production build PASS, real-browser proof PASS
 
 ## Package 8B continuing safeguards / blocker
 
 - accept only actual supplied/verified evidence;
-- never invent glyphs, labels, coordinates, images, approvals, licences or metrics;
-- golden-reference approval is not silently treated as Audiveris-training approval;
-- training and evaluation evidence remain isolated;
+- never invent glyphs, labels, coordinates, `.omr`, approvals, licences or metrics;
+- golden/reference approval and engineering-stage approval are not Audiveris-training approval;
+- T3 experimental mappings do not bypass T1/T2;
+- page-disjoint evaluation is not writer-independent evaluation;
+- external MUSCIMA/CVC-MUSCIMA licence constraints remain explicit and research-only in this project stage;
 - no automatic production-model replacement;
 - existing production OMR flow remains unchanged;
-- no evidence-supported T3 coding stage is declared while genuine teacher-verified symbol evidence is absent;
-- Package 9 does not start while Package 8B remains incomplete under the approved sequential roadmap.
+- next stage requires explicit evidence/architecture decision about `.omr` admission, compatible per-sample training authorization and evaluation protocol;
+- Package 9 remains blocked under the current sequential roadmap while Package 8B is incomplete.
 
 ## Protected integration boundary
 
