@@ -1,8 +1,10 @@
 # Package 8B-T3 — MUSCIMA Accidental Mapping
 
-Status: **Implementation candidate.**
+Status: **Completed.**
 
-Stage-start protected-main baseline: `627e7abbe15d922dd90e0c4d8a745dd9d75a90b0`.
+Stage-start protected-main baseline: `627e7abbe15d922dd90e0c4d8a745dd9d75a90b0`.  
+Verified implementation main: `258ac27262aa4715164aafebe8fce97bb89f9dfb`.  
+Exact-main CI: **#286 / run `33246461356`, job `99084669804` — SUCCESS**.
 
 ## Purpose
 
@@ -38,7 +40,7 @@ Accidental counts:
 | `accidentalDoubleFlat` | `DOUBLE_FLAT` | 192 |
 | **Total** |  | **2,714** |
 
-The XML also contains noteheads, stems, barlines, staff lines, flags, rests, clefs, time-signature digits and one accent object. T3 intentionally does **not** map these unrelated classes because Audiveris handles different notation families through different recognition methods and this stage is limited to accidentals.
+The XML also contains noteheads, stems, barlines, staff lines, flags, rests, clefs, time-signature digits and one accent object. T3 intentionally does **not** map these unrelated classes because this stage is limited to the bounded accidental classifier subset.
 
 ## Local normalized pilot artifact
 
@@ -51,7 +53,7 @@ A local research-only normalized artifact was generated from the uploaded eviden
 - normalized manifest SHA-256: `1e5ae9441f7d1e02d39f24c4851545eb34b8587428365c5f2b44ebb1ef494a40`
 - local ZIP SHA-256: `f571fca71f00ff50d88e2083611a71a822bed8d40d18499c011933c9d3d3a2c4`
 
-This split is **page-disjoint only**. Writer identity was not established from the supplied filenames, so T3 must not describe the evaluation set as writer-independent.
+This split is **page-disjoint only**. Writer identity was not established from the supplied filenames, so T3 does not describe the evaluation set as writer-independent.
 
 ## Fail-closed mapping contract
 
@@ -66,7 +68,7 @@ This split is **page-disjoint only**. Writer identity was not established from t
 7. creates deterministic sample identity from exact source evidence;
 8. rejects duplicate object/page/sample identity;
 9. provides deterministic page-disjoint split assignment only when the caller supplies the evaluation-page count;
-10. ignores unrelated MUSCIMA classes rather than relabeling them;
+10. ignores unrelated MUSCIMA classes rather than relabelling them;
 11. retains explicit T1 blockers on every mapped record;
 12. has no file-write, network, Audiveris-execution, model-training or production OMR imports.
 
@@ -82,9 +84,18 @@ The supplied XML is annotation evidence, **not an Audiveris `.omr` project**. T3
 
 Likewise, user approval to proceed with this engineering stage is not silently rewritten into the T1 per-sample `audiveris_training_sample` approval record.
 
+Therefore:
+
+```text
+experimental mapped accidentals: 2,714
+T1/T2 admitted trainable samples: 0
+training executed: NO
+production model changed: NO
+```
+
 ## License boundary
 
-MUSCIMA++ documents its annotations under **CC BY-NC-SA 4.0** and identifies the underlying CVC-MUSCIMA images as separately sourced. The official CVC-MUSCIMA terms state non-commercial research use and CC BY-NC-SA 4.0 terms. T3 therefore keeps the normalized pilot research-only and does not publish source/derived glyph images into this public repository or authorize a production model.
+MUSCIMA++ documents its annotations under **CC BY-NC-SA 4.0** and identifies the underlying CVC-MUSCIMA images as separately sourced. The CVC-MUSCIMA terms document non-commercial research use. T3 therefore keeps the normalized pilot research-only, publishes no source/derived glyph images into this public repository, and authorizes no production model.
 
 Relevant upstream references:
 
@@ -94,19 +105,33 @@ Relevant upstream references:
 
 This repository record is a technical provenance/safety boundary, not legal advice.
 
-## Audiveris shape evidence
+## Verification and closure evidence
 
-Audiveris upstream training discussions list `SHARP`, `FLAT`, `NATURAL`, `DOUBLE_SHARP` and `DOUBLE_FLAT` among classifier sample shapes. They also explain that stems/barlines are handled differently and noteheads use a different recognition path, which is why T3 does not indiscriminately convert all 10,109 annotations into classifier samples.
+- implementation PR #113 final head: `b3f4b71a9748f2b8281abe5f0d9e6fb925a0fd9a`
+- exact-head CI #285 / run `33246314925`, job `99084280341`: **SUCCESS**
+- exact-head complete repository test/build/browser gate: **PASS**
+- review threads: **0 unresolved**
+- protected-main exact-head squash merge: `258ac27262aa4715164aafebe8fce97bb89f9dfb`
+- exact-main CI #286 / run `33246461356`, job `99084669804`: **SUCCESS**
+- exact-main: **1275/1275 tests**, 232 suites, 0 failed/skipped/cancelled, 0 vulnerabilities, production build PASS, real-browser score runtime proof PASS
+- production OMR/Audiveris/Render/Docker wiring: unchanged
 
-## Acceptance boundary
+See `docs/package-8b-t3-closure.md` for the bounded closure record.
 
-T3 may be called completed only if:
+## Deferred work
 
-- focused mapping tests pass;
-- the complete repository test/build gate passes on the exact PR head;
-- review has no unresolved valid blocker;
-- merge is exact-head locked;
-- protected-main push CI passes on the exact merge SHA;
-- production OMR/Audiveris/Render/Docker wiring remains unchanged.
+Even after T3 completion, **Package 8B remains Partially implemented**.
 
-Even after T3 completion, **Package 8B remains partially implemented**. Model training/evaluation and any production model replacement remain separate future decisions.
+Before any model-training stage, separately review:
+
+- whether third-party classifier glyph evidence must satisfy T1's current `.omr` requirement or needs an explicitly approved contract extension;
+- exact per-sample training authorization under the external licence boundary;
+- evaluation design beyond page-disjoint-only evidence when writer identity is unavailable;
+- isolated training/evaluation procedure;
+- model comparison and any later production-model replacement.
+
+T3 completion alone authorizes none of these.
+
+## Rollback
+
+Revert protected-main implementation commit `258ac27262aa4715164aafebe8fce97bb89f9dfb`. T3 introduced no production OMR/runtime/deployment state change.
