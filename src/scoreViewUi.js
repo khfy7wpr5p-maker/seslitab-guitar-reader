@@ -51,6 +51,18 @@ function currentMusicXml(root) {
   return value
 }
 
+function removeRuntimeFrame(root) {
+  const frame = root?.getElementById?.('score-view-runtime-frame')
+  frame?.remove?.()
+}
+
+async function resetScoreRuntime(root, runtime) {
+  scoreRuntimeHosts.delete(root)
+  scoreCursorSelections.delete(root)
+  try { await clearScoreView(runtime) } catch {}
+  removeRuntimeFrame(root)
+}
+
 function ensureRuntimeFrame(root, surface) {
   let frame = root.getElementById('score-view-runtime-frame')
   if (frame) return frame
@@ -131,9 +143,7 @@ export async function syncScoreMeasureCursor(root, bridgeSnapshot, runtime = sco
     status.textContent = `SesliTab seçimi: Ölçü ${selection.visibleLabel ?? selection.measureKey}. Görsel cursor bu canonical ölçüyle eşlendi.`
     return true
   } catch {
-    scoreCursorSelections.delete(root)
-    scoreRuntimeHosts.delete(root)
-    try { await clearScoreView(runtime) } catch {}
+    await resetScoreRuntime(root, runtime)
     status.dataset.cursorSynced = 'false'
     status.textContent = 'Görsel cursor uygulanamadı; yanıltıcı eski nota gösterimi güvenli şekilde temizlendi.'
     return false
@@ -198,11 +208,18 @@ export function ensureScoreViewPanel(root = document) {
   measureSync.dataset.cursorSynced = 'false'
   measureSync.textContent = 'SesliTab ölçü seçimi yok. Görsel nota yalnızca sunum yapıyor.'
 
+  const mobileHint = root.createElement('p')
+  mobileHint.id = 'score-view-mobile-hint'
+  mobileHint.className = 'score-view-mobile-hint'
+  mobileHint.textContent = 'Dar ekranda nota görünümünü yatay kaydırabilirsiniz.'
+
   const surface = root.createElement('div')
   surface.id = 'score-view-surface'
   surface.className = 'score-view-surface'
+  surface.tabIndex = 0
   surface.setAttribute('role', 'region')
   surface.setAttribute('aria-label', 'Görsel nota sayfası')
+  surface.setAttribute('aria-describedby', 'score-view-mobile-hint')
 
   const provenance = root.createElement('p')
   provenance.className = 'score-view-provenance'
@@ -211,6 +228,7 @@ export function ensureScoreViewPanel(root = document) {
   panel.appendChild(heading)
   panel.appendChild(status)
   panel.appendChild(measureSync)
+  panel.appendChild(mobileHint)
   panel.appendChild(surface)
   panel.appendChild(provenance)
   tabList.appendChild(button)
@@ -242,7 +260,8 @@ export async function activateScoreView(root = document) {
   if (status) status.textContent = 'ST renderer runtime başlatılıyor…'
   const runtime = await waitForRuntime(frame)
   if (!runtime) {
-    if (status) status.textContent = 'Görsel nota renderer başlatılamadı.'
+    removeRuntimeFrame(root)
+    if (status) status.textContent = 'Görsel nota renderer başlatılamadı. Yeniden deneyebilirsiniz.'
     return false
   }
 
@@ -255,10 +274,8 @@ export async function activateScoreView(root = document) {
     await syncScoreMeasureCursor(root, getPackage3MeasureSnapshot(), runtime)
     return true
   } catch (error) {
-    scoreRuntimeHosts.delete(root)
-    scoreCursorSelections.delete(root)
-    try { await clearScoreView(runtime) } catch {}
-    if (status) status.textContent = `Görsel nota oluşturulamadı: ${error?.message || 'bilinmeyen hata'}`
+    await resetScoreRuntime(root, runtime)
+    if (status) status.textContent = `Görsel nota oluşturulamadı: ${error?.message || 'bilinmeyen hata'}. Renderer temizlendi; yeniden deneyebilirsiniz.`
     return false
   }
 }
