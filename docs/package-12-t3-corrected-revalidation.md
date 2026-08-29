@@ -1,6 +1,6 @@
 # Package 12-T3 — Bounded Teacher-Corrected Revalidation / Provenance
 
-Status: **Implementation candidate — requires PR CI and protected-main verification before closure.**
+Status: **Completed.**
 
 ## Purpose
 
@@ -55,7 +55,7 @@ No insertion/deletion/reordering of notes is introduced.
 
 ## Exact correction provenance
 
-T3 consumes the strict Package 8 history rather than a caller-supplied summary. The existing history validator already replays correction audit events against every immutable revision transition.
+T3 consumes the strict Package 8 history rather than a caller-supplied summary. The existing history validator replays correction audit events against every immutable revision transition.
 
 T3 additionally binds its evidence to:
 
@@ -114,6 +114,21 @@ T3 uses explicit fail-closed states:
 
 Only `eligible_corrected_revision` returns `eligible: true`.
 
+## Verified implementation evidence
+
+- issue **#131** defined the bounded T3 scope;
+- implementation PR **#133** merged to protected `main`;
+- final implementation PR head SHA `762deb461ae2284efbeec148a2872f3866bfcdaa`;
+- protected-main implementation SHA `fe940cd0b633055845e06504eeeb4287aed3f4d1`;
+- implementation-branch CI **#342 / run `33262049864`, job `99125548995` — SUCCESS**;
+- exact-main CI **#343 / run `33262154615`, job `99125825785` — SUCCESS**;
+- **1406 / 1406 tests PASS**, **235 suites**, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
+
+The focused T3 regressions verify inherited verification rejection, invalid fret rejection, multi-hop bounded correction provenance, unsupported rhythm/voice/staff/tie rejection, undo rejection, live root-evidence invalidation, source mutation detection, cross-history rejection, stale-revision rejection, authorization/revocation precedence, strict evidence tamper rejection and source isolation.
+
 ## Explicit non-goals
 
 T3 does not:
@@ -129,16 +144,8 @@ T3 does not:
 - change `Dockerfile`, `render.yaml` or Render wiring;
 - add dependencies.
 
-## Completion rule
+## Completion result and next boundary
 
-T3 is not Completed until:
+All T3 completion gates are satisfied: focused regressions, full tests, production build, Chrome runtime proof, protected-main merge and exact-main CI are green.
 
-1. focused regressions pass;
-2. full repository tests pass;
-3. production build passes;
-4. real-browser score runtime proof passes;
-5. protected-main PR is merged;
-6. exact-main required CI succeeds;
-7. closure/status documentation records the verified evidence.
-
-Parent Package 12 remains **Partially implemented** after T3. The next safe substage is a broader structural/rhythmic post-correction revalidation contract for the correction classes intentionally excluded from T3 v1, before authenticated recipient access, persistence or real network delivery is considered.
+Parent Package 12 remains **Partially implemented** after T3. The next safe substage is **Package 12-T4 — structural/rhythmic post-correction revalidation** for correction classes intentionally excluded from T3 v1, including duration/rhythm, voice/staff, tie/string identity and undo histories. Authenticated recipient access, persistence and real network delivery remain later reviewed security/application stages.
