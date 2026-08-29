@@ -2,7 +2,18 @@
 
 Date: 2026-08-29
 
-Status: implementation candidate; completion requires protected-main merge and exact-main CI.
+Status: **Completed.**
+
+Verified implementation evidence:
+
+- implementation PR **#124** merged to protected `main`;
+- protected-main implementation SHA `590abcaa523c9fc83dbf0f0483586a9fdf0d984c`;
+- exact-head CI **#323 — SUCCESS**;
+- exact-main CI **#324 — SUCCESS**;
+- **1340 / 1340 tests PASS**, 232 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
 
 ## Goal
 

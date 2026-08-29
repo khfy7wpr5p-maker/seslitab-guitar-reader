@@ -1,15 +1,15 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected `main` implementation baseline: `f01e67d6488cedf192333d6ba2c528330841d5d8`  
-Latest exact-main implementation CI: **#319 / run `33256393182`, job `99110780497` — SUCCESS**  
-Current package state: **Package 0–9 Completed. Package 8B remains Partially implemented as deferred research; Package 10 is next.**
+Latest verified protected `main` implementation baseline: `160c3bcadfc634f7b1300627993e89ebda764576`  
+Latest exact-main implementation CI: **#326 / run `33258600115`, job `99116529789` — SUCCESS**  
+Current package state: **Package 0–11 Completed. Package 8B remains Partially implemented as deferred research; Package 12 is next.**
 
 ## Verified baseline
 
-Exact-main CI #319 checked out protected-main SHA `f01e67d6488cedf192333d6ba2c528330841d5d8` and verified:
+Exact-main CI #326 checked out protected-main SHA `160c3bcadfc634f7b1300627993e89ebda764576` and verified:
 
-- **1326 / 1326 tests PASS**;
+- **1352 / 1352 tests PASS**;
 - **232 suites**;
 - **0 failed / skipped / cancelled**;
 - **0 vulnerabilities**;
@@ -18,34 +18,55 @@ Exact-main CI #319 checked out protected-main SHA `f01e67d6488cedf192333d6ba2c52
 
 `main` remains protected and requires `test-and-build`.
 
-## Package 9 — Advanced Guitar TAB
+## Package 10 — Advanced Violin
 
 Status: **Completed.**
 
-Package 9 extends the existing quality-gated Guitar TAB flow for one guitar part. It supports MusicXML chord continuations, simultaneous independent pitched events, multiple voices/staves, sustained polyphony and tie continuity. A bounded deterministic solver assigns distinct available guitar strings, preserving still-sounding strings and exact tie positions.
+Package 10 extends the exact-array Package 2D `VIOLIN` quality-gated path with bounded generated first/second/third-position alternatives, string-crossing choices, two-note double stops, simultaneous voices/staves, sustained-string locking and exact tie continuity. Generated positions remain explicit non-teacher evidence and unsupported/impossible structures fail closed with zero partial output.
 
-The output remains generated evidence only:
+Evidence:
 
-```text
-policyId: seslitab-advanced-guitar-v1
-provenance: generated-advanced
-sourceFingeringClaimed: false
-```
+- implementation PR **#124** merged;
+- protected-main implementation SHA `590abcaa523c9fc83dbf0f0483586a9fdf0d984c`;
+- exact-main CI **#324 — SUCCESS**;
+- **1340 / 1340 tests PASS**, 232 suites, 0 vulnerabilities, production build PASS, Chrome proof PASS.
 
-The solver does not claim teacher approval or pedagogical optimum. More than six simultaneous pitched notes, multiple score parts, invalid physical identity/timing, dangling/mismatched ties, impossible assignments or search-limit exhaustion fail closed with zero partial TAB.
+Detailed contract: `docs/package-10-advanced-violin.md`.
 
-### Package 9 evidence
+## Package 11 — Accessible Chromatic Tuner
 
-- implementation PR **#122** merged;
-- protected-main implementation SHA `f01e67d6488cedf192333d6ba2c528330841d5d8`;
-- exact-main CI **#319 / run `33256393182`, job `99110780497` — SUCCESS**;
-- **1326/1326 tests**, 232 suites, 0 vulnerabilities, production build PASS, Chrome browser proof PASS.
+Status: **Completed.**
 
-Detailed contract: `docs/package-9-advanced-guitar-tab.md`.
+Package 11 adds a browser-local, instrument-agnostic chromatic tuner covering all 12 equal-tempered pitch classes. It uses Web Audio microphone time-domain samples and a bounded YIN-style detector with RMS noise gating, confidence gating, parabolic lag refinement and stable same-note smoothing.
+
+Current tuner capabilities:
+
+- all 12 chromatic note classes with Turkish enharmonic naming;
+- note + octave, Hz and signed cent display;
+- explicit `Pes / Çok yakın / Akortta / Tiz` guidance;
+- ±2 cent in-tune threshold and ±5 cent near threshold;
+- A4 calibration **415.0–466.2 Hz**, default 440 Hz;
+- bounded live range **40–2000 Hz**;
+- responsive low-vision layout and keyboard-visible focus;
+- throttled screen-reader live announcements;
+- microphone audio remains local and is never uploaded, persisted or recorded by SesliTab;
+- microphone tracks are stopped on Stop, page exit and setup failure.
+
+Evidence:
+
+- implementation PR **#125** merged;
+- protected-main implementation SHA `160c3bcadfc634f7b1300627993e89ebda764576`;
+- exact-head CI **#325 — SUCCESS**;
+- exact-main CI **#326 / run `33258600115`, job `99116529789` — SUCCESS**;
+- **1352 / 1352 tests PASS**, 232 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build PASS and Chrome proof PASS.
+
+Detailed contract: `docs/package-11-chromatic-tuner.md`.
 
 ## Package 8B — deferred research state
 
-Package 8B remains **Partially implemented**, but the user explicitly changed the roadmap so missing research evidence no longer blocks application packages.
+Package 8B remains **Partially implemented**, but missing research evidence no longer blocks application packages.
 
 Current genuine research state:
 
@@ -62,10 +83,10 @@ T1–T6 engineering gates remain intact. Do not fabricate sample approval, nativ
 
 ## Next application boundary
 
-**Package 10 — Advanced violin** is the next active package.
+**Package 12 — Teacher-to-student sharing** is the next active package.
 
-The safe scope is to extend the existing exact-array Package 2D `VIOLIN` quality-gated path with bounded generated advanced physical/fingering alternatives and double-stop/simultaneous-note handling. It must preserve exact canonical note references, fail closed for unsupported/impossible structures, and must not represent generated choices as source or teacher-approved fingering.
+It must reuse Package 8 exact revision/approval evidence. Sharing must not silently treat any automatic or corrected revision as authorized: only an explicitly eligible exact approved revision may enter the sharing layer, with clear revocation/staleness behavior and no weakening of the existing quality, OMR or teacher-approval boundaries.
 
 ## Protected OMR and deployment boundary
 
-Package 10 and later application work must not silently change production Audiveris provider/runtime/preflight, OMR worker/provider selection, Cloud OMR Gateway, backend production OMR path, `Dockerfile`, `render.yaml`, current Render service/deployment connection, or production model selection/replacement.
+Package 12 and later application work must not silently change production Audiveris provider/runtime/preflight, OMR worker/provider selection, Cloud OMR Gateway, backend production OMR path, `Dockerfile`, `render.yaml`, current Render service/deployment connection, or production model selection/replacement.

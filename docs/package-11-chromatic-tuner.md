@@ -2,7 +2,18 @@
 
 Date: 2026-08-29
 
-Status: implementation candidate; completion requires protected-main merge and exact-main CI.
+Status: **Completed.**
+
+Verified implementation evidence:
+
+- implementation PR **#125** merged to protected `main`;
+- protected-main implementation SHA `160c3bcadfc634f7b1300627993e89ebda764576`;
+- exact-head CI **#325 — SUCCESS**;
+- exact-main CI **#326 / run `33258600115`, job `99116529789` — SUCCESS**;
+- **1352 / 1352 tests PASS**, 232 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
 
 ## Goal
 
@@ -66,7 +77,7 @@ Color is never the only state signal.
 
 Microphone audio remains local to the browser. The tuner does not upload, persist, record or send microphone audio to the SesliTab backend.
 
-Mic capture stops when the user presses Stop or the page is closed/left.
+Mic capture stops when the user presses Stop, the page is closed/left, or setup fails after microphone permission is granted.
 
 Package 11 does not modify or depend on:
 
