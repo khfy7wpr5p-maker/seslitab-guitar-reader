@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Package 8B-T6 isolated acceptance runner.
 //
-// This runner must be pointed at a separate checkout of the exact pinned
+// This runner must be pointed at a separate, clean checkout of the exact pinned
 // Audiveris revision. It temporarily adds one bounded JUnit probe to that
 // checkout, invokes the real SampleRepository.getInstance(Path,true) API, and
-// emits immutable evidence inputs for audiverisMuscimaPinnedNativeSerializer.js.
+// emits evidence inputs for audiverisMuscimaPinnedNativeSerializer.js.
 // It never trains a classifier or modifies SesliTab production runtime/deploys.
 
 import { createHash } from 'node:crypto'
@@ -48,17 +48,20 @@ if (!checkoutArg || !archiveArg || !expectedArg) {
     fail('samples.zip does not exist.')
   } else {
     const git = run('git', ['rev-parse', 'HEAD'], { cwd: checkout })
-    if (git.status !== 0) {
-      fail(`Could not inspect Audiveris checkout: ${git.stderr.trim()}`)
+    const status = run('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: checkout })
+    if (git.status !== 0 || status.status !== 0) {
+      fail(`Could not inspect Audiveris checkout: ${(git.stderr || status.stderr).trim()}`)
     } else if (git.stdout.trim() !== AUDIVERIS_PINNED_REVISION) {
       fail(`Audiveris checkout HEAD must equal ${AUDIVERIS_PINNED_REVISION}.`)
+    } else if (status.stdout.trim() !== '') {
+      fail('Audiveris checkout must be clean before the pinned acceptance probe is installed.')
     } else {
       const archiveSha256 = createHash('sha256').update(readFileSync(archive)).digest('hex')
       const packageFolder = join(checkout, 'app', 'src', 'test', 'java', 'org', 'audiveris', 'omr', 'classifier')
       const probePath = join(packageFolder, 'SesliTabPinnedSamplesAcceptanceTest.java')
       const receiptPath = join(checkout, '.seslitab-audiveris-acceptance.json')
-      if (existsSync(probePath)) {
-        fail('Refusing to overwrite an existing Audiveris probe source file.')
+      if (existsSync(probePath) || existsSync(receiptPath)) {
+        fail('Refusing to overwrite an existing Audiveris probe or acceptance receipt file.')
       } else {
         const java = `package org.audiveris.omr.classifier;\n\nimport static org.junit.Assert.*;\nimport org.junit.Test;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.security.MessageDigest;\nimport java.util.HexFormat;\n\npublic class SesliTabPinnedSamplesAcceptanceTest {\n    @Test\n    public void acceptsExactSesliTabSamplesArchive() throws Exception {\n        final String archiveText = System.getenv("SESLITAB_SAMPLES_ARCHIVE");\n        final String receiptText = System.getenv("SESLITAB_ACCEPTANCE_RECEIPT");\n        final String expectedText = System.getenv("SESLITAB_EXPECTED_SAMPLES");\n        assertNotNull(archiveText);\n        assertNotNull(receiptText);\n        assertNotNull(expectedText);\n        final Path archive = Path.of(archiveText);\n        final int expected = Integer.parseInt(expectedText);\n        final byte[] bytes = Files.readAllBytes(archive);\n        final String sha256 = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));\n        final SampleRepository repo = SampleRepository.getInstance(archive, true);\n        assertNotNull("SampleRepository rejected archive", repo);\n        assertTrue("SampleRepository did not load archive", repo.isLoaded());\n        final int loaded = repo.getAllSamples().size();\n        assertEquals("Loaded sample count mismatch", expected, loaded);\n        final String json = "{\\\"probeKind\\\":\\\"${AUDIVERIS_PINNED_ACCEPTANCE_PROBE.kind}\\\","
             + "\\\"probeApi\\\":\\\"${AUDIVERIS_PINNED_ACCEPTANCE_PROBE.api.replaceAll('"', '\\"')}\\\","
@@ -88,8 +91,16 @@ if (!checkoutArg || !archiveArg || !expectedArg) {
             fail('Pinned Audiveris probe completed without an acceptance receipt.')
           } else {
             const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'))
-            if (receipt.archiveSha256 !== archiveSha256 || receipt.loadedSampleCount !== expectedSamples) {
-              fail('Pinned Audiveris receipt does not bind the exact archive/count.')
+            const validReceipt = (
+              receipt.probeKind === AUDIVERIS_PINNED_ACCEPTANCE_PROBE.kind &&
+              receipt.probeApi === AUDIVERIS_PINNED_ACCEPTANCE_PROBE.api &&
+              receipt.upstreamRevision === AUDIVERIS_PINNED_REVISION &&
+              receipt.archiveSha256 === archiveSha256 &&
+              receipt.repositoryLoaded === true &&
+              receipt.loadedSampleCount === expectedSamples
+            )
+            if (!validReceipt) {
+              fail('Pinned Audiveris receipt does not bind the exact probe/revision/archive/count.')
             } else {
               process.stdout.write(`${JSON.stringify(receipt)}\n`)
             }
