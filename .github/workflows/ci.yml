@@ -36,3 +36,6 @@ jobs:
 
       - name: Build production bundle
         run: npm run build
+
+      - name: Verify score runtime in real browser
+        run: node scripts/verifyScoreRuntimeBrowser.js
