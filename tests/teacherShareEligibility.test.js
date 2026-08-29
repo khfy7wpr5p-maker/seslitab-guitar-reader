@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
+// Package 2B/2C MusicXML validation uses DOMParser. Reuse the repository's
+// established Node test polyfill; this changes test runtime only, never the
+// production quality gate or exact-array evidence semantics.
+import '../scripts/runOmrQualityReport.js'
+
 import {
   CANONICAL_NOTE_SCHEMA_VERSION,
   CANONICAL_VERIFICATION_STATUS,
