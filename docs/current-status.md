@@ -1,9 +1,9 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected `main` implementation baseline: `5acafbd420cb9e54b4fb5b36f590db882c3300c3`  
-Latest exact-main implementation CI: **#297 / run `33249268267`, job `99091994669` — SUCCESS**  
-Current package state: **Package 0–8 Completed. Package 8B Partially implemented; 8B-T1 through 8B-T5 Completed.**
+Latest verified protected `main` implementation baseline: `eb711fa0483b87d841b4381e242b4d19ae95d189`  
+Latest exact-main implementation CI: **#308 / run `33251255425`, job `99097200088` — SUCCESS**  
+Current package state: **Package 0–8 Completed. Package 8B Partially implemented; 8B-T1 through 8B-T6 Completed.**
 
 Current verified Package 8B research state:
 
@@ -11,70 +11,73 @@ Current verified Package 8B research state:
 - T3 bounded accidental mappings: **2,714** from 100 matched pages;
 - T4 exact research approvals / admitted samples: **0 / 0**;
 - T5 real native serializer-ready samples: **0**;
-- `samples.zip` built: **NO**;
+- real-data `samples.zip` built: **NO**;
+- real-data pinned-Audiveris acceptance receipt: **NO**;
 - Audiveris training executed: **NO**;
 - production model changed: **NO**.
 
 ## Verified baseline
 
-Exact-main CI #297 checked out exact protected-main SHA `5acafbd420cb9e54b4fb5b36f590db882c3300c3` and verified:
+Exact-main CI #308 checked out exact protected-main SHA `eb711fa0483b87d841b4381e242b4d19ae95d189` and verified:
 
-- **1299 / 1299 tests PASS**;
+- **1315 / 1315 tests PASS**;
 - **232 suites**;
 - **0 failed / skipped / cancelled**;
 - **0 vulnerabilities**;
 - Vite production build **PASS**;
-- real-browser score runtime proof **PASS** using Google Chrome.
+- real-browser score render + cursor runtime proof **PASS** using Google Chrome.
 
 `main` remains protected and requires `test-and-build`.
 
-## Package 8B-T5 — isolated native sample staging harness
+## Package 8B-T6 — pinned native serializer + acceptance gate
 
 Status: **Completed.**
 
-T5 adds a fail-closed research-only staging boundary before any Audiveris-native serializer or training execution. Fresh upstream verification was pinned to Audiveris `master` revision `7a36078e7ba0c006052c1f661b949cf9b729f505`.
+T6 adds the isolated serializer/acceptance boundary after T5. It is pinned to Audiveris revision `7a36078e7ba0c006052c1f661b949cf9b729f505` and accepts only an exact valid T5 `ready_for_audiveris_native_serializer` report.
 
-The verified Audiveris native sample contract requires more than a label and mask hash: a native sample includes shape, explicit interline, glyph location and `RunTable` pixel evidence. T3 intentionally retained only mapped identity/shape/bbox/decoded-mask SHA-256, not the raw mask/RLE payload or Audiveris interline. T5 therefore never fabricates those fields.
+For qualifying evidence T6 can deterministically construct Audiveris-native `samples.zip` bytes containing:
 
-T5 states are:
+- `META-INF/container.xml`;
+- deterministic per-page sample sheets;
+- per-sheet `samples.xml`;
+- horizontal `RunTable` RLE derived from exact T5 mask evidence;
+- explicit empty `<runs/>` rows where a bbox row contains no foreground pixels.
 
-- `blocked_research_admission` — T4 admission is incomplete;
-- `blocked_native_evidence` — T4 approval is complete but exact raw glyph/interline evidence is incomplete;
-- `ready_for_audiveris_native_serializer` — exact T4 approval plus matching raw mask evidence and explicit interline are present.
+Archive construction and acceptance are separate states. A built archive is only `archive_built_pending_pinned_acceptance`. Acceptance requires a receipt from an exact, clean checkout at the pinned Audiveris revision using the real `SampleRepository.getInstance(Path, true)` API and an exact loaded-sample-count check.
 
-Even the final state is **serializer-ready staging only**. T5 always keeps:
+T6 binds acceptance to the exact archive SHA-256, T5 staging-manifest fingerprint, pinned revision and sample count. It rejects revision drift, dirty pinned checkouts, archive mutation, path/API mismatch, count mismatch, malformed receipts and authorization escalation.
+
+Even an accepted archive keeps:
 
 ```text
-samplesZipBuilt: false
 trainingExecuted: false
-t1TrainableSampleCount: 0
-t1OmrEvidenceSatisfied: false
-writerIndependentEvaluation: false
 productionAuthorized: false
 modelReplacementAuthorized: false
 ```
 
-The stricter T1 `.omr` requirement remains unchanged. Page-disjoint evaluation is not represented as writer-independent evaluation.
+The current real Package 8B population cannot enter the serializer because T4 exact approvals and T5 serializer-ready real samples remain 0. T6 tests therefore prove the bounded serializer/acceptance contract without fabricating a real-data archive or acceptance claim.
 
-## 8B-T5 verification evidence
+## 8B-T6 verification evidence
 
-- stage-start protected main: `51d505ea8c1e098c193b1f4525b1fb9a59326854`;
-- implementation branch: `feature/package-8b-t5-isolated-native-samples-harness`;
-- implementation PR #118 final head: `075984105476fbd815a700201ccb5ae2cd0e169b`;
-- exact-head CI #296: **SUCCESS — 1299/1299 tests, 232 suites, 0 vulnerabilities, build PASS, browser proof PASS**;
-- review threads before merge: **0 unresolved**;
-- protected-main expected-head-locked squash merge: `5acafbd420cb9e54b4fb5b36f590db882c3300c3`;
-- exact-main CI #297 / run `33249268267`, job `99091994669`: **SUCCESS — 1299/1299 tests, 232 suites, 0 vulnerabilities, build PASS, browser proof PASS**.
+- stage-start protected main: `a771c27d9359c2fbcd4b126272287cf0ca82d875`;
+- implementation branch: `feature/package-8b-t6-pinned-native-serializer`;
+- implementation PR #120 final head: `9f7806c6eb6079dfc5ee929d270dfb39b063e8a4`;
+- exact-head CI #307 / run `33251176354`, job `99096993296`: **SUCCESS**;
+- final merge gate: **0 behind**, mergeable, **0 unresolved review threads**;
+- protected-main expected-head-locked squash merge: `eb711fa0483b87d841b4381e242b4d19ae95d189`;
+- exact-main CI #308 / run `33251255425`, job `99097200088`: **SUCCESS — 1315/1315 tests, 232 suites, 0 vulnerabilities, build PASS, browser proof PASS**.
 
-Detailed contract: `docs/package-8b-t5-isolated-native-samples-harness.md`.  
-Closure evidence: `docs/package-8b-t5-closure.md`.
+Detailed contract: `docs/package-8b-t6-pinned-native-serializer.md`.  
+Closure evidence: `docs/package-8b-t6-closure.md`.
 
 ## Next safe boundary
 
-Package 8B remains **Partially implemented**. The current 2,714 mapped records cannot be serialized into a valid native Audiveris repository from the retained T3 evidence, and T4 exact per-sample approvals remain 0.
+Package 8B remains **Partially implemented**. The engineering path through T6 now exists, but the real evidence gates still block execution: 2,714 mapped records have **0 exact T4 approvals** and **0 T5 serializer-ready real samples**.
 
-A future package may implement or invoke a pinned Audiveris-native serializer only after separate explicit authorization and exact native evidence. Archive creation, Audiveris acceptance validation, training execution, evaluation and production-model adoption remain separate gates.
+The next evidence-supported step is to acquire and verify genuine per-sample approval/native evidence required by T4/T5. No classifier training, evaluation or production-model adoption is justified until real evidence passes those gates and a real archive receives a matching pinned-Audiveris acceptance receipt.
+
+Do not invent a further Package 8B substage merely to bypass missing evidence. Package 9 remains sequentially blocked while Package 8B is incomplete unless the roadmap is explicitly changed.
 
 ## Protected OMR and deployment boundary
 
-Without separate explicit authorization and measured evidence, do not change production Audiveris provider/runtime/preflight, OMR worker/provider selection, Cloud OMR Gateway, backend production OMR path, `Dockerfile`, `render.yaml`, current Render service/deployment connection, or production model selection/replacement.
+Without separate explicit authorization and measured evidence, do not change production Audiveris provider/runtime/preflight, OMR worker/provider selection, Cloud OMR Gateway, backend production OMR path, `Dockerfile`, `render.yaml`, current Render service/deployment connection, CI workflow/dependencies, or production model selection/replacement.
