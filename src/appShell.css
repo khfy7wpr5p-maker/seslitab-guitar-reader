@@ -1,0 +1,92 @@
+.app-shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 1rem auto 0;
+}
+
+.app-shell-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #d7dce2);
+  border-radius: 0.9rem;
+  background: var(--card-bg, #fff);
+}
+
+.app-shell-nav-label {
+  font-weight: 700;
+  margin-right: 0.5rem;
+}
+
+.app-shell-nav-button {
+  min-height: 44px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 0.7rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-shell-nav-button:hover {
+  text-decoration: underline;
+}
+
+.app-shell-nav-button:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+.app-shell-status {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #d7dce2);
+}
+
+.app-shell-status h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.app-shell-status p {
+  margin: 0 0 0.75rem;
+}
+
+.app-shell-feature-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.app-shell-feature-list li {
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.6rem;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.app-shell-feature-list li[data-available="true"]::before {
+  content: "✓ ";
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    width: min(100% - 1rem, 1120px);
+  }
+
+  .app-shell-nav-button {
+    flex: 1 1 calc(50% - 0.5rem);
+  }
+
+  .app-shell-nav-label {
+    flex-basis: 100%;
+  }
+}
