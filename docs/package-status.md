@@ -1,8 +1,8 @@
 # SesliTab Package Status
 
 Last documentation review: 2026-08-29  
-Latest verified protected-main implementation baseline: `8bb797ac8c8f01697669e875ecc6d7df13ea878f`  
-Latest exact-main implementation CI: **#330 / run `33259462116`, job `99118792913` — SUCCESS**
+Latest verified protected-main implementation baseline: `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`  
+Latest exact-main implementation CI: **#338 / run `33260876272`, job `99122486469` — SUCCESS**
 
 A package/substage is **Completed** only after bounded acceptance criteria, focused tests, full regression suite, production build, protected-main merge and exact-main workflow evidence are satisfied.
 
@@ -22,8 +22,9 @@ A package/substage is **Completed** only after bounded acceptance criteria, focu
 | 9 — Advanced Guitar TAB | **Completed** | PR #122 → protected main `f01e67d…` → exact-main CI #319; quality-gated chords, simultaneous voices, sustained polyphony, tie continuity and bounded deterministic string assignment. |
 | 10 — Advanced violin | **Completed** | PR #124 → protected main `590abcaa…` → exact-main CI #324; bounded first/second/third-position alternatives, double stops, simultaneous voices/staves, sustain locks and tie continuity. |
 | 11 — Accessible chromatic tuner | **Completed** | PR #125 → protected main `160c3bca…` → exact-main CI #326; browser-local 12-note chromatic tuner with A4 calibration, Hz/cents guidance, accessible live status and local-only microphone processing. |
-| 12 — Teacher-to-student sharing | **Partially implemented** | T1 completed in PR #127 → protected main `8bb797ac…` → exact-main CI #330. Exact revision + exact approval + exact recipient authorization and revocation are implemented; final safety/quality eligibility, authenticated recipient access, persistence and network delivery are not yet implemented. |
+| 12 — Teacher-to-student sharing | **Partially implemented** | T1 completed in PR #127 and T2 completed in PR #129 → protected main `a5c2c2b9…` → exact-main CI #338. Exact authorization plus exact-source safety/quality eligibility are implemented; post-correction revalidation, authenticated recipient access, persistence and network delivery remain later stages. |
 | 12-T1 — Exact share authorization | **Completed** | PR #127; immutable exact revision/approval/recipient authorization + revocation, stale/replay/cross-source fail-closed behavior, no payload delivery. |
+| 12-T2 — Exact-revision safety/quality eligibility | **Completed** | PR #129; exact source-array → immutable revision fingerprint/lineage binding, Package 7C/2C/2D evidence re-check, stale source/report/revocation fail-closed behavior, no payload delivery. |
 | 13 — Simplified rhythm mode | Not started | Separate simplified rhythm-training mode planned. |
 | 14 — Mobile productisation | Partially implemented | Responsive web exists; device accessibility/privacy/productisation closure remains. |
 
@@ -89,7 +90,26 @@ Verified implementation evidence:
 
 T1 does **not** expose revision content, create public links/tokens/invite codes, authenticate users, persist grants, add backend endpoints, send network requests, bypass quality evidence, or change OMR/Audiveris/Render/Docker/model configuration.
 
-Packages 10, 11 and 12-T1 did not change Audiveris/provider/runtime, OMR Gateway/worker, backend production OMR path, `Dockerfile`, `render.yaml`, Render wiring, Package 8B training/model code, or production model selection.
+## Package 12-T2 verified result
+
+Package 12-T2 adds a separate safety/quality eligibility layer after T1 authorization. Package 8 revision snapshots remain immutable clones while Package 7C and Package 2D retain exact `NoteObject[]` identity semantics. T2 therefore requires the exact source array explicitly and deterministically verifies that it reproduces the automatic revision content and lineage fingerprints before consuming source or quality evidence.
+
+Eligibility requires current exact-array Package 7C MusicXML provenance, a strict frozen accepted Package 2C report, and Package 2D TTS/playback `ACCEPT_VERIFIED` decisions. T2 re-checks these conditions at evaluation time, so source-array mutation, missing/replaced MusicXML source, removed/downgraded quality reports, cross-source evidence, stale T1 authorization, recipient mismatch and revocation fail closed.
+
+Teacher-corrected revisions remain `corrected_revision_revalidation_required`; old automatic source evidence is not reused after a teacher edit. T2 emits eligibility metadata only and exposes no revision content, MusicXML, payload bytes, share links or tokens.
+
+Verified implementation evidence:
+
+- implementation PR **#129** merged to protected `main`;
+- protected-main implementation SHA `a5c2c2b9bd1a59898a74312270dc09766c6bad2e`;
+- implementation-branch CI **#337 — SUCCESS**;
+- exact-main CI **#338 / run `33260876272`, job `99122486469` — SUCCESS**;
+- **1390 / 1390 tests PASS**, 234 suites, 0 failed/skipped/cancelled;
+- **0 vulnerabilities**;
+- production build **PASS**;
+- real Chrome score render + cursor runtime proof **PASS**.
+
+Packages 10, 11, 12-T1 and 12-T2 did not change Audiveris/provider/runtime, OMR Gateway/worker, backend production OMR path, `Dockerfile`, `render.yaml`, Render wiring, Package 8B training/model code, or production model selection.
 
 ## Package 8B deferred research state
 
@@ -111,9 +131,9 @@ Do not invent missing glyph/native/approval evidence. Package 8B remains separat
 
 ## Next application substage
 
-**Package 12-T2 — Exact-revision safety/quality eligibility** is next.
+**Package 12-T3 — Post-correction revalidation/provenance** is next.
 
-T2 must decide whether the exact revision already bound by T1 is eligible to leave the teacher boundary. `AUTHORIZED_EXACT_BINDING` alone must never mean `safeToShare`. Missing/stale quality evidence, a different exact revision, non-applicable approval, recipient mismatch or revocation must fail closed with zero student payload bytes.
+T3 must define fresh trustworthy evidence for a `teacher_corrected` revision after an edit. It must not inherit stale automatic-source verification, must preserve the exact T1/T2 revision/approval/authorization boundaries, and must fail closed until post-correction provenance and quality evidence are explicitly re-established.
 
 Authenticated recipient access, persistence and actual network delivery remain later reviewed stages. Domain code must not invent identity or silently widen authorization.
 
