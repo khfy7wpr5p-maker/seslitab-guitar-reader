@@ -49,7 +49,10 @@ export function parseMusicXml(musicXmlString) {
         const measure = measures[measureIndex]
         measureNumber = parseMeasureNumber(measure.getAttribute('number'), measureNumber + 1)
         const measureKey = createMeasureKey(partId, measureIndex)
-        const divisionsEl = measure.querySelector('attributes divisions')
+// Do not depend on descendant-selector support: the minimal Node
+        // DOMParser used by the test suite supports element lookups but not
+        // compound CSS selectors.
+        const divisionsEl = measure.querySelector('attributes')?.querySelector('divisions')
         if (divisionsEl) {
           currentDivisions = parseInt(divisionsEl.textContent, 10) || currentDivisions
         }
