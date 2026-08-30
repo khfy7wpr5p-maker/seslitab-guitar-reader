@@ -29,7 +29,7 @@ function hits(host){const out=[];for(const el of rootEl.querySelectorAll('.vf-no
  const reparsed=parseMusicXmlToNotes(materialized.musicXml);if(reparsed?.error||reparsed.notes?.[0]?.beats!==0.5||reparsed.notes?.[1]?.startBeat!==0.5)throw new Error(`reparse timeline mismatch: ${JSON.stringify(reparsed?.notes?.map(n=>({startBeat:n.startBeat,beats:n.beats,durationValue:n.durationValue}))??null)}`)
  status.dataset.stageFDurationPass='true'
  const host=globalThis.__ST_SCORE_RENDER_HOST__;if(!host?.renderMusicXml||!host?.hitTestNote)throw new Error('renderer host missing')
- await host.renderMusicXml({ticket:'stage-f-duration',contractVersion:'0.2.0',musicxml:materialized.musicXml,pageMode:'continuous',autoResize:false,drawTitle:false,drawComposer:false})
+ await host.renderMusicXml({ticket:'4',contractVersion:'0.2.0',musicxml:materialized.musicXml,pageMode:'continuous',autoResize:false,drawTitle:false,drawComposer:false})
  if(!rootEl.querySelector('svg'))throw new Error('corrected SVG missing');status.dataset.stageFDurationRenderPass='true'
  const found=hits(host);const second=found.find(({ref})=>ref.partId==='P1'&&ref.measureIndex===0&&ref.voice===1&&ref.noteIndex===1);if(!second)throw new Error(`second corrected note hit missing: ${JSON.stringify(found.map(({ref})=>ref))}`)
  const resolved=resolveCanonicalNoteFromScoreRef(canonical.revision.content,second.ref);if(!resolved||resolved.note!==canonical.revision.content[1]||resolved.noteIndex!==1||resolved.note.startBeat!==0.5)throw new Error(`corrected hit resolved to wrong note: ${JSON.stringify({resolvedIndex:resolved?.noteIndex??null,startBeat:resolved?.note?.startBeat??null,ref:second.ref})}`)
