@@ -311,7 +311,7 @@ export function ensureScoreViewPanel(root = document) {
   const mobileHint = root.createElement('p')
   mobileHint.id = 'score-view-mobile-hint'
   mobileHint.className = 'score-view-mobile-hint'
-  mobileHint.textContent = 'Notaya dokunarak canonical nota seçebilirsiniz. Dar ekranda görünümü yatay kaydırabilirsiniz.'
+  mobileHint.textContent = 'Notaya dokunarak canonical nota seçebilirsiniz. Dar ekranda nota görünümünü yatay kaydırabilirsiniz.'
 
   const surface = root.createElement('div')
   surface.id = 'score-view-surface'
