@@ -31,7 +31,7 @@ function ensureNoteControls(root) {
 
   const help = root.createElement('p')
   help.id = 'stage-c-note-selection-help'
-  help.textContent = 'Seçim, mevcut eserdeki gerçek nota kaydına bağlıdır. Henüz nota üzerine doğrudan dokunma desteği yoktur.'
+  help.textContent = 'Seçim, mevcut eserdeki gerçek canonical nota kaydına bağlıdır. Nota Görünümü açıksa aynı nota görsel üzerinde de vurgulanır; kesin eşleme yoksa sistem seçim üretmez.'
 
   const group = root.createElement('div')
   group.id = 'stage-c-note-buttons'
