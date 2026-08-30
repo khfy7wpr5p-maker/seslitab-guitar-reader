@@ -1,0 +1,41 @@
+.stage-d-quality-overlay {
+  margin-top: 1rem;
+  padding: 0.875rem;
+  border: 1px solid currentColor;
+  border-radius: 0.75rem;
+}
+
+.stage-d-quality-overlay [data-quality-state='PASS'] {
+  font-weight: 700;
+}
+
+.stage-d-quality-overlay [data-quality-state='REVIEW'],
+.measure-select-btn.quality-review {
+  border-style: dashed;
+}
+
+.stage-d-quality-overlay [data-quality-state='BLOCK'],
+.measure-select-btn.quality-block {
+  border-width: 2px;
+}
+
+.measure-select-btn[data-quality-findings]::after {
+  content: ' · kontrol';
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.stage-d-quality-findings {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.25rem;
+}
+
+.stage-d-quality-findings li {
+  margin-block: 0.35rem;
+}
+
+@media (max-width: 600px) {
+  .stage-d-quality-overlay {
+    padding: 0.75rem;
+  }
+}
