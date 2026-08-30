@@ -80,6 +80,9 @@ function runStageFCorrectedMusicXmlProof() {
   if (!dom.includes('data-stage-f-reparse-pass="true"') || !dom.includes('data-source-root-immutable="true"')) {
     fail(label, 'corrected MusicXML reparse/root-immutability evidence missing.', dom)
   }
+  if (!dom.includes('data-stage-f-double-flat-pass="true"')) {
+    fail(label, 'MusicXML flat-flat accidental evidence missing.', dom)
+  }
   if (!/data-corrected-musicxml-fingerprint="corrected-musicxml-fnv1a64-v1:[^"]+"/.test(dom)) {
     fail(label, 'corrected MusicXML fingerprint evidence missing.', dom)
   }
