@@ -120,7 +120,7 @@ function ensurePitchAlter(doc, pitch, step, alter) {
 }
 
 function accidentalValue(alter) {
-  if (alter === -2) return 'double-flat'
+  if (alter === -2) return 'flat-flat'
   if (alter === -1) return 'flat'
   if (alter === 0) return 'natural'
   if (alter === 1) return 'sharp'
