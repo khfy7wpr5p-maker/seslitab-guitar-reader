@@ -1,4 +1,5 @@
 import { selectCanonicalMeasure } from './measureIdentity.js'
+import { deriveScoreNoteRefForCanonicalNote } from './scoreNoteIdentity.js'
 
 function emptySelection() {
   return Object.freeze({
@@ -42,9 +43,7 @@ export function deriveCanonicalNoteSelection(notes, measureKey, noteIndex) {
     noteIndex,
     measureNoteOrdinal: ordinal,
     note,
-    // The pinned renderer contract defines a different traversal-based ScoreNoteRef.
-    // SesliTab must not guess that its canonical array index is the same locator.
-    rendererTarget: null,
+    rendererTarget: deriveScoreNoteRefForCanonicalNote(notes, noteIndex),
   })
 }
 
@@ -76,6 +75,7 @@ export function buildCanonicalNoteControlModels(notes, measureKey, selectedNoteI
       ariaLabel: `Seçili ölçüde nota ${ordinal + 1} seç`,
       selected: globalIndex === selectedNoteIndex,
       note,
+      rendererTarget: deriveScoreNoteRefForCanonicalNote(notes, globalIndex),
     }))
   }
 
