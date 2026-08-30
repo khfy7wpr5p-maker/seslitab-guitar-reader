@@ -6,7 +6,10 @@ import {
   SCORE_VIEW_MAX_PART_ID_CHARS,
   ST_SCORE_RENDERER_CONTRACT_VERSION,
   ST_SCORE_RENDERER_REVIEWED_REVISION,
+  clearScoreHighlights,
   clearScoreView,
+  highlightScoreNote,
+  hitTestScoreNote,
   moveScoreCursor,
   renderScoreView,
   resolveStScoreRuntime,
@@ -16,7 +19,7 @@ import {
 
 test('score renderer consumer pins the reviewed ST boundary', () => {
   assert.equal(ST_SCORE_RENDERER_CONTRACT_VERSION, '0.2.0')
-  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '8b469b7f40a4dbea9c097cda49a79dff132071cb')
+  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '583b403f43e216f6463d392b19746b032af1c948')
 })
 
 test('MusicXML validation is bounded and fail closed', () => {
@@ -44,16 +47,19 @@ test('cursor target validation is bounded and preserves canonical locator only',
   })
 })
 
-test('runtime resolution accepts only the cursor-capable ST-owned host shape', () => {
+test('runtime resolution requires the reviewed note-interaction ST-owned host shape', () => {
   assert.equal(resolveStScoreRuntime({}), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: {} }), null)
   assert.equal(resolveStScoreRuntime({
-    __ST_SCORE_RENDER_HOST__: { renderMusicXml() {}, dispose() {} },
+    __ST_SCORE_RENDER_HOST__: { renderMusicXml() {}, moveCursor() {}, dispose() {} },
   }), null)
 
   const host = {
     renderMusicXml() {},
     moveCursor() {},
+    hitTestNote() {},
+    highlight() {},
+    clearHighlights() {},
     dispose() {},
   }
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: host }), host)
@@ -66,8 +72,6 @@ test('renderScoreView forwards only the bounded ST runtime payload', async () =>
       captured = payload
       return { ok: true }
     },
-    async moveCursor() {},
-    async dispose() {},
   }
 
   const musicxml = '<score-partwise version="4.0"></score-partwise>'
@@ -103,6 +107,30 @@ test('moveScoreCursor forwards only bounded canonical renderer target', async ()
   assert.deepEqual(result, { ok: true })
   assert.deepEqual(captured, { partId: 'P2', measureIndex: 4 })
   await assert.rejects(() => moveScoreCursor({}, { partId: 'P1', measureIndex: 0 }), TypeError)
+})
+
+test('note hit-test and highlight bridge accept only exact bounded ScoreNoteRef values', async () => {
+  const ref = { partId: 'P1', measureIndex: 0, noteIndex: 2, voice: 1 }
+  let highlightPayload = null
+  let cleared = 0
+  const host = {
+    hitTestNote(point) {
+      assert.deepEqual(point, { clientX: 10, clientY: 20 })
+      return ref
+    },
+    async highlight(payload) { highlightPayload = payload },
+    async clearHighlights() { cleared += 1 },
+  }
+
+  assert.deepEqual(hitTestScoreNote(host, { clientX: 10, clientY: 20 }), ref)
+  assert.equal(hitTestScoreNote(host, { clientX: NaN, clientY: 20 }), null)
+  assert.equal(hitTestScoreNote({ hitTestNote: () => ({ ...ref, voice: undefined }) }, { clientX: 1, clientY: 2 }), null)
+
+  await highlightScoreNote(host, ref)
+  assert.deepEqual(highlightPayload, { target: ref, className: 'seslitab-note-focus' })
+  assert.equal(await clearScoreHighlights(host), true)
+  assert.equal(cleared, 1)
+  await assert.rejects(() => highlightScoreNote(host, { ...ref, voice: undefined }), TypeError)
 })
 
 test('renderScoreView rejects missing runtime and malformed tickets', async () => {
