@@ -92,13 +92,16 @@ test('Stage F canonicalization keeps teacher pitch intent separate and derives c
   assert.equal(result.revision.content[0].step, 'D')
   assert.equal(result.revision.content[0].midi, 62)
   assert.equal(result.revision.content[0].noteName, 'Re')
+  assert.equal(result.revision.content[0].string, 'A')
+  assert.equal(result.revision.content[0].fret, 5)
   assert.ok(Math.abs(result.revision.content[0].frequency - 293.6647679174076) < 1e-9)
   assert.deepEqual(
     result.auditEvent.operations.map((operation) => operation.path[1]).sort(),
-    ['frequency', 'midi', 'noteName'],
+    ['frequency', 'fret', 'midi', 'noteName'],
   )
   assert.equal(sourceSnapshot.step, 'C')
   assert.equal(sourceSnapshot.midi, 60)
+  assert.equal(sourceSnapshot.fret, 3)
   assert.equal(isStageFCanonicalizationEvidence(result.evidence), true)
   assert.equal(result.evidence.baseRevisionId, corrected.history.revisions.at(-1).revisionId)
   assert.equal(result.evidence.resultRevisionId, result.revision.revisionId)
