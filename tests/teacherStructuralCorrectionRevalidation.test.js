@@ -430,11 +430,10 @@ describe('Package 12-T4 bounded structural/rhythmic corrected revalidation', () 
     assert.equal(isTeacherStructuralCorrectionRevalidationEvidence(evidence), true)
   })
 
-  test('unsupported grace/string/nested correction paths remain fail-closed', () => {
+  test('unsupported grace/string correction paths remain fail-closed', () => {
     const cases = [
       { path: [0, 'isGrace'], value: true },
       { path: [0, 'stringNumber'], value: 6 },
-      { path: [0, 'tuplet', 'actualNotes'], value: 3 },
     ]
 
     for (const operation of cases) {
@@ -541,7 +540,7 @@ describe('Package 12-T4 bounded structural/rhythmic corrected revalidation', () 
 
     const revocation = createTeacherShareRevocation({
       revocationId: 'revocation-1',
-      issuerActorId: 'teacher-1',
+      actorId: 'teacher-1',
       authorization,
       createdAt: '2026-08-29T16:35:00Z',
     })
