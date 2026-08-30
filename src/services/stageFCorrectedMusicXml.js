@@ -1,4 +1,5 @@
-import { parseMusicXml, parseMusicXmlWithStructure } from '../../musicXmlParser.js'
+import { parseMusicXmlWithStructure } from '../../musicXmlParser.js'
+import { parseMusicXmlToNotes } from './musicEngine.js'
 import { extractMusicXmlStructuralEvidence } from './musicXmlStructuralEvidence.js'
 import { attachStructuralEvidence } from './musicXmlStructuralValidation.js'
 import { validateStructuralRhythm } from './structuralRhythmValidator.js'
@@ -309,13 +310,6 @@ function parsedMatchesTarget(parsedNotes, targetNotes, sourceTechnicalFingering)
   return true
 }
 
-function selectPrimaryNotes(parsed) {
-  if (!Array.isArray(parsed?.notes)) return []
-  return parsed.primaryPartId
-    ? parsed.notes.filter((note) => note.partId === parsed.primaryPartId)
-    : parsed.notes
-}
-
 function buildEvidence({ history, sourceXml, target, canonicalizationEvidence, materializedXml }) {
   return Object.freeze({
     schemaVersion: STAGE_F_CORRECTED_MUSICXML_SCHEMA_VERSION,
@@ -382,8 +376,8 @@ export function materializeAndRevalidateStageFCorrectedMusicXml({
   }
   const materializedXml = materialized.musicXml
 
-  const semanticParsed = parseMusicXml(materializedXml)
-  const semanticNotes = selectPrimaryNotes(semanticParsed)
+  const semanticParsed = parseMusicXmlToNotes(materializedXml)
+  const semanticNotes = semanticParsed?.notes ?? []
   if (
     semanticParsed?.error ||
     !parsedMatchesTarget(semanticNotes, target.content, materialized.sourceTechnicalFingering)
