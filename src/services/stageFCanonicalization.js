@@ -174,8 +174,11 @@ function appendPitchDerivations({ operations, rootNote, note, noteIndex, operati
     note.string !== '' &&
     Number.isInteger(note.fret)
   ) {
+    const preservedString = note.string
     const candidates = enumerateCanonicalGuitarPositionCandidates({
       ...note,
+      string: null,
+      fret: null,
       midi: resolved.midi,
       frequency: resolved.frequency,
       noteName: resolved.noteName,
@@ -184,7 +187,7 @@ function appendPitchDerivations({ operations, rootNote, note, noteIndex, operati
       throw new Error(`Guitar-position canonicalization failed at note ${noteIndex}.`)
     }
     const sameString = candidates.candidates.find(
-      (candidate) => candidate.stringLetter === note.string,
+      (candidate) => candidate.stringLetter === preservedString,
     )
     if (!sameString) {
       throw new Error(`Pitch edit is not playable on the preserved string at note ${noteIndex}.`)
