@@ -196,8 +196,7 @@ function patchNoteElement(doc, element, rootNote, targetNote) {
     const notations = child(element, 'notations')
     const technical = notations ? child(notations, 'technical') : null
     const fret = technical ? child(technical, 'fret') : null
-    if (!fret) return false
-    setText(fret, targetNote.fret)
+    if (fret) setText(fret, targetNote.fret)
   }
 
   return true
@@ -273,7 +272,7 @@ function parsedMatchesTarget(parsedNotes, targetNotes) {
     'startBeat', 'durationValue', 'duration', 'beats', 'dotCount',
     'tieStart', 'tieStop', 'tieContinue',
   ]
-  const pitchFields = ['step', 'alter', 'octave']
+  const pitchFields = ['step', 'alter', 'octave', 'midi', 'frequency', 'noteName', 'string', 'fret']
 
   for (let index = 0; index < targetNotes.length; index++) {
     const parsed = parsedNotes[index]
