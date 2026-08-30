@@ -20,6 +20,14 @@ if (!chrome) {
   process.exit(1)
 }
 
+function fail(label, message, dom) {
+  console.error(`${label}: ${message}`)
+  const error = dom.match(/data-render-error="([^"]*)"/)
+  if (error) console.error(`SCORE_BROWSER_ERROR: ${error[1]}`)
+  else console.error(dom.slice(-6000))
+  process.exit(1)
+}
+
 function runProof(label, viewportArg = null) {
   const args = [
     '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
@@ -42,17 +50,22 @@ function runProof(label, viewportArg = null) {
 
   const dom = result.stdout || ''
   if (!dom.includes('data-score-render-pass="true"') || !dom.includes('<svg')) {
-    console.error(`${label}: rendered SVG evidence missing.`)
-    console.error(dom.slice(-6000))
-    process.exit(1)
+    fail(label, 'rendered SVG evidence missing.', dom)
   }
   if (!dom.includes('data-score-cursor-pass="true"') || !dom.includes('data-cursor-part-id="P1"') || !dom.includes('data-cursor-measure-index="0"')) {
-    console.error(`${label}: bounded runtime cursor evidence missing.`)
-    console.error(dom.slice(-6000))
-    process.exit(1)
+    fail(label, 'bounded runtime cursor evidence missing.', dom)
+  }
+  if (!dom.includes('data-score-note-hit-pass="true"') || !dom.includes('data-note-part-id="P1"') || !dom.includes('data-note-measure-index="0"') || !dom.includes('data-note-voice="1"')) {
+    fail(label, 'exact rendered-note hit-test evidence missing.', dom)
+  }
+  if (!dom.includes('data-score-note-resolver-pass="true"') || !/data-canonical-note-index="[0-9]+"/.test(dom)) {
+    fail(label, 'SesliTab canonical note resolver evidence missing.', dom)
+  }
+  if (!dom.includes('data-score-note-highlight-pass="true"') || !dom.includes('data-st-score-highlight="true"') || !dom.includes('seslitab-note-focus')) {
+    fail(label, 'exact renderer note highlight evidence missing.', dom)
   }
 }
 
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
-console.log(`Desktop + narrow viewport score render/cursor browser proof PASS using ${chrome}`)
+console.log(`Desktop + narrow viewport score render/cursor/hit-test/canonical-resolver/highlight proof PASS using ${chrome}`)

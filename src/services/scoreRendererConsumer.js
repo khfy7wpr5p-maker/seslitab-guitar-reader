@@ -4,8 +4,10 @@
 // st-score-rendering-layer. It must not import OpenSheetMusicDisplay or treat
 // rendering output as musical authority.
 
+import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
+
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
-export const ST_SCORE_RENDERER_REVIEWED_REVISION = '8b469b7f40a4dbea9c097cda49a79dff132071cb'
+export const ST_SCORE_RENDERER_REVIEWED_REVISION = '583b403f43e216f6463d392b19746b032af1c948'
 export const SCORE_VIEW_MAX_MUSICXML_BYTES = 5 * 1024 * 1024
 export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
 
@@ -49,6 +51,9 @@ export function resolveStScoreRuntime(globalScope = globalThis) {
   if (!host || typeof host !== 'object') return null
   if (typeof host.renderMusicXml !== 'function') return null
   if (typeof host.moveCursor !== 'function') return null
+  if (typeof host.hitTestNote !== 'function') return null
+  if (typeof host.highlight !== 'function') return null
+  if (typeof host.clearHighlights !== 'function') return null
   if (typeof host.dispose !== 'function') return null
   return host
 }
@@ -80,6 +85,30 @@ export async function moveScoreCursor(host, target) {
     throw new TypeError('ST score renderer cursor runtime bağlı değil.')
   }
   return host.moveCursor(validateScoreCursorTarget(target))
+}
+
+export function hitTestScoreNote(host, point) {
+  if (!host || typeof host.hitTestNote !== 'function') return null
+  if (!point || typeof point !== 'object' || Array.isArray(point)) return null
+  const clientX = point.clientX
+  const clientY = point.clientY
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null
+  return validateRendererScoreNoteRef(host.hitTestNote({ clientX, clientY }))
+}
+
+export async function highlightScoreNote(host, target) {
+  if (!host || typeof host.highlight !== 'function') {
+    throw new TypeError('ST score renderer highlight runtime bağlı değil.')
+  }
+  const validated = validateRendererScoreNoteRef(target)
+  if (!validated) throw new TypeError('ST score renderer note hedefi geçersiz.')
+  return host.highlight({ target: validated, className: 'seslitab-note-focus' })
+}
+
+export async function clearScoreHighlights(host) {
+  if (!host || typeof host.clearHighlights !== 'function') return false
+  await host.clearHighlights()
+  return true
 }
 
 export async function clearScoreView(host) {

@@ -7,7 +7,7 @@
 </head>
 <body>
   <div id="st-score-root"></div>
-  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false">PENDING</div>
+  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false">PENDING</div>
 
   <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
   <script type="importmap">
@@ -23,6 +23,8 @@
   </script>
   <script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
   <script type="module">
+    import { resolveCanonicalNoteFromScoreRef } from '../../src/services/scoreNoteIdentity.js'
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
@@ -33,14 +35,36 @@
       <time><beats>4</beats><beat-type>4</beat-type></time>
       <clef><sign>G</sign><line>2</line></clef>
     </attributes>
-    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
-    <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
-    <note><rest/><duration>2</duration><type>half</type></note>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><voice>1</voice><staff>1</staff></note>
+    <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><voice>1</voice><staff>1</staff></note>
+    <note><rest/><duration>2</duration><type>half</type><voice>1</voice><staff>1</staff></note>
   </measure></part>
 </score-partwise>`
 
+    const canonicalNotes = [
+      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:0, isRest:false },
+      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:1, isRest:false },
+      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:2, isRest:true },
+    ]
+
     const status = document.getElementById('status')
     const root = document.getElementById('st-score-root')
+
+    function findExactRuntimeHit(host) {
+      const noteheads = [...root.querySelectorAll('.vf-notehead')]
+      for (const element of noteheads) {
+        const rect = element.getBoundingClientRect()
+        if (!(rect.width > 0 && rect.height > 0)) continue
+        for (const fx of [.25, .5, .75]) {
+          for (const fy of [.25, .5, .75]) {
+            const point = { clientX: rect.left + rect.width * fx, clientY: rect.top + rect.height * fy }
+            const ref = host.hitTestNote(point)
+            if (ref) return { ref, element }
+          }
+        }
+      }
+      return null
+    }
 
     ;(async () => {
       try {
@@ -48,8 +72,8 @@
           throw new Error('runtime not ready')
         }
         const host = globalThis.__ST_SCORE_RENDER_HOST__
-        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function') {
-          throw new Error('cursor-capable ST runtime host missing')
+        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function' || typeof host.hitTestNote !== 'function' || typeof host.highlight !== 'function' || typeof host.clearHighlights !== 'function') {
+          throw new Error('note-capable ST runtime host missing')
         }
         await host.renderMusicXml({
           ticket: '1',
@@ -70,12 +94,38 @@
         status.dataset.scoreCursorPass = 'true'
         status.dataset.cursorPartId = 'P1'
         status.dataset.cursorMeasureIndex = '0'
+
+        const hit = findExactRuntimeHit(host)
+        if (!hit?.ref || hit.ref.partId !== 'P1' || hit.ref.measureIndex !== 0 || hit.ref.voice !== 1) {
+          throw new Error('exact note hit-test evidence missing')
+        }
+        status.dataset.scoreNoteHitPass = 'true'
+        status.dataset.notePartId = hit.ref.partId
+        status.dataset.noteMeasureIndex = String(hit.ref.measureIndex)
+        status.dataset.noteIndex = String(hit.ref.noteIndex)
+        status.dataset.noteVoice = String(hit.ref.voice)
+
+        const resolved = resolveCanonicalNoteFromScoreRef(canonicalNotes, hit.ref)
+        if (!resolved || resolved.note !== canonicalNotes[resolved.noteIndex] || resolved.measureKey !== 'P1:m0' || resolved.note.isRest === true) {
+          throw new Error('canonical note resolver evidence missing')
+        }
+        status.dataset.scoreNoteResolverPass = 'true'
+        status.dataset.canonicalNoteIndex = String(resolved.noteIndex)
+
+        await host.clearHighlights()
+        await host.highlight({ target: hit.ref, className: 'seslitab-note-focus' })
+        if (hit.element.getAttribute('data-st-score-highlight') !== 'true' || !hit.element.classList.contains('seslitab-note-focus')) {
+          throw new Error('exact note highlight evidence missing')
+        }
+        status.dataset.scoreNoteHighlightPass = 'true'
         status.dataset.contractVersion = '0.2.0'
         status.textContent = 'PASS'
       } catch (error) {
-        root.replaceChildren()
         status.dataset.scoreRenderPass = 'false'
         status.dataset.scoreCursorPass = 'false'
+        status.dataset.scoreNoteHitPass = 'false'
+        status.dataset.scoreNoteResolverPass = 'false'
+        status.dataset.scoreNoteHighlightPass = 'false'
         status.dataset.renderError = String(error?.message ?? error)
         status.textContent = 'FAIL'
       }
