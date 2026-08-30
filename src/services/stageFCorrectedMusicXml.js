@@ -153,6 +153,12 @@ function patchDots(doc, noteElement, dotCount, typeElement) {
   return true
 }
 
+function explicitTechnicalFingering(noteElement) {
+  const notations = child(noteElement, 'notations')
+  const technical = notations ? child(notations, 'technical') : null
+  return Boolean(technical && child(technical, 'string') && child(technical, 'fret'))
+}
+
 function patchNoteElement(doc, element, rootNote, targetNote) {
   const xmlRest = child(element, 'rest') !== null
   if (xmlRest !== Boolean(targetNote.isRest) || xmlRest !== Boolean(rootNote.isRest)) return false
@@ -221,6 +227,8 @@ function materialize(sourceXml, rootNotes, targetNotes) {
 
   const rootGroups = groupNotes(rootNotes)
   const targetGroups = groupNotes(targetNotes)
+  const targetIndexes = new Map(targetNotes.map((note, index) => [note, index]))
+  const sourceTechnicalFingering = Array(targetNotes.length).fill(false)
   const parts = [...doc.querySelectorAll('part')]
 
   for (let partIndex = 0; partIndex < parts.length; partIndex++) {
@@ -239,6 +247,9 @@ function materialize(sourceXml, rootNotes, targetNotes) {
         return null
       }
       for (let noteIndex = 0; noteIndex < xmlNotes.length; noteIndex++) {
+        const targetIndex = targetIndexes.get(targetMeasureNotes[noteIndex])
+        if (!Number.isInteger(targetIndex)) return null
+        sourceTechnicalFingering[targetIndex] = explicitTechnicalFingering(xmlNotes[noteIndex])
         if (!patchNoteElement(
           doc,
           xmlNotes[noteIndex],
@@ -249,7 +260,10 @@ function materialize(sourceXml, rootNotes, targetNotes) {
     }
   }
 
-  return new XMLSerializer().serializeToString(doc)
+  return Object.freeze({
+    musicXml: new XMLSerializer().serializeToString(doc),
+    sourceTechnicalFingering: Object.freeze(sourceTechnicalFingering),
+  })
 }
 
 function approximatelyEqual(left, right) {
@@ -264,22 +278,33 @@ function sameField(left, right, field) {
   return (left[field] ?? null) === (right[field] ?? null)
 }
 
-function parsedMatchesTarget(parsedNotes, targetNotes) {
-  if (!Array.isArray(parsedNotes) || parsedNotes.length !== targetNotes.length) return false
+function parsedMatchesTarget(parsedNotes, targetNotes, sourceTechnicalFingering) {
+  if (
+    !Array.isArray(parsedNotes) ||
+    parsedNotes.length !== targetNotes.length ||
+    !Array.isArray(sourceTechnicalFingering) ||
+    sourceTechnicalFingering.length !== targetNotes.length
+  ) return false
   const commonFields = [
     'partId', 'partIndex', 'measureIndex', 'measureKey',
     'isRest', 'isGrace', 'isChordNote', 'voice', 'staff',
     'startBeat', 'durationValue', 'duration', 'beats', 'dotCount',
     'tieStart', 'tieStop', 'tieContinue',
   ]
-  const pitchFields = ['step', 'alter', 'octave', 'midi', 'frequency', 'noteName', 'string', 'fret']
+  const writtenPitchFields = ['step', 'alter', 'octave', 'midi', 'frequency', 'noteName']
+  const explicitTechnicalFields = ['string', 'fret']
 
   for (let index = 0; index < targetNotes.length; index++) {
     const parsed = parsedNotes[index]
     const target = targetNotes[index]
     if (!isPlainObject(parsed) || !isPlainObject(target)) return false
     if (commonFields.some((field) => !sameField(parsed, target, field))) return false
-    if (!target.isRest && pitchFields.some((field) => !sameField(parsed, target, field))) return false
+    if (!target.isRest && writtenPitchFields.some((field) => !sameField(parsed, target, field))) return false
+    if (
+      !target.isRest &&
+      sourceTechnicalFingering[index] === true &&
+      explicitTechnicalFields.some((field) => !sameField(parsed, target, field))
+    ) return false
   }
   return true
 }
@@ -351,14 +376,18 @@ export function materializeAndRevalidateStageFCorrectedMusicXml({
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.DOM_RUNTIME_UNAVAILABLE, 'browser-xml-runtime-required')
   }
 
-  const materializedXml = materialize(source.musicXml, root.content, target.content)
-  if (!materializedXml) {
+  const materialized = materialize(source.musicXml, root.content, target.content)
+  if (!materialized) {
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.MATERIALIZATION_FAILED, 'bounded-musicxml-patch-failed')
   }
+  const materializedXml = materialized.musicXml
 
   const semanticParsed = parseMusicXml(materializedXml)
   const semanticNotes = selectPrimaryNotes(semanticParsed)
-  if (semanticParsed?.error || !parsedMatchesTarget(semanticNotes, target.content)) {
+  if (
+    semanticParsed?.error ||
+    !parsedMatchesTarget(semanticNotes, target.content, materialized.sourceTechnicalFingering)
+  ) {
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.REPARSE_MISMATCH, 'materialized-musicxml-does-not-represent-target')
   }
 
