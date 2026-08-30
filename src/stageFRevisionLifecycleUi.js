@@ -1,5 +1,8 @@
+import { getPackage3MeasureSnapshot } from '../package3MeasureBridge.js'
 import {
   getTeacherUiWorkspace,
+  refreshTeacherUiAfterConflict,
+  setTeacherUiAuthoritativeHistory,
   undoTeacherUiRevision,
 } from './package8TeacherUi.js'
 import { activateScoreView } from './scoreViewUi.js'
@@ -7,6 +10,11 @@ import {
   assessStageFRevisionLifecycle,
   STAGE_F_LIFECYCLE_STATUS,
 } from './services/stageFRevisionLifecycle.js'
+import {
+  canonicalizeStageFRevision,
+  STAGE_F_CANONICALIZATION_STATUS,
+} from './services/stageFCanonicalization.js'
+import { materializeAndRevalidateStageFCorrectedMusicXml } from './services/stageFCorrectedMusicXml.js'
 
 const boundRoots = new WeakSet()
 
@@ -34,7 +42,7 @@ function ensurePanel(root) {
 
   const explain = root.createElement('p')
   explain.id = 'stage-f-explain'
-  explain.textContent = 'Düzeltme yalnız güvenli doğrulama kanıtı varsa görsel notaya yeniden uygulanabilir. Kanıt yoksa eski kaynak görünümü doğruymuş gibi gösterilmez.'
+  explain.textContent = 'Öğretmen düzeltmesi ayrı sürüm olarak korunur. Teknik türevler ayrı sistem sürümünde hesaplanır; yalnız yeniden ayrıştırma ve yapısal doğrulama geçerse düzeltilmiş nota çizilir.'
   panel.appendChild(explain)
 
   const actions = root.createElement('div')
@@ -71,6 +79,32 @@ function setStatus(root, text, assertive = false) {
   if (globalLive) globalLive.textContent = text
 }
 
+function secureId(prefix) {
+  const randomUUID = globalThis.crypto?.randomUUID
+  if (typeof randomUUID !== 'function') {
+    throw new Error('Güvenli revision kimliği üretilemiyor.')
+  }
+  return `${prefix}-${randomUUID.call(globalThis.crypto)}`
+}
+
+function nowIso() {
+  const value = new Date().toISOString()
+  if (!value) throw new Error('Doğrulama zamanı üretilemiyor.')
+  return value
+}
+
+async function renderExactCorrectedMusicXml(root, musicXml) {
+  const xmlOutput = root.getElementById('xml-output')
+  if (!xmlOutput || typeof xmlOutput.textContent !== 'string') return false
+  const original = xmlOutput.textContent
+  try {
+    xmlOutput.textContent = musicXml
+    return await activateScoreView(root)
+  } finally {
+    xmlOutput.textContent = original
+  }
+}
+
 export function renderStageFRevisionLifecycle(root = document) {
   if (!root || typeof root.getElementById !== 'function') return false
   const panel = ensurePanel(root)
@@ -91,11 +125,13 @@ export function renderStageFRevisionLifecycle(root = document) {
 
   panel.hidden = false
   if (assessment.status === STAGE_F_LIFECYCLE_STATUS.SOURCE_EXACT) {
-    setStatus(root, 'Geçerli içerik otomatik kaynakla exact eşleşiyor. Kaynak MusicXML güvenle yeniden render edilebilir.')
+    setStatus(root, 'Geçerli içerik otomatik kaynakla exact eşleşiyor. Kaynak MusicXML güvenle yeniden çizilebilir.')
+  } else if (assessment.status === STAGE_F_LIFECYCLE_STATUS.CANONICALIZED_MATERIALIZATION_REQUIRED) {
+    setStatus(root, 'Teknik türevler ayrı sistem sürümünde hazır. Düzeltilmiş MusicXML yeniden ayrıştırılıp yapısal olarak doğrulanmalıdır.')
   } else if (assessment.status === STAGE_F_LIFECYCLE_STATUS.CORRECTION_REVALIDATION_REQUIRED) {
-    setStatus(root, 'Pitch düzeltmesi yeni revision olarak kayıtlı. Package 12-T3 kanıtı ve düzeltilmiş MusicXML materialization olmadan eski kaynak görünümü yeniden çizilmeyecek.')
+    setStatus(root, 'Pitch düzeltmesi öğretmen sürümünde kayıtlı. Teknik pitch alanları ayrı sistem sürümünde türetilip doğrulanmadan görsel nota değiştirilmeyecek.')
   } else if (assessment.status === STAGE_F_LIFECYCLE_STATUS.STRUCTURAL_REVALIDATION_REQUIRED) {
-    setStatus(root, 'Bu değişiklik structural/rhythmic revalidation gerektiriyor. Package 12-T4 main üzerinde hazır olmadan görsel sonuç doğrulanmış sayılmayacak.')
+    setStatus(root, 'Bu değişiklik mekanik canonicalization ve yapısal/ritmik ürün doğrulaması gerektiriyor. Kanıt oluşmadan görsel nota değiştirilmeyecek.')
   } else {
     setStatus(root, 'Geçerli revision Stage F güvenli kapsamının dışında. Görsel nota değiştirilmedi.', true)
   }
@@ -103,26 +139,82 @@ export function renderStageFRevisionLifecycle(root = document) {
 }
 
 export async function verifyAndRerenderStageF(root = document) {
-  const assessment = assessStageFRevisionLifecycle(getTeacherUiWorkspace(root))
-  if (!assessment.canRerenderSource) {
+  let workspace = getTeacherUiWorkspace(root)
+  let assessment = assessStageFRevisionLifecycle(workspace)
+
+  if (assessment.status === STAGE_F_LIFECYCLE_STATUS.NO_WORKSPACE) {
     renderStageFRevisionLifecycle(root)
-    setStatus(root, 'Yeniden render uygulanmadı: geçerli corrected revision için exact düzeltilmiş MusicXML kanıtı yok.', true)
     return false
   }
 
-  const rendered = await activateScoreView(root)
-  if (!rendered) {
-    setStatus(root, 'Kaynak exact olsa da görsel nota yeniden oluşturulamadı. Eski renderer durumu kullanılmadı.', true)
+  if (assessment.canRerenderSource) {
+    const rendered = await activateScoreView(root)
+    if (!rendered) {
+      setStatus(root, 'Kaynak exact olsa da görsel nota yeniden oluşturulamadı. Eski renderer durumu kullanılmadı.', true)
+      return false
+    }
+    setStatus(root, 'Kaynakla exact eşleşen nota görünümü yeniden oluşturuldu.')
+    return true
+  }
+
+  const sourceNotes = getPackage3MeasureSnapshot().notes
+  if (!Array.isArray(sourceNotes)) {
+    setStatus(root, 'Düzeltilmiş nota doğrulanamadı: exact otomatik kaynak nota dizisi yok.', true)
     return false
   }
-  return true
+
+  try {
+    const canonicalized = canonicalizeStageFRevision({
+      history: workspace.history,
+      expectation: workspace.expectation,
+      revisionId: secureId('stage-f-canonical-revision'),
+      eventId: secureId('stage-f-canonical-event'),
+      operationIdPrefix: secureId('stage-f-canonical-operation'),
+      createdAt: nowIso(),
+    })
+
+    if (canonicalized.status === STAGE_F_CANONICALIZATION_STATUS.CONFLICT) {
+      setStatus(root, 'Doğrulama uygulanmadı: revision geçmişi değişti. Güncel çalışma alanını yenileyin.', true)
+      return false
+    }
+
+    if (canonicalized.history !== workspace.history) {
+      setTeacherUiAuthoritativeHistory(root, canonicalized.history)
+      workspace = refreshTeacherUiAfterConflict(root)
+      assessment = assessStageFRevisionLifecycle(workspace)
+    }
+
+    const materialized = materializeAndRevalidateStageFCorrectedMusicXml({
+      history: workspace.history,
+      sourceNotes,
+      canonicalizationEvidence: canonicalized.evidence,
+    })
+    if (!materialized.ok || typeof materialized.musicXml !== 'string') {
+      renderStageFRevisionLifecycle(root)
+      setStatus(root, `Düzeltilmiş nota doğrulanamadı (${materialized.reason ?? materialized.status}). Eski kaynak corrected gibi gösterilmedi.`, true)
+      return false
+    }
+
+    const rendered = await renderExactCorrectedMusicXml(root, materialized.musicXml)
+    if (!rendered) {
+      setStatus(root, 'Düzeltilmiş MusicXML doğrulandı ancak görsel renderer sonucu güvenle oluşturulamadı.', true)
+      return false
+    }
+
+    setStatus(root, 'Düzeltme ayrı sistem sürümünde canonicalize edildi, MusicXML yeniden doğrulandı ve exact düzeltilmiş görünüm oluşturuldu.')
+    return true
+  } catch (error) {
+    renderStageFRevisionLifecycle(root)
+    setStatus(root, `Doğrulama uygulanmadı: ${error?.message ?? 'güvenli kapsam dışında'}`, true)
+    return false
+  }
 }
 
 export async function undoLastStageFChange(root = document) {
   const workspace = getTeacherUiWorkspace(root)
   const assessment = assessStageFRevisionLifecycle(workspace)
   if (!assessment.undoTarget) {
-    setStatus(root, 'Geri alınabilecek farklı bir önceki içerik yok.', true)
+    setStatus(root, 'Geri alınabilecek farklı bir önceki kullanıcı değişikliği yok.', true)
     return null
   }
 
@@ -142,6 +234,8 @@ export async function undoLastStageFChange(root = document) {
     if (!rendered) {
       setStatus(root, 'Geri alma yeni immutable revision olarak kaydedildi; kaynak görünümü yeniden oluşturulamadı.', true)
     }
+  } else {
+    setStatus(root, 'Son öğretmen değişikliği yeni immutable revision ile geri alındı. Düzeltilmiş görünüm için yeniden doğrulama gerekir.')
   }
   return next
 }
