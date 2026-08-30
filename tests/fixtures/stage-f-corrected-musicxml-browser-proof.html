@@ -2,7 +2,7 @@
 <html lang="tr"><head><meta charset="utf-8"><title>Stage F corrected MusicXML browser proof</title></head><body>
 <div id="status" data-stage-f-materialize-pass="false" data-stage-f-reparse-pass="false">PENDING</div>
 <script type="module">
-import { parseMusicXmlWithStructure } from '../../musicXmlParser.js'
+import { parseMusicXmlToNotes } from '../../src/services/musicEngine.js'
 import { registerMusicXmlSourceForNotes } from '../../src/services/musicXmlSourceRegistry.js'
 import { createTeacherWorkspace, applyTeacherWorkspaceCorrection } from '../../src/services/teacherWorkspaceModel.js'
 import { canonicalizeStageFRevision } from '../../src/services/stageFCanonicalization.js'
@@ -10,7 +10,7 @@ import { materializeAndRevalidateStageFCorrectedMusicXml } from '../../src/servi
 const xml=`<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><note><pitch><step>E</step><octave>4</octave></pitch><duration>12</duration><voice>1</voice><type>half</type><dot/></note></measure></part></score-partwise>`
 const status=document.getElementById('status')
 try {
-  const parsed=parseMusicXmlWithStructure(xml)
+  const parsed=parseMusicXmlToNotes(xml)
   if(parsed?.error||!Array.isArray(parsed?.notes)||parsed.notes.length!==2) throw new Error('source parse failed')
   const sourceNotes=parsed.notes
   registerMusicXmlSourceForNotes(sourceNotes,xml)
@@ -22,7 +22,7 @@ try {
   if(!materialized.ok||materialized.status!=='materialized'||typeof materialized.musicXml!=='string') throw new Error(`materialization failed: ${materialized.reason??materialized.status}`)
   if(!materialized.musicXml.includes('<step>D</step>')||materialized.musicXml.includes('<step>C</step>')) throw new Error('corrected pitch not materialized exactly')
   status.dataset.stageFMaterializePass='true';status.dataset.correctedRevisionId=canonical.revision.revisionId;status.dataset.correctedMusicxmlFingerprint=materialized.evidence.correctedMusicXmlFingerprint
-  const reparsed=parseMusicXmlWithStructure(materialized.musicXml)
+  const reparsed=parseMusicXmlToNotes(materialized.musicXml)
   if(reparsed?.error||reparsed.notes?.[0]?.step!=='D'||reparsed.notes?.[0]?.midi!==62||reparsed.notes?.[0]?.startBeat!==0) throw new Error('corrected MusicXML reparse mismatch')
   if(sourceNotes[0].step!=='C'||sourceNotes[0].midi!==60) throw new Error('automatic root mutated')
   status.dataset.stageFReparsePass='true';status.dataset.sourceRootImmutable='true';status.textContent='PASS'
