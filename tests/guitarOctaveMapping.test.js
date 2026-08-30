@@ -65,6 +65,14 @@ import { parseMusicXml } from '../musicXmlParser.js'
 
 function makeNoteXml(step, octave, durationType = 'quarter', alter = 0) {
   const alterXml = alter !== 0 ? `<alter>${alter}</alter>` : ''
+  const durationByType = {
+    whole: 16,
+    half: 8,
+    quarter: 4,
+    eighth: 2,
+    '16th': 1,
+  }
+  const durationValue = durationByType[durationType] ?? 4
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.0">
   <part-list>
@@ -83,7 +91,7 @@ function makeNoteXml(step, octave, durationType = 'quarter', alter = 0) {
           ${alterXml}
           <octave>${octave}</octave>
         </pitch>
-        <duration>4</duration>
+        <duration>${durationValue}</duration>
         <type>${durationType}</type>
       </note>
     </measure>
