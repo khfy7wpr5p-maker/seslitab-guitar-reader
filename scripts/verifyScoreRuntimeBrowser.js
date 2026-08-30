@@ -5,6 +5,7 @@ import path from 'node:path'
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'score-runtime-browser-proof.html')
 const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corrected-musicxml-browser-proof.html')
+const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].filter(Boolean)
 
 let chrome
@@ -84,7 +85,22 @@ function runStageFCorrectedMusicXmlProof() {
   }
 }
 
+function runStageFDurationHitProof() {
+  const label = 'Stage F duration corrected hit-test browser proof'
+  const dom = runChrome(label, stageFDurationFixturePath)
+  if (!dom.includes('data-stage-f-duration-pass="true"') || !dom.includes('data-corrected-second-start-beat="0.5"')) {
+    fail(label, 'corrected duration timeline evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-f-duration-render-pass="true"') || !dom.includes('<svg')) {
+    fail(label, 'corrected duration renderer evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-f-duration-hit-pass="true"')) {
+    fail(label, 'corrected duration exact hit-test/resolver evidence missing.', dom)
+  }
+}
+
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
 runStageFCorrectedMusicXmlProof()
-console.log(`Desktop + narrow viewport score runtime and Stage F corrected MusicXML browser proof PASS using ${chrome}`)
+runStageFDurationHitProof()
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, and Stage F duration hit-test browser proofs PASS using ${chrome}`)
