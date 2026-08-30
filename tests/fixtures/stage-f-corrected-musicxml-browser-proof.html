@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><title>Stage F corrected MusicXML browser proof</title></head><body>
-<div id="status" data-stage-f-materialize-pass="false" data-stage-f-reparse-pass="false">PENDING</div>
+<div id="status" data-stage-f-materialize-pass="false" data-stage-f-reparse-pass="false" data-stage-f-double-flat-pass="false">PENDING</div>
 <script type="module">
 import { parseMusicXmlToNotes } from '../../src/services/musicEngine.js'
 import { registerMusicXmlSourceForNotes } from '../../src/services/musicXmlSourceRegistry.js'
@@ -8,6 +8,7 @@ import { createTeacherWorkspace, applyTeacherWorkspaceCorrection } from '../../s
 import { canonicalizeStageFRevision } from '../../src/services/stageFCanonicalization.js'
 import { materializeAndRevalidateStageFCorrectedMusicXml } from '../../src/services/stageFCorrectedMusicXml.js'
 const xml=`<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><note><pitch><step>E</step><octave>4</octave></pitch><duration>12</duration><voice>1</voice><type>half</type><dot/></note></measure></part></score-partwise>`
+const doubleFlatXml=`<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1" implicit="yes"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><accidental>natural</accidental><staff>1</staff></note></measure></part></score-partwise>`
 const status=document.getElementById('status')
 try {
   const parsed=parseMusicXmlToNotes(xml)
@@ -25,6 +26,22 @@ try {
   const reparsed=parseMusicXmlToNotes(materialized.musicXml)
   if(reparsed?.error||reparsed.notes?.[0]?.step!=='D'||reparsed.notes?.[0]?.midi!==62||reparsed.notes?.[0]?.startBeat!==0) throw new Error('corrected MusicXML reparse mismatch')
   if(sourceNotes[0].step!=='C'||sourceNotes[0].midi!==60) throw new Error('automatic root mutated')
-  status.dataset.stageFReparsePass='true';status.dataset.sourceRootImmutable='true';status.textContent='PASS'
-} catch(error) {status.dataset.stageFMaterializePass='false';status.dataset.stageFReparsePass='false';status.dataset.renderError=String(error?.message??error);status.textContent='FAIL'}
+  status.dataset.stageFReparsePass='true';status.dataset.sourceRootImmutable='true'
+
+  const flatParsed=parseMusicXmlToNotes(doubleFlatXml)
+  if(flatParsed?.error||flatParsed.notes?.length!==1||flatParsed.notes[0].alter!==0) throw new Error('double-flat source parse failed')
+  const flatSourceNotes=flatParsed.notes
+  registerMusicXmlSourceForNotes(flatSourceNotes,doubleFlatXml)
+  const flatRoot=createTeacherWorkspace({content:flatSourceNotes,actorId:'teacher-double-flat-proof',sourceId:'source-double-flat-proof',automaticRevisionId:'automatic-double-flat-proof',historyId:'history-double-flat-proof',createdAt:'2026-08-30T18:43:00.000Z'})
+  const flatCorrected=applyTeacherWorkspaceCorrection({workspace:flatRoot,fieldKey:'0:alter',value:'-2',revisionId:'teacher-double-flat-revision',eventId:'teacher-double-flat-event',operationId:'teacher-double-flat-operation',createdAt:'2026-08-30T18:44:00.000Z'})
+  const flatCanonical=canonicalizeStageFRevision({history:flatCorrected.history,expectation:flatCorrected.expectation,revisionId:'canonical-double-flat-revision',eventId:'canonical-double-flat-event',operationIdPrefix:'canonical-double-flat-operation',createdAt:'2026-08-30T18:45:00.000Z'})
+  if(flatCanonical.status!=='applied'||flatCanonical.revision.content[0].alter!==-2||flatCanonical.revision.content[0].midi!==58) throw new Error('double-flat canonicalization failed')
+  const flatMaterialized=materializeAndRevalidateStageFCorrectedMusicXml({history:flatCanonical.history,sourceNotes:flatSourceNotes,canonicalizationEvidence:flatCanonical.evidence})
+  if(!flatMaterialized.ok) throw new Error(`double-flat materialization failed: ${flatMaterialized.reason??flatMaterialized.status}`)
+  if(!flatMaterialized.musicXml.includes('<alter>-2</alter>')||!flatMaterialized.musicXml.includes('<accidental>flat-flat</accidental>')||flatMaterialized.musicXml.includes('double-flat')) throw new Error('MusicXML flat-flat accidental value mismatch')
+  const flatReparsed=parseMusicXmlToNotes(flatMaterialized.musicXml)
+  if(flatReparsed?.error||flatReparsed.notes?.[0]?.alter!==-2||flatReparsed.notes?.[0]?.midi!==58) throw new Error('double-flat reparse mismatch')
+  if(flatSourceNotes[0].alter!==0||doubleFlatXml.includes('flat-flat')) throw new Error('double-flat source mutated')
+  status.dataset.stageFDoubleFlatPass='true';status.textContent='PASS'
+} catch(error) {status.dataset.stageFMaterializePass='false';status.dataset.stageFReparsePass='false';status.dataset.stageFDoubleFlatPass='false';status.dataset.renderError=String(error?.message??error);status.textContent='FAIL'}
 </script></body></html>
