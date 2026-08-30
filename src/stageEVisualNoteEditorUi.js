@@ -3,7 +3,6 @@ import {
   subscribePackage3Measures,
 } from '../package3MeasureBridge.js'
 import {
-  activateTeacherResultTab,
   applyTeacherUiCorrection,
   getTeacherUiWorkspace,
 } from './package8TeacherUi.js'
@@ -173,13 +172,13 @@ export function applyStageEVisualField(root, field) {
 
 export function initStageEVisualNoteEditor(root = document) {
   if (!root || typeof root.getElementById !== 'function' || boundRoots.has(root)) return false
-  activateTeacherResultTab(root)
-  // Stage A may later hide the technical teacher tab again; initialization only
-  // ensures Package 8 has materialized the authoritative workspace surface.
   root.getElementById('tab-teacher')?.setAttribute('data-stage-e-ready', 'true')
   boundRoots.add(root)
 
   subscribePackage3Measures((snapshot) => renderStageEVisualNoteEditor(root, snapshot))
+  root.getElementById('teacher-start-btn')?.addEventListener('click', () => {
+    renderStageEVisualNoteEditor(root, getPackage3MeasureSnapshot())
+  })
   root.addEventListener?.('click', (event) => {
     const button = event.target?.closest?.('.stage-e-save-field')
     const field = button?.dataset?.stageEField
