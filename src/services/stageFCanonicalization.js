@@ -35,6 +35,7 @@ const MECHANICAL_FIELDS = new Set([
   'beats',
   'duration',
   'dotCount',
+  'startBeat',
 ])
 const IDENTITY_FIELDS = Object.freeze(['partId', 'partIndex', 'measureIndex', 'measureKey'])
 const EVIDENCE_FIELDS = Object.freeze([
@@ -192,16 +193,20 @@ function appendPitchDerivations({ operations, rootNote, note, noteIndex, operati
   }
 }
 
-function appendDurationDerivations({ operations, rootNote, note, noteIndex, operationIdPrefix }) {
-  if (sameValue(rootNote.durationValue, note.durationValue)) return
-  if (note.isGrace === true) {
-    throw new Error(`Duration canonicalization refuses grace note ${noteIndex}.`)
-  }
+function canonicalBeats(note, noteIndex) {
   if (!Number.isInteger(note.durationValue) || note.durationValue <= 0) {
     throw new Error(`Duration canonicalization requires a positive durationValue at note ${noteIndex}.`)
   }
   if (typeof note.divisions !== 'number' || !Number.isFinite(note.divisions) || note.divisions <= 0) {
     throw new Error(`Duration canonicalization requires existing divisions at note ${noteIndex}.`)
+  }
+  return note.durationValue / note.divisions
+}
+
+function appendDurationDerivations({ operations, rootNote, note, noteIndex, operationIdPrefix }) {
+  if (sameValue(rootNote.durationValue, note.durationValue)) return
+  if (note.isGrace === true) {
+    throw new Error(`Duration canonicalization refuses grace note ${noteIndex}.`)
   }
   for (const field of ['beats', 'duration', 'dotCount']) {
     if (!Object.prototype.hasOwnProperty.call(note, field)) {
@@ -209,7 +214,7 @@ function appendDurationDerivations({ operations, rootNote, note, noteIndex, oper
     }
   }
 
-  const beats = note.durationValue / note.divisions
+  const beats = canonicalBeats(note, noteIndex)
   const duration = beatsToDurationId(beats)
   if (Math.abs(durationBeats(duration) - beats) > EPSILON) {
     throw new Error(`Duration canonicalization refuses non-canonical beat value at note ${noteIndex}.`)
@@ -219,6 +224,59 @@ function appendDurationDerivations({ operations, rootNote, note, noteIndex, oper
   pushOperation(operations, noteIndex, 'beats', note.beats, beats, operationIdPrefix)
   pushOperation(operations, noteIndex, 'duration', note.duration, duration, operationIdPrefix)
   pushOperation(operations, noteIndex, 'dotCount', note.dotCount, dotCount, operationIdPrefix)
+}
+
+function timelineGroupKey(note) {
+  return `${note.partId ?? ''}:${note.measureIndex ?? ''}:${note.voice ?? ''}:${note.staff ?? ''}`
+}
+
+function appendTimelineDerivations({ operations, root, current, operationIdPrefix }) {
+  const affectedGroups = new Set()
+  for (let index = 0; index < current.content.length; index++) {
+    if (!sameValue(root.content[index].durationValue, current.content[index].durationValue)) {
+      affectedGroups.add(timelineGroupKey(current.content[index]))
+    }
+  }
+  if (affectedGroups.size === 0) return
+
+  for (const groupKey of affectedGroups) {
+    const indexes = []
+    for (let index = 0; index < current.content.length; index++) {
+      if (timelineGroupKey(current.content[index]) === groupKey) indexes.push(index)
+    }
+    indexes.sort((left, right) => {
+      const beatDelta = Number(root.content[left].startBeat) - Number(root.content[right].startBeat)
+      return Math.abs(beatDelta) > EPSILON ? beatDelta : left - right
+    })
+    if (indexes.length === 0) continue
+
+    for (const index of indexes) {
+      const rootNote = root.content[index]
+      const note = current.content[index]
+      if (rootNote.isGrace || note.isGrace || rootNote.isChordNote || note.isChordNote) {
+        throw new Error(`Timeline canonicalization refuses grace/chord group ${groupKey}.`)
+      }
+      if (!Number.isFinite(Number(rootNote.startBeat)) || !Number.isFinite(Number(note.startBeat))) {
+        throw new Error(`Timeline canonicalization requires existing startBeat in group ${groupKey}.`)
+      }
+      if (!Number.isFinite(Number(rootNote.beats)) || Number(rootNote.beats) <= 0) {
+        throw new Error(`Timeline canonicalization requires source beats in group ${groupKey}.`)
+      }
+    }
+
+    let expectedRootBeat = Number(root.content[indexes[0]].startBeat)
+    let expectedCurrentBeat = expectedRootBeat
+    for (const index of indexes) {
+      const rootNote = root.content[index]
+      const note = current.content[index]
+      if (!sameValue(Number(rootNote.startBeat), expectedRootBeat)) {
+        throw new Error(`Timeline canonicalization refuses non-sequential source group ${groupKey}.`)
+      }
+      pushOperation(operations, index, 'startBeat', note.startBeat, expectedCurrentBeat, operationIdPrefix)
+      expectedRootBeat += Number(rootNote.beats)
+      expectedCurrentBeat += canonicalBeats(note, index)
+    }
+  }
 }
 
 function buildEvidence({ baseRevision, resultRevision, derivedTargets, createdAt }) {
@@ -285,6 +343,7 @@ export function canonicalizeStageFRevision({
     appendPitchDerivations({ operations, rootNote, note, noteIndex, operationIdPrefix: normalizedOperationIdPrefix })
     appendDurationDerivations({ operations, rootNote, note, noteIndex, operationIdPrefix: normalizedOperationIdPrefix })
   }
+  appendTimelineDerivations({ operations, root, current, operationIdPrefix: normalizedOperationIdPrefix })
 
   if (operations.length === 0) {
     const evidence = buildEvidence({
