@@ -1,4 +1,4 @@
-import { parseMusicXmlWithStructure } from '../../musicXmlParser.js'
+import { parseMusicXml, parseMusicXmlWithStructure } from '../../musicXmlParser.js'
 import { extractMusicXmlStructuralEvidence } from './musicXmlStructuralEvidence.js'
 import { attachStructuralEvidence } from './musicXmlStructuralValidation.js'
 import { validateStructuralRhythm } from './structuralRhythmValidator.js'
@@ -285,6 +285,13 @@ function parsedMatchesTarget(parsedNotes, targetNotes) {
   return true
 }
 
+function selectPrimaryNotes(parsed) {
+  if (!Array.isArray(parsed?.notes)) return []
+  return parsed.primaryPartId
+    ? parsed.notes.filter((note) => note.partId === parsed.primaryPartId)
+    : parsed.notes
+}
+
 function buildEvidence({ history, sourceXml, target, canonicalizationEvidence, materializedXml }) {
   return Object.freeze({
     schemaVersion: STAGE_F_CORRECTED_MUSICXML_SCHEMA_VERSION,
@@ -350,11 +357,16 @@ export function materializeAndRevalidateStageFCorrectedMusicXml({
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.MATERIALIZATION_FAILED, 'bounded-musicxml-patch-failed')
   }
 
-  const parsed = parseMusicXmlWithStructure(materializedXml)
-  if (parsed?.error || !parsedMatchesTarget(parsed?.notes, target.content)) {
+  const semanticParsed = parseMusicXml(materializedXml)
+  const semanticNotes = selectPrimaryNotes(semanticParsed)
+  if (semanticParsed?.error || !parsedMatchesTarget(semanticNotes, target.content)) {
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.REPARSE_MISMATCH, 'materialized-musicxml-does-not-represent-target')
   }
 
+  const structuralParsed = parseMusicXmlWithStructure(materializedXml)
+  if (structuralParsed?.error) {
+    return result(STAGE_F_CORRECTED_MUSICXML_STATUS.STRUCTURAL_VALIDATION_FAILED, 'corrected-structural-parse-failed')
+  }
   const structuralEvidence = extractMusicXmlStructuralEvidence(materializedXml)
   if (!structuralEvidence?.ok) {
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.STRUCTURAL_VALIDATION_FAILED, 'structural-evidence-failed')
@@ -362,7 +374,7 @@ export function materializeAndRevalidateStageFCorrectedMusicXml({
 
   let validationScore
   try {
-    validationScore = attachStructuralEvidence(parsed, structuralEvidence)
+    validationScore = attachStructuralEvidence(structuralParsed, structuralEvidence)
   } catch {
     return result(STAGE_F_CORRECTED_MUSICXML_STATUS.STRUCTURAL_VALIDATION_FAILED, 'structural-evidence-attachment-failed')
   }
