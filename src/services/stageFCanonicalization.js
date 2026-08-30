@@ -4,8 +4,9 @@ import {
   resolveCanonicalPitch,
 } from '../../noteTheory.js'
 import {
-  GUITAR_POSITION_CANDIDATE_STATE,
-  enumerateCanonicalGuitarPositionCandidates,
+  BASIC_GUITAR_MAX_FRET,
+  BASIC_GUITAR_TUNING,
+  BASIC_GUITAR_WRITTEN_TRANSPOSITION,
 } from '../../guitarPositionResolver.js'
 import {
   applyTeacherCorrectionWithExpectation,
@@ -141,6 +142,44 @@ function pushOperation(operations, noteIndex, field, before, after, operationIdP
   })
 }
 
+function resolveSameStringFret({ rootNote, resolvedPitch, noteIndex }) {
+  const preservedString = rootNote.string
+  const sourceFret = rootNote.fret
+  const tuning = BASIC_GUITAR_TUNING.find((entry) => entry.stringLetter === preservedString)
+  if (!tuning) {
+    throw new Error(`Stage F canonicalization refuses unknown guitar string at note ${noteIndex}.`)
+  }
+  if (!Number.isInteger(sourceFret) || sourceFret < 0 || sourceFret > BASIC_GUITAR_MAX_FRET) {
+    throw new Error(`Stage F canonicalization requires a bounded source fret at note ${noteIndex}.`)
+  }
+
+  const rootPitch = resolveCanonicalPitch({
+    step: rootNote.step,
+    alter: rootNote.alter ?? 0,
+    octave: rootNote.octave,
+  })
+  if (!rootPitch.valid || !Number.isInteger(rootPitch.midi)) {
+    throw new Error(`Stage F canonicalization cannot verify source pitch at note ${noteIndex}.`)
+  }
+
+  const sourceMappingMidi = rootPitch.midi + BASIC_GUITAR_WRITTEN_TRANSPOSITION
+  const expectedSourceFret = sourceMappingMidi - tuning.openMidi
+  if (!Number.isInteger(expectedSourceFret) || expectedSourceFret !== sourceFret) {
+    throw new Error(`Stage F canonicalization refuses inconsistent source guitar position at note ${noteIndex}.`)
+  }
+
+  const correctedMappingMidi = resolvedPitch.midi + BASIC_GUITAR_WRITTEN_TRANSPOSITION
+  const correctedFret = correctedMappingMidi - tuning.openMidi
+  if (
+    !Number.isInteger(correctedFret) ||
+    correctedFret < 0 ||
+    correctedFret > BASIC_GUITAR_MAX_FRET
+  ) {
+    throw new Error(`Pitch edit is not playable on the preserved string at note ${noteIndex}.`)
+  }
+  return correctedFret
+}
+
 function appendPitchDerivations({ operations, rootNote, note, noteIndex, operationIdPrefix }) {
   const pitchChanged =
     !sameValue(rootNote.step, note.step) ||
@@ -174,25 +213,11 @@ function appendPitchDerivations({ operations, rootNote, note, noteIndex, operati
     note.string !== '' &&
     Number.isInteger(note.fret)
   ) {
-    const preservedString = note.string
-    const candidates = enumerateCanonicalGuitarPositionCandidates({
-      ...note,
-      string: null,
-      fret: null,
-      midi: resolved.midi,
-      frequency: resolved.frequency,
-      noteName: resolved.noteName,
-    })
-    if (candidates.state !== GUITAR_POSITION_CANDIDATE_STATE.CANDIDATES) {
-      throw new Error(`Guitar-position canonicalization failed at note ${noteIndex}.`)
+    if (note.string !== rootNote.string) {
+      throw new Error(`Stage F canonicalization refuses guitar string drift at note ${noteIndex}.`)
     }
-    const sameString = candidates.candidates.find(
-      (candidate) => candidate.stringLetter === preservedString,
-    )
-    if (!sameString) {
-      throw new Error(`Pitch edit is not playable on the preserved string at note ${noteIndex}.`)
-    }
-    pushOperation(operations, noteIndex, 'fret', note.fret, sameString.fret, operationIdPrefix)
+    const correctedFret = resolveSameStringFret({ rootNote, resolvedPitch: resolved, noteIndex })
+    pushOperation(operations, noteIndex, 'fret', note.fret, correctedFret, operationIdPrefix)
   }
 }
 
