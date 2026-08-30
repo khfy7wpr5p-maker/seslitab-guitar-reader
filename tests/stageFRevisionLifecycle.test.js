@@ -174,7 +174,7 @@ test('Stage F UI binds canonicalization, exact-source materialization, corrected
   assert.match(source, /getPackage3MeasureSnapshot/)
   assert.match(source, /activateScoreView/)
   assert.match(source, /undoTeacherUiRevision/)
-  assert.match(source, /system sürümünde/)
+  assert.match(source, /sistem sürümünde/)
   assert.doesNotMatch(source, /teacherShareEligibility|teacherShareAuthorization|opensheetmusicdisplay|OSMD/i)
 })
 
