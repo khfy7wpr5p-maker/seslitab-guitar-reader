@@ -1,0 +1,25 @@
+.stage-f-revision-lifecycle {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.75rem;
+}
+
+.stage-f-revision-lifecycle[hidden] {
+  display: none;
+}
+
+.stage-f-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.stage-f-actions .btn {
+  min-height: 44px;
+}
+
+.stage-f-actions .btn:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
