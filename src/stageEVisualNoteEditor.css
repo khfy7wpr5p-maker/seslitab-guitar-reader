@@ -1,0 +1,33 @@
+.stage-e-visual-note-editor {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.75rem;
+}
+
+.stage-e-editor-field {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 1fr) minmax(11rem, auto);
+  gap: 0.75rem;
+  align-items: center;
+  margin-block: 0.75rem;
+}
+
+.stage-e-editor-field input,
+.stage-e-editor-field select,
+.stage-e-editor-field button {
+  min-height: 44px;
+}
+
+.stage-e-editor-field input:focus-visible,
+.stage-e-editor-field select:focus-visible,
+.stage-e-editor-field button:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .stage-e-editor-field {
+    grid-template-columns: 1fr;
+  }
+}
