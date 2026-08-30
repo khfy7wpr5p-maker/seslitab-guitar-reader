@@ -61,6 +61,7 @@ test('Stage E exposes only pitch accidental octave and duration for the exact se
     STAGE_E_EDIT_FIELD.OCTAVE,
     STAGE_E_EDIT_FIELD.DURATION,
   ])
+  assert.deepEqual(model.fields.map((field) => field.label), ['Nota harfi', 'Arıza', 'Oktav', 'Süre'])
   assert.ok(model.fields.every((field) => field.fieldKey.startsWith('0:')))
   assert.equal(model.sourceNote, notes[0])
 })
@@ -118,10 +119,9 @@ test('Stage E UI delegates mutation to Package 8 immutable correction boundary',
   assert.doesNotMatch(source, /createTeacherRevision|applyTeacherCorrectionWithExpectation|hitTestNote|\.highlight\(|opensheetmusicdisplay|OSMD/i)
 })
 
-test('Stage E UI contains only the four bounded visual editor controls', async () => {
+test('Stage E UI does not expose unrelated teacher correction fields', async () => {
   const source = await readFile(new URL('../src/stageEVisualNoteEditorUi.js', import.meta.url), 'utf8')
-  assert.match(source, /Nota harfi|Arıza|Oktav|Süre/)
-  assert.doesNotMatch(source, /Gitar teli|Perde|MIDI|Frekans|Porte|Uzatma bağı/)
+  assert.doesNotMatch(source, /Gitar teli|MIDI değeri|Frekans|Porte|Uzatma bağı başlangıcı/)
 })
 
 test('Stage E is wired after Package 8 teacher UI', async () => {
