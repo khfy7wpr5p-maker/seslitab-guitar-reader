@@ -27,6 +27,13 @@
       now: () => '2026-08-31T10:55:00Z',
     })
 
+    // Package 8 correctly hides the active workspace until a real workspace
+    // exists. The fixture reveals that container only to measure Stage L's
+    // presentation geometry; controls remain disabled and no workspace or
+    // authorization is fabricated.
+    const activeWorkspace = document.getElementById('teacher-active-workspace')
+    if (activeWorkspace) activeWorkspace.hidden = false
+
     const panel = document.getElementById('stage-l-share-panel')
     const action = document.getElementById('stage-l-share-check-btn')
     const recipient = document.getElementById('stage-l-recipient-id')
