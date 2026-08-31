@@ -19,11 +19,13 @@ Supported Stage G consumers:
 
 ## Mapping
 
-- `ACCEPT -> PASS` — product copy: **Otomatik kontrollerden geçti**. Only the already-accepted consumer may proceed automatically and definitively.
-- `REVIEW -> REVIEW` — product copy: **Kontrol gerekiyor**. Teacher review is required; no definitive/automatic consumer authorization is created.
-- `BLOCK/invalid/unknown -> BLOCK` — product copy: **Bu eserde önce düzeltilmesi gereken yapısal bir sorun bulundu.** No definitive consumer authorization is created.
+- `ACCEPT -> PASS` — product copy: **Otomatik kontrollerden geçti**. Only an exact consumer gate that explicitly authorizes `allowed`, `definitive`, and `automaticAllowed` may become PASS.
+- `REVIEW -> REVIEW` — product copy: **İnceleme gerekiyor**. Teacher review is required; no definitive/automatic consumer authorization is created.
+- `BLOCK/invalid/unknown -> BLOCK` — product copy: **Kullanım engellendi**. No definitive consumer authorization is created.
 
 The aggregate score route uses the strictest state among the requested existing consumer gates: `BLOCK > REVIEW > PASS`.
+
+A malformed `ACCEPT` result is fail-closed. Stage G must not infer automatic or definitive permission from the decision label alone if the exact gate permission flags do not explicitly allow it.
 
 ## Authority boundaries
 
@@ -48,7 +50,8 @@ Stage G returns BLOCK when:
 - the canonical note array is missing/invalid;
 - the requested consumer is outside the bounded Stage G consumer set;
 - the underlying quality-gate resolver throws or fails;
-- a gate result is absent or does not contain an ACCEPT/REVIEW decision.
+- a gate result is absent or does not contain an ACCEPT/REVIEW decision;
+- an ACCEPT decision does not explicitly authorize the exact consumer for allowed, definitive, and automatic use.
 
 Stage G cannot upgrade REVIEW/BLOCK and cannot bypass a consumer-specific quality gate.
 
