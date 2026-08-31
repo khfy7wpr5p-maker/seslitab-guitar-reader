@@ -80,9 +80,13 @@
 
       const searchButtonHeight = parseFloat(getComputedStyle(document.getElementById('discovery-search-btn')).minHeight || '0')
       const summaryHeight = parseFloat(getComputedStyle(details.querySelector('summary')).minHeight || '0')
-      if (window.innerWidth > 400 || searchButtonHeight < 44 || summaryHeight < 44) {
+      // Headless Chrome clamps the requested 390px window to a 500 CSS px minimum.
+      // Verify the observed browser is still inside Stage J's <=640px mobile
+      // breakpoint and that both primary controls retain the 44px target.
+      if (window.innerWidth > 640 || searchButtonHeight < 44 || summaryHeight < 44) {
         throw new Error(`mobile bounds failed: width=${window.innerWidth} search=${searchButtonHeight} summary=${summaryHeight}`)
       }
+      proof.dataset.stageJObservedWidth = String(window.innerWidth)
       proof.dataset.stageJMobilePass = 'true'
       proof.textContent = 'PASS'
     } catch (error) {
