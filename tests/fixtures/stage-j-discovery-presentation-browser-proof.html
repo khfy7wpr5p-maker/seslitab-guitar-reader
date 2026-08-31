@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Stage J discovery presentation browser proof</title>
+  <link rel="stylesheet" href="../../src/discovery.css">
+  <link rel="stylesheet" href="../../src/stageJDiscoveryPresentation.css">
+</head>
+<body>
+  <div id="proof" data-stage-j-presentation-pass="false" data-stage-j-mobile-pass="false">PENDING</div>
+  <div class="input-tabs" role="tablist">
+    <button id="pdf-tab-btn" class="input-tab-btn" type="button">PDF</button>
+    <button id="musicxml-tab-btn" class="input-tab-btn" type="button">MusicXML</button>
+    <button id="tab-tab-btn" class="input-tab-btn" type="button">TAB</button>
+  </div>
+  <div id="input-host">
+    <div id="pdf-panel"></div>
+    <div id="musicxml-panel"></div>
+    <div id="tab-panel"></div>
+  </div>
+
+  <script type="module">
+    import { ensureDiscoveryPanel, renderDiscoveryResults } from '../../src/discoveryUi.js'
+    import { applyStageJDiscoveryPresentation } from '../../src/stageJDiscoveryPresentation.js'
+
+    const proof = document.getElementById('proof')
+    try {
+      const panel = ensureDiscoveryPanel(document)
+      if (!panel) throw new Error('discovery panel unavailable')
+      if (!applyStageJDiscoveryPresentation(document)) throw new Error('Stage J presentation did not apply')
+
+      renderDiscoveryResults(document, {
+        results: [{
+          title: 'Cambaz',
+          artist: 'Mor ve Ötesi',
+          format: 'web',
+          source: 'Songsterr',
+          sourcePageUrl: 'https://www.songsterr.com/?pattern=Cambaz',
+          canOpenSource: true,
+          handoffMode: 'external-open',
+          rightsStatus: 'external-link-only',
+          contentFeatures: ['tablature'],
+        }],
+        sourceLocators: [{
+          source: 'YouTube',
+          label: 'YouTube’da dinle',
+          sourcePageUrl: 'https://www.youtube.com/results?search_query=Cambaz',
+          capabilities: ['audio'],
+          availability: 'search-unverified',
+          note: 'Dinleme kaynağı.',
+        }],
+        totalResults: 1,
+      })
+      applyStageJDiscoveryPresentation(document)
+
+      const details = document.getElementById('stage-j-discovery-options')
+      const filters = document.querySelector('.discovery-filters')
+      const features = document.querySelector('.discovery-feature-group')
+      const trust = document.getElementById('stage-j-discovery-trust-note')
+      const resultLink = document.querySelector('#discovery-results a')
+      const locatorLink = document.querySelector('#discovery-source-locators a')
+      const heading = document.querySelector('.discovery-intro h3')
+      const query = document.getElementById('discovery-query')
+
+      if (!details || details.open || filters?.parentElement !== details || features?.parentElement !== details) {
+        throw new Error('advanced options were not safely grouped')
+      }
+      if (heading?.textContent !== 'Nota ve kaynak ara') throw new Error('simplified title missing')
+      if (!trust?.textContent.includes('doğrulanmış nota değildir')) throw new Error('trust boundary missing')
+      if (query?.getAttribute('aria-describedby') !== 'discovery-help') throw new Error('query help relation lost')
+      if (resultLink?.textContent !== 'Kaynak Sitesinde Aç') throw new Error('direct source action copy mismatch')
+      if (resultLink?.href !== 'https://www.songsterr.com/?pattern=Cambaz') throw new Error('source URL changed')
+      if (resultLink?.target !== '_blank' || resultLink?.rel !== 'noopener noreferrer') throw new Error('external link safety changed')
+      if (locatorLink?.textContent !== 'YouTube’da dinle') throw new Error('source locator semantics changed')
+
+      proof.dataset.stageJPresentationPass = 'true'
+      proof.dataset.stageJDirectAction = resultLink.textContent
+      proof.dataset.stageJLocatorAction = locatorLink.textContent
+
+      const searchButtonHeight = parseFloat(getComputedStyle(document.getElementById('discovery-search-btn')).minHeight || '0')
+      const summaryHeight = parseFloat(getComputedStyle(details.querySelector('summary')).minHeight || '0')
+      // Headless Chrome clamps the requested 390px window to a 500 CSS px minimum.
+      // Verify the observed browser is still inside Stage J's <=640px mobile
+      // breakpoint and that both primary controls retain the 44px target.
+      if (window.innerWidth > 640 || searchButtonHeight < 44 || summaryHeight < 44) {
+        throw new Error(`mobile bounds failed: width=${window.innerWidth} search=${searchButtonHeight} summary=${summaryHeight}`)
+      }
+      proof.dataset.stageJObservedWidth = String(window.innerWidth)
+      proof.dataset.stageJMobilePass = 'true'
+      proof.textContent = 'PASS'
+    } catch (error) {
+      proof.dataset.renderError = String(error?.message ?? error)
+      proof.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>

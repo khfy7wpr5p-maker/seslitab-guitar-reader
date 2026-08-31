@@ -1,0 +1,54 @@
+.stage-j-discovery-options {
+  border: 1px solid currentColor;
+  border-radius: 0.65rem;
+  padding: 0.15rem 0.75rem 0.75rem;
+}
+
+.stage-j-discovery-options > summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stage-j-discovery-options > summary:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+.stage-j-discovery-options > .discovery-filters,
+.stage-j-discovery-options > .discovery-feature-group {
+  margin-top: 0.75rem;
+}
+
+.stage-j-discovery-trust-note {
+  margin: 0;
+  border-inline-start: 0.3rem solid currentColor;
+  padding: 0.65rem 0.75rem;
+  line-height: 1.5;
+}
+
+#discovery-search-btn,
+.stage-j-discovery-options > summary,
+#discovery-results .btn,
+#discovery-source-locators .btn {
+  min-height: 44px;
+}
+
+@media (max-width: 640px) {
+  .stage-j-discovery-options {
+    padding-inline: 0.65rem;
+  }
+
+  #discovery-results .discovery-result-actions,
+  #discovery-source-locators .discovery-result-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  #discovery-results .discovery-result-actions .btn,
+  #discovery-source-locators .discovery-result-actions .btn {
+    width: 100%;
+  }
+}
