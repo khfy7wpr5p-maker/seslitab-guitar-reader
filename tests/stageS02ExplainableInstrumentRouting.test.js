@@ -13,12 +13,81 @@ import {
   STAGE_I_PRODUCT_STATE,
 } from '../src/services/stageIInstrumentProduct.js'
 
+const VALID_4_4_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Test</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>`
+
 const gesiXml = readFileSync(
   new URL('./fixtures/real-omr/gesi-clean.xml', import.meta.url),
   'utf8',
 )
 
-test('S02 exposes the exact current quality-route reason for real Gesi Guitar and Violin without invoking solvers', () => {
+function unverifiedStructurallyValidNotes() {
+  return ['Do', 'Re', 'Mi', 'Fa'].map((noteName, index) => ({
+    partId: 'P1',
+    measureNumber: 1,
+    measureKey: 'P1:0',
+    measureIndex: 0,
+    voice: 1,
+    staff: 1,
+    startBeat: index,
+    beats: 1,
+    noteName,
+  }))
+}
+
+test('S02 exposes source-not-verified for a structurally valid REVIEW route without invoking solvers', () => {
+  const notes = unverifiedStructurallyValidNotes()
+  const report = prepareMusicXmlQualityGate(notes, VALID_4_4_XML)
+  assert.equal(report.structurallyValid, true)
+  assert.equal(report.reliable, true)
+  assert.equal(report.sourceVerified, false)
+
+  let guitarBuilderCalls = 0
+  let violinBuilderCalls = 0
+  const products = resolveStageIInstrumentProducts(notes, {
+    builders: {
+      guitar() {
+        guitarBuilderCalls += 1
+        throw new Error('Guitar solver must not run for REVIEW.')
+      },
+      violin() {
+        violinBuilderCalls += 1
+        throw new Error('Violin solver must not run for REVIEW.')
+      },
+    },
+  })
+
+  for (const model of [products.guitar, products.violin]) {
+    assert.equal(model.state, STAGE_I_PRODUCT_STATE.REVIEW_REQUIRED)
+    assert.equal(model.reason, 'source-not-verified')
+    assert.equal(model.stageGRoute?.reason, model.reason)
+    assert.equal(model.actionAllowed, false)
+    assert.equal(model.definitiveInstrumentOutput, false)
+    assert.equal(
+      model.statusText,
+      'İnceleme gerekiyor · Kaynak müzikal olarak doğrulanmadı.',
+    )
+  }
+
+  assert.equal(guitarBuilderCalls, 0)
+  assert.equal(violinBuilderCalls, 0)
+})
+
+test('S02 exposes the exact current BLOCK reason for real Gesi Guitar and Violin without invoking solvers', () => {
   const parsed = parseMusicXmlToNotes(gesiXml)
   assert.equal(parsed.error, undefined)
   assert.ok(parsed.notes.length > 0)
