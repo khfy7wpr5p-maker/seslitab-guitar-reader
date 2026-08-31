@@ -1,5 +1,7 @@
 # SesliTab Cloud OMR Gateway — Sistem Mimarisi
 
+> HISTORICAL / PROPOSED GATEWAY DESIGN — NOT CURRENT PRODUCTION ARCHITECTURE. Verify any deployment or provider claim against the current production backend and infrastructure files before treating this document as operational truth.
+
 **Sürüm:** 1.0.0
 **Durum:** Taslak (gerçek backend, Docker, Audiveris veya sunucu kurulumu yok)
 **Amaç:** SesliTab uygulamalarının (iOS, Android, Web) ortak OMR servisine

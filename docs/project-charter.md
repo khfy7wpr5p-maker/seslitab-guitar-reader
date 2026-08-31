@@ -24,7 +24,7 @@ Teacher verification is a core safety layer, not a temporary limitation.
 
 SesliTab is organised around the following product surfaces:
 
-- Discovery / Score Search — planned source-finding and repertoire discovery module;
+- Discovery / Score Search — bounded source-finding and repertoire discovery presentation;
 - Teacher Studio — intake, review, correction, approval and sharing;
 - Student Practice — approved accessible practice content;
 - Library — planned application surface for admitted and shared works;
@@ -36,7 +36,7 @@ SesliTab is organised around the following product surfaces:
 - Simplified Rhythm Mode;
 - Mobile / PWA Productisation.
 
-Discovery / Score Search is not yet an implemented repository package. It is an accepted product-architecture module that must be introduced through a separate reviewed implementation package.
+Discovery / Score Search is present as a presentation-only source-finding layer. It does not verify musical truth, alter source URLs or bypass intake and quality gates.
 
 ## Main Workflow
 
@@ -199,12 +199,12 @@ The existing Audiveris/Render production backend remains a protected infrastruct
 
 The current authoritative status documents record:
 
-- Packages 0–11 Completed;
-- Package 12 Partially implemented with T1, T2 and T3 Completed;
-- authenticated recipient access, persistence and actual network delivery as later Package 12 stages;
-- Package 13 simplified rhythm mode Not started;
-- Package 14 mobile productisation Partially implemented;
-- Discovery / Score Search as a planned product-architecture module requiring a separate reviewed package before implementation.
+- Stage A–L as production bounded teacher workflow stages;
+- Package 12 T1–T4 as production exact-revision contracts, with Stage L limited to readiness metadata;
+- authenticated accounts, persistent identity, server-side authorization, persistence and actual network delivery as out of scope;
+- Package 8B as research-only with no claim of a real training corpus or production-model change;
+- simplified rhythm mode and native/device-level productisation as out of scope for this architecture refresh;
+- Discovery / Score Search as a production presentation-only source-finding layer.
 
 See `docs/product-architecture.md`, `docs/current-status.md`, and `docs/package-status.md`.
 

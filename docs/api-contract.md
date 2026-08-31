@@ -1,5 +1,7 @@
 # SesliTab Cloud API — API Contract (v1)
 
+> HISTORICAL / PROPOSED CONTRACT — NOT CURRENT PRODUCTION ARCHITECTURE. This document records an earlier API direction. The current architecture is `docs/teacher-score-editor-architecture.md`; authenticated student delivery and server-side authorization are out of scope.
+
 **Sürüm:** 1.0.0
 **Durum:** Taslak (backend henüz uygulanmadı)
 **Base URL:** `https://api.seslitab.cloud/v1`

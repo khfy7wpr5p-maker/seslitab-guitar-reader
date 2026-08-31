@@ -1,9 +1,9 @@
 # SesliTab AI Context
 
-**Context review:** 2026-08-29  
-**Fresh-read protected main:** `2a6fa9c981b85861895692df99887d46e768822e`  
-**Current application state:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 merged; T4 is a separate open PR #138.  
-**Current UI work:** Stage A teacher/product-shell simplification on a dedicated branch; not yet protected-main truth until its PR is green and merged.
+**Context review:** 2026-08-31
+**Fresh-read protected main:** `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`
+**Current application state:** Stage A–L bounded product roadmap is merged on protected `main`; Package 12 T1–T4 contracts and Stage L readiness UI are production. Actual authenticated student delivery remains out of scope.
+**Open PR/issues at fresh-read:** none identified.
 
 ## 1. Official project purpose
 
@@ -56,35 +56,29 @@ A separate open domain/security PR must not be silently folded into unrelated UI
 - Package 9 — Advanced Guitar TAB: **Completed**
 - Package 10 — Advanced Violin: **Completed**
 - Package 11 — Accessible Chromatic Tuner: **Completed**
-- Package 12 — Teacher-to-student sharing: **Partially implemented**
+- Package 12 — Teacher-to-student sharing: **bounded readiness production**
   - T1 exact share authorization: **Completed**
   - T2 exact-revision quality/provenance eligibility: **Completed**
   - T3 bounded corrected-revision revalidation: **Completed**
-  - T4 structural/rhythmic corrected-revision revalidation: **open PR #138; not merged**
-  - authentication/persistence/network delivery: **not complete product capabilities**
-- Package 13 — Simplified rhythm mode: **Not started**
-- Package 14 — Mobile productisation: **Partially implemented**
+  - T4 structural/rhythmic corrected-revision revalidation: **Completed**
+  - authentication/persistence/network delivery: **OUT_OF_SCOPE / separate security application**
+- Package 13 — Simplified rhythm mode: **OUT_OF_SCOPE**
+- Package 14 — Native/mobile productisation: **OUT_OF_SCOPE**
 
-The old Package 8B-era statement that Packages 9–12 were not started is obsolete and must not be reused.
+The old Package 8B-era statement that Packages 9–12 were not started, and the old open PR #138 status, are obsolete and must not be reused.
 
 ## 5. Latest verified baseline evidence
 
-Fresh-read current protected main is `2a6fa9c981b85861895692df99887d46e768822e`.
+Fresh-read current protected `main` is `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`. The exact docs-only merge commit exposed no separate workflow run/status through the available connector query; this is an evidence limitation, not an exact-main pass claim.
 
-The current merge commit does not expose a separate exact-main workflow run in the Actions query used for the 2026-08-29 review. The latest verified code-equivalent CI is PR #140 head `2c684b7ffb1bdb4cef9e8f5b0de408800cce0534`, whose merge produced the current main.
+Independent local baseline on Node 24:
 
-Verified PR #140 CI:
+- `npm ci` PASS;
+- `npm test`: 1519/1519 tests, 236 suites, 0 failed/skipped/cancelled/todo;
+- `npm run build` PASS;
+- local Chrome proof **UNVERIFIED** because Chrome/Chromium is not installed in the environment.
 
-- 1411 / 1411 tests PASS;
-- 235 suites;
-- 0 failed/skipped/cancelled/todo;
-- npm ci PASS;
-- 0 vulnerabilities;
-- Vite production build PASS;
-- pinned score runtime preparation PASS;
-- real Chrome score-render + measure-cursor proof PASS.
-
-Do not call this a distinct exact-main workflow run.
+The protected workflow remains the required `test-and-build` check and runs tests, production build and `scripts/verifyScoreRuntimeBrowser.js`.
 
 ## 6. Product decision — Auto-Pass / Review / Block
 
@@ -141,9 +135,9 @@ This product decision does not silently widen Package 12 sharing authorization. 
 9. Audit actor identity must not be silently invented by UI simplification.
 10. Approval is not student-sharing authorization.
 
-## 9. Stage A teacher/product UI boundary
+## 9. Stage A–L teacher/product UI boundary
 
-Stage A is presentation-only and must not modify Package 8 domain semantics.
+Stage A is presentation-only and must not modify Package 8 domain semantics. Stages B–L are now merged bounded product layers; their current boundaries are canonicalized in `docs/teacher-score-editor-architecture.md`.
 
 Target changes:
 
@@ -166,15 +160,9 @@ Current verified SesliTab score integration provides:
 - canonical measure cursor synchronization;
 - real-browser render/cursor proof.
 
-Not yet verified/implemented as a complete contract:
+The reviewed bounded contract also provides note hit-test/highlight, exact canonical note resolution, accessible note selection, quality overlay presentation and narrow-browser handling. Renderer authority remains presentation/interaction-only.
 
-- note hit-test;
-- stable canonical/source note identity selection;
-- note quality overlays;
-- accessible note selection;
-- final responsive/mobile score scaling.
-
-Reported runtime errors such as `Invalid note initialization object: {}` must be reproduced and traced in Stage B. Never fabricate note values to hide renderer crashes.
+Runtime failure, stale iframe and incomplete SVG/interaction evidence remain fail-closed. Never fabricate note values to hide renderer crashes.
 
 Any cross-repository renderer contract change requires a fresh-read and explicit separate review.
 
@@ -182,9 +170,9 @@ Any cross-repository renderer contract change requires a fresh-read and explicit
 
 Current merged sharing contracts are deliberately metadata/gate focused. Do not claim complete authenticated student delivery, persistence or public share links unless fresh code proves them.
 
-T1/T2/T3 must remain fail closed on stale/mismatched evidence. T4 is separate open PR #138 and cannot be treated as protected-main behavior before merge.
+T1/T2/T3/T4 remain fail closed on stale/mismatched evidence. Stage L composes these existing contracts but does not change their authority. Teacher approval, exact revision identity, revalidation, share eligibility, readiness and actual delivery remain separate concepts.
 
-Stage A must not edit Package 12 domain code.
+`READY_EXACT_REVISION != DELIVERED_TO_STUDENT`. Stage L always reports `deliveryState=not_implemented` and `deliveryAllowed=false`; it creates no account, persistent grant, payload, token, URL or network delivery.
 
 ## 12. Discovery boundary
 
@@ -244,10 +232,10 @@ Unless separately authorized and reviewed, do not change:
 - public API contracts;
 - security policy.
 
-## 16. Current safe UI stage sequence
+## 16. Current UI stage sequence
 
 ```text
-Stage A — teacher UI/product shell simplification
+Stage A — teacher UI/product shell simplification **(production)**
 Stage B — score runtime stabilization + responsive scaling
 Stage C — measure/note selection contract
 Stage D — quality overlay
@@ -258,7 +246,7 @@ Stage H — provisional REVIEW playback
 Stage I — Guitar TAB + violin product integration
 Stage J — Discovery presentation simplification
 Stage K — compact tuner UI
-Stage L — student/share UI only when Package 12 gates permit it
+Stage L — student/share readiness UI **(production; delivery out of scope)**
 ```
 
-After each stage: focused tests, full regression, production build, applicable browser/accessibility checks, PR and CI evidence are required before advancement.
+After each stage: focused tests, full regression, production build, applicable browser/accessibility checks, PR and CI evidence are required before production closure. Do not reopen completed stages as planned work without fresh evidence.

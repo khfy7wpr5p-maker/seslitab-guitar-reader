@@ -148,4 +148,4 @@ T3 does not:
 
 All T3 completion gates are satisfied: focused regressions, full tests, production build, Chrome runtime proof, protected-main merge and exact-main CI are green.
 
-Parent Package 12 remains **Partially implemented** after T3. The next safe substage is **Package 12-T4 — structural/rhythmic post-correction revalidation** for correction classes intentionally excluded from T3 v1, including duration/rhythm, voice/staff, tie/string identity and undo histories. Authenticated recipient access, persistence and real network delivery remain later reviewed security/application stages.
+T3 is one production contract within Package 12. T4 provides the bounded structural/rhythmic post-correction revalidation scope that T3 intentionally excludes. Authenticated recipient access, persistence and real network delivery remain out of scope.

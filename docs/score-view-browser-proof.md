@@ -1,6 +1,6 @@
 # Score View Browser Proof
 
-This verification slice proves the pinned ST Score Rendering Layer runtime can produce real SVG notation inside a headless Chrome/Chromium browser after the normal SesliTab production build.
+This verification slice proves the pinned ST Score Rendering Layer runtime can produce real SVG notation inside a headless Chrome/Chromium browser after the normal SesliTab production build. The current Stage B–C proof also covers canonical measure cursor, bounded note hit-test/highlight and stable note identity behavior where the fixture exposes those interactions.
 
 The proof remains presentation-only. It does not modify Audiveris, OMR provider selection, PDF upload/job lifecycle, Cloud OMR Gateway, Dockerfile, render.yaml, TTS, playback, quality gating, teacher revision/approval, or canonical musical authority.
 
@@ -13,4 +13,4 @@ Acceptance gate:
 - a real `<svg>` exists in the browser DOM;
 - missing browser/runtime/SVG evidence fails closed.
 
-Cursor/highlight synchronization remains a later slice.
+The proof remains bounded: browser interaction does not grant the renderer musical semantic authority, correction authority or teacher-approval authority.
