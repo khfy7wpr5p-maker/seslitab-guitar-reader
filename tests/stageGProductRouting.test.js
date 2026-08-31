@@ -10,7 +10,14 @@ import {
 import { QUALITY_GATE_DECISION } from '../src/services/qualityGateIntegration.js'
 
 function gate(decision, reason = 'fixture') {
-  return Object.freeze({ decision, reason })
+  const accepted = decision === QUALITY_GATE_DECISION.ACCEPT
+  return Object.freeze({
+    decision,
+    reason,
+    allowed: accepted,
+    definitive: accepted,
+    automaticAllowed: accepted,
+  })
 }
 
 function resolverFor(decision, reason = 'fixture') {
@@ -46,7 +53,7 @@ test('Stage G maps REVIEW to teacher review and does not authorize definitive co
   })
 
   assert.equal(route.state, STAGE_G_PRODUCT_STATE.REVIEW)
-  assert.equal(route.statusText, 'Kontrol gerekiyor')
+  assert.equal(route.statusText, 'İnceleme gerekiyor')
   assert.equal(route.automaticProceed, false)
   assert.equal(route.definitiveConsumerAllowed, false)
   assert.equal(route.teacherReviewRequired, true)
@@ -61,11 +68,31 @@ test('Stage G maps BLOCK to a hard product block', () => {
   })
 
   assert.equal(route.state, STAGE_G_PRODUCT_STATE.BLOCK)
-  assert.match(route.statusText, /yapısal bir sorun/)
+  assert.equal(route.statusText, 'Kullanım engellendi')
   assert.equal(route.automaticProceed, false)
   assert.equal(route.definitiveConsumerAllowed, false)
   assert.equal(route.teacherReviewRequired, false)
   assert.equal(route.blocked, true)
+})
+
+test('Stage G fails closed for malformed ACCEPT permission flags', () => {
+  const route = resolveStageGConsumerRoute(NOTES, STAGE_G_CONSUMER.PLAYBACK, {
+    resolvers: {
+      [STAGE_G_CONSUMER.PLAYBACK]: () => Object.freeze({
+        decision: QUALITY_GATE_DECISION.ACCEPT,
+        reason: 'malformed-accept',
+        allowed: true,
+        definitive: true,
+        automaticAllowed: false,
+      }),
+    },
+  })
+
+  assert.equal(route.state, STAGE_G_PRODUCT_STATE.BLOCK)
+  assert.equal(route.reason, 'quality-gate-accept-permission-mismatch')
+  assert.equal(route.statusText, 'Kullanım engellendi')
+  assert.equal(route.automaticProceed, false)
+  assert.equal(route.definitiveConsumerAllowed, false)
 })
 
 test('Stage G fails closed for invalid input, unknown consumers and resolver failures', () => {
@@ -97,6 +124,7 @@ test('Stage G aggregate route uses the strictest existing consumer decision', ()
   })
 
   assert.equal(model.state, STAGE_G_PRODUCT_STATE.BLOCK)
+  assert.equal(model.statusText, 'Kullanım engellendi')
   assert.deepEqual(model.automaticConsumers, [STAGE_G_CONSUMER.TTS, STAGE_G_CONSUMER.GUITAR_TAB])
   assert.deepEqual(model.reviewConsumers, [STAGE_G_CONSUMER.PLAYBACK])
   assert.deepEqual(model.blockedConsumers, [STAGE_G_CONSUMER.VIOLIN])
