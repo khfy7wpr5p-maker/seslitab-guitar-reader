@@ -12,6 +12,7 @@ export const STAGE_S04_TUNER_COPY = Object.freeze({
 })
 
 const boundToggles = new WeakSet()
+const pendingStopWatchers = new WeakMap()
 
 function appendClass(node, className) {
   const values = new Set(String(node?.className || '').split(/\s+/).filter(Boolean))
@@ -26,9 +27,52 @@ function setExpanded(toggle, panel, expanded) {
   toggle.title = expanded ? STAGE_S04_TUNER_COPY.toggleClose : STAGE_S04_TUNER_COPY.toggleOpen
 }
 
-function stopIfRunning(root) {
+function clearPendingStopWatcher(root) {
+  const watcher = pendingStopWatchers.get(root)
+  watcher?.disconnect?.()
+  pendingStopWatchers.delete(root)
+}
+
+function armPendingStopWatcher(root, start, stop) {
+  clearPendingStopWatcher(root)
+  const MutationObserverCtor = root?.defaultView?.MutationObserver ?? globalThis.MutationObserver
+  if (typeof MutationObserverCtor !== 'function') return false
+
+  const watcher = new MutationObserverCtor(() => {
+    if (stop.disabled === false) {
+      clearPendingStopWatcher(root)
+      stop.click?.()
+      return
+    }
+    if (start.disabled === false) clearPendingStopWatcher(root)
+  })
+  watcher.observe(start, { attributes: true, attributeFilter: ['disabled'] })
+  watcher.observe(stop, { attributes: true, attributeFilter: ['disabled'] })
+  pendingStopWatchers.set(root, watcher)
+  return true
+}
+
+function prepareSafeClose(root) {
+  const start = root.getElementById('tuner-start-btn')
   const stop = root.getElementById('tuner-stop-btn')
-  if (stop && stop.disabled === false && typeof stop.click === 'function') stop.click()
+  if (!start || !stop) return true
+
+  if (stop.disabled === false) {
+    clearPendingStopWatcher(root)
+    stop.click?.()
+    return true
+  }
+
+  // Package 11 disables both controls only while explicit getUserMedia startup
+  // is pending. Browser getUserMedia has no portable AbortSignal, so arm a
+  // one-shot guard before hiding: if permission later resolves and Package 11
+  // exposes Stop, immediately route through that existing authoritative stop.
+  if (start.disabled === true && stop.disabled === true) {
+    return armPendingStopWatcher(root, start, stop)
+  }
+
+  clearPendingStopWatcher(root)
+  return true
 }
 
 function ensureDock(root, headerContent) {
@@ -99,20 +143,29 @@ function configurePrimaryAndSecondary(root, section, body, details) {
   return true
 }
 
+function closePanelSafely(root, toggle, panel) {
+  if (!prepareSafeClose(root)) return false
+  setExpanded(toggle, panel, false)
+  return true
+}
+
 function bindToggle(root, toggle, panel) {
   if (!toggle?.addEventListener || boundToggles.has(toggle)) return
   boundToggles.add(toggle)
 
   toggle.addEventListener('click', () => {
     const expanded = toggle.getAttribute('aria-expanded') === 'true'
-    if (expanded) stopIfRunning(root)
-    setExpanded(toggle, panel, !expanded)
+    if (expanded) {
+      closePanelSafely(root, toggle, panel)
+      return
+    }
+    clearPendingStopWatcher(root)
+    setExpanded(toggle, panel, true)
   })
 
   panel.addEventListener?.('keydown', (event) => {
     if (event?.key !== 'Escape') return
-    stopIfRunning(root)
-    setExpanded(toggle, panel, false)
+    if (!closePanelSafely(root, toggle, panel)) return
     toggle.focus?.()
   })
 }
