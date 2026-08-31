@@ -27,11 +27,13 @@
       now: () => '2026-08-31T10:55:00Z',
     })
 
-    // Package 8 correctly hides the active workspace until a real workspace
-    // exists. The fixture reveals that container only to measure Stage L's
-    // presentation geometry; controls remain disabled and no workspace or
-    // authorization is fabricated.
+    // Package 8 correctly hides both its result tabpanel and active workspace
+    // until those product states are actually active. The fixture reveals only
+    // those presentation ancestors to measure Stage L geometry. Controls stay
+    // disabled and no workspace, approval, authorization, or delivery is forged.
+    const teacherPanel = document.getElementById('tab-teacher')
     const activeWorkspace = document.getElementById('teacher-active-workspace')
+    if (teacherPanel) teacherPanel.hidden = false
     if (activeWorkspace) activeWorkspace.hidden = false
 
     const panel = document.getElementById('stage-l-share-panel')
