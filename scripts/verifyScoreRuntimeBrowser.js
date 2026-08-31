@@ -6,6 +6,7 @@ const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'score-runtime-browser-proof.html')
 const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corrected-musicxml-browser-proof.html')
 const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
+const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
 const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].filter(Boolean)
 
 let chrome
@@ -102,8 +103,29 @@ function runStageFDurationHitProof() {
   }
 }
 
+function runStageIInstrumentProductProof() {
+  const label = 'Stage I instrument product browser proof'
+  const dom = runChrome(label, stageIInstrumentFixturePath, '--window-size=390,844')
+  if (!dom.includes('data-stage-i-product-pass="true"')) {
+    fail(label, 'bounded instrument product action evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-i-mobile-pass="true"')) {
+    fail(label, 'narrow viewport/44px instrument product evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-i-guitar-state="available"') || !dom.includes('data-stage-i-violin-state="review-required"')) {
+    fail(label, 'PASS/REVIEW instrument routing evidence missing.', dom)
+  }
+  if (!dom.includes('id="stage-i-guitar-action"') || !dom.includes('aria-disabled="false"')) {
+    fail(label, 'available Guitar TAB product action evidence missing.', dom)
+  }
+  if (!dom.includes('id="stage-i-violin-action"') || !dom.includes('disabled=""')) {
+    fail(label, 'withheld Violin product action evidence missing.', dom)
+  }
+}
+
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
 runStageFCorrectedMusicXmlProof()
 runStageFDurationHitProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, and Stage F duration hit-test browser proofs PASS using ${chrome}`)
+runStageIInstrumentProductProof()
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, and Stage I instrument product browser proofs PASS using ${chrome}`)
