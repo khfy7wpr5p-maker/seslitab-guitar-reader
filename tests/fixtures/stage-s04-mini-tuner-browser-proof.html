@@ -16,7 +16,8 @@
     data-stage-s04-desktop-pass="false"
     data-stage-s04-mobile-pass="false"
     data-stage-s04-local-audio-pass="false"
-    data-stage-s04-no-auto-mic-pass="false">PENDING</div>
+    data-stage-s04-no-auto-mic-pass="false"
+    data-stage-s04-pending-close-pass="false">PENDING</div>
 
   <header class="app-header">
     <div class="header-content">
@@ -24,9 +25,7 @@
       <span id="provider-badge" class="header-badge">Production</span>
     </div>
   </header>
-  <main class="app-main">
-    <section id="input-section"></section>
-  </main>
+  <main class="app-main"><section id="input-section"></section></main>
 
   <script type="module">
     import { installChromaticTunerUi, PACKAGE_11_TUNER_UI_CONTRACT } from '../../src/package11TunerUi.js'
@@ -38,12 +37,7 @@
     try {
       Object.defineProperty(navigator, 'mediaDevices', {
         configurable: true,
-        value: {
-          getUserMedia() {
-            microphoneCalls += 1
-            return Promise.reject(Object.assign(new Error('proof microphone must not start'), { name: 'NotAllowedError' }))
-          },
-        },
+        value: { getUserMedia() { microphoneCalls += 1; return Promise.reject(Object.assign(new Error('proof microphone must not start'), { name: 'NotAllowedError' })) } },
       })
 
       installChromaticTunerUi(document)
@@ -68,47 +62,41 @@
 
       if (!section || !dock || !toggle || !panel || !details || !primary) throw new Error('mini tuner structure missing')
       if (section.dataset.stageS04MiniTuner !== 'ready') throw new Error('mini tuner state missing')
-      if (section.parentElement !== panel) throw new Error('tuner still occupies app-main')
-      if (document.querySelector('.app-main #chromatic-tuner-section')) throw new Error('tuner card still consumes workspace')
+      if (section.parentElement !== panel || document.querySelector('.app-main #chromatic-tuner-section')) throw new Error('tuner still consumes workspace')
       if (!panel.hidden || toggle.getAttribute('aria-expanded') !== 'false') throw new Error('mini tuner must start closed')
       if (microphoneCalls !== 0) throw new Error('microphone started without explicit user action')
 
       if (cents?.parentElement?.parentElement !== primary) throw new Error('cents is not primary')
       if (!frequency || !details.contains(frequency)) throw new Error('Hz readout must remain secondary')
-      for (const node of [octave, meter, scale]) {
-        if (!node || node.parentElement !== details) throw new Error('technical measurement escaped secondary details')
-      }
+      for (const node of [octave, meter, scale]) if (!node || node.parentElement !== details) throw new Error('technical measurement escaped secondary details')
       if (details.open) throw new Error('technical details must start collapsed')
 
       toggle.click()
       if (panel.hidden || toggle.getAttribute('aria-expanded') !== 'true') throw new Error('toggle did not open mini tuner')
       if (microphoneCalls !== 0) throw new Error('opening tuner started microphone')
-
-      for (const node of [start, stop, note, direction, cents]) {
-        if (!node || getComputedStyle(node).display === 'none') throw new Error('primary tuner information hidden')
-      }
+      for (const node of [start, stop, note, direction, cents]) if (!node || getComputedStyle(node).display === 'none') throw new Error('primary tuner information hidden')
 
       const toggleRect = toggle.getBoundingClientRect()
       const panelRect = panel.getBoundingClientRect()
-      if (toggleRect.width < 44 || toggleRect.height < 44 || toggleRect.width > 52 || toggleRect.height > 52) {
-        throw new Error(`toggle bounds failed: ${toggleRect.width}x${toggleRect.height}`)
-      }
-      if (panelRect.left < 0 || panelRect.right > window.innerWidth + 0.5 || panelRect.width > window.innerWidth - 8) {
-        throw new Error(`panel viewport bounds failed: left=${panelRect.left} right=${panelRect.right} width=${panelRect.width}`)
-      }
+      if (toggleRect.width < 44 || toggleRect.height < 44 || toggleRect.width > 52 || toggleRect.height > 52) throw new Error(`toggle bounds failed: ${toggleRect.width}x${toggleRect.height}`)
+      if (panelRect.left < 0 || panelRect.right > window.innerWidth + 0.5 || panelRect.width > window.innerWidth - 8) throw new Error(`panel viewport bounds failed: ${panelRect.left}/${panelRect.right}/${panelRect.width}`)
 
+      // Simulate Package 11's explicit pending-permission state: Start and Stop
+      // are both disabled until getUserMedia settles. S04 must arm its one-shot
+      // guard before hiding, then route a late successful startup through Stop.
       let stopClicks = 0
-      stop.disabled = false
       stop.addEventListener('click', () => { stopClicks += 1 })
+      start.disabled = true
+      stop.disabled = true
       toggle.click()
+      if (!panel.hidden || toggle.getAttribute('aria-expanded') !== 'false') throw new Error('pending tuner did not close')
+      stop.disabled = false
       await new Promise((resolve) => setTimeout(resolve, 0))
-      if (!panel.hidden || toggle.getAttribute('aria-expanded') !== 'false') throw new Error('toggle did not close mini tuner')
-      if (stopClicks !== 1) throw new Error('closing an active-looking tuner did not route through existing Stop control')
-      if (microphoneCalls !== 0) throw new Error('close path started microphone')
+      if (stopClicks !== 1) throw new Error('late pending startup was not routed through existing Stop control')
+      proof.dataset.stageS04PendingClosePass = 'true'
+      if (microphoneCalls !== 0) throw new Error('close guard started microphone')
 
-      if (PACKAGE_11_TUNER_UI_CONTRACT.localAudioOnly !== true || PACKAGE_11_TUNER_UI_CONTRACT.uploadsAudio !== false) {
-        throw new Error('Package 11 local-audio contract changed')
-      }
+      if (PACKAGE_11_TUNER_UI_CONTRACT.localAudioOnly !== true || PACKAGE_11_TUNER_UI_CONTRACT.uploadsAudio !== false) throw new Error('Package 11 local-audio contract changed')
 
       proof.dataset.stageS04LayoutPass = 'true'
       proof.dataset.stageS04LocalAudioPass = 'true'
