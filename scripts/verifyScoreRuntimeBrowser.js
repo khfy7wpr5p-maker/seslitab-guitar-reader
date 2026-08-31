@@ -7,6 +7,7 @@ const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'score-runtime-brow
 const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corrected-musicxml-browser-proof.html')
 const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
+const stageJDiscoveryFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-j-discovery-presentation-browser-proof.html')
 const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].filter(Boolean)
 
 let chrome
@@ -123,9 +124,27 @@ function runStageIInstrumentProductProof() {
   }
 }
 
+function runStageJDiscoveryPresentationProof() {
+  const label = 'Stage J discovery presentation browser proof'
+  const dom = runChrome(label, stageJDiscoveryFixturePath, '--window-size=390,844')
+  if (!dom.includes('data-stage-j-presentation-pass="true"')) {
+    fail(label, 'bounded Discovery presentation evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-j-mobile-pass="true"')) {
+    fail(label, 'Discovery narrow viewport/44px evidence missing.', dom)
+  }
+  if (!dom.includes('id="stage-j-discovery-options"') || !dom.includes('id="stage-j-discovery-trust-note"')) {
+    fail(label, 'Discovery options/trust boundary evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-j-direct-action="Kaynak Sitesinde Aç"') || !dom.includes('data-stage-j-locator-action="YouTube’da dinle"')) {
+    fail(label, 'Discovery source-action semantics evidence missing.', dom)
+  }
+}
+
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
 runStageFCorrectedMusicXmlProof()
 runStageFDurationHitProof()
 runStageIInstrumentProductProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, and Stage I instrument product browser proofs PASS using ${chrome}`)
+runStageJDiscoveryPresentationProof()
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, and Stage J Discovery presentation browser proofs PASS using ${chrome}`)
