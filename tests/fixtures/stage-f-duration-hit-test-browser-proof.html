@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><title>Stage F duration hit-test proof</title><style>body{margin:0}#st-score-root{width:960px}</style></head><body>
+<div id="st-score-root"></div><div id="status" data-stage-f-duration-pass="false" data-stage-f-duration-render-pass="false" data-stage-f-duration-hit-pass="false">PENDING</div>
+<script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
+<script type="importmap">{"imports":{"@st/score-renderer-contracts":"../../public/st-score-runtime/modules/contracts.js","@st/score-renderer-core":"../../public/st-score-runtime/modules/renderer-core.js","@st/score-renderer-osmd":"../../public/st-score-runtime/modules/adapter-osmd.js","@st/score-renderer-browser-host":"../../public/st-score-runtime/modules/browser-host.js","opensheetmusicdisplay":"../../public/st-score-runtime/modules/osmd-module-shim.mjs"}}</script>
+<script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
+<script type="module">
+import {parseMusicXmlToNotes} from '../../src/services/musicEngine.js'
+import {registerMusicXmlSourceForNotes} from '../../src/services/musicXmlSourceRegistry.js'
+import {createTeacherWorkspace,applyTeacherWorkspaceCorrection} from '../../src/services/teacherWorkspaceModel.js'
+import {canonicalizeStageFRevision} from '../../src/services/stageFCanonicalization.js'
+import {materializeAndRevalidateStageFCorrectedMusicXml} from '../../src/services/stageFCorrectedMusicXml.js'
+import {resolveCanonicalNoteFromScoreRef} from '../../src/services/scoreNoteIdentity.js'
+const xml=`<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1" implicit="yes"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note></measure></part></score-partwise>`
+const status=document.getElementById('status'),rootEl=document.getElementById('st-score-root')
+function hits(host){const out=[];for(const el of rootEl.querySelectorAll('.vf-notehead')){const r=el.getBoundingClientRect();if(!(r.width>0&&r.height>0))continue;for(const fx of [.25,.5,.75])for(const fy of [.25,.5,.75]){const ref=host.hitTestNote({clientX:r.left+r.width*fx,clientY:r.top+r.height*fy});if(ref){out.push({ref,el});break}}}return out}
+;(async()=>{try{
+ if(document.documentElement.dataset.stScoreRuntimeReady!=='true')throw new Error('runtime not ready')
+ const parsed=parseMusicXmlToNotes(xml)
+ if(parsed?.error||parsed.notes?.length!==2){throw new Error(`source parse mismatch: ${JSON.stringify({error:parsed?.error??null,count:parsed?.notes?.length??null})}`)}
+ const sourceTimeline=parsed.notes.map(n=>({startBeat:n.startBeat,beats:n.beats,durationValue:n.durationValue,divisions:n.divisions,voice:n.voice,staff:n.staff}))
+ if(parsed.notes[1].startBeat!==1)throw new Error(`source timeline mismatch: ${JSON.stringify(sourceTimeline)}`)
+ const sourceNotes=parsed.notes;registerMusicXmlSourceForNotes(sourceNotes,xml)
+ const ws=createTeacherWorkspace({content:sourceNotes,actorId:'teacher-duration-browser',sourceId:'source-duration-browser',automaticRevisionId:'auto-duration-browser',historyId:'history-duration-browser',createdAt:'2026-08-30T21:20:00.000Z'})
+ const corrected=applyTeacherWorkspaceCorrection({workspace:ws,fieldKey:'0:durationValue',value:'2',revisionId:'teacher-duration-revision',eventId:'teacher-duration-event',operationId:'teacher-duration-operation',createdAt:'2026-08-30T21:21:00.000Z'})
+ const canonical=canonicalizeStageFRevision({history:corrected.history,expectation:corrected.expectation,revisionId:'canonical-duration-revision',eventId:'canonical-duration-event',operationIdPrefix:'canonical-duration-operation',createdAt:'2026-08-30T21:22:00.000Z'})
+ if(canonical.status!=='applied'||canonical.revision.content[0].beats!==0.5||canonical.revision.content[1].startBeat!==0.5)throw new Error(`duration timeline canonicalization mismatch: ${JSON.stringify(canonical.revision?.content?.map(n=>({startBeat:n.startBeat,beats:n.beats,durationValue:n.durationValue}))??null)}`)
+ const materialized=materializeAndRevalidateStageFCorrectedMusicXml({history:canonical.history,sourceNotes,canonicalizationEvidence:canonical.evidence});if(!materialized.ok)throw new Error(`materialize failed: ${materialized.reason??materialized.status}`)
+ const reparsed=parseMusicXmlToNotes(materialized.musicXml);if(reparsed?.error||reparsed.notes?.[0]?.beats!==0.5||reparsed.notes?.[1]?.startBeat!==0.5)throw new Error(`reparse timeline mismatch: ${JSON.stringify(reparsed?.notes?.map(n=>({startBeat:n.startBeat,beats:n.beats,durationValue:n.durationValue}))??null)}`)
+ status.dataset.stageFDurationPass='true'
+ const host=globalThis.__ST_SCORE_RENDER_HOST__;if(!host?.renderMusicXml||!host?.hitTestNote)throw new Error('renderer host missing')
+ await host.renderMusicXml({ticket:'4',contractVersion:'0.2.0',musicxml:materialized.musicXml,pageMode:'continuous',autoResize:false,drawTitle:false,drawComposer:false})
+ if(!rootEl.querySelector('svg'))throw new Error('corrected SVG missing');status.dataset.stageFDurationRenderPass='true'
+ const found=hits(host);const second=found.find(({ref})=>ref.partId==='P1'&&ref.measureIndex===0&&ref.voice===1&&ref.noteIndex===1);if(!second)throw new Error(`second corrected note hit missing: ${JSON.stringify(found.map(({ref})=>ref))}`)
+ const resolved=resolveCanonicalNoteFromScoreRef(canonical.revision.content,second.ref);if(!resolved||resolved.note!==canonical.revision.content[1]||resolved.noteIndex!==1||resolved.note.startBeat!==0.5)throw new Error(`corrected hit resolved to wrong note: ${JSON.stringify({resolvedIndex:resolved?.noteIndex??null,startBeat:resolved?.note?.startBeat??null,ref:second.ref})}`)
+ status.dataset.stageFDurationHitPass='true';status.dataset.correctedSecondStartBeat=String(resolved.note.startBeat);status.textContent='PASS'
+}catch(e){status.dataset.renderError=String(e?.message??e);status.textContent='FAIL'}})()
+</script></body></html>

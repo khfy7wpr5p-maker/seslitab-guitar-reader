@@ -8,6 +8,10 @@ import {
   undoTeacherWorkspace,
 } from '../src/services/teacherWorkspaceModel.js'
 import {
+  canonicalizeStageFRevision,
+} from '../src/services/stageFCanonicalization.js'
+import { createTeacherHistoryExpectation } from '../src/services/teacherRevisionConcurrency.js'
+import {
   assessStageFRevisionLifecycle,
   resolveStageFPreviousUndoTarget,
   STAGE_F_LIFECYCLE_STATUS,
@@ -15,7 +19,7 @@ import {
 
 function note(overrides = {}) {
   return {
-    measureKey: 'P1:m0',
+    measureKey: 'P1:0',
     partId: 'P1',
     partIndex: 0,
     measureIndex: 0,
@@ -24,16 +28,19 @@ function note(overrides = {}) {
     staff: 1,
     startBeat: 0,
     isRest: false,
+    isGrace: false,
     step: 'C',
     alter: 0,
     octave: 4,
     durationValue: 4,
+    divisions: 4,
     duration: 'quarter',
     beats: 1,
+    dotCount: 0,
     midi: 60,
-    frequency: 261.6256,
-    noteName: 'Do4',
-    string: 5,
+    frequency: 261.6255653005986,
+    noteName: 'Do',
+    string: 'A',
     fret: 3,
     tieStart: false,
     tieStop: false,
@@ -73,21 +80,21 @@ test('Stage F allows source rerender only when current content exactly matches a
   assert.equal(assessment.undoTarget, null)
 })
 
-test('Stage F pitch correction remains fail closed without T3 evidence and corrected MusicXML', () => {
+test('Stage F pitch correction remains fail closed until product canonicalization and corrected MusicXML', () => {
   const current = correct(workspace(), '0:step', 'D', '1')
   const assessment = assessStageFRevisionLifecycle(current)
   assert.equal(assessment.status, STAGE_F_LIFECYCLE_STATUS.CORRECTION_REVALIDATION_REQUIRED)
   assert.equal(assessment.canRerenderSource, false)
-  assert.equal(assessment.reason, 'pitch-correction-needs-package-12-t3-evidence-and-corrected-musicxml')
+  assert.equal(assessment.reason, 'pitch-correction-needs-product-canonicalization-and-corrected-musicxml')
   assert.equal(assessment.undoTarget.revisionId, 'automatic-stage-f')
 })
 
-test('Stage F duration correction requires structural rhythmic revalidation', () => {
+test('Stage F duration correction requires product canonicalization and structural revalidation', () => {
   const current = correct(workspace(), '0:durationValue', '8', '1')
   const assessment = assessStageFRevisionLifecycle(current)
   assert.equal(assessment.status, STAGE_F_LIFECYCLE_STATUS.STRUCTURAL_REVALIDATION_REQUIRED)
   assert.equal(assessment.canRerenderSource, false)
-  assert.equal(assessment.reason, 'duration-needs-package-12-t4')
+  assert.equal(assessment.reason, 'duration-needs-product-canonicalization-and-structural-revalidation')
 })
 
 test('Stage F refuses Package 8 correction fields outside Stage E scope', () => {
@@ -98,12 +105,33 @@ test('Stage F refuses Package 8 correction fields outside Stage E scope', () => 
   assert.equal(assessment.reason, 'correction-outside-stage-e-scope')
 })
 
-test('Stage F single-action undo target is nearest previous different content', () => {
+test('Stage F single-action undo target is nearest previous different teacher content', () => {
   const first = correct(workspace(), '0:step', 'D', '1')
   const second = correct(first, '0:alter', '1', '2')
   const target = resolveStageFPreviousUndoTarget(second)
   assert.equal(target.revisionId, 'revision-1')
   assert.equal(target.revisionIndex, 1)
+})
+
+test('Stage F canonicalized current revision keeps undo focused on the user correction, not the system derivation', () => {
+  const corrected = correct(workspace(), '0:step', 'D', '1')
+  const canonicalized = canonicalizeStageFRevision({
+    history: corrected.history,
+    expectation: corrected.expectation,
+    revisionId: 'revision-canonical',
+    eventId: 'event-canonical',
+    operationIdPrefix: 'operation-canonical',
+    createdAt: '2026-08-30T16:02:00.000Z',
+  })
+  const canonicalWorkspace = Object.freeze({
+    ...corrected,
+    history: canonicalized.history,
+    expectation: createTeacherHistoryExpectation(canonicalized.history),
+  })
+  const assessment = assessStageFRevisionLifecycle(canonicalWorkspace)
+  assert.equal(assessment.status, STAGE_F_LIFECYCLE_STATUS.CANONICALIZED_MATERIALIZATION_REQUIRED)
+  assert.equal(assessment.canRerenderSource, false)
+  assert.equal(assessment.undoTarget.revisionId, 'automatic-stage-f')
 })
 
 test('Stage F undo to automatic root restores exact source content without reviving lineage', () => {
@@ -121,7 +149,7 @@ test('Stage F undo to automatic root restores exact source content without reviv
   assert.notEqual(undone.history.revisions.at(-1).revisionId, 'automatic-stage-f')
 })
 
-test('Stage F non-root undo remains structural-revalidation-required', () => {
+test('Stage F non-root undo remains product revalidation required', () => {
   const first = correct(workspace(), '0:step', 'D', '1')
   const second = correct(first, '0:alter', '1', '2')
   const third = correct(second, '0:octave', '5', '3')
@@ -135,16 +163,19 @@ test('Stage F non-root undo remains structural-revalidation-required', () => {
   const assessment = assessStageFRevisionLifecycle(undone)
   assert.equal(assessment.status, STAGE_F_LIFECYCLE_STATUS.STRUCTURAL_REVALIDATION_REQUIRED)
   assert.equal(assessment.canRerenderSource, false)
+  assert.equal(assessment.reason, 'non-root-undo-needs-product-revalidation')
 })
 
-test('Stage F UI rerenders only behind exact-source assessment and reuses immutable undo', async () => {
+test('Stage F UI binds canonicalization, exact-source materialization, corrected rerender and immutable undo', async () => {
   const source = await readFile(new URL('../src/stageFRevisionLifecycleUi.js', import.meta.url), 'utf8')
   assert.match(source, /assessment\.canRerenderSource/)
+  assert.match(source, /canonicalizeStageFRevision/)
+  assert.match(source, /materializeAndRevalidateStageFCorrectedMusicXml/)
+  assert.match(source, /getPackage3MeasureSnapshot/)
   assert.match(source, /activateScoreView/)
   assert.match(source, /undoTeacherUiRevision/)
-  assert.match(source, /Package 12-T3/)
-  assert.match(source, /Package 12-T4/)
-  assert.doesNotMatch(source, /resolveCanonicalPitch|createTeacherCorrectedRevision|MusicXML.*replace|DOMParser|opensheetmusicdisplay|OSMD/i)
+  assert.match(source, /sistem sürümünde/)
+  assert.doesNotMatch(source, /teacherShareEligibility|teacherShareAuthorization|opensheetmusicdisplay|OSMD/i)
 })
 
 test('Stage F controls are accessible and main wiring follows Stage E', async () => {

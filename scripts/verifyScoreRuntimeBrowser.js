@@ -4,6 +4,8 @@ import path from 'node:path'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'score-runtime-browser-proof.html')
+const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corrected-musicxml-browser-proof.html')
+const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].filter(Boolean)
 
 let chrome
@@ -28,13 +30,13 @@ function fail(label, message, dom) {
   process.exit(1)
 }
 
-function runProof(label, viewportArg = null) {
+function runChrome(label, targetPath, viewportArg = null) {
   const args = [
     '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
     '--allow-file-access-from-files', '--virtual-time-budget=12000', '--dump-dom',
   ]
   if (viewportArg) args.push(viewportArg)
-  args.push(pathToFileURL(fixturePath).href)
+  args.push(pathToFileURL(targetPath).href)
 
   const result = spawnSync(chrome, args, {
     cwd: repoRoot,
@@ -47,8 +49,11 @@ function runProof(label, viewportArg = null) {
     console.error(`${label}: ${result.error?.message || result.stderr?.slice(-4000) || `Chrome exit ${result.status}`}`)
     process.exit(1)
   }
+  return result.stdout || ''
+}
 
-  const dom = result.stdout || ''
+function runProof(label, viewportArg = null) {
+  const dom = runChrome(label, fixturePath, viewportArg)
   if (!dom.includes('data-score-render-pass="true"') || !dom.includes('<svg')) {
     fail(label, 'rendered SVG evidence missing.', dom)
   }
@@ -66,6 +71,39 @@ function runProof(label, viewportArg = null) {
   }
 }
 
+function runStageFCorrectedMusicXmlProof() {
+  const label = 'Stage F corrected MusicXML browser proof'
+  const dom = runChrome(label, stageFFixturePath)
+  if (!dom.includes('data-stage-f-materialize-pass="true"')) {
+    fail(label, 'corrected MusicXML materialization evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-f-reparse-pass="true"') || !dom.includes('data-source-root-immutable="true"')) {
+    fail(label, 'corrected MusicXML reparse/root-immutability evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-f-double-flat-pass="true"')) {
+    fail(label, 'MusicXML flat-flat accidental evidence missing.', dom)
+  }
+  if (!/data-corrected-musicxml-fingerprint="corrected-musicxml-fnv1a64-v1:[^"]+"/.test(dom)) {
+    fail(label, 'corrected MusicXML fingerprint evidence missing.', dom)
+  }
+}
+
+function runStageFDurationHitProof() {
+  const label = 'Stage F duration corrected hit-test browser proof'
+  const dom = runChrome(label, stageFDurationFixturePath)
+  if (!dom.includes('data-stage-f-duration-pass="true"') || !dom.includes('data-corrected-second-start-beat="0.5"')) {
+    fail(label, 'corrected duration timeline evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-f-duration-render-pass="true"') || !dom.includes('<svg')) {
+    fail(label, 'corrected duration renderer evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-f-duration-hit-pass="true"')) {
+    fail(label, 'corrected duration exact hit-test/resolver evidence missing.', dom)
+  }
+}
+
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
-console.log(`Desktop + narrow viewport score render/cursor/hit-test/canonical-resolver/highlight proof PASS using ${chrome}`)
+runStageFCorrectedMusicXmlProof()
+runStageFDurationHitProof()
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, and Stage F duration hit-test browser proofs PASS using ${chrome}`)
