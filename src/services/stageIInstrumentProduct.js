@@ -44,6 +44,10 @@ export const STAGE_I_PRODUCT_COPY = Object.freeze({
   VIOLIN_NOT_AVAILABLE: 'Bu eser için güvenli keman çalışma önerisi mevcut değil.',
 })
 
+// Only reasons emitted by the existing Package 2D -> Stage G quality route
+// receive teacher-facing copy here. Stage I's own defensive/internal terminal
+// reasons keep their established generic copy; S02 does not widen their UI
+// contract or alter their semantics.
 export const STAGE_I_REASON_COPY = Object.freeze({
   'quality-report-missing': 'Kalite raporu henüz hazır değil.',
   'source-not-verified': 'Kaynak müzikal olarak doğrulanmadı.',
@@ -56,14 +60,6 @@ export const STAGE_I_REASON_COPY = Object.freeze({
   'quality-gate-resolution-failed': 'Kalite kontrolü tamamlanamadı.',
   'quality-gate-accept-permission-mismatch': 'Kalite izni tutarsız olduğu için kullanım durduruldu.',
   'quality-gate-decision-missing': 'Kalite kararı alınamadı.',
-  'stage-g-route-resolution-failed': 'Çalgı kullanım kararı alınamadı.',
-  'stage-g-pass-permission-mismatch': 'Çalgı kullanım izni tutarsız olduğu için işlem durduruldu.',
-  'instrument-consumer-review-required': 'Çalgı çıktısı ek inceleme gerektiriyor.',
-  'instrument-consumer-blocked': 'Çalgı çıktısı güvenlik nedeniyle engellendi.',
-  'instrument-consumer-failed': 'Çalgı çıktısı hazırlanamadı.',
-  'instrument-consumer-invalid': 'Çalgı çıktısı doğrulanamadı.',
-  'canonical-note-array-required': 'Geçerli nota verisi bulunamadı.',
-  'unsupported-stage-i-instrument': 'Bu çalgı desteklenmiyor.',
 })
 
 const INSTRUMENT_CONFIG = Object.freeze({
