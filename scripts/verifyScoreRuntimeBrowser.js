@@ -8,6 +8,7 @@ const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corr
 const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
 const stageJDiscoveryFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-j-discovery-presentation-browser-proof.html')
+const stageKTunerFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-k-tuner-presentation-browser-proof.html')
 const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].filter(Boolean)
 
 let chrome
@@ -141,10 +142,31 @@ function runStageJDiscoveryPresentationProof() {
   }
 }
 
+function runStageKTunerPresentationProof() {
+  const label = 'Stage K compact tuner browser proof'
+  const dom = runChrome(label, stageKTunerFixturePath, '--window-size=390,844')
+  if (!dom.includes('data-stage-k-presentation-pass="true"')) {
+    fail(label, 'compact tuner presentation evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-k-mobile-pass="true"')) {
+    fail(label, 'tuner narrow viewport/44px evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-k-local-audio-pass="true"')) {
+    fail(label, 'Package 11 local-audio contract evidence missing.', dom)
+  }
+  if (!dom.includes('id="stage-k-tuner-details"') || !dom.includes('id="stage-k-tuner-privacy"')) {
+    fail(label, 'tuner secondary-details/privacy evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-k-primary-action="Mikrofonu Başlat"') || !dom.includes('data-stage-k-details-action="Ayarlar ve ölçümler"')) {
+    fail(label, 'tuner primary/secondary action evidence missing.', dom)
+  }
+}
+
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
 runStageFCorrectedMusicXmlProof()
 runStageFDurationHitProof()
 runStageIInstrumentProductProof()
 runStageJDiscoveryPresentationProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, and Stage J Discovery presentation browser proofs PASS using ${chrome}`)
+runStageKTunerPresentationProof()
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, Stage J Discovery presentation, and Stage K compact tuner browser proofs PASS using ${chrome}`)
