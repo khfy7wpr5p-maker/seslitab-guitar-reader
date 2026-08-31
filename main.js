@@ -12,6 +12,7 @@ import './src/stageDQualityOverlay.css'
 import './src/stageEVisualNoteEditor.css'
 import './src/stageFRevisionLifecycle.css'
 import './src/stageIInstrumentProduct.css'
+import './src/stageJDiscoveryPresentation.css'
 import './src/app.js'
 import './src/package3Ui.js'
 import './src/stageCNoteSelectionUi.js'
@@ -29,5 +30,9 @@ import './src/package11TunerUi.js'
 import './src/appShell.js'
 import './src/reviewInspectorUi.js'
 import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.js'
+import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 
-if (typeof document !== 'undefined') initStageIInstrumentProductUi(document)
+if (typeof document !== 'undefined') {
+  initStageIInstrumentProductUi(document)
+  initStageJDiscoveryPresentation(document)
+}
