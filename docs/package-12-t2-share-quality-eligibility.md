@@ -199,4 +199,4 @@ The completed T2 regression suite verifies:
 
 All T2 completion gates are satisfied: focused regressions, full repository tests, production build, real-browser proof, protected-main merge and exact-main CI are green.
 
-Parent Package 12 remains **Partially implemented** after T2. The next safe stage is post-correction revalidation/provenance for teacher-corrected revisions. Authentication, persistence and real student delivery remain later architecture/security stages.
+T2 is one production contract within Package 12. T3–T4 provide bounded corrected-revision revalidation for their declared scopes. Authentication, persistence and real student delivery remain out of scope.

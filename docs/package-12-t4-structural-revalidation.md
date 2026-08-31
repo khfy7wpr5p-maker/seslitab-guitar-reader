@@ -1,6 +1,6 @@
 # Package 12-T4 — Bounded Structural/Rhythmic Corrected-Revision Revalidation
 
-Status: **Implementation candidate — requires PR CI and protected-main exact verification before closure.**
+Status: **PRODUCTION / BOUNDED** — T4 is merged on protected main as part of Package 12's exact-revision revalidation boundary.
 
 ## Purpose
 
@@ -175,16 +175,8 @@ T4 does not:
 - add dependencies;
 - make the UI a musical semantic authority.
 
-## Completion rule
+## Completion evidence and boundary
 
-T4 is not **Completed** until:
+T4's bounded code and focused regressions are present on protected main. The complete repository verification model remains the required `test-and-build` workflow: focused/full tests, production build and real-browser proof. A browser proof is an execution requirement, not permission to broaden T4's correction surface.
 
-1. focused T4 regressions pass;
-2. full repository tests pass;
-3. production build passes;
-4. real Chrome score-runtime proof passes;
-5. the protected-main PR is merged;
-6. exact-main CI succeeds;
-7. status/closure documentation records that verified evidence.
-
-Parent Package 12 remains **Partially implemented** after T4. Authenticated recipient access, persistence and actual student network delivery remain later separately reviewed security/application stages.
+T4 does not create or imply authenticated recipient access, persistent authorization, share tokens, share URLs, downloadable payloads, student portal access or actual student network delivery. Those are separate security/application work outside Package 12's current bounded readiness UI.

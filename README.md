@@ -14,10 +14,10 @@ It helps students read, hear, understand, and practise musical notation, rhythm,
 - One shared note and timing model
 - Clear warnings for uncertain or unverified music data
 - Teacher review, correction, and exact-revision approval
-- Secure teacher-to-student sharing
+- Bounded teacher-to-student share-readiness evaluation
 - Accessible student practice on iOS, Android and desktop browsers
 - Progressive PWA productisation
-- Future Discovery / score-search and library intake under a separate reviewed package
+- Bounded Discovery / score-search source finding with normal intake revalidation
 
 ## Intended Users
 
@@ -64,12 +64,12 @@ These outputs are not automatically teacher-approved. Structural validity, quali
 
 The target product architecture separates the following surfaces:
 
-- Discovery / Score Search — planned, not yet implemented
+- Discovery / Score Search — implemented bounded source-finding surface
 - Teacher Studio — intake, review, correction, approval and sharing
 - Student Practice — approved work, accessible score/TAB/rhythm, TTS, playback and tuner
-- Library — planned application surface for admitted and shared works
-- Simplified Rhythm Mode — Package 13, not started
-- Mobile / PWA Productisation — Package 14, partially implemented
+- Library — not present; persistence/library contract is out of scope
+- Simplified Rhythm Mode — outside the current production scope
+- Mobile / PWA Productisation — covered narrow-browser presentation only; native/manual device certification is outside the current production scope
 
 The production frontend source of truth is this GitHub repository. Bolt may be used only as a disposable prototype/reference environment and is not the authoritative application source.
 
@@ -79,14 +79,15 @@ Verified current state:
 
 - Packages 0–11: **Completed**
 - Package 8B — Audiveris training dataset: **Partially implemented** as deferred research
-- Package 12 — Teacher-to-student sharing: **Partially implemented**
+- Package 12 — Teacher-to-student sharing: **bounded readiness production**
   - T1 exact share authorization: **Completed**
   - T2 exact-revision safety/quality eligibility: **Completed**
   - T3 post-correction revalidation/provenance: **Completed**
-- Package 13 — Simplified rhythm mode: **Not started**
-- Package 14 — Mobile productisation: **Partially implemented**
+  - T4 structural/rhythmic corrected-revision revalidation: **Completed**
+- Package 13 — Simplified rhythm mode: **OUT_OF_SCOPE**
+- Package 14 — Native/mobile productisation: **OUT_OF_SCOPE**
 
-Authenticated recipient access, persistence/database decisions and actual network delivery remain later Package 12 stages. Discovery / Score Search is now part of the product architecture but is not yet an implemented roadmap package and must be introduced through a separate reviewed package.
+Authenticated recipient access, persistent authorization, share links/tokens and actual network delivery are outside the current bounded readiness product and require a separate security/application program. Discovery is implemented only as source finding; it never verifies musical truth or grants teacher/student trust.
 
 ## Teacher / Student Safety Boundary
 
@@ -171,10 +172,15 @@ npm run backend:start
 - Preserve original PDF, OMR, MusicXML and teacher revision data.
 - Keep automatic, teacher-corrected and teacher-approved data separate.
 - Do not share unapproved or stale-approved content with students.
+- `READY_EXACT_REVISION` is not student delivery, authentication or authorization persistence.
 - Develop one limited package at a time.
 - Never modify the `main` branch directly.
 - Require focused tests, full regression and a production build for development packages.
 - Do not bypass quality or approval gates by setting authority flags directly on canonical source data.
+
+## CURRENTLY OUT OF SCOPE
+
+The current product does not provide authenticated student accounts, persistent student identity, backend/cloud student delivery, permanent share authorization, share tokens, share URLs, a student portal or server-side authorization. These are not unfinished Stage L UI details; they require a separately reviewed security/application architecture.
 
 ## License and Commercial Use
 
@@ -202,3 +208,4 @@ Use the following documents as the current architecture/status references:
 - [`docs/current-status.md`](docs/current-status.md) — current verified implementation state
 - [`docs/package-status.md`](docs/package-status.md) — authoritative package/substage status
 - [`docs/music-engine-architecture.md`](docs/music-engine-architecture.md) — music/OMR domain architecture
+- [`docs/teacher-score-editor-architecture.md`](docs/teacher-score-editor-architecture.md) — canonical Stage A–L teacher/product architecture and completion matrix

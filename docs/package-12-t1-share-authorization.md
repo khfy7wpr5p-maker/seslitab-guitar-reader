@@ -129,4 +129,4 @@ The T1 regression suite covers:
 
 T1 is **Completed**. Its authorization/revocation boundary is now part of protected `main` and has exact-main verification evidence.
 
-Parent Package 12 remains **Partially implemented**. Actual student payload delivery must not be activated by T1 alone. The next bounded substage is exact-revision safety/quality eligibility; authenticated recipient access, persistence and network delivery remain later reviewed stages.
+T1 is one production contract within Package 12. T2–T4 provide the later exact-revision eligibility/revalidation contracts. None of these contracts implements authenticated recipient access, persistence, tokens, URLs or network delivery; those remain out of scope.

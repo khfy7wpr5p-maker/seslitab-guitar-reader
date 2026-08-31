@@ -1,10 +1,10 @@
 # SesliTab Music Engine — Güncel Mimari
 
 **Belge sürümü:** 3.8.0  
-**Güncelleme tarihi:** 2026-08-29  
-**Fresh-read ürün baseline:** protected `main` `2a6fa9c981b85861895692df99887d46e768822e`  
-**Ürün durumu:** Packages 0–11 Completed; Package 12 Partially implemented with T1–T3 merged; T4 separate open PR #138.  
-**8B research state:** Partially implemented; engineering gates exist, genuine admitted/training evidence remains absent.
+**Güncelleme tarihi:** 2026-08-31
+**Fresh-read ürün baseline:** protected `main` `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`
+**Ürün durumu:** Stage A–L production bounded chain; Package 12 T1–T4 exact-revision contracts are present, while actual authenticated student delivery is out of scope.
+**8B research state:** Research-only; engineering gates exist, genuine admitted/training evidence remains absent.
 
 > Bu belge müzik/OMR domain otoritesini tanımlar. Üst seviye ürün ve UI haritası için `docs/product-architecture.md`, görsel öğretmen editörü için `docs/teacher-score-editor-architecture.md`, gerçek durum için `docs/current-status.md` ve `docs/package-status.md` esas alınır.
 
@@ -130,19 +130,19 @@ Rules:
 
 ## 6. Corrected-revision revalidation and Package 12
 
-Package 12 remains partial.
+Package 12's bounded exact-revision contracts are production. Stage L exposes readiness metadata only; it does not implement authentication, persistence, tokens, URLs or network delivery.
 
 ```text
-T1 exact sharing authorization                 [merged]
-T2 exact source/provenance/quality eligibility [merged]
-T3 bounded corrected pitch/position evidence   [merged]
-T4 structural/rhythmic corrected revalidation  [open PR #138; not merged]
-auth/persistence/network delivery              [later]
+T1 exact sharing authorization                 [production]
+T2 exact source/provenance/quality eligibility [production]
+T3 bounded corrected pitch/position evidence   [production]
+T4 structural/rhythmic corrected revalidation  [production / bounded]
+auth/persistence/network delivery              [out of scope]
 ```
 
 T3 must not be interpreted as proof for correction classes it explicitly excludes.
 
-T4 is separate domain-security work. Stage A neither duplicates nor modifies it. Protected main must continue to fail closed for unsupported corrected structural/rhythmic classes until a verified merged boundary exists.
+T4 is the verified production domain-security boundary for its declared structural/rhythmic scope. Stage A–L does not duplicate or widen it; unsupported corrected structural/rhythmic classes continue to fail closed.
 
 The new product Auto-Pass policy does not automatically authorize student sharing. Existing Package 12 authorization semantics remain in force until separately revised.
 
@@ -157,13 +157,7 @@ Current verified SesliTab integration supports:
 - canonical measure cursor synchronization;
 - real-browser render/cursor proof in the latest verified PR #140 CI.
 
-Not yet established in the verified SesliTab contract:
-
-- note-level hit-test;
-- stable note selection identity mapping;
-- quality finding overlay;
-- note-level accessible selection;
-- final mobile scaling/overflow policy.
+The verified Stage B–D contract includes bounded note hit-test/highlight and stable canonical note selection identity, quality evidence overlay, accessible interaction/status handling and narrow-layout bounds. These remain presentation/interaction capabilities only.
 
 Renderer code may not create pitch/duration/voice/tie/octave values to avoid a crash. The reported `Invalid note initialization object: {}` symptom must be reproduced in Stage B and fixed at its true source.
 
@@ -180,7 +174,7 @@ Generated fingering/position evidence:
 - cannot repair missing canonical musical semantics;
 - must remain deterministic/fail-closed under unsupported input.
 
-Later product Stage I may connect PASS/REVIEW/BLOCK routing to these existing consumer gates without changing their musical authority.
+Stage I connects PASS/REVIEW/BLOCK routing to these existing consumer gates without changing their musical authority. Stage I does not generate teacher approval, share authorization or student delivery authorization.
 
 ## 9. Playback / TTS / MIDI
 
@@ -188,7 +182,7 @@ TTS, Web Audio, selected-measure playback and MIDI must remain consumers of the 
 
 Normal definitive playback belongs to PASS or otherwise safely revalidated/authorized content under the applicable gate.
 
-A future **İnceleme İçin Dinle** route for REVIEW is not yet a completed music-engine capability. If added, it must be explicitly provisional and must not allow unsafe BLOCK material to play.
+The Stage H **İnceleme İçin Dinle** route is bounded and explicitly non-definitive. It must not allow unsafe BLOCK material to play or bypass quality gates.
 
 ## 10. Discovery boundary
 
@@ -276,7 +270,7 @@ Without separate explicit authorization, keep unchanged:
 | Package 12-T1 | exact revision + approval + recipient | share authorization metadata only |
 | Package 12-T2 | exact source/provenance/quality | eligibility metadata only |
 | Package 12-T3 | bounded corrected revalidation | corrected evidence metadata only |
-| Package 12-T4 | not merged | no new protected-main authority yet |
+| Package 12-T4 | exact bounded structural/rhythmic revalidation | corrected evidence metadata only; no delivery authority |
 | Discovery | source/licence metadata | no musical verification |
 | Renderer | canonical presentation contract | presentation/interaction only |
 | Tuner | local microphone estimate | tuning guidance only |
@@ -301,4 +295,4 @@ Stage A  teacher UI + product shell simplification
   -> Stage L sharing UI only when Package 12 gates allow it
 ```
 
-Package 12-T4 remains a separate open PR and must keep its own domain-security review/CI lifecycle.
+Stage A–L and Package 12 T1–T4 are merged production boundaries. Any future expansion of corrected fields, authentication, persistence or delivery requires a separate security-reviewed contract and must not be inferred from this document.
