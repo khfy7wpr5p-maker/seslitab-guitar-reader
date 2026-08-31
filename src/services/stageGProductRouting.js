@@ -34,8 +34,8 @@ const DEFAULT_RESOLVERS = Object.freeze({
 
 const PRODUCT_COPY = Object.freeze({
   [STAGE_G_PRODUCT_STATE.PASS]: 'Otomatik kontrollerden geçti',
-  [STAGE_G_PRODUCT_STATE.REVIEW]: 'Kontrol gerekiyor',
-  [STAGE_G_PRODUCT_STATE.BLOCK]: 'Bu eserde önce düzeltilmesi gereken yapısal bir sorun bulundu.',
+  [STAGE_G_PRODUCT_STATE.REVIEW]: 'İnceleme gerekiyor',
+  [STAGE_G_PRODUCT_STATE.BLOCK]: 'Kullanım engellendi',
 })
 
 const PRODUCT_PRIORITY = Object.freeze({
@@ -49,7 +49,16 @@ export function stageGProductCopy(state) {
 }
 
 function stateForGate(gate) {
-  if (gate?.decision === QUALITY_GATE_DECISION.ACCEPT) return STAGE_G_PRODUCT_STATE.PASS
+  if (gate?.decision === QUALITY_GATE_DECISION.ACCEPT) {
+    const exactConsumerAuthorization = (
+      gate.allowed === true &&
+      gate.definitive === true &&
+      gate.automaticAllowed === true
+    )
+    return exactConsumerAuthorization
+      ? STAGE_G_PRODUCT_STATE.PASS
+      : STAGE_G_PRODUCT_STATE.BLOCK
+  }
   if (gate?.decision === QUALITY_GATE_DECISION.REVIEW) return STAGE_G_PRODUCT_STATE.REVIEW
   return STAGE_G_PRODUCT_STATE.BLOCK
 }
@@ -63,8 +72,10 @@ function frozenRoute({ consumer, state, reason, gate }) {
     state,
     reason,
     statusText: stageGProductCopy(state),
-    automaticProceed: pass,
-    definitiveConsumerAllowed: pass,
+    automaticProceed: pass && gate?.automaticAllowed === true,
+    definitiveConsumerAllowed: (
+      pass && gate?.allowed === true && gate?.definitive === true
+    ),
     teacherReviewRequired: review,
     blocked: block,
     // Product routing is not approval, sharing, or student delivery authority.
@@ -109,10 +120,16 @@ export function resolveStageGConsumerRoute(notes, consumer, options = {}) {
   }
 
   const state = stateForGate(gate)
+  const malformedAccept = (
+    gate?.decision === QUALITY_GATE_DECISION.ACCEPT &&
+    state !== STAGE_G_PRODUCT_STATE.PASS
+  )
   return frozenRoute({
     consumer,
     state,
-    reason: gate?.reason ?? 'quality-gate-decision-missing',
+    reason: malformedAccept
+      ? 'quality-gate-accept-permission-mismatch'
+      : gate?.reason ?? 'quality-gate-decision-missing',
     gate: gate ?? null,
   })
 }
