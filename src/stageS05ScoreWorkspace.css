@@ -1,0 +1,63 @@
+.stage-s05-score-workspace {
+  margin: 1rem 0;
+}
+
+.stage-s05-score-workspace[hidden] {
+  display: none !important;
+}
+
+.stage-s05-score-workspace-heading {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.stage-s05-score-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.stage-s05-score-column {
+  min-width: 0;
+}
+
+.stage-s05-score-column > .score-view-panel {
+  display: block;
+  margin: 0;
+}
+
+.stage-s05-score-column > .score-view-panel[hidden] {
+  display: none !important;
+}
+
+.stage-s05-score-inspector {
+  position: sticky;
+  top: 1rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d8dde5);
+  border-radius: 0.75rem;
+  background: var(--card-bg, #fff);
+}
+
+.stage-s05-score-inspector h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.stage-s05-score-inspector p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .stage-s05-score-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage-s05-score-inspector {
+    position: static;
+  }
+}
