@@ -1,32 +1,35 @@
 # SesliTab Teacher Score Editor Architecture
 
-Tarih: 29 Ağustos 2026  
-Durum: Stage A product/presentation architecture; implementation status is stated per capability.
+Tarih: 31 Ağustos 2026  
+Durum: **Stage A–L bounded product roadmap production main üzerinde tamamlandı.** Bu kapanış, authenticated öğrenci teslimatı, evrensel müzikal doğruluk veya kaynakla görsel birebir doğruluk iddiası değildir.
 
 ## Status vocabulary
 
-- **IMPLEMENTED** — current code and tests provide the stated bounded capability.
-- **PARTIAL** — a safe subset exists, but the target product flow is incomplete.
-- **PLANNED** — not implemented in the current product path.
-- **BLOCKED** — implementation requires a separately reviewed boundary or prerequisite.
+- **IMPLEMENTED** — protected production `main` üzerindeki kod ve testler belirtilen bounded capability'yi sağlar.
+- **BOUNDED** — yalnız açıkça desteklenen kanıt/sözleşme alanında çalışır; unsupported veya belirsiz durum fail-closed kalır.
+- **OUT OF SCOPE / BLOCKED** — ayrı güvenlik, backend veya ürün sözleşmesi gerektirir ve A–L kapanışı tarafından uygulanmış sayılmaz.
 
-## 1. Product routing: Auto-Pass / Review / Block
+## 1. Product routing: PASS / REVIEW / BLOCK
 
-Official product decision: **Teacher approval is not universally mandatory.**
+**IMPLEMENTED — Stage G.**
 
-- **PASS — PARTIAL:** existing quality/canonical consumer gates can authorize bounded definitive consumers only when their existing ACCEPT conditions are met. Product copy must say **“Otomatik kontrollerden geçti”**. PASS must never be labelled teacher-approved.
-- **REVIEW — IMPLEMENTED at gate / PLANNED as complete product route:** current quality gates can require review. Product copy is **“Kontrol gerekiyor”**. The visual review/editor workflow is not yet complete.
-- **BLOCK — IMPLEMENTED at gate / PARTIAL in product UI:** structurally unsafe/unreliable evidence remains blocked from definitive gated consumers. Product copy is **“Bu eserde önce düzeltilmesi gereken yapısal bir sorun bulundu.”**
+Package 2D mevcut quality-gate kararlarının ürün eşlemesi:
 
-`Auto-Pass != teacher-approved` is an invariant.
+- `ACCEPT → PASS` — **“Otomatik kontrollerden geçti”**
+- `REVIEW → REVIEW` — **“İnceleme gerekiyor”**
+- `BLOCK → BLOCK` — **“Kullanım engellendi”**
 
-A quality-gate ACCEPT result does not prove that an OMR transcription is visually identical to the original source. No new source-verification claim may be inferred by presentation code.
+Eksik, malformed veya çelişkili karar hiçbir zaman PASS olamaz.
+
+`PASS != teacher-approved != share-authorized != delivered-to-student`
+
+Quality-gate ACCEPT sonucu OMR transkripsiyonunun kaynak görüntüyle birebir aynı olduğunu kanıtlamaz. Presentation katmanı yeni source-verification veya musical-truth iddiası üretemez.
 
 ## 2. Authority chain
 
 **IMPLEMENTED as architectural boundary.**
 
-Authority remains separated as follows:
+Authority ayrımı:
 
 Original PDF/source evidence
 → OMR output
@@ -36,175 +39,236 @@ Original PDF/source evidence
 → structural/quality evidence
 → bounded consumer gates
 → teacher correction/approval where required
+→ exact-revision share authorization/eligibility where requested
 
-Rules:
+Kurallar:
 
-1. The renderer is presentation/interaction only.
-2. OMR is not musical truth authority.
-3. MusicXML validity is not proof of visual/source correctness.
-4. Canonical data is the shared runtime music-data authority for current consumers; it cannot invent missing source facts.
-5. Automatic source, corrected revisions and teacher approval remain distinct evidence.
-6. A new correction cannot inherit an old approval.
+1. Renderer yalnız presentation/interaction katmanıdır.
+2. OMR musical-truth authority değildir.
+3. MusicXML structural validity, kaynakla veya müzikal olarak doğru olmayı tek başına kanıtlamaz.
+4. Canonical `NoteObject[]` mevcut consumer'ların ortak runtime music-data authority'sidir; eksik kaynak gerçeği icat edemez.
+5. Automatic source, teacher-corrected revision, system-canonicalized revision ve teacher approval ayrı evidence türleridir.
+6. Yeni correction eski approval veya authorization'ı miras alamaz.
+7. Package 12 paylaşım semantiği product routing veya product-local revalidation ile birleştirilemez.
 
 ## 3. Visual score editor
 
-**PLANNED.**
+**IMPLEMENTED / BOUNDED — Stages C, E ve F.**
 
-Target interaction:
+Ürün akışı:
 
 Open score
-→ see rendered notation
-→ select measure/note
-→ edit a bounded supported field
-→ save correction
-→ revalidate
-→ rerender
-→ approve when product policy requires or the teacher chooses to approve
+→ canonical measure seç
+→ exact canonical note seç
+→ desteklenen bounded alanı düzenle
+→ yeni immutable revision oluştur
+→ canonicalize/revalidate
+→ yalnız kanıt varsa rerender
+→ gerektiğinde exact revision'ı onayla
 
-Current Stage A does **not** claim note-level visual editing. The existing Package 8 field editor remains the safe correction mechanism while the visual selection contract is developed.
+Stage E yalnız güvenli bounded teacher intent alanlarını sunar:
 
-## 4. Quality overlay
+- `step`
+- `alter`
+- `octave`
+- `durationValue`
 
-**PLANNED.**
+String/fret, MIDI, frequency, voice, staff, tie, source identity veya verification evidence doğrudan teacher field olarak açılmaz. Türetilmiş pitch/duration alanları Stage F'deki ayrı mekanik canonicalization/revalidation zincirine aittir.
 
-Future score overlay may present:
+## 4. Measure / note selection and renderer interaction
 
-- structural problem,
-- review-required/suspect area,
-- current selection,
-- teacher-reviewed/approved area.
+**IMPLEMENTED / BOUNDED — Stage C.**
 
-Color cannot be the only carrier of meaning. Every marker requires textual/screen-reader state. Overlay evidence must come from the quality/provenance layer; the renderer cannot create findings.
+Selection identity şu kanıtlara bağlıdır:
 
-## 5. Correction lifecycle
+- exact published canonical `NoteObject[]` reference,
+- parser-owned canonical `measureKey`,
+- exact array index,
+- exact `NoteObject` reference.
 
-**IMPLEMENTED in Package 8 domain; PARTIAL in product UI.**
+ST Score Rendering Layer pinned note-interaction runtime hit-test/highlight sağlar; renderer hit sonucu yalnız bounded `ScoreNoteRef` üretir. Renderer → canonical eşleme pitch, SVG yakınlığı veya görünür label tahminiyle yapılmaz. Kanıt eksik, stale, ambiguous veya out-of-range ise eşleme abstain/fail-closed olur.
 
-Current revision
-→ bounded teacher correction
-→ new immutable corrected revision
-→ later revalidation evidence
-→ rerender when the visual-editor stage is implemented
+Renderer presentation authority olarak kalır; canonical veya quality authority olmaz.
 
-The automatic source remains immutable. Stage A only simplifies presentation language and grouping; it does not change correction semantics.
+## 5. Quality overlay
 
-## 6. Revalidation
+**IMPLEMENTED / BOUNDED — Stage D.**
 
-**PARTIAL.**
+UI, exact canonical array için mevcut Package 2D/quality evidence'tan PASS/REVIEW/BLOCK durumunu ve report-backed finding'leri sunar.
 
-- Existing automatic-source quality gating is implemented.
-- Package 12-T3 provides bounded corrected-revision revalidation evidence for its supported correction class.
-- Package 12-T4 structural/rhythmic corrected-revision revalidation is under separate review in open PR #138 and is not treated as merged here.
-- General visual-editor correction revalidation is therefore not yet a completed product route.
+Overlay:
 
-Unsupported correction classes must fail closed.
+- finding olmayan note/measure hedefi icat etmez,
+- renderer geometry'sinden kalite sonucu türetmez,
+- rengi tek bilgi taşıyıcısı yapmaz,
+- textual/screen-reader state sağlar.
 
-## 7. Exact-revision approval
+## 6. Correction lifecycle, canonicalization and revalidation
 
-**IMPLEMENTED.**
+**IMPLEMENTED / BOUNDED — Package 8 + Stages E/F.**
 
-The user-facing action is **“Eseri Onayla”** while the existing domain binding remains exact-revision approval. Approval is not a quality-gate override and is not student-sharing authorization.
+Akış:
 
-A later correction makes the previous approval non-applicable.
+automatic root
+→ bounded teacher intent revision
+→ gerekiyorsa separate system canonicalization revision
+→ corrected MusicXML materialization / product-local revalidation
+→ evidence-backed rerender
+
+Automatic root immutable kalır. Teacher correction eski revision'ı overwrite etmez.
+
+Stage F supported pitch correction için türetilmiş `midi`, `frequency`, `noteName` ve ancak mevcut string identity ile kanıtlanabiliyorsa fret coherence üretir. Duration correction için mevcut divisions/canonical duration kanıtı kullanılır; timeline coherence product revalidation ile ayrıca kanıtlanır.
+
+Package 12-T3/T4 artık production main üzerindedir, ancak paylaşım eligibility semantiği Stage F product-local revalidation authority değildir. İki sınır ayrı tutulur.
+
+Unsupported correction class, eksik corrected MusicXML, stale lineage veya başarısız structural revalidation fail-closed kalır.
+
+## 7. Exact-revision teacher approval
+
+**IMPLEMENTED — Package 8.**
+
+Teacher approval exact current revision'a bağlanır. Approval:
+
+- quality gate override değildir,
+- share authorization değildir,
+- student delivery değildir.
+
+Daha sonraki correction eski approval'ı non-applicable yapar. Aynı içerikli yeni revision bile eski approval'ı miras alamaz.
 
 ## 8. Undo
 
-**IMPLEMENTED in immutable history; PARTIAL in product UI.**
+**IMPLEMENTED / BOUNDED — Package 8 + Stage F.**
 
-Undo creates new lineage and does not rewrite history or resurrect old approval. Stage A moves technical history controls into **Detaylar** and uses the user-facing label **“Geri Al”**. A final single-action previous-revision resolver remains planned for Stage F; ambiguous or unsafe undo must fail closed.
+Undo:
 
-## 9. Preview playback
+- geçmiş revision'a pointer geri taşımaz,
+- geçmişi silmez/yeniden yazmaz,
+- yeni immutable revision oluşturur,
+- eski approval'ı diriltmez.
 
-**PLANNED.**
+Stage F güvenli tek-adımlı previous-different-content hedefini çözer. Root'a dönüş exact source rerender yolunu kullanabilir; non-root undo yeniden product revalidation ister.
 
-REVIEW playback may later be offered only when structural evidence is safe enough for provisional playback. It must be labelled **“İnceleme İçin Dinle”** and **“Doğrulanmamış önizleme”**. BLOCK must not be bypassed.
+## 9. Review playback
 
-## 10. Guitar TAB and violin downstream authority
+**IMPLEMENTED / BOUNDED — Stage H.**
 
-**IMPLEMENTED as quality-gated consumers; product routing PARTIAL.**
+Playback route modları:
 
-Guitar TAB and violin consume the shared canonical authority and their existing quality gates. They must not become definitive from BLOCK evidence. Teacher approval cannot erase structural failures.
+- `DEFINITIVE`
+- `REVIEW_PREVIEW`
+- `REVIEW_WITHHELD`
+- `BLOCKED`
 
-Stage G/I will map PASS/REVIEW/BLOCK product routing to these existing gates without creating a second musical truth.
+REVIEW hiçbir zaman ACCEPT/PASS'e yükseltilmez. Yalnız mevcut Package 2D REVIEW kararı ve bounded güvenli structural evidence varsa explicit non-definitive preview açılır:
 
-## 11. Student sharing authority
+- **“İnceleme İçin Dinle”**
+- **“Doğrulanmamış önizleme”**
 
-**PARTIAL / BLOCKED for final delivery.**
+Kanıt eksik/unsafe ise ürün REVIEW kalır fakat playback withheld olur. BLOCK bypass edilmez.
 
-Current Package 12 has bounded authorization/quality/revalidation contracts but no claim of complete authentication, persistence, public delivery or student account system.
+## 10. Guitar TAB and violin product integration
 
-Existing Package 12 gates must not be bypassed by Stage A. The new product policy allowing a future safe Auto-Pass sharing path requires a separately reviewed Package 12 contract change; it is **not implemented by this stage**.
+**IMPLEMENTED / BOUNDED — Stage I.**
 
-Stale approval/authorization remains invalid.
+Guitar TAB ve violin shared canonical authority ile kendi mevcut quality-gated consumer sınırlarını kullanır.
 
-## 12. Discovery boundary
+Stage I:
 
-**IMPLEMENTED.**
+- exact canonical array'i korur,
+- product PASS olmadan solver/output yoluna geçmez,
+- REVIEW/BLOCK durumlarında partial definitive output üretmez,
+- teacher approval, sharing veya delivery authority kazanmaz,
+- generated fingering/TAB sonucunu source/teacher truth olarak etiketlemez.
 
-Discovery may find a source and allow safe external opening. It does not verify musical truth.
+## 11. Discovery
+
+**IMPLEMENTED — Stage J.**
+
+Discovery product presentation sadeleştirilmiştir; kaynak arama ana görevdir ve safe external-source action korunur.
 
 `FOUND != SOURCE VERIFIED != MUSICALLY VERIFIED != TEACHER APPROVED`
 
-If a source cannot be safely imported/viewed, the product should use **“Kaynak Sitesinde Aç”** rather than force an iframe/embed path.
+Discovery musical truth veya teacher approval üretmez.
 
-## 13. Renderer boundary
+## 12. Chromatic tuner
 
-**PARTIAL.**
+**IMPLEMENTED — Stage K.**
 
-Current SesliTab integration provides a pinned ST Score Rendering Layer runtime and canonical measure-cursor synchronization. It remains presentation-only.
+Package 11 chromatic tuner'ın pitch-analysis ve microphone-local privacy davranışı değiştirilmeden presentation compact hale getirilmiştir.
 
-Current verified contract does **not** provide the full requested note hit-test/stable note-selection/quality-overlay contract. Stage C may therefore require a separately reviewed renderer contract extension. No cross-repository renderer contract change is authorized by Stage A.
+Primary tuner controls görünür ve erişilebilir kalır; secondary calibration/readout/help bounded details altında toplanır.
 
-The reported runtime text `Invalid note initialization object: {}` is not present as a literal in the SesliTab repository. Stage B must reproduce and locate the real runtime source rather than masking it by inventing note data.
+## 13. Student/share readiness
 
-## 14. Mobile and accessibility requirements
+**IMPLEMENTED as readiness UI / AUTHENTICATED DELIVERY OUT OF SCOPE — Stage L.**
 
-**PARTIAL.**
+Stage L mevcut Package 12 exact-revision zincirini öğretmen ürün akışına bağlar:
 
-Stage A adds/retains:
+- exact teacher approval,
+- explicit exact-recipient authorization,
+- exact-revision quality/revalidation eligibility.
+
+Yalnız mevcut evaluator `eligible` sonucu verirse UI `ready_exact_revision` durumuna ulaşabilir.
+
+Kritik invariant:
+
+`READY_EXACT_REVISION != DELIVERED_TO_STUDENT`
+
+Stage L sonucu her zaman delivery açısından fail-closed sınırdadır:
+
+- `deliveryState = not_implemented`
+- `deliveryAllowed = false`
+- link/token/URL/payload/content bytes üretilmez,
+- student account/authentication oluşturulmaz,
+- persistence/database/backend/network/email/message delivery eklenmez.
+
+Gerçek authenticated student delivery A–L roadmap kapanışının dışında, ayrı security/application architecture review gerektirir.
+
+## 14. Mobile and accessibility
+
+**IMPLEMENTED for bounded browser/product proofs; platform assistive-technology manual QA remains separate.**
+
+Current product stages retain/prove:
 
 - semantic native controls,
-- visible focus,
-- approximately 44px minimum teacher control targets,
-- mobile-width-safe teacher inputs/fieldsets,
-- technical JSON/history inside a bounded Details region,
-- Turkish user-facing action labels.
+- visible keyboard focus,
+- bounded teacher inputs/fieldsets,
+- approximately 44px minimum interactive targets in covered flows,
+- narrow/mobile-safe browser layouts,
+- textual `aria-live` state where dynamic feedback is required,
+- non-color-only quality/status communication,
+- accessible canonical note-selection controls,
+- real Chrome desktop + narrow viewport regression proof in CI.
 
-Still required in later stages:
+A–L closure does **not** claim completed manual iPhone Safari + VoiceOver or Android Chrome + TalkBack certification unless separately recorded by operational QA.
 
-- iPhone Safari + VoiceOver verification,
-- Android Chrome + TalkBack verification,
-- note-level accessible selection,
-- score-specific responsive scaling and controlled horizontal scrolling,
-- non-color-only quality overlay announcements.
+## Stage map — production closure
 
-## Stage map from current repository reality
-
-| Stage | Current status | Bounded next meaning |
+| Stage | Production status | Bounded delivered capability |
 |---|---|---|
-| A — Teacher UI simplification | **IMPLEMENTED in this branch, pending CI/merge** | Product nav, simpler teacher copy, technical details grouping, basic mobile targets |
-| B — Score runtime stabilization | **PLANNED** | Reproduce runtime failure; responsive score scaling; no semantic invention |
-| C — Measure/note selection | **PARTIAL/BLOCKED** | Measure cursor exists; note hit-test contract requires fresh renderer review |
-| D — Quality overlay | **PLANNED** | Quality/provenance-driven accessible overlay |
-| E — Visual bounded note editor | **PLANNED** | pitch/accidental/octave/duration only where domain support is safe |
-| F — Undo/revalidation/rerender | **PARTIAL** | Domain undo exists; complete product revalidation/rerender route does not |
-| G — PASS/REVIEW/BLOCK routing | **PARTIAL** | Internal gates exist; product mapping/routing remains |
-| H — Review playback | **PLANNED** | provisional playback only when safe |
-| I — Guitar TAB + violin integration | **PARTIAL** | gated consumers exist; new product routing remains |
-| J — Discovery simplification | **PARTIAL** | safe discovery exists; product presentation refinement remains |
-| K — Compact tuner | **PLANNED UI change** | keep Package 11 microphone/privacy behavior unchanged |
-| L — Student/share UI | **BLOCKED/PARTIAL** | only after Package 12 security contracts permit the exact route |
+| A — Teacher UI simplification | **IMPLEMENTED** | simpler teacher product navigation/copy, technical details grouping, accessible controls |
+| B — Score runtime stabilization | **IMPLEMENTED** | pinned runtime, fail-closed poisoned-frame retry, responsive/narrow browser handling |
+| C — Measure/note selection | **IMPLEMENTED / BOUNDED** | exact canonical measure/note selection + reviewed renderer hit-test/highlight bridge |
+| D — Quality overlay | **IMPLEMENTED / BOUNDED** | report-backed accessible PASS/REVIEW/BLOCK and finding presentation |
+| E — Visual bounded note editor | **IMPLEMENTED / BOUNDED** | step/alter/octave/durationValue teacher intent only |
+| F — Undo/revalidation/rerender | **IMPLEMENTED / BOUNDED** | immutable undo, mechanical canonicalization, corrected materialization/revalidation, evidence-backed rerender |
+| G — PASS/REVIEW/BLOCK routing | **IMPLEMENTED** | existing quality decisions mapped to product routing without new truth authority |
+| H — Review playback | **IMPLEMENTED / BOUNDED** | safe explicit non-definitive REVIEW preview or withheld playback |
+| I — Guitar TAB + violin integration | **IMPLEMENTED / BOUNDED** | PASS-gated instrument product actions using existing consumer gates |
+| J — Discovery simplification | **IMPLEMENTED** | source-search-first presentation without verification claims |
+| K — Compact tuner | **IMPLEMENTED** | compact accessible tuner presentation with microphone-local privacy preserved |
+| L — Student/share UI | **IMPLEMENTED as readiness only** | exact-revision Package 12 readiness UI; authenticated delivery remains out of scope |
 
-## Stage A non-goals
+## Roadmap closure invariant
 
-Stage A does not:
+Stages A–L are merged as their **bounded product capabilities**. This does not mean:
 
-- change MusicXML parsing or canonical music semantics,
-- change quality-gate policy,
-- change Package 8 revision/approval/history semantics,
-- change Package 12 authorization semantics,
-- change renderer contracts,
-- add dependencies,
-- alter Audiveris/Render/OMR infrastructure,
-- implement authentication/persistence,
-- claim source-level musical verification.
+- every OMR result is musically correct,
+- structural validity proves source fidelity,
+- PASS equals teacher approval,
+- teacher approval equals sharing authorization,
+- sharing readiness equals student delivery,
+- renderer output is semantic authority,
+- unsupported correction classes may be guessed or normalized.
+
+When evidence is incomplete, ambiguous, stale or outside the documented bounded contract, the product must continue to abstain, REVIEW, withhold, or BLOCK rather than invent certainty.
