@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Stage K compact tuner browser proof</title>
+  <link rel="stylesheet" href="../../src/style.css">
+  <link rel="stylesheet" href="../../src/package11TunerUi.css">
+  <link rel="stylesheet" href="../../src/stageKTunerPresentation.css">
+</head>
+<body>
+  <div id="proof" data-stage-k-presentation-pass="false" data-stage-k-mobile-pass="false" data-stage-k-local-audio-pass="false">PENDING</div>
+  <main class="app-main">
+    <section id="input-section"></section>
+  </main>
+
+  <script type="module">
+    import {
+      installChromaticTunerUi,
+      PACKAGE_11_TUNER_UI_CONTRACT,
+    } from '../../src/package11TunerUi.js'
+    import { applyStageKTunerPresentation } from '../../src/stageKTunerPresentation.js'
+
+    const proof = document.getElementById('proof')
+    try {
+      installChromaticTunerUi(document)
+      if (!applyStageKTunerPresentation(document)) throw new Error('Stage K presentation did not apply')
+
+      const section = document.getElementById('chromatic-tuner-section')
+      const heading = document.getElementById('chromatic-tuner-heading')
+      const subtitle = section?.querySelector('.tuner-subtitle')
+      const controls = section?.querySelector('.tuner-controls')
+      const start = document.getElementById('tuner-start-btn')
+      const stop = document.getElementById('tuner-stop-btn')
+      const reference = document.getElementById('tuner-reference-a4')
+      const details = document.getElementById('stage-k-tuner-details')
+      const privacy = document.getElementById('stage-k-tuner-privacy')
+      const readout = section?.querySelector('.tuner-readout')
+      const help = section?.querySelector('.tuner-help')
+      const calibration = section?.querySelector('.tuner-calibration')
+      const badge = section?.querySelector('.tuner-badge')
+      const status = document.getElementById('tuner-status')
+
+      if (!section || section.dataset.stageKPresentation !== 'ready') throw new Error('compact tuner state missing')
+      if (heading?.textContent !== 'Akort') throw new Error('compact heading missing')
+      if (!subtitle?.textContent.includes('yalnızca cihazınızda analiz edilir')) throw new Error('local microphone subtitle missing')
+      if (!privacy?.textContent.includes('gönderilmez, kaydedilmez veya saklanmaz')) throw new Error('visible privacy boundary missing')
+      if (!details || details.open) throw new Error('secondary details must start collapsed')
+      if (details.querySelector('summary')?.textContent !== 'Ayarlar ve ölçümler') throw new Error('details copy mismatch')
+      for (const node of [calibration, readout, help, badge]) {
+        if (!node || node.parentElement !== details) throw new Error('secondary tuner surface was not grouped')
+      }
+      if (controls?.children.length !== 2 || controls.children[0] !== start || controls.children[1] !== stop) throw new Error('primary tuner controls changed')
+      if (start?.textContent !== 'Mikrofonu Başlat' || start.disabled) throw new Error('start control changed')
+      if (stop?.textContent !== 'Durdur' || !stop.disabled) throw new Error('stop control changed')
+      if (reference?.value !== '440') throw new Error('Package 11 calibration changed')
+      if (!status || status.parentElement !== section.querySelector('.tuner-body')) throw new Error('live status moved into secondary details')
+
+      if (PACKAGE_11_TUNER_UI_CONTRACT.localAudioOnly !== true || PACKAGE_11_TUNER_UI_CONTRACT.uploadsAudio !== false) {
+        throw new Error('Package 11 local-audio contract changed')
+      }
+      proof.dataset.stageKLocalAudioPass = 'true'
+      proof.dataset.stageKPresentationPass = 'true'
+
+      const summary = details.querySelector('summary')
+      const summaryHeight = summary.getBoundingClientRect().height
+      const startHeight = start.getBoundingClientRect().height
+      if (window.innerWidth > 640 || summaryHeight < 44 || startHeight < 44) {
+        throw new Error(`mobile bounds failed: width=${window.innerWidth} start=${startHeight} summary=${summaryHeight}`)
+      }
+      proof.dataset.stageKMobilePass = 'true'
+      proof.dataset.stageKPrimaryAction = start.textContent
+      proof.dataset.stageKDetailsAction = summary.textContent
+      proof.textContent = 'PASS'
+    } catch (error) {
+      proof.dataset.renderError = String(error?.message ?? error)
+      proof.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>
