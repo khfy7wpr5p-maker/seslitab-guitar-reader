@@ -63,6 +63,7 @@ test('Stage H preserves ACCEPT as definitive playback', () => {
   assert.equal(route.noticeText, '')
   assert.equal(route.definitivePlaybackAllowed, true)
   assert.equal(route.reviewPreviewAllowed, false)
+  assert.equal(route.playbackWithheld, false)
   assert.equal(route.automaticAllowed, true)
   assert.equal(route.blocked, false)
   assert.equal(route.teacherApproved, false)
@@ -82,6 +83,7 @@ test('Stage H exposes structurally safe REVIEW only as explicit non-definitive p
   assert.equal(route.noticeText, 'Doğrulanmamış önizleme')
   assert.equal(route.definitivePlaybackAllowed, false)
   assert.equal(route.reviewPreviewAllowed, true)
+  assert.equal(route.playbackWithheld, false)
   assert.equal(route.automaticAllowed, false)
   assert.equal(route.blocked, false)
   assert.equal(route.teacherReviewRequired, true)
@@ -109,11 +111,15 @@ test('Stage H permits only bounded existing REVIEW reasons for preview', () => {
       report: null,
     }),
   })
-  assert.equal(missingReport.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
+  assert.equal(missingReport.mode, STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD)
+  assert.equal(missingReport.noticeText, 'İnceleme için dinleme kullanılamıyor')
   assert.equal(missingReport.reviewPreviewAllowed, false)
+  assert.equal(missingReport.playbackWithheld, true)
+  assert.equal(missingReport.blocked, false)
+  assert.equal(missingReport.teacherReviewRequired, true)
 })
 
-test('Stage H fails closed when REVIEW structural evidence is unsafe or incomplete', () => {
+test('Stage H withholds REVIEW preview when structural evidence is unsafe or incomplete', () => {
   const cases = [
     safeReviewGate(),
     safeReviewGate(),
@@ -128,9 +134,12 @@ test('Stage H fails closed when REVIEW structural evidence is unsafe or incomple
 
   for (const gate of cases) {
     const route = resolveStageHPlaybackRoute(NOTES, { resolver: () => gate })
-    assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
+    assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD)
     assert.equal(route.reviewPreviewAllowed, false)
     assert.equal(route.definitivePlaybackAllowed, false)
+    assert.equal(route.playbackWithheld, true)
+    assert.equal(route.blocked, false)
+    assert.equal(route.teacherReviewRequired, true)
   }
 })
 
@@ -140,9 +149,11 @@ test('Stage H never previews a malformed REVIEW that grants definitive permissio
     resolver: () => ({ ...malformed, allowed: true }),
   })
 
-  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
+  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD)
   assert.equal(route.reviewPreviewAllowed, false)
   assert.equal(route.definitivePlaybackAllowed, false)
+  assert.equal(route.playbackWithheld, true)
+  assert.equal(route.blocked, false)
 })
 
 test('Stage H keeps BLOCK hard-blocked and malformed ACCEPT fail-closed', () => {
@@ -154,6 +165,8 @@ test('Stage H keeps BLOCK hard-blocked and malformed ACCEPT fail-closed', () => 
   })
   assert.equal(blocked.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
   assert.equal(blocked.noticeText, 'Kullanım engellendi')
+  assert.equal(blocked.blocked, true)
+  assert.equal(blocked.teacherReviewRequired, false)
 
   const malformedAccept = resolveStageHPlaybackRoute(NOTES, {
     resolver: () => gateFixture({
