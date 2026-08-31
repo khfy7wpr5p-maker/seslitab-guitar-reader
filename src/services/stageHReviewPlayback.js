@@ -14,6 +14,7 @@ import {
 export const STAGE_H_PLAYBACK_MODE = Object.freeze({
   DEFINITIVE: 'DEFINITIVE',
   REVIEW_PREVIEW: 'REVIEW_PREVIEW',
+  REVIEW_WITHHELD: 'REVIEW_WITHHELD',
   BLOCKED: 'BLOCKED',
 })
 
@@ -21,6 +22,7 @@ export const STAGE_H_PLAYBACK_COPY = Object.freeze({
   DEFINITIVE_ACTION: 'Notaları Çal',
   REVIEW_ACTION: 'İnceleme İçin Dinle',
   REVIEW_NOTICE: 'Doğrulanmamış önizleme',
+  REVIEW_WITHHELD_NOTICE: 'İnceleme için dinleme kullanılamıyor',
   BLOCKED_NOTICE: 'Kullanım engellendi',
 })
 
@@ -33,24 +35,28 @@ const PREVIEW_REVIEW_REASONS = new Set([
 function frozenRoute({ mode, reason, gate }) {
   const definitive = mode === STAGE_H_PLAYBACK_MODE.DEFINITIVE
   const preview = mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW
+  const reviewWithheld = mode === STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD
   const blocked = mode === STAGE_H_PLAYBACK_MODE.BLOCKED
 
   return Object.freeze({
     mode,
     reason,
-    actionText: preview
+    actionText: preview || reviewWithheld
       ? STAGE_H_PLAYBACK_COPY.REVIEW_ACTION
       : STAGE_H_PLAYBACK_COPY.DEFINITIVE_ACTION,
     noticeText: preview
       ? STAGE_H_PLAYBACK_COPY.REVIEW_NOTICE
-      : blocked
-        ? STAGE_H_PLAYBACK_COPY.BLOCKED_NOTICE
-        : '',
+      : reviewWithheld
+        ? STAGE_H_PLAYBACK_COPY.REVIEW_WITHHELD_NOTICE
+        : blocked
+          ? STAGE_H_PLAYBACK_COPY.BLOCKED_NOTICE
+          : '',
     definitivePlaybackAllowed: definitive,
     reviewPreviewAllowed: preview,
+    playbackWithheld: reviewWithheld || blocked,
     automaticAllowed: definitive,
     blocked,
-    teacherReviewRequired: preview,
+    teacherReviewRequired: preview || reviewWithheld,
     // Stage H is presentation/playback routing only.
     teacherApproved: false,
     shareAuthorized: false,
@@ -126,10 +132,12 @@ export function resolveStageHPlaybackRoute(notes, options = {}) {
     })
   }
 
-  if (reviewPreviewEvidenceIsSafe(gate)) {
+  if (gate?.decision === QUALITY_GATE_DECISION.REVIEW) {
     return frozenRoute({
-      mode: STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW,
-      reason: gate.reason,
+      mode: reviewPreviewEvidenceIsSafe(gate)
+        ? STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW
+        : STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD,
+      reason: gate.reason ?? 'review-preview-evidence-insufficient',
       gate,
     })
   }
