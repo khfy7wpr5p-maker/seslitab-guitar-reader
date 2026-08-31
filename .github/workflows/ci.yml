@@ -44,3 +44,8 @@ jobs:
         env:
           SESLITAB_PRODUCTION_URL: https://seslitab-app.onrender.com
         run: node scripts/verifyProductionScoreRuntimeHttps.js
+
+      - name: Diagnose production Gesi score runtime in Chrome
+        env:
+          SESLITAB_PRODUCTION_URL: https://seslitab-app.onrender.com
+        run: node scripts/verifyProductionGesiScoreRuntimeHttps.js
