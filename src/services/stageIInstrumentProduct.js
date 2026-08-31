@@ -44,6 +44,28 @@ export const STAGE_I_PRODUCT_COPY = Object.freeze({
   VIOLIN_NOT_AVAILABLE: 'Bu eser için güvenli keman çalışma önerisi mevcut değil.',
 })
 
+export const STAGE_I_REASON_COPY = Object.freeze({
+  'quality-report-missing': 'Kalite raporu henüz hazır değil.',
+  'source-not-verified': 'Kaynak müzikal olarak doğrulanmadı.',
+  'review-required': 'Kalite raporu öğretmen incelemesi istiyor.',
+  'canonical-review-required': 'Nota verisinin bir bölümü kesinleştirilmedi.',
+  'quality-report-unreliable': 'Kalite raporu güvenilir değil.',
+  'structure-not-valid': 'MusicXML yapısal doğrulamadan geçmedi.',
+  'canonical-data-blocked': 'Nota verisinde engelleyici bir tutarsızlık var.',
+  'consumer-boundary-pending': 'Bu çalgı için güvenli kullanım sınırı hazır değil.',
+  'quality-gate-resolution-failed': 'Kalite kontrolü tamamlanamadı.',
+  'quality-gate-accept-permission-mismatch': 'Kalite izni tutarsız olduğu için kullanım durduruldu.',
+  'quality-gate-decision-missing': 'Kalite kararı alınamadı.',
+  'stage-g-route-resolution-failed': 'Çalgı kullanım kararı alınamadı.',
+  'stage-g-pass-permission-mismatch': 'Çalgı kullanım izni tutarsız olduğu için işlem durduruldu.',
+  'instrument-consumer-review-required': 'Çalgı çıktısı ek inceleme gerektiriyor.',
+  'instrument-consumer-blocked': 'Çalgı çıktısı güvenlik nedeniyle engellendi.',
+  'instrument-consumer-failed': 'Çalgı çıktısı hazırlanamadı.',
+  'instrument-consumer-invalid': 'Çalgı çıktısı doğrulanamadı.',
+  'canonical-note-array-required': 'Geçerli nota verisi bulunamadı.',
+  'unsupported-stage-i-instrument': 'Bu çalgı desteklenmiyor.',
+})
+
 const INSTRUMENT_CONFIG = Object.freeze({
   [STAGE_I_INSTRUMENT.GUITAR]: Object.freeze({
     consumer: STAGE_G_CONSUMER.GUITAR_TAB,
@@ -55,11 +77,25 @@ const INSTRUMENT_CONFIG = Object.freeze({
   }),
 })
 
-function copyFor(instrument, state) {
+export function stageIReasonCopy(reason) {
+  return typeof reason === 'string'
+    ? STAGE_I_REASON_COPY[reason] ?? null
+    : null
+}
+
+function copyFor(instrument, state, reason = null) {
   if (state === STAGE_I_PRODUCT_STATE.EMPTY) return STAGE_I_PRODUCT_COPY.EMPTY
-  if (state === STAGE_I_PRODUCT_STATE.REVIEW_REQUIRED) return STAGE_I_PRODUCT_COPY.REVIEW_REQUIRED
+
+  const reasonCopy = stageIReasonCopy(reason)
+  if (state === STAGE_I_PRODUCT_STATE.REVIEW_REQUIRED) {
+    return reasonCopy
+      ? `${STAGE_I_PRODUCT_COPY.REVIEW_REQUIRED} · ${reasonCopy}`
+      : STAGE_I_PRODUCT_COPY.REVIEW_REQUIRED
+  }
   if (state === STAGE_I_PRODUCT_STATE.BLOCKED || state === STAGE_I_PRODUCT_STATE.INVALID) {
-    return STAGE_I_PRODUCT_COPY.BLOCKED
+    return reasonCopy
+      ? `${STAGE_I_PRODUCT_COPY.BLOCKED} · ${reasonCopy}`
+      : STAGE_I_PRODUCT_COPY.BLOCKED
   }
   if (instrument === STAGE_I_INSTRUMENT.GUITAR) {
     return state === STAGE_I_PRODUCT_STATE.AVAILABLE
@@ -76,7 +112,7 @@ function freezeResult(instrument, state, reason = null, route = null, mode = nul
     instrument,
     state,
     reason,
-    statusText: copyFor(instrument, state),
+    statusText: copyFor(instrument, state, reason),
     actionAllowed: state === STAGE_I_PRODUCT_STATE.AVAILABLE,
     definitiveInstrumentOutput: state === STAGE_I_PRODUCT_STATE.AVAILABLE,
     mode,
