@@ -4,6 +4,8 @@ export const APP_SHELL_FEATURES = Object.freeze([
   Object.freeze({ id: 'tuner', label: 'Akort', targetId: 'chromatic-tuner-section', kind: 'section' }),
 ])
 
+const boundDiscoveryForms = new WeakSet()
+
 function announce(root, message) {
   const live = root.getElementById('aria-live-region')
   if (live) live.textContent = message
@@ -36,59 +38,89 @@ export function activateAppShellFeature(root, featureId) {
   return activated
 }
 
-function createFeatureButton(root, feature) {
-  const button = root.createElement('button')
-  button.type = 'button'
-  button.className = 'app-shell-nav-button'
-  button.dataset.feature = feature.id
-  button.textContent = feature.label
-  button.setAttribute('aria-controls', feature.targetId)
-  button.addEventListener('click', () => activateAppShellFeature(root, feature.id))
-  return button
+function findLabel(root, controlId) {
+  const labels = root.querySelectorAll?.('label') ?? []
+  for (const label of labels) {
+    if (label.getAttribute?.('for') === controlId) return label
+  }
+  return null
 }
 
-function createProductIntro(root) {
-  const card = root.createElement('section')
-  card.className = 'app-shell-status'
-  card.setAttribute('aria-labelledby', 'app-shell-status-heading')
+function appendClass(node, className) {
+  const values = new Set(String(node?.className || '').split(/\s+/).filter(Boolean))
+  values.add(className)
+  if (node) node.className = [...values].join(' ')
+}
 
-  const heading = root.createElement('h2')
-  heading.id = 'app-shell-status-heading'
-  heading.textContent = 'SesliTab çalışma alanı'
-  card.appendChild(heading)
+function compactIdentity(root, header) {
+  const logo = header.querySelector?.('.logo') ?? null
+  const heading = logo?.querySelector?.('h1') ?? null
+  const subtitle = logo?.querySelector?.('.logo-subtitle') ?? null
 
-  const text = root.createElement('p')
-  text.textContent = 'Bir eser açın, nota kaynağı arayın veya akort aracını kullanın. Hesap ve gerçek öğrenci paylaşımı henüz etkin değildir.'
-  card.appendChild(text)
+  if (heading) heading.textContent = 'SesliTab Guitar Reader'
+  if (subtitle) {
+    subtitle.hidden = true
+    subtitle.setAttribute?.('hidden', '')
+  }
+  header.setAttribute?.('data-stage-s03-shell', 'ready')
+}
 
-  return card
+function revealDiscoveryOnSearch(root, form) {
+  if (!form?.addEventListener || boundDiscoveryForms.has(form)) return
+  boundDiscoveryForms.add(form)
+
+  form.addEventListener('submit', () => {
+    const discoveryTab = root.getElementById('discovery-tab-btn')
+    discoveryTab?.click?.()
+    root.getElementById('discovery-panel')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+function moveDiscoverySearch(root, shell) {
+  const form = root.getElementById('discovery-search-form')
+  const query = root.getElementById('discovery-query')
+  const searchButton = root.getElementById('discovery-search-btn')
+  const queryRow = query?.parentElement ?? null
+  const label = findLabel(root, 'discovery-query')
+
+  if (!form || !query || !searchButton || !queryRow || !label) return false
+
+  appendClass(label, 'app-shell-search-label')
+  appendClass(queryRow, 'app-shell-search-row')
+  query.setAttribute?.('form', form.id)
+  searchButton.setAttribute?.('form', form.id)
+
+  shell.appendChild(label)
+  shell.appendChild(queryRow)
+  revealDiscoveryOnSearch(root, form)
+  return true
 }
 
 export function ensureAppShell(root = document) {
-  if (root.getElementById('seslitab-app-shell')) return root.getElementById('seslitab-app-shell')
+  const existing = root.getElementById('seslitab-app-shell')
+  if (existing) return existing
 
   const header = root.querySelector('.app-header')
-  const main = root.querySelector('.app-main')
-  if (!header || !main?.parentElement) return null
+  const headerContent = header?.querySelector?.('.header-content') ?? null
+  if (!header || !headerContent) return null
+
+  compactIdentity(root, header)
 
   const shell = root.createElement('div')
   shell.id = 'seslitab-app-shell'
   shell.className = 'app-shell'
+  shell.setAttribute('role', 'search')
+  shell.setAttribute('aria-label', 'Eser veya sanatçı ara')
 
-  const nav = root.createElement('nav')
-  nav.className = 'app-shell-nav'
-  nav.setAttribute('aria-label', 'SesliTab ana bölümleri')
+  if (!moveDiscoverySearch(root, shell)) return null
 
-  const navLabel = root.createElement('span')
-  navLabel.className = 'app-shell-nav-label'
-  navLabel.textContent = 'SesliTab'
-  nav.appendChild(navLabel)
+  const providerBadge = root.getElementById('provider-badge')
+  if (providerBadge?.parentElement === headerContent && typeof headerContent.insertBefore === 'function') {
+    headerContent.insertBefore(shell, providerBadge)
+  } else {
+    headerContent.appendChild(shell)
+  }
 
-  for (const feature of APP_SHELL_FEATURES) nav.appendChild(createFeatureButton(root, feature))
-  shell.appendChild(nav)
-  shell.appendChild(createProductIntro(root))
-
-  main.parentElement.insertBefore(shell, main)
   return shell
 }
 
