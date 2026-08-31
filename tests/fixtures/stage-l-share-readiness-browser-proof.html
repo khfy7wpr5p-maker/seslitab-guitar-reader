@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stage L Share Readiness Browser Proof</title>
+  <link rel="stylesheet" href="../../src/style.css" />
+  <link rel="stylesheet" href="../../src/package8TeacherUi.css" />
+  <link rel="stylesheet" href="../../src/stageLShareUi.css" />
+</head>
+<body>
+  <main>
+    <section class="card">
+      <div class="card-body">
+        <div class="result-tabs" role="tablist"></div>
+      </div>
+    </section>
+  </main>
+  <div id="aria-live-region" aria-live="polite"></div>
+  <button id="reset-btn" type="button">Sıfırla</button>
+
+  <script type="module">
+    import { initStageLShareUi, STAGE_L_SHARE_COPY } from '../../src/stageLShareUi.js'
+
+    initStageLShareUi(document, {
+      id: (prefix) => `${prefix}-browser-proof`,
+      now: () => '2026-08-31T10:55:00Z',
+    })
+
+    // Package 8 correctly hides both its result tabpanel and active workspace
+    // until those product states are actually active. The fixture reveals only
+    // those presentation ancestors to measure Stage L geometry. Controls stay
+    // disabled and no workspace, approval, authorization, or delivery is forged.
+    const teacherPanel = document.getElementById('tab-teacher')
+    const activeWorkspace = document.getElementById('teacher-active-workspace')
+    if (teacherPanel) teacherPanel.hidden = false
+    if (activeWorkspace) activeWorkspace.hidden = false
+
+    const panel = document.getElementById('stage-l-share-panel')
+    const action = document.getElementById('stage-l-share-check-btn')
+    const recipient = document.getElementById('stage-l-recipient-id')
+    const boundary = document.getElementById('stage-l-share-boundary')
+    const status = document.getElementById('stage-l-share-status')
+
+    const actionHeight = action?.getBoundingClientRect().height ?? 0
+    const inputHeight = recipient?.getBoundingClientRect().height ?? 0
+    const narrow = window.innerWidth <= 640
+    const noDeliveryLink = (panel?.querySelectorAll('a[href]').length ?? 0) === 0
+    const deliveryBoundary =
+      panel?.getAttribute('data-stage-l-delivery-state') === 'not_implemented' &&
+      boundary?.textContent === STAGE_L_SHARE_COPY.deliveryBoundary &&
+      noDeliveryLink
+    const presentation =
+      Boolean(panel && action && recipient && status) &&
+      action?.textContent === STAGE_L_SHARE_COPY.action &&
+      action?.disabled === true &&
+      recipient?.disabled === true
+    const mobile = narrow && actionHeight >= 44 && inputHeight >= 44
+
+    document.body.setAttribute('data-stage-l-presentation-pass', String(presentation))
+    document.body.setAttribute('data-stage-l-mobile-pass', String(mobile))
+    document.body.setAttribute('data-stage-l-delivery-boundary-pass', String(deliveryBoundary))
+    document.body.setAttribute('data-stage-l-action', action?.textContent ?? '')
+    document.body.setAttribute('data-stage-l-viewport-width', String(window.innerWidth))
+    document.body.setAttribute('data-stage-l-action-height', String(actionHeight))
+    document.body.setAttribute('data-stage-l-input-height', String(inputHeight))
+  </script>
+</body>
+</html>

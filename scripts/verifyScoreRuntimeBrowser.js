@@ -9,6 +9,7 @@ const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stag
 const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
 const stageJDiscoveryFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-j-discovery-presentation-browser-proof.html')
 const stageKTunerFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-k-tuner-presentation-browser-proof.html')
+const stageLShareFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-l-share-readiness-browser-proof.html')
 const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].filter(Boolean)
 
 let chrome
@@ -162,6 +163,26 @@ function runStageKTunerPresentationProof() {
   }
 }
 
+function runStageLShareReadinessProof() {
+  const label = 'Stage L share readiness browser proof'
+  const dom = runChrome(label, stageLShareFixturePath, '--window-size=390,844')
+  if (!dom.includes('data-stage-l-presentation-pass="true"')) {
+    fail(label, 'bounded share-readiness presentation evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-l-mobile-pass="true"')) {
+    fail(label, 'share-readiness narrow viewport/44px evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-l-delivery-boundary-pass="true"')) {
+    fail(label, 'no-delivery security boundary evidence missing.', dom)
+  }
+  if (!dom.includes('id="stage-l-share-panel"') || !dom.includes('data-stage-l-delivery-state="not_implemented"')) {
+    fail(label, 'Stage L delivery-state evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-l-action="Bu öğrenci için paylaşım izni oluştur ve uygunluğu kontrol et"')) {
+    fail(label, 'Stage L explicit readiness action evidence missing.', dom)
+  }
+}
+
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
 runStageFCorrectedMusicXmlProof()
@@ -169,4 +190,5 @@ runStageFDurationHitProof()
 runStageIInstrumentProductProof()
 runStageJDiscoveryPresentationProof()
 runStageKTunerPresentationProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, Stage J Discovery presentation, and Stage K compact tuner browser proofs PASS using ${chrome}`)
+runStageLShareReadinessProof()
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)

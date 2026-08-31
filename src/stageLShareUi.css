@@ -1,0 +1,49 @@
+.stage-l-share-panel {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 0.75rem;
+}
+
+.stage-l-share-panel h4,
+.stage-l-share-panel p {
+  margin: 0;
+}
+
+.stage-l-share-panel label {
+  font-weight: 700;
+}
+
+.stage-l-share-panel input,
+.stage-l-share-panel button {
+  min-height: 44px;
+}
+
+.stage-l-share-panel input {
+  width: 100%;
+  max-width: 36rem;
+  box-sizing: border-box;
+}
+
+.stage-l-share-panel :is(input, button):focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+#stage-l-share-boundary,
+#stage-l-recipient-help {
+  max-width: 52rem;
+}
+
+@media (max-width: 640px) {
+  .stage-l-share-panel {
+    padding: 0.75rem;
+  }
+
+  .stage-l-share-panel input,
+  .stage-l-share-panel button {
+    width: 100%;
+  }
+}
