@@ -38,9 +38,12 @@ import {
   QUALITY_GATE_DECISION,
   prepareMusicXmlQualityGate,
   qualityGateUserMessage,
-  resolveAppPlaybackGate,
   resolveAppTtsGate,
 } from './services/appQualityGate.js'
+import {
+  STAGE_H_PLAYBACK_MODE,
+  resolveStageHPlaybackRoute,
+} from './services/stageHReviewPlayback.js'
 import { normalizeTabInput } from '../tabParser.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -68,6 +71,7 @@ let backendProvider = null
 let selectedPdfFile = null
 let selectedMusicXmlFile = null
 let qualityGateActive = false
+let stageHPlaybackRoute = null
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -482,6 +486,9 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
   qualityGateActive = Boolean(xmlString)
   if (qualityGateActive) {
     prepareMusicXmlQualityGate(notes, xmlString)
+    stageHPlaybackRoute = resolveStageHPlaybackRoute(notes)
+  } else {
+    stageHPlaybackRoute = null
   }
 
   // Generate text outputs
@@ -527,6 +534,7 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
   $('results-section').hidden = false
   $('voice-section').hidden = false
   $('rhythm-section').hidden = false
+  syncStageHPlaybackPresentation()
 
   // Scroll to results
   setTimeout(() => {
@@ -609,6 +617,7 @@ function resetApp() {
   selectedPdfFile = null
   selectedMusicXmlFile = null
   qualityGateActive = false
+  stageHPlaybackRoute = null
 
   $('file-input').value = ''
   $('drop-zone').hidden = false
@@ -709,30 +718,73 @@ function resetVoiceButtons() {
 
 // ── Rhythm playback ────────────────────────────────────────
 
+function applyStageHIdleRhythmButton() {
+  const button = $('rhythm-btn')
+  if (!button) return
+
+  const reviewMode = (
+    stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW ||
+    stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD
+  )
+  const playbackWithheld = stageHPlaybackRoute?.playbackWithheld === true
+
+  button.classList.remove('playing')
+  button.querySelector('.btn-icon-text').textContent = reviewMode
+    ? '🎧 İnceleme İçin Dinle'
+    : '🎵 Notaları Çal'
+  button.setAttribute('aria-label', reviewMode ? 'İnceleme İçin Dinle' : 'Notaları Çal')
+  button.disabled = !isAudioSupported() || playbackWithheld
+}
+
+function syncStageHPlaybackPresentation() {
+  applyStageHIdleRhythmButton()
+
+  const status = $('rhythm-status')
+  if (!status || isPlaying) return
+
+  if (
+    stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW ||
+    stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD ||
+    stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.BLOCKED
+  ) {
+    status.hidden = false
+    status.textContent = stageHPlaybackRoute.noticeText
+    return
+  }
+
+  status.hidden = true
+  status.textContent = ''
+}
+
 async function toggleRhythm() {
   if (isPlaying) { stopRhythmPlayback(); return }
 
   if (isSpeaking) stopVoice()
 
+  let reviewPreview = false
   if (qualityGateActive) {
-    const gate = resolveAppPlaybackGate(parsedNotes)
-    if (gate.decision !== QUALITY_GATE_DECISION.ACCEPT) {
-      const message = qualityGateUserMessage(gate)
-      $('rhythm-status').hidden = false
-      $('rhythm-status').textContent = message
-      announce(message)
-      resetRhythmButtons()
+    stageHPlaybackRoute = resolveStageHPlaybackRoute(parsedNotes)
+    if (
+      stageHPlaybackRoute.mode === STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD ||
+      stageHPlaybackRoute.mode === STAGE_H_PLAYBACK_MODE.BLOCKED
+    ) {
+      syncStageHPlaybackPresentation()
+      announce(stageHPlaybackRoute.noticeText)
       return
     }
+    reviewPreview = stageHPlaybackRoute.mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW
   }
 
   isPlaying = true
   $('rhythm-btn').classList.add('playing')
   $('rhythm-btn').querySelector('.btn-icon-text').textContent = '⏸ Duraklat'
+  $('rhythm-btn').disabled = false
   $('rhythm-stop-btn').disabled = false
   $('rhythm-status').hidden = false
-  $('rhythm-status').textContent = 'Ritmik çalma başladı...'
-  announce('Ritmik çalma başladı')
+  $('rhythm-status').textContent = reviewPreview
+    ? 'Doğrulanmamış önizleme — ritmik çalma başladı...'
+    : 'Ritmik çalma başladı...'
+  announce(reviewPreview ? 'Doğrulanmamış önizleme başladı' : 'Ritmik çalma başladı')
 
   const tempo = parseFloat($('tempo-slider').value)
   const speed = bpmToSpeed(tempo)
@@ -745,8 +797,11 @@ async function toggleRhythm() {
 
   isPlaying = false
   resetRhythmButtons()
-  $('rhythm-status').textContent = 'Ritmik çalma tamamlandı.'
-  announce('Ritmik çalma tamamlandı')
+  $('rhythm-status').hidden = false
+  $('rhythm-status').textContent = reviewPreview
+    ? 'Doğrulanmamış önizleme — ritmik çalma tamamlandı.'
+    : 'Ritmik çalma tamamlandı.'
+  announce(reviewPreview ? 'Doğrulanmamış önizleme tamamlandı' : 'Ritmik çalma tamamlandı')
   document.querySelectorAll('.note-card.playing').forEach((c) => c.classList.remove('playing'))
 }
 
@@ -754,14 +809,17 @@ function stopRhythmPlayback() {
   stopRhythm()
   isPlaying = false
   resetRhythmButtons()
-  $('rhythm-status').hidden = true
+  if (stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW) {
+    syncStageHPlaybackPresentation()
+  } else {
+    $('rhythm-status').hidden = true
+  }
   announce('Ritmik çalma durduruldu')
   document.querySelectorAll('.note-card.playing').forEach((c) => c.classList.remove('playing'))
 }
 
 function resetRhythmButtons() {
-  $('rhythm-btn').classList.remove('playing')
-  $('rhythm-btn').querySelector('.btn-icon-text').textContent = '🎵 Notaları Çal'
+  applyStageHIdleRhythmButton()
   $('rhythm-stop-btn').disabled = true
 }
 
