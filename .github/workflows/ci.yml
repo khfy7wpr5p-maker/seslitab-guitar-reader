@@ -39,3 +39,8 @@ jobs:
 
       - name: Verify score runtime in real browser
         run: node scripts/verifyScoreRuntimeBrowser.js
+
+      - name: Diagnose production HTTPS score runtime in Chrome
+        env:
+          SESLITAB_PRODUCTION_URL: https://seslitab-app.onrender.com
+        run: node scripts/verifyProductionScoreRuntimeHttps.js
