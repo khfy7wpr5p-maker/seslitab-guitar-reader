@@ -80,9 +80,11 @@ Stage J merge-ready olmak için:
 2. full repository test suite;
 3. production build;
 4. gerçek Chrome Discovery presentation proof;
-5. 390px narrow viewport + 44px touch-target proof;
+5. gerçek browser'da `<=640px` mobile breakpoint + 44px touch-target proof;
 6. required `test-and-build` CI;
 7. unresolved review thread olmaması;
 8. merge öncesi explicit kullanıcı onayı
 
 gerektirir.
+
+CI headless Chrome, `--window-size=390` isteğini 500 CSS px minimumuna clamp edebilir. Bu durumda kanıt 390px çalıştığını iddia etmez; gözlenen viewport'un Stage J'nin `<=640px` mobile breakpoint'i içinde olduğunu ve 44px hedeflerin uygulandığını doğrular.
