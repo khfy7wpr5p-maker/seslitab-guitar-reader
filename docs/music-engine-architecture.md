@@ -142,7 +142,7 @@ auth/persistence/network delivery              [out of scope]
 
 T3 must not be interpreted as proof for correction classes it explicitly excludes.
 
-T4 is separate domain-security work. Stage A neither duplicates nor modifies it. Protected main must continue to fail closed for unsupported corrected structural/rhythmic classes until a verified merged boundary exists.
+T4 is the verified production domain-security boundary for its declared structural/rhythmic scope. Stage A–L does not duplicate or widen it; unsupported corrected structural/rhythmic classes continue to fail closed.
 
 The new product Auto-Pass policy does not automatically authorize student sharing. Existing Package 12 authorization semantics remain in force until separately revised.
 
@@ -270,7 +270,7 @@ Without separate explicit authorization, keep unchanged:
 | Package 12-T1 | exact revision + approval + recipient | share authorization metadata only |
 | Package 12-T2 | exact source/provenance/quality | eligibility metadata only |
 | Package 12-T3 | bounded corrected revalidation | corrected evidence metadata only |
-| Package 12-T4 | not merged | no new protected-main authority yet |
+| Package 12-T4 | exact bounded structural/rhythmic revalidation | corrected evidence metadata only; no delivery authority |
 | Discovery | source/licence metadata | no musical verification |
 | Renderer | canonical presentation contract | presentation/interaction only |
 | Tuner | local microphone estimate | tuning guidance only |
