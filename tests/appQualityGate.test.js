@@ -145,10 +145,12 @@ describe('Package 2D production wiring source contract', () => {
     assert.ok(textIndex > gateIndex)
   })
 
-  test('rhythm playback resolves the gate before calling playRhythm', () => {
-    const gateIndex = source.indexOf('resolveAppPlaybackGate(parsedNotes)')
-    const playbackIndex = source.indexOf('await playRhythm(parsedNotes')
-    assert.ok(gateIndex >= 0)
+  test('rhythm playback resolves the Stage H route before calling playRhythm', () => {
+    const toggleIndex = source.indexOf('async function toggleRhythm()')
+    const gateIndex = source.indexOf('resolveStageHPlaybackRoute(parsedNotes)', toggleIndex)
+    const playbackIndex = source.indexOf('await playRhythm(parsedNotes', toggleIndex)
+    assert.ok(toggleIndex >= 0)
+    assert.ok(gateIndex > toggleIndex)
     assert.ok(playbackIndex > gateIndex)
   })
 })
