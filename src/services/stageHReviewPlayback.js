@@ -73,6 +73,9 @@ function reviewPreviewEvidenceIsSafe(gate) {
     return false
   }
 
+  // The trusted Package 2D playback boundary must already be mapped.
+  if (gate.boundary?.status !== 'mapped') return false
+
   const report = gate.report
   if (!report || typeof report !== 'object' || Array.isArray(report)) return false
   if (report.structurallyValid !== true) return false
