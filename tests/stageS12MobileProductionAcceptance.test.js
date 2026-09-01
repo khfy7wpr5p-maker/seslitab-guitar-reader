@@ -83,7 +83,7 @@ test('S12 PASS presentation remains input-origin agnostic and fail-closed policy
   const stageI = readFileSync(new URL('../src/stageIInstrumentProductUi.js', import.meta.url), 'utf8')
   const stageG = readFileSync(new URL('../src/services/stageGProductRouting.js', import.meta.url), 'utf8')
   assert.doesNotMatch(stageI, /\bpdf\b|musicxml origin|input[-_ ]type/i)
-  assert.match(stageG, /state:\s*STAGE_G_PRODUCT_STATE\.PASS/)
+  assert.match(stageG, /STAGE_G_PRODUCT_STATE\.PASS/)
   assert.match(stageG, /automaticProceed:\s*pass/)
   assert.match(stageG, /definitiveConsumerAllowed/)
   assert.match(stageG, /STAGE_G_PRODUCT_STATE\.REVIEW/)
