@@ -23,19 +23,6 @@ export const EDITOR_CORE_AUTHORITY_PROFILE = Object.freeze({
   editorUndoBridgeEnabled: false,
 })
 
-const STRUCTURAL_FIELDS = Object.freeze([
-  'measureKey',
-  'partId',
-  'partIndex',
-  'measureIndex',
-  'voice',
-  'staff',
-  'startBeat',
-  'isRest',
-  'isGrace',
-  'isChordNote',
-])
-
 function requiredText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '' || value.trim() !== value) {
     throw new TypeError(`${fieldName} must be a non-empty trimmed string.`)
@@ -43,16 +30,38 @@ function requiredText(value, fieldName) {
   return value
 }
 
-function sameProjectedStructure(selectionNotes, revisionContent) {
-  if (!Array.isArray(selectionNotes) || !Array.isArray(revisionContent)) return false
-  if (selectionNotes.length !== revisionContent.length) return false
-  for (let index = 0; index < selectionNotes.length; index++) {
-    const projected = selectionNotes[index]
-    const revisionNote = revisionContent[index]
-    if (!projected || !revisionNote || typeof projected !== 'object' || typeof revisionNote !== 'object') return false
-    if (!STRUCTURAL_FIELDS.every((field) => Object.is(projected[field], revisionNote[field]))) return false
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function samePlainValue(left, right) {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false
+    for (let index = 0; index < left.length; index++) {
+      if (!samePlainValue(left[index], right[index])) return false
+    }
+    return true
+  }
+  if (!isPlainObject(left) || !isPlainObject(right)) return false
+
+  const leftKeys = Object.keys(left).sort()
+  const rightKeys = Object.keys(right).sort()
+  if (leftKeys.length !== rightKeys.length) return false
+  for (let index = 0; index < leftKeys.length; index++) {
+    if (leftKeys[index] !== rightKeys[index]) return false
+    const key = leftKeys[index]
+    if (!samePlainValue(left[key], right[key])) return false
   }
   return true
+}
+
+function sameProjectedContent(selectionNotes, revisionContent) {
+  return Array.isArray(selectionNotes) &&
+    Array.isArray(revisionContent) &&
+    samePlainValue(selectionNotes, revisionContent)
 }
 
 export function createEditorCoreRevisionBinding({
@@ -76,8 +85,8 @@ export function createEditorCoreRevisionBinding({
       throw new Error(`Package 3 / Package 8 revision mismatch: ${field}.`)
     }
   }
-  if (!sameProjectedStructure(package3Snapshot.selectionNotes, teacherRevision.content)) {
-    throw new Error('Package 3 selection projection does not match the exact current Package 8 revision structure.')
+  if (!sameProjectedContent(package3Snapshot.selectionNotes, teacherRevision.content)) {
+    throw new Error('Package 3 selection projection does not match the exact current Package 8 revision content.')
   }
 
   return Object.freeze({
