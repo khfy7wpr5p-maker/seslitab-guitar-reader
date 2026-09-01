@@ -46,6 +46,7 @@ import { initStageS11TeacherWorkflowUi } from './src/stageS11TeacherWorkflowUi.j
 import { initStageS12MobileProductionAcceptanceUi } from './src/stageS12MobileProductionAcceptanceUi.js'
 import { initStageS12RendererSessionRecoveryUi } from './src/stageS12RendererSessionRecoveryUi.js'
 import { initStageS12MobileScoreToolsUi } from './src/stageS12MobileScoreToolsUi.js'
+import { initStagePrBEditorSelectionUi } from './src/stagePrBEditorSelectionUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
@@ -65,6 +66,11 @@ if (typeof document !== 'undefined') {
   initStageS07InlineTeacherInspectorUi(document)
   initStageS07VerifiedSelectionProjection(document)
   initStageS08ScoreQualityOverlay(document)
+  // PR-B installs the current-render → canonical → current Editor manifest
+  // selection gate first. Its capture handler stops the former direct Package 3
+  // selection path, while the S12 layer below continues to own mobile workspace
+  // presentation/recovery behavior without becoming a second write authority.
+  initStagePrBEditorSelectionUi(document)
   // S12 adds mobile pointer/touch delivery, post-input workspace focus, and
   // relocates the existing primary playback sections beside the score. It does
   // not change renderer/canonical authority or quality-gate decisions.

@@ -22,11 +22,14 @@ function note(overrides = {}) {
   }
 }
 
-test('renderer ScoreNoteRef validation requires explicit voice and bounded exact fields', () => {
+test('renderer ScoreNoteRef validation honors optional voice without inventing it', () => {
   assert.deepEqual(validateRendererScoreNoteRef({ partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 2 }), {
     partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 2,
   })
-  assert.equal(validateRendererScoreNoteRef({ partId: 'P1', measureIndex: 0, noteIndex: 0 }), null)
+  assert.deepEqual(validateRendererScoreNoteRef({ partId: 'P1', measureIndex: 0, noteIndex: 0 }), {
+    partId: 'P1', measureIndex: 0, noteIndex: 0,
+  })
+  assert.equal(Object.hasOwn(validateRendererScoreNoteRef({ partId: 'P1', measureIndex: 0, noteIndex: 0 }), 'voice'), false)
   assert.equal(validateRendererScoreNoteRef({ partId: ' P1 ', measureIndex: 0, noteIndex: 0, voice: 1 }), null)
   assert.equal(validateRendererScoreNoteRef({ partId: 'P1', measureIndex: 0, noteIndex: 0, voice: 1, pitch: 'C4' }), null)
 })
@@ -40,6 +43,18 @@ test('mapping preserves renderer staff-first traversal without pitch matching', 
   assert.equal(resolveCanonicalNoteFromScoreRef(notes, { partId: 'P1', measureIndex: 0, noteIndex: 0, voice: 1 }).note, staff1Early)
   assert.equal(resolveCanonicalNoteFromScoreRef(notes, { partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 1 }).note, staff1Later)
   assert.equal(resolveCanonicalNoteFromScoreRef(notes, { partId: 'P1', measureIndex: 0, noteIndex: 2, voice: 1 }).note, staff2Early)
+})
+
+test('voice-omitted renderer global index is admitted only for a provably single-voice measure', () => {
+  const first = note({ staff: 1, startBeat: 0, step: 'C' })
+  const second = note({ staff: 1, startBeat: 1, step: 'D' })
+  const notes = [first, second]
+  const resolved = resolveCanonicalNoteFromScoreRef(notes, { partId: 'P1', measureIndex: 0, noteIndex: 1 })
+  assert.equal(resolved.note, second)
+  assert.deepEqual(resolved.rendererTarget, { partId: 'P1', measureIndex: 0, noteIndex: 1 })
+
+  const multiVoice = [first, note({ voice: 2, staff: 1, startBeat: 0, step: 'E' })]
+  assert.equal(resolveCanonicalNoteFromScoreRef(multiVoice, { partId: 'P1', measureIndex: 0, noteIndex: 0 }), null)
 })
 
 test('rests remain in traversal ordinal but cannot become a canonical selectable hit', () => {
