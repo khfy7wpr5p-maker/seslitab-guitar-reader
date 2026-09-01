@@ -35,26 +35,50 @@ export function validateRendererScoreNoteRef(value) {
   const partId = normalizePartId(value.partId)
   const measureIndex = normalizeNonNegativeInteger(value.measureIndex)
   const noteIndex = normalizeNonNegativeInteger(value.noteIndex)
-  const voice = normalizeNonNegativeInteger(value.voice)
-  if (!partId || measureIndex === null || noteIndex === null || voice === null) return null
+  const hasVoice = Object.prototype.hasOwnProperty.call(value, 'voice') && value.voice !== undefined
+  const voice = hasVoice ? normalizeNonNegativeInteger(value.voice) : null
+  if (!partId || measureIndex === null || noteIndex === null || (hasVoice && voice === null)) return null
 
-  return Object.freeze({ partId, measureIndex, noteIndex, voice })
+  return hasVoice
+    ? Object.freeze({ partId, measureIndex, noteIndex, voice })
+    : Object.freeze({ partId, measureIndex, noteIndex })
 }
 
-function canonicalRecords(notes, partId, measureIndex, voice) {
+function collectMeasureRecords(notes, partId, measureIndex) {
   if (!Array.isArray(notes)) return null
   const records = []
 
   for (let globalIndex = 0; globalIndex < notes.length; globalIndex++) {
     const note = notes[globalIndex]
     if (!isPlainObject(note)) return null
-    if (note.partId !== partId || note.measureIndex !== measureIndex || note.voice !== voice) continue
+    if (note.partId !== partId || note.measureIndex !== measureIndex) continue
 
+    const voice = normalizeNonNegativeInteger(note.voice)
     const staff = normalizePositiveInteger(note.staff)
     const startBeat = normalizeStartBeat(note.startBeat)
-    if (staff === null || startBeat === null) return null
+    if (voice === null || staff === null || startBeat === null) return null
 
-    records.push({ note, globalIndex, staff, startBeat })
+    records.push({ note, globalIndex, voice, staff, startBeat })
+  }
+  return records
+}
+
+function canonicalRecords(notes, ref) {
+  const all = collectMeasureRecords(notes, ref.partId, ref.measureIndex)
+  if (!all) return null
+
+  let records
+  if (Object.prototype.hasOwnProperty.call(ref, 'voice')) {
+    records = all.filter((record) => record.voice === ref.voice)
+  } else {
+    // Rendering Layer 0.2.0 defines omitted voice as a global traversal index.
+    // SesliTab can reproduce that index exactly only when the canonical measure
+    // has one proven voice. In a multi-voice measure the OSMD graphical voice
+    // entry ordering is renderer-owned evidence that Package 3 does not expose;
+    // therefore abstain instead of inventing or inferring a voice.
+    const voices = new Set(all.map((record) => record.voice))
+    if (voices.size !== 1) return null
+    records = all
   }
 
   records.sort((a, b) =>
@@ -75,7 +99,7 @@ export function resolveCanonicalNoteFromScoreRef(notes, rendererRef) {
   const ref = validateRendererScoreNoteRef(rendererRef)
   if (!ref) return null
 
-  const records = canonicalRecords(notes, ref.partId, ref.measureIndex, ref.voice)
+  const records = canonicalRecords(notes, ref)
   if (!records || ref.noteIndex >= records.length) return null
   const record = records[ref.noteIndex]
   if (!record || record.note?.isRest === true) return null
@@ -103,7 +127,8 @@ export function deriveScoreNoteRefForCanonicalNote(notes, globalNoteIndex) {
   const voice = normalizeNonNegativeInteger(note.voice)
   if (!partId || measureIndex === null || voice === null) return null
 
-  const records = canonicalRecords(notes, partId, measureIndex, voice)
+  const ref = Object.freeze({ partId, measureIndex, noteIndex: 0, voice })
+  const records = canonicalRecords(notes, ref)
   if (!records) return null
   const matches = records.filter((record) => record.note === note && record.globalIndex === globalNoteIndex)
   if (matches.length !== 1) return null
