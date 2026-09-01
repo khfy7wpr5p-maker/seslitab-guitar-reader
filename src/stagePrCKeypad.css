@@ -1,0 +1,140 @@
+/* STI-08 — Bravura/SMuFL keypad presentation only. */
+
+@font-face {
+  font-family: 'Bravura';
+  src: url('/smufl-keypad/Bravura.woff2') format('woff2');
+  font-display: block;
+}
+
+.stage-prc-keypad,
+.stage-prc-keypad * {
+  box-sizing: border-box;
+}
+
+.stage-prc-keypad {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--neutral-300, #cbd5e1);
+  border-radius: 0.9rem;
+  background: var(--card-bg, #fff);
+}
+
+.stage-prc-keypad-pages,
+.stage-prc-keypad-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  gap: 0.4rem;
+}
+
+.stage-prc-keypad-page-button,
+.stage-prc-keypad-action {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--neutral-300, #cbd5e1);
+  border-radius: 0.65rem;
+  background: var(--card-bg, #fff);
+  color: var(--neutral-900, #0f172a);
+  touch-action: manipulation;
+}
+
+.stage-prc-keypad-page-button[aria-selected='true'] {
+  border-width: 2px;
+  font-weight: 800;
+}
+
+.stage-prc-keypad-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  overflow: hidden;
+}
+
+.stage-prc-keypad-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stage-prc-keypad-page-button:focus-visible,
+.stage-prc-keypad-action:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+.stage-prc-keypad-visual {
+  pointer-events: none;
+  line-height: 1;
+}
+
+.stage-prc-keypad-smufl {
+  font-family: 'Bravura';
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+
+.stage-prc-keypad-zero-dot {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.stage-prc-keypad-tie,
+.stage-prc-keypad-slur {
+  position: relative;
+  width: 28px;
+  height: 14px;
+}
+
+.stage-prc-keypad-tie::before,
+.stage-prc-keypad-slur::before {
+  content: '';
+  position: absolute;
+  inset: 3px 1px 0;
+  border-top: 2px solid currentColor;
+  border-radius: 50% 50% 0 0;
+  transform: scaleY(1.8);
+}
+
+.stage-prc-keypad-slur::before {
+  inset-inline: 0;
+  transform: scaleY(2.5);
+}
+
+/* The old A / sharp / 8 / quarter-note S12 palette is retired only while the
+   new integrated keypad path is explicitly mounted. Unrelated S12 behavior is
+   untouched when PR-C is not active. */
+.stage-s05-score-workspace[data-sti-prc-keypad-active='true'] .stage-s12-note-tools {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .stage-prc-keypad {
+    position: fixed;
+    left: max(0.45rem, env(safe-area-inset-left));
+    right: max(0.45rem, env(safe-area-inset-right));
+    bottom: max(0.45rem, env(safe-area-inset-bottom));
+    z-index: 94;
+    max-height: min(42dvh, 20rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.25);
+  }
+
+  .stage-prc-keypad-panel {
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .stage-prc-keypad {
+    left: max(0.25rem, env(safe-area-inset-left));
+    right: max(0.25rem, env(safe-area-inset-right));
+    bottom: max(0.25rem, env(safe-area-inset-bottom));
+    padding: 0.45rem;
+  }
+
+  .stage-prc-keypad-panel {
+    grid-template-columns: repeat(3, minmax(44px, 1fr));
+  }
+}
