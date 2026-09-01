@@ -42,3 +42,6 @@ jobs:
 
       - name: Verify PR-C keypad in real browser
         run: node scripts/verifyPrCKeypadBrowser.js
+
+      - name: Verify PR-D editor product pipeline in real browser
+        run: node scripts/verifyPrDEditorBrowser.js
