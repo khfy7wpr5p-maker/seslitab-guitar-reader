@@ -21,6 +21,7 @@ import './src/stageIInstrumentProduct.css'
 import './src/stageS10EducationalChords.css'
 import './src/stageS11TeacherWorkflow.css'
 import './src/stageS12MobileProductionAcceptance.css'
+import './src/stageS12MobileScoreTools.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/app.js'
 import './src/package3Ui.js'
@@ -42,6 +43,7 @@ import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.j
 import { initStageS10EducationalChordsUi } from './src/stageS10EducationalChordsUi.js'
 import { initStageS11TeacherWorkflowUi } from './src/stageS11TeacherWorkflowUi.js'
 import { initStageS12MobileProductionAcceptanceUi } from './src/stageS12MobileProductionAcceptanceUi.js'
+import { initStageS12MobileScoreToolsUi } from './src/stageS12MobileScoreToolsUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
@@ -75,5 +77,8 @@ if (typeof document !== 'undefined') {
   // S11 removes the duplicate technical teacher tab from the normal workflow
   // only after S07-S10 have established the score-centered product surfaces.
   initStageS11TeacherWorkflowUi(document)
+  // The compact note palette projects only an already-proven exact selection
+  // into the existing S07 correction controls; it does not add hit-test logic.
+  initStageS12MobileScoreToolsUi(document)
   initStageLShareUi(document)
 }
