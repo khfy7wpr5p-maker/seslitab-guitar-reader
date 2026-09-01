@@ -98,10 +98,14 @@ function mockEditorRuntime() {
 }
 
 test('STI-06 projects current Package 8 notes to exact Editor entities without using ScoreNoteRef as identity', async () => {
+  const rest = note({ isRest: true, startBeat: 1 })
+  delete rest.step
+  delete rest.alter
+  delete rest.octave
   const current = revision([
     note({ step: 'C', startBeat: 0 }),
     note({ step: 'E', startBeat: 0, isChordNote: true }),
-    note({ isRest: true, startBeat: 1, step: undefined, alter: undefined, octave: undefined }),
+    rest,
   ])
   const projection = await projectTeacherRevisionToEditorScore(current)
   const voice = projection.scoreInput.parts[0].staves[0].measures[0].voices[0]
