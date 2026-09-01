@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S10 educational chords browser proof</title>
+  <link rel="stylesheet" href="../../src/style.css">
+  <link rel="stylesheet" href="../../src/stageS10EducationalChords.css">
+</head>
+<body>
+  <main class="app-main">
+    <section id="stage-s05-score-workspace">
+      <div id="stage-s05-score-column"></div>
+    </section>
+
+    <section id="results-section">
+      <div class="card-body">
+        <div class="result-tabs" role="tablist" aria-label="Çıktı görünümü seç">
+          <button id="proof-rhythmic-tab" class="tab-btn active" data-tab="rhythmic" aria-selected="true">Ritimli Metin</button>
+          <button class="tab-btn" data-tab="html" aria-selected="false">Ritimli HTML</button>
+          <button class="tab-btn" data-tab="notes" aria-selected="false">Nota Kartları</button>
+          <button class="tab-btn" data-tab="xml" aria-selected="false">MusicXML</button>
+        </div>
+        <div id="tab-rhythmic"></div>
+        <div id="tab-html" hidden></div>
+        <div id="tab-notes" hidden></div>
+        <div id="tab-xml" hidden></div>
+        <div id="notes-summary"></div>
+        <div id="aria-live-region" aria-live="polite"></div>
+        <input id="speed-slider" value="1">
+        <button id="reset-btn" type="button">Sıfırla</button>
+        <button id="voice-btn" type="button">Ses</button>
+        <button id="rhythm-btn" type="button">Ritim</button>
+        <button id="selected-measure-speak" type="button">Seçili ölçüyü oku</button>
+        <button id="selected-measure-play" type="button">Seçili ölçüyü çal</button>
+        <button id="selected-measure-stop" type="button" disabled>Seçili ölçüyü durdur</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="proof"
+       data-stage-s10-presentation-pass="false"
+       data-stage-s10-source-pass="false"
+       data-stage-s10-no-inference-pass="false"
+       data-stage-s10-mobile-pass="false">PENDING</div>
+
+  <script type="module">
+    import {
+      clearPackage3Notes,
+      publishPackage3Notes,
+    } from '../../package3MeasureBridge.js'
+    import { initPackage7Ui } from '../../src/package7Ui.js'
+    import { registerMusicXmlSourceForNotes } from '../../src/services/musicXmlSourceRegistry.js'
+    import {
+      applyStageS10EducationalChordsUi,
+      STAGE_S10_EDUCATIONAL_CHORDS,
+    } from '../../src/stageS10EducationalChordsUi.js'
+
+    const proof = document.getElementById('proof')
+    const withHarmony = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <harmony><root><root-step>C</root-step></root><kind>major</kind></harmony>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>`
+
+    const withoutHarmony = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>`
+
+    try {
+      clearPackage3Notes()
+      if (!initPackage7Ui(document)) throw new Error('Package 7 source UI init failed')
+      if (!applyStageS10EducationalChordsUi(document)) throw new Error('S10 workspace adoption failed')
+
+      const shell = document.getElementById('stage-s10-educational-chords')
+      const sourceGroup = document.getElementById('tab-chords')
+      const educationGroup = document.getElementById('stage-s10-education-group')
+      const sourceHeading = document.getElementById('chord-heading')
+      const educationHeading = document.getElementById('stage-s10-education-heading')
+      const educationList = document.getElementById('stage-s10-education-list')
+      const sourceOutput = document.getElementById('chord-output')
+      const sourceStatus = document.getElementById('chord-status')
+
+      if (!shell || shell.parentElement !== document.getElementById('stage-s05-score-column')) throw new Error('S10 not in S05 score column')
+      if (!sourceGroup || sourceGroup.parentElement !== shell || sourceGroup.hidden) throw new Error('source group not adopted')
+      if (!educationGroup || educationGroup.parentElement !== shell) throw new Error('education group missing')
+      if (document.getElementById('chord-tab-btn')) throw new Error('legacy chord tab clutter remains')
+      if (sourceHeading.textContent !== 'Parçada Yazılı Akorlar') throw new Error('source heading mismatch')
+      if (educationHeading.textContent !== 'Eğitim Akorları') throw new Error('education heading mismatch')
+      if (sourceGroup.getAttribute('aria-labelledby') !== 'chord-heading') throw new Error('source accessible label mismatch')
+      if (educationGroup.getAttribute('aria-labelledby') !== 'stage-s10-education-heading') throw new Error('education accessible label mismatch')
+
+      const educational = Array.from(educationList.children).map((item) => item.textContent)
+      if (JSON.stringify(educational) !== JSON.stringify(STAGE_S10_EDUCATIONAL_CHORDS)) throw new Error('education library drift')
+      if (!document.getElementById('stage-s10-education-note').textContent.includes('parçadan çıkarılmamıştır')) throw new Error('education/source boundary copy missing')
+
+      const sourceNotes = [{ measureKey: 'P1:m0' }]
+      registerMusicXmlSourceForNotes(sourceNotes, withHarmony)
+      publishPackage3Notes(sourceNotes)
+      if (sourceOutput.hidden || !sourceOutput.textContent.includes('C')) throw new Error('real MusicXML harmony did not render')
+      if (!sourceStatus.textContent.includes('öğretmen onayı değildir')) throw new Error('source-only trust boundary missing')
+      proof.dataset.stageS10SourcePass = 'true'
+
+      document.getElementById('proof-rhythmic-tab').click()
+      if (sourceGroup.hidden) throw new Error('legacy result tab hid adopted source group')
+
+      const noHarmonyNotes = [{ measureKey: 'P1:m0' }]
+      registerMusicXmlSourceForNotes(noHarmonyNotes, withoutHarmony)
+      publishPackage3Notes(noHarmonyNotes)
+      if (!sourceOutput.hidden || sourceOutput.textContent !== '') throw new Error('no-harmony source fabricated chord output')
+      if (!sourceStatus.textContent.includes('bulunamadı')) throw new Error('no-harmony explanation missing')
+      if (JSON.stringify(Array.from(educationList.children).map((item) => item.textContent)) !== JSON.stringify(STAGE_S10_EDUCATIONAL_CHORDS)) throw new Error('education library changed with source state')
+      proof.dataset.stageS10NoInferencePass = 'true'
+
+      const speakMinHeight = Number.parseFloat(getComputedStyle(document.getElementById('chord-speak-btn')).minHeight)
+      if (!Number.isFinite(speakMinHeight) || speakMinHeight < 44) throw new Error('44px chord speech target missing')
+      if (document.documentElement.scrollWidth > window.innerWidth) throw new Error('S10 causes horizontal viewport overflow')
+
+      const columns = getComputedStyle(educationList).gridTemplateColumns.trim().split(/\s+/).filter(Boolean)
+      if (window.innerWidth <= 640 && columns.length !== 2) throw new Error('mobile education grid did not collapse to two columns')
+
+      proof.dataset.stageS10PresentationPass = 'true'
+      proof.dataset.stageS10MobilePass = window.innerWidth <= 640 ? 'true' : 'not-applicable'
+      proof.textContent = 'PASS'
+    } catch (error) {
+      proof.dataset.stageS10PresentationPass = 'false'
+      proof.dataset.stageS10SourcePass = 'false'
+      proof.dataset.stageS10NoInferencePass = 'false'
+      proof.dataset.stageS10MobilePass = 'false'
+      proof.dataset.renderError = String(error?.message ?? error)
+      proof.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>
