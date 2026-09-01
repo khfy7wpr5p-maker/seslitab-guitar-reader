@@ -8,18 +8,22 @@ import {
   ST_SCORE_RENDERER_REVIEWED_REVISION,
   clearScoreHighlights,
   clearScoreView,
+  getScoreViewRenderEpoch,
   highlightScoreNote,
   hitTestScoreNote,
+  hitTestScoreNoteDetailed,
   moveScoreCursor,
   renderScoreView,
   resolveStScoreRuntime,
+  validateDetailedScoreNoteHit,
   validateScoreCursorTarget,
+  validateScoreRenderEpoch,
   validateScoreViewMusicXml,
 } from '../src/services/scoreRendererConsumer.js'
 
-test('score renderer consumer pins the reviewed ST boundary', () => {
+test('score renderer consumer pins the reviewed current-render ST boundary', () => {
   assert.equal(ST_SCORE_RENDERER_CONTRACT_VERSION, '0.2.0')
-  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f')
+  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '5092ecf955b22042878b06e2677915cc18eb5f61')
 })
 
 test('MusicXML validation is bounded and fail closed', () => {
@@ -47,17 +51,20 @@ test('cursor target validation is bounded and preserves canonical locator only',
   })
 })
 
-test('runtime resolution requires the reviewed note-interaction ST-owned host shape', () => {
+test('runtime resolution requires detailed current-render evidence in the reviewed ST host shape', () => {
   assert.equal(resolveStScoreRuntime({}), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: {} }), null)
   assert.equal(resolveStScoreRuntime({
-    __ST_SCORE_RENDER_HOST__: { renderMusicXml() {}, moveCursor() {}, dispose() {} },
+    __ST_SCORE_RENDER_HOST__: {
+      renderMusicXml() {}, moveCursor() {}, hitTestNote() {}, highlight() {}, clearHighlights() {}, dispose() {},
+    },
   }), null)
 
   const host = {
     renderMusicXml() {},
     moveCursor() {},
     hitTestNote() {},
+    hitTestNoteDetailed() {},
     highlight() {},
     clearHighlights() {},
     dispose() {},
@@ -65,12 +72,12 @@ test('runtime resolution requires the reviewed note-interaction ST-owned host sh
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: host }), host)
 })
 
-test('renderScoreView forwards only the bounded ST runtime payload', async () => {
+test('renderScoreView stores only a valid current render epoch from the reviewed runtime', async () => {
   let captured = null
   const host = {
     async renderMusicXml(payload) {
       captured = payload
-      return { ok: true }
+      return { contractVersion: '0.2.0', pages: 1, renderEpoch: 'render-1', sourceId: '42' }
     },
   }
 
@@ -83,7 +90,8 @@ test('renderScoreView forwards only the bounded ST runtime payload', async () =>
     drawComposer: false,
   })
 
-  assert.deepEqual(result, { ok: true })
+  assert.equal(result.renderEpoch, 'render-1')
+  assert.equal(getScoreViewRenderEpoch(host), 'render-1')
   assert.deepEqual(captured, {
     contractVersion: '0.2.0',
     musicxml,
@@ -93,6 +101,77 @@ test('renderScoreView forwards only the bounded ST runtime payload', async () =>
     drawComposer: false,
     ticket: '42',
   })
+
+  await assert.rejects(
+    () => renderScoreView({ renderMusicXml: async () => ({ ok: true }) }, musicxml),
+    /render epoch/i,
+  )
+})
+
+test('render epoch and detailed hit evidence validation are bounded plain-data only', () => {
+  const ref = { partId: 'P1', measureIndex: 0, noteIndex: 2, voice: 1 }
+  assert.equal(validateScoreRenderEpoch(' render-1 '), null)
+  assert.equal(validateScoreRenderEpoch(''), null)
+  assert.equal(validateScoreRenderEpoch('render-1'), 'render-1')
+  assert.deepEqual(validateDetailedScoreNoteHit({ kind: 'HIT', renderEpoch: 'render-1', sourceId: '42', target: ref }), {
+    kind: 'HIT', renderEpoch: 'render-1', sourceId: '42', target: ref,
+  })
+  assert.deepEqual(validateDetailedScoreNoteHit({ kind: 'MISS', renderEpoch: 'render-1', reason: 'AMBIGUOUS_OWNERSHIP' }), {
+    kind: 'MISS', renderEpoch: 'render-1', reason: 'AMBIGUOUS_OWNERSHIP',
+  })
+  assert.equal(validateDetailedScoreNoteHit({ kind: 'MISS', renderEpoch: 'render-1', reason: 'NEAREST_NOTE' }), null)
+  assert.equal(validateDetailedScoreNoteHit({ kind: 'HIT', renderEpoch: 'render-1', target: ref, dom: {} }), null)
+})
+
+test('current-render detailed hit succeeds while stale replacement evidence abstains', async () => {
+  const ref = { partId: 'P1', measureIndex: 0, noteIndex: 2, voice: 1 }
+  let epoch = 'render-1'
+  const host = {
+    async renderMusicXml() { return { contractVersion: '0.2.0', pages: 1, renderEpoch: epoch } },
+    hitTestNoteDetailed(point) {
+      assert.deepEqual(point, { clientX: 10, clientY: 20 })
+      return { kind: 'HIT', renderEpoch: epoch, target: ref }
+    },
+    hitTestNote() { throw new Error('legacy hit path must not be used when detailed evidence exists') },
+  }
+
+  await renderScoreView(host, '<score-partwise/>', { ticket: '1' })
+  assert.deepEqual(hitTestScoreNoteDetailed(host, { clientX: 10, clientY: 20 }), {
+    kind: 'HIT', renderEpoch: 'render-1', target: ref,
+  })
+  assert.deepEqual(hitTestScoreNote(host, { clientX: 10, clientY: 20 }), ref)
+
+  epoch = 'render-2'
+  assert.deepEqual(hitTestScoreNoteDetailed(host, { clientX: 10, clientY: 20 }), {
+    kind: 'STALE', expectedRenderEpoch: 'render-1', renderEpoch: 'render-2',
+  })
+  assert.equal(hitTestScoreNote(host, { clientX: 10, clientY: 20 }), null)
+})
+
+test('detailed miss evidence never becomes a canonical selection target', async () => {
+  const host = {
+    async renderMusicXml() { return { contractVersion: '0.2.0', pages: 1, renderEpoch: 'render-9' } },
+    hitTestNoteDetailed() { return { kind: 'MISS', renderEpoch: 'render-9', reason: 'AMBIGUOUS_OWNERSHIP' } },
+    hitTestNote() { throw new Error('legacy hit path must not be used') },
+  }
+  await renderScoreView(host, '<score-partwise/>', { ticket: '9' })
+  assert.deepEqual(hitTestScoreNoteDetailed(host, { clientX: 1, clientY: 2 }), {
+    kind: 'MISS', renderEpoch: 'render-9', reason: 'AMBIGUOUS_OWNERSHIP',
+  })
+  assert.equal(hitTestScoreNote(host, { clientX: 1, clientY: 2 }), null)
+})
+
+test('legacy helper remains fail-closed for isolated non-reviewed test hosts', () => {
+  const ref = { partId: 'P1', measureIndex: 0, noteIndex: 2, voice: 1 }
+  const host = {
+    hitTestNote(point) {
+      assert.deepEqual(point, { clientX: 10, clientY: 20 })
+      return ref
+    },
+  }
+  assert.deepEqual(hitTestScoreNote(host, { clientX: 10, clientY: 20 }), ref)
+  assert.equal(hitTestScoreNote(host, { clientX: NaN, clientY: 20 }), null)
+  assert.equal(hitTestScoreNote({ hitTestNote: () => ({ ...ref, voice: undefined }) }, { clientX: 1, clientY: 2 }), null)
 })
 
 test('moveScoreCursor forwards only bounded canonical renderer target', async () => {
@@ -109,22 +188,14 @@ test('moveScoreCursor forwards only bounded canonical renderer target', async ()
   await assert.rejects(() => moveScoreCursor({}, { partId: 'P1', measureIndex: 0 }), TypeError)
 })
 
-test('note hit-test and highlight bridge accept only exact bounded ScoreNoteRef values', async () => {
+test('highlight bridge accepts only exact bounded ScoreNoteRef values', async () => {
   const ref = { partId: 'P1', measureIndex: 0, noteIndex: 2, voice: 1 }
   let highlightPayload = null
   let cleared = 0
   const host = {
-    hitTestNote(point) {
-      assert.deepEqual(point, { clientX: 10, clientY: 20 })
-      return ref
-    },
     async highlight(payload) { highlightPayload = payload },
     async clearHighlights() { cleared += 1 },
   }
-
-  assert.deepEqual(hitTestScoreNote(host, { clientX: 10, clientY: 20 }), ref)
-  assert.equal(hitTestScoreNote(host, { clientX: NaN, clientY: 20 }), null)
-  assert.equal(hitTestScoreNote({ hitTestNote: () => ({ ...ref, voice: undefined }) }, { clientX: 1, clientY: 2 }), null)
 
   await highlightScoreNote(host, ref)
   assert.deepEqual(highlightPayload, { target: ref, className: 'seslitab-note-focus' })
@@ -141,12 +212,16 @@ test('renderScoreView rejects missing runtime and malformed tickets', async () =
   )
 })
 
-test('clearScoreView delegates disposal without inventing authority', async () => {
+test('clearScoreView clears current epoch before delegating disposal', async () => {
   let disposed = 0
   const host = {
+    async renderMusicXml() { return { contractVersion: '0.2.0', pages: 1, renderEpoch: 'render-3' } },
     async dispose() { disposed += 1 },
   }
+  await renderScoreView(host, '<score-partwise/>', { ticket: '3' })
+  assert.equal(getScoreViewRenderEpoch(host), 'render-3')
   assert.equal(await clearScoreView(host), true)
+  assert.equal(getScoreViewRenderEpoch(host), null)
   assert.equal(disposed, 1)
   assert.equal(await clearScoreView(null), false)
 })
