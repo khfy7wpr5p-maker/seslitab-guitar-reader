@@ -136,9 +136,12 @@ try {
   if (!active?.matches?.('[data-stage-s07-field]')) throw new Error('inspector did not receive focus')
   proof.dataset.stageS08InspectorPass = 'true'
 
-  // Capture mobile/touch measurements while the markers still exist, but do
-  // not fail on them until after stale-evidence clearing has been proved.
-  const minHeight = Number.parseFloat(getComputedStyle(markers[0]).minHeight)
+  // Selecting a marker rerenders the rail, so the original `markers` array can
+  // contain detached buttons. Measure the currently mounted marker instead;
+  // only a real attached element can provide touch-target/layout evidence.
+  const mountedMarker = document.querySelector('.stage-s08-quality-marker')
+  if (!mountedMarker?.isConnected) throw new Error('quality marker is not mounted for touch-target proof')
+  const minHeight = Number.parseFloat(getComputedStyle(mountedMarker).minHeight)
   const mobileOverflow = window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1
 
   // S07 owns correction/revalidation. S08 owns the presentation reaction to
