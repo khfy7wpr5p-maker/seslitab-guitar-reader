@@ -121,7 +121,7 @@ test('S07 inspector exposes only the four normal teacher fields and no internal 
   clearPackage3Notes()
 })
 
-test('S07 rest selection exposes duration only', () => {
+test('S07 keeps rests fail-closed because S06 visual identity does not manufacture a selectable ScoreNoteRef for rests', () => {
   const notes = [note({
     isRest: true,
     step: undefined,
@@ -132,10 +132,15 @@ test('S07 rest selection exposes duration only', () => {
     noteName: undefined,
   })]
   const currentWorkspace = workspace(notes)
-  const snapshot = exactSnapshot(notes, currentWorkspace)
-  const model = buildStageS07InlineInspectorModel({ workspace: currentWorkspace, snapshot })
+  publishPackage3Notes(notes)
+  const revision = getTeacherWorkspaceCurrentRevision(currentWorkspace)
+  assert.equal(bind(notes, revision), true)
+  assert.equal(selectPackage3MeasureKey('P1:m0'), true)
+  assert.equal(selectPackage3NoteIndex(0), false)
+  const model = buildStageS07InlineInspectorModel({ workspace: currentWorkspace, snapshot: getPackage3MeasureSnapshot() })
   assert.ok(model)
-  assert.deepEqual(model.fields.map((field) => field.field), ['durationValue'])
+  assert.equal(model.selected, false)
+  assert.deepEqual(model.fields, [])
   clearPackage3Notes()
 })
 
