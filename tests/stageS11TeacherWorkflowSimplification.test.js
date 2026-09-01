@@ -120,6 +120,18 @@ test('S11 application is idempotent and does not duplicate secondary details', (
   assert.equal(inspector.children.filter((child) => child.id === 'stage-s11-workflow-details').length, 1)
 })
 
+test('S11 reuses the existing S07 safe audit adapter and direct score-side correction actions', () => {
+  const s07 = readFileSync(new URL('../src/stageS07InlineTeacherInspectorUi.js', import.meta.url), 'utf8')
+  assert.match(s07, /function secureActorLabel\(\)/)
+  assert.match(s07, /score-inspector-session-/)
+  assert.match(s07, /crypto\?\.randomUUID/)
+  assert.match(s07, /startTeacherWorkspace\(root\)/)
+  assert.match(s07, /applyTeacherUiCorrection\(root\)/)
+  assert.match(s07, /undoTeacherUiRevision\(root\)/)
+  assert.match(s07, /approveTeacherUiCurrentRevision\(root\)/)
+  assert.doesNotMatch(s07, /activateTeacherResultTab\(/)
+})
+
 test('S11 remains presentation-only and main wires it after the established S10 workspace surface', () => {
   const source = readFileSync(new URL('../src/stageS11TeacherWorkflowUi.js', import.meta.url), 'utf8')
   const css = readFileSync(new URL('../src/stageS11TeacherWorkflow.css', import.meta.url), 'utf8')
