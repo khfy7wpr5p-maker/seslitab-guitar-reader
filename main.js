@@ -18,6 +18,7 @@ import './src/stageDQualityOverlay.css'
 import './src/stageEVisualNoteEditor.css'
 import './src/stageFRevisionLifecycle.css'
 import './src/stageIInstrumentProduct.css'
+import './src/stageS10EducationalChords.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/app.js'
 import './src/package3Ui.js'
@@ -36,6 +37,7 @@ import './src/package11TunerUi.js'
 import './src/appShell.js'
 import './src/reviewInspectorUi.js'
 import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.js'
+import { initStageS10EducationalChordsUi } from './src/stageS10EducationalChordsUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
@@ -59,5 +61,8 @@ if (typeof document !== 'undefined') {
   // side-effect listeners still register earlier and synchronously render the
   // exact Package 3 snapshot before this rail mirrors their safe output.
   initStageIInstrumentProductUi(document)
+  // S10 adopts the existing Package 7 source-only chord panel only after the
+  // S05 workspace exists, then adds a clearly separate generic education list.
+  initStageS10EducationalChordsUi(document)
   initStageLShareUi(document)
 }
