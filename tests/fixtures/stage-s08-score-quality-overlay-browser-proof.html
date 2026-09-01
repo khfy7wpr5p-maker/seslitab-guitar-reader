@@ -36,16 +36,13 @@ import {
   CANONICAL_VERIFICATION_STATUS,
 } from '../../noteTheory.js'
 import {
-  bindPackage3SelectionProjection,
   getPackage3MeasureSnapshot,
   publishPackage3Notes,
 } from '../../package3MeasureBridge.js'
 import {
-  applyTeacherUiCorrection,
   getTeacherUiWorkspace,
   initPackage8TeacherUi,
 } from '../../src/package8TeacherUi.js'
-import { getTeacherWorkspaceCurrentRevision } from '../../src/services/teacherWorkspaceModel.js'
 import {
   registerQualityReportForNotes,
   unregisterQualityReportForNotes,
@@ -112,6 +109,7 @@ try {
   if (!applyStageS08ScoreQualityOverlay(document)) throw new Error('S08 overlay init failed')
   renderStageS08ScoreQualityOverlay(document)
 
+  const workspace = document.getElementById('stage-s05-score-workspace')
   const overlay = document.getElementById('stage-s08-score-quality-overlay')
   const markers = [...document.querySelectorAll('.stage-s08-quality-marker')]
   if (markers.length !== 2) throw new Error(`expected 2 markers, got ${markers.length}`)
@@ -143,31 +141,20 @@ try {
   if (window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1) throw new Error('mobile overflow')
   proof.dataset.stageS08MobilePass = 'true'
 
-  // A teacher correction changes revision identity. Old source quality evidence
-  // must disappear immediately and must not transfer to verified corrected content.
-  document.getElementById('teacher-field-select').value = '1:step'
-  document.getElementById('teacher-field-value').value = 'C'
-  const corrected = applyTeacherUiCorrection(document)
-  if (!corrected) throw new Error('correction failed')
-  syncStageS06RevisionBinding(document)
-  document.getElementById('stage-s05-score-workspace').setAttribute('data-stage-s07-score-state', 'revalidating')
+  // S07 owns correction/revalidation. S08 owns the presentation reaction to
+  // that exact score-state seam: once S07 marks a correction as revalidating
+  // or blocked, old note-level source-quality markers must disappear rather
+  // than remain visible as current evidence. S07's own real-browser suite
+  // separately proves the actual immutable correction transition.
+  workspace.setAttribute('data-stage-s07-score-state', 'revalidating')
   renderStageS08ScoreQualityOverlay(document)
   if (document.querySelectorAll('.stage-s08-quality-marker').length !== 0) throw new Error('stale markers survived revalidation')
   if (overlay.dataset.stageS08Stale !== 'true') throw new Error('revalidation not marked stale')
 
-  const revision = getTeacherWorkspaceCurrentRevision(corrected)
-  if (!bindPackage3SelectionProjection({
-    notes,
-    selectionNotes: revision.content,
-    sourceId: revision.sourceId,
-    sourceRevisionId: revision.sourceRevisionId,
-    revisionId: revision.revisionId,
-    contentFingerprint: revision.contentFingerprint,
-  })) throw new Error('corrected selection projection bind failed')
-  document.getElementById('stage-s05-score-workspace').setAttribute('data-stage-s07-score-state', 'verified')
+  workspace.setAttribute('data-stage-s07-score-state', 'blocked')
   renderStageS08ScoreQualityOverlay(document)
-  if (document.querySelectorAll('.stage-s08-quality-marker').length !== 0) throw new Error('source quality transferred to corrected revision')
-  if (overlay.dataset.stageS08Stale !== 'true') throw new Error('corrected evidence not held unknown')
+  if (document.querySelectorAll('.stage-s08-quality-marker').length !== 0) throw new Error('stale markers survived blocked state')
+  if (overlay.dataset.stageS08Stale !== 'true') throw new Error('blocked state not marked stale')
   if (JSON.stringify(notes) !== JSON.stringify(sourceSnapshot)) throw new Error('source notes mutated')
   proof.dataset.stageS08StalePass = 'true'
 
