@@ -3,8 +3,9 @@
 // This module never infers musical truth from pitch labels, SVG proximity, or
 // nearest-note heuristics. It accepts only the existing exact canonical note
 // identity + renderer ScoreNoteRef contract and optional immutable teacher
-// revision identity. Any ambiguous, stale, incomplete, or mismatched evidence
-// fails closed.
+// revision identity. S07 may provide a separately verified selection projection
+// while `snapshot.notes` remains source truth for existing consumers. Any
+// ambiguous, stale, incomplete, or mismatched evidence fails closed.
 
 import { deriveCanonicalNoteSelection } from './canonicalNoteSelection.js'
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
@@ -33,6 +34,11 @@ function requiredIdentityText(value) {
   return typeof value === 'string' && value.trim() && value.trim() === value
     ? value
     : null
+}
+
+function selectionNotes(snapshot) {
+  if (Array.isArray(snapshot?.selectionNotes)) return snapshot.selectionNotes
+  return Array.isArray(snapshot?.notes) ? snapshot.notes : null
 }
 
 export function createStageS06RevisionIdentity(value) {
@@ -103,17 +109,18 @@ export function buildStageS06SelectionIdentity({
 }
 
 export function isStageS06SelectionCurrent(snapshot, { requireRevision = false } = {}) {
-  if (!snapshot || !Array.isArray(snapshot.notes)) return false
+  const projectedNotes = selectionNotes(snapshot)
+  if (!snapshot || !projectedNotes) return false
   const identity = snapshot.selectedNoteIdentity
-  if (!identity || identity.notes !== snapshot.notes) return false
+  if (!identity || identity.notes !== projectedNotes) return false
   if (identity.noteIndex !== snapshot.selectedNoteIndex) return false
   if (identity.measureKey !== snapshot.selectedMeasureKey) return false
-  if (snapshot.notes[identity.noteIndex] !== identity.note) return false
+  if (projectedNotes[identity.noteIndex] !== identity.note) return false
   if (!sameStageS06RevisionIdentity(identity.revisionIdentity, snapshot.revisionIdentity)) return false
   if (requireRevision && !identity.revisionIdentity) return false
 
   const rebuilt = buildStageS06SelectionIdentity({
-    notes: snapshot.notes,
+    notes: projectedNotes,
     measureKey: snapshot.selectedMeasureKey,
     noteIndex: snapshot.selectedNoteIndex,
     revisionIdentity: snapshot.revisionIdentity,
@@ -123,11 +130,11 @@ export function isStageS06SelectionCurrent(snapshot, { requireRevision = false }
   return Boolean(rebuilt && rebuilt.note === identity.note)
 }
 
-function sameStructuralNoteIdentity(sourceNote, revisionNote) {
-  if (!sourceNote || !revisionNote || typeof sourceNote !== 'object' || typeof revisionNote !== 'object') {
+function sameStructuralNoteIdentity(selectionNote, revisionNote) {
+  if (!selectionNote || !revisionNote || typeof selectionNote !== 'object' || typeof revisionNote !== 'object') {
     return false
   }
-  return STRUCTURAL_NOTE_FIELDS.every((field) => Object.is(sourceNote[field], revisionNote[field]))
+  return STRUCTURAL_NOTE_FIELDS.every((field) => Object.is(selectionNote[field], revisionNote[field]))
 }
 
 export function stageS06SelectionMatchesRevision(snapshot, revision) {
@@ -138,5 +145,7 @@ export function stageS06SelectionMatchesRevision(snapshot, revision) {
 
   const index = snapshot.selectedNoteIndex
   if (!Number.isSafeInteger(index) || index < 0 || index >= revision.content.length) return false
-  return sameStructuralNoteIdentity(snapshot.notes[index], revision.content[index])
+  const projectedNotes = selectionNotes(snapshot)
+  if (!projectedNotes || index >= projectedNotes.length) return false
+  return sameStructuralNoteIdentity(projectedNotes[index], revision.content[index])
 }
