@@ -31,7 +31,7 @@ function ensureNoteControls(root) {
 
   const help = root.createElement('p')
   help.id = 'stage-c-note-selection-help'
-  help.textContent = 'Seçim, mevcut eserdeki gerçek canonical nota kaydına bağlıdır. Nota Görünümü açıksa aynı nota görsel üzerinde de vurgulanır; kesin eşleme yoksa sistem seçim üretmez.'
+  help.textContent = 'Seçim, mevcut eserdeki exact canonical nota kaydına ve güvenli görsel nota kimliğine bağlıdır. Pitch etiketi, yakınlık veya nearest-note tahmini kullanılmaz; kesin eşleme yoksa sistem seçim üretmez.'
 
   const group = root.createElement('div')
   group.id = 'stage-c-note-buttons'
@@ -80,8 +80,15 @@ export function renderStageCNoteSelection(root, snapshot) {
       const current = getPackage3MeasureSnapshot()
       if (current.notes !== snapshot.notes) return
       if (current.selectedMeasureKey !== snapshot.selectedMeasureKey) return
-      if (!selectPackage3NoteIndex(model.noteIndex)) return
-      announce(root, `${model.visibleLabel} seçildi.`)
+      // S06 exact-selection boundary: keyboard/mouse activation of this native
+      // button is accepted only when this exact canonical note also has a safe
+      // ScoreNoteRef. Incomplete/ambiguous renderer identity abstains.
+      if (!model.rendererTarget) return
+      if (!selectPackage3NoteIndex(model.noteIndex, {
+        rendererTarget: model.rendererTarget,
+        interaction: 'canonical-control',
+      })) return
+      announce(root, `${model.visibleLabel} exact canonical nota olarak seçildi.`)
     })
     group.appendChild(button)
   }
