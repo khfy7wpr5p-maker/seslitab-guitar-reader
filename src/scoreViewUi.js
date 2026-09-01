@@ -38,6 +38,11 @@ function nextTicket() {
   return String(ticketCounter)
 }
 
+function selectionNotesFor(snapshot) {
+  if (Array.isArray(snapshot?.selectionNotes)) return snapshot.selectionNotes
+  return Array.isArray(snapshot?.notes) ? snapshot.notes : null
+}
+
 function setExistingResultTabs(root, activeName) {
   const buttons = root.querySelectorAll?.('.tab-btn') ?? []
   for (const button of buttons) {
@@ -173,7 +178,7 @@ export async function syncScoreNoteHighlight(root, bridgeSnapshot, runtime = sco
   if (!status) return false
 
   const selection = deriveCanonicalNoteSelection(
-    bridgeSnapshot?.notes,
+    selectionNotesFor(bridgeSnapshot),
     bridgeSnapshot?.selectedMeasureKey,
     bridgeSnapshot?.selectedNoteIndex,
   )
@@ -223,7 +228,10 @@ export function bindRenderedNoteSelection(root, frame, runtime) {
     if (!rendererRef) return
 
     const snapshot = getPackage3MeasureSnapshot()
-    const resolved = resolveCanonicalNoteFromScoreRef(snapshot.notes, rendererRef)
+    const projectedNotes = selectionNotesFor(snapshot)
+    const resolved = projectedNotes
+      ? resolveCanonicalNoteFromScoreRef(projectedNotes, rendererRef)
+      : null
     const status = root.getElementById('score-view-note-sync')
     if (!resolved) {
       if (status) {
@@ -234,7 +242,10 @@ export function bindRenderedNoteSelection(root, frame, runtime) {
     }
 
     if (!selectPackage3MeasureKey(resolved.measureKey)) return
-    if (!selectPackage3NoteIndex(resolved.noteIndex)) return
+    if (!selectPackage3NoteIndex(resolved.noteIndex, {
+      rendererTarget: rendererRef,
+      interaction: 'score-hit-test',
+    })) return
   }
 
   frameDocument.addEventListener('click', handler)
