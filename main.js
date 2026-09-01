@@ -20,6 +20,7 @@ import './src/stageFRevisionLifecycle.css'
 import './src/stageIInstrumentProduct.css'
 import './src/stageS10EducationalChords.css'
 import './src/stageS11TeacherWorkflow.css'
+import './src/stageS12MobileScoreTools.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/app.js'
 import './src/package3Ui.js'
@@ -40,6 +41,7 @@ import './src/reviewInspectorUi.js'
 import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.js'
 import { initStageS10EducationalChordsUi } from './src/stageS10EducationalChordsUi.js'
 import { initStageS11TeacherWorkflowUi } from './src/stageS11TeacherWorkflowUi.js'
+import { initStageS12MobileScoreToolsUi } from './src/stageS12MobileScoreToolsUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
@@ -69,5 +71,8 @@ if (typeof document !== 'undefined') {
   // S11 removes the duplicate technical teacher tab from the normal workflow
   // only after S07-S10 have established the score-centered product surfaces.
   initStageS11TeacherWorkflowUi(document)
+  // S12 is an acceptance repair layer: real mobile touch adds a pointerup exact
+  // hit-test path and exposes the already-safe S07 editor as compact score tools.
+  initStageS12MobileScoreToolsUi(document)
   initStageLShareUi(document)
 }
