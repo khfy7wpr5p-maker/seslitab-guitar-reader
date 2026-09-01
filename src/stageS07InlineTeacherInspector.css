@@ -1,0 +1,64 @@
+.stage-s07-inline-teacher-inspector {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.stage-s07-inline-teacher-inspector h4,
+.stage-s07-inline-teacher-inspector p {
+  margin: 0;
+}
+
+.stage-s07-inline-help {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.stage-s07-inline-fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.stage-s07-inline-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.stage-s07-inline-field input,
+.stage-s07-inline-field select,
+.stage-s07-inline-field button,
+.stage-s07-inline-actions button {
+  min-height: 44px;
+  width: 100%;
+}
+
+.stage-s07-inline-field input,
+.stage-s07-inline-field select {
+  box-sizing: border-box;
+}
+
+.stage-s07-inline-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.stage-s05-score-workspace[data-stage-s07-score-state="revalidating"] #stage-s05-score-column,
+.stage-s05-score-workspace[data-stage-s07-score-state="blocked"] #stage-s05-score-column {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.stage-s05-score-workspace[data-stage-s07-score-state="revalidating"] #stage-s05-score-column {
+  cursor: progress;
+}
+
+@media (max-width: 760px) {
+  .stage-s07-inline-teacher-inspector {
+    margin-top: 0.5rem;
+  }
+
+  .stage-s07-inline-field,
+  .stage-s07-inline-actions {
+    width: 100%;
+  }
+}

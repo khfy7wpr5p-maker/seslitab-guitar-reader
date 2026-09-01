@@ -55,8 +55,11 @@ export function renderStageCNoteSelection(root, snapshot) {
   const group = root.getElementById('stage-c-note-buttons')
   if (!group || typeof group.replaceChildren !== 'function') return false
 
+  const selectionNotes = Array.isArray(snapshot?.selectionNotes)
+    ? snapshot.selectionNotes
+    : snapshot?.notes
   const models = buildCanonicalNoteControlModels(
-    snapshot?.notes,
+    selectionNotes,
     snapshot?.selectedMeasureKey,
     snapshot?.selectedNoteIndex,
   )
@@ -79,10 +82,11 @@ export function renderStageCNoteSelection(root, snapshot) {
     button.addEventListener('click', () => {
       const current = getPackage3MeasureSnapshot()
       if (current.notes !== snapshot.notes) return
+      if (current.selectionNotes !== snapshot.selectionNotes) return
       if (current.selectedMeasureKey !== snapshot.selectedMeasureKey) return
-      // S06 exact-selection boundary: keyboard/mouse activation of this native
-      // button is accepted only when this exact canonical note also has a safe
-      // ScoreNoteRef. Incomplete/ambiguous renderer identity abstains.
+      // S06/S07 exact-selection boundary: keyboard/mouse activation of this
+      // native button is accepted only when this exact projected canonical note
+      // also has a safe ScoreNoteRef. Incomplete/ambiguous identity abstains.
       if (!model.rendererTarget) return
       if (!selectPackage3NoteIndex(model.noteIndex, {
         rendererTarget: model.rendererTarget,
