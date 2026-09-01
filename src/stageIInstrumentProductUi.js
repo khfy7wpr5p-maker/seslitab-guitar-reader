@@ -376,6 +376,12 @@ function scheduleStageIRender(root, state, snapshot, adapters) {
   return true
 }
 
+function renderStageIAdapterSnapshotNow(root, snapshot, adapters) {
+  const notes = stageICurrentRoutingNotes(snapshot)
+  renderStageIInstrumentProductUi(root, notes, adapters)
+  return true
+}
+
 export function initStageIInstrumentProductUi(root = document, adapters = {}) {
   const init = () => {
     if (!ensureStageIInstrumentProductUi(root, adapters)) return false
@@ -389,12 +395,18 @@ export function initStageIInstrumentProductUi(root = document, adapters = {}) {
       renderStates.set(root, state)
     }
 
+    // Test/custom product adapters are an existing public orchestration seam and
+    // historically receive Package 3 snapshots synchronously. Preserve that
+    // contract. Production routing keeps microtask coalescing so revision bursts
+    // cannot multiply Package 4/5 recomputation.
+    const synchronousAdapter = typeof adapters.resolveStageIInstrumentProducts === 'function'
     const unsubscribe = subscribePackage3Measures((snapshot) => {
-      scheduleStageIRender(root, state, snapshot, adapters)
+      if (synchronousAdapter) renderStageIAdapterSnapshotNow(root, snapshot, adapters)
+      else scheduleStageIRender(root, state, snapshot, adapters)
     })
     rootSubscriptions.set(root, unsubscribe)
 
-    scheduleStageIRender(root, state, getPackage3MeasureSnapshot(), adapters)
+    if (!synchronousAdapter) scheduleStageIRender(root, state, getPackage3MeasureSnapshot(), adapters)
     return true
   }
 
