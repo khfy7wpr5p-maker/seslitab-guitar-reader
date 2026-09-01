@@ -101,6 +101,16 @@ test('S12 mobile interaction remains exact ScoreNoteRef/canonical selection and 
   assert.doesNotMatch(source, /Audiveris|OMR_PROVIDER|Package 12 authorization.*=/i)
 })
 
+test('S12 recovers a rendered score removed by optional cursor-sync failure without changing musical authority', () => {
+  const source = readFileSync(new URL('../src/stageS12MobileProductionAcceptanceUi.js', import.meta.url), 'utf8')
+  assert.match(source, /recoverStageS12ScoreAfterCursorFailure/)
+  assert.match(source, /Görsel cursor uygulanamadı/)
+  assert.match(source, /cursorStatus\.id = 'score-view-measure-sync-disabled'/)
+  assert.match(source, /const restored = await activateScoreView\(root\)/)
+  assert.match(source, /bindStageS12MobileScoreInteraction\(root\)/)
+  assert.doesNotMatch(source, /clearScoreView\(|nearest-note|pitch-label/i)
+})
+
 test('S12 score landing replaces the input slot without the previous forced start-scroll jump', () => {
   const source = readFileSync(new URL('../src/stageS12MobileProductionAcceptanceUi.js', import.meta.url), 'utf8')
   assert.match(source, /syncStageS12InputSlot\(root\)/)
@@ -119,12 +129,17 @@ test('S12 PASS presentation remains input-origin agnostic and fail-closed policy
   assert.match(stageG, /STAGE_G_PRODUCT_STATE\.BLOCK/)
 })
 
-test('S12 CSS enforces compact <=390px tuner and >=44px touch targets without score scaling hacks', () => {
+test('S12 CSS compacts routine score text while preserving accessible hidden copy and touch targets', () => {
   const css = readFileSync(new URL('../src/stageS12MobileProductionAcceptance.css', import.meta.url), 'utf8')
   assert.match(css, /max-width:\s*390px/)
   assert.match(css, /min-height:\s*44px/)
   assert.match(css, /stage-s04-tuner-panel[\s\S]*max-height:/)
   assert.match(css, /max-width:\s*100%/)
+  assert.match(css, /#score-view-measure-sync/)
+  assert.match(css, /#score-view-note-sync/)
+  assert.match(css, /#stage-s08-score-quality-help/)
+  assert.match(css, /\.stage-s08-quality-marker-reason[\s\S]*display:\s*none/)
+  assert.match(css, /clip:\s*rect\(0, 0, 0, 0\)/)
   assert.doesNotMatch(css, /transform:\s*scale\(/)
 })
 

@@ -19,6 +19,7 @@ import {
   resolveStScoreRuntime,
 } from './services/scoreRendererConsumer.js'
 import { resolveCanonicalNoteFromScoreRef } from './services/scoreNoteIdentity.js'
+import { activateScoreView } from './scoreViewUi.js'
 
 const states = new WeakMap()
 const MOBILE_EVENT_DEDUPE_MS = 450
@@ -38,6 +39,7 @@ function stateFor(root) {
       loadHandler: null,
       lastInteraction: null,
       lastFocusedMusicXml: null,
+      recoveringScore: false,
     }
     states.set(root, state)
   }
@@ -242,7 +244,7 @@ function isScoreWorkspaceReady(root) {
     workspace.hidden === false &&
     currentMusicXml(root) &&
     status &&
-    /^Görsel nota hazır\./.test(String(status.textContent || ''))
+    (/^Görsel nota hazır\./.test(String(status.textContent || '')) || String(status.textContent || '') === 'Notaya dokunun.')
   )
 }
 
@@ -257,6 +259,110 @@ export function syncStageS12InputSlot(root = document) {
   input.setAttribute?.('data-stage-s12-slot-state', ready ? 'score-active' : 'input-active')
   workspace.setAttribute?.('data-stage-s12-slot-state', ready ? 'score-active' : 'input-active')
   return ready
+}
+
+function compactQualityStatus(root) {
+  const status = root.getElementById?.('stage-s08-score-quality-status')
+  const text = String(status?.textContent || '')
+  const match = text.match(/^(\d+) engelli, (\d+) inceleme, (\d+) otomatik kontrolde sorun bulunmadı, (\d+) exact durumu bilinmiyor\./)
+  if (!status || !match) return false
+
+  const [, block, review, clear, unknown] = match
+  const compact = [`⛔ ${block}`, `⚠ ${review}`, `✓ ${clear}`, `? ${unknown}`].join(' · ')
+  status.setAttribute?.('aria-label', text)
+  status.textContent = compact
+  return true
+}
+
+function compactInspectorStatus(root) {
+  const status = root.getElementById?.('stage-s07-inline-status')
+  if (!status) return false
+  const text = String(status.textContent || '')
+  let compact = null
+
+  if (text.startsWith('Düzeltmek için skor üzerindeki notayı seçin.')) compact = 'Notaya dokunun.'
+  else if (text.startsWith('Eser hazır olduğunda güvenli öğretmen çalışma alanı otomatik hazırlanır.')) compact = 'Skor bekleniyor.'
+  else {
+    const selected = text.match(/^Nota (\d+) exact current revision ile doğrulandı\./)
+    if (selected) compact = `Nota ${selected[1]} seçildi.`
+  }
+
+  if (!compact || compact === text) return false
+  status.setAttribute?.('aria-label', text)
+  status.textContent = compact
+  return true
+}
+
+function compactActionLabels(root) {
+  const undo = root.getElementById?.('stage-s07-undo-btn')
+  if (undo && undo.textContent === 'Son değişikliği geri al') {
+    undo.setAttribute?.('aria-label', undo.textContent)
+    undo.textContent = 'Geri al'
+  }
+
+  const approve = root.getElementById?.('stage-s07-approve-btn')
+  if (approve) {
+    if (approve.textContent === 'Geçerli sürümü ayrıca onayla') {
+      approve.setAttribute?.('aria-label', approve.textContent)
+      approve.textContent = 'Sürümü onayla'
+    } else if (approve.textContent === 'Geçerli sürüm ayrıca onaylandı') {
+      approve.setAttribute?.('aria-label', approve.textContent)
+      approve.textContent = 'Onaylandı'
+    }
+  }
+
+  for (const button of root.querySelectorAll?.('.stage-s07-apply-field') ?? []) {
+    const text = String(button.textContent || '')
+    if (text.endsWith(' kaydet') && text !== 'Kaydet') {
+      button.setAttribute?.('aria-label', text)
+      button.textContent = 'Kaydet'
+    }
+  }
+  return true
+}
+
+export function compactStageS12RoutineCopy(root = document) {
+  if (!root || typeof root.getElementById !== 'function') return false
+
+  const scoreStatus = root.getElementById?.('score-view-status')
+  if (scoreStatus && /^Görsel nota hazır\./.test(String(scoreStatus.textContent || ''))) {
+    scoreStatus.setAttribute?.('aria-label', scoreStatus.textContent)
+    scoreStatus.textContent = 'Notaya dokunun.'
+  }
+
+  compactQualityStatus(root)
+  compactInspectorStatus(root)
+  compactActionLabels(root)
+  return true
+}
+
+export async function recoverStageS12ScoreAfterCursorFailure(root = document) {
+  if (!root || typeof root.getElementById !== 'function') return false
+  const state = stateFor(root)
+  if (state.recoveringScore) return false
+
+  const workspace = root.getElementById('stage-s05-score-workspace')
+  const cursorStatus = root.getElementById('score-view-measure-sync')
+  const frame = root.getElementById('score-view-runtime-frame')
+  const cursorFailed = /Görsel cursor uygulanamadı/i.test(String(cursorStatus?.textContent || ''))
+  if (!workspace || workspace.hidden !== false || !currentMusicXml(root) || frame || !cursorStatus || !cursorFailed) return false
+
+  state.recoveringScore = true
+  try {
+    // Cursor movement is presentation-only. If it fails, scoreViewUi currently
+    // removes the renderer to avoid a stale cursor. Disable only that optional
+    // cursor-sync status endpoint for this page session, then restore the exact
+    // score. Note hit-test/highlight and all canonical authority remain intact.
+    cursorStatus.id = 'score-view-measure-sync-disabled'
+    cursorStatus.hidden = true
+    cursorStatus.setAttribute?.('data-stage-s12-cursor-disabled', 'true')
+    const restored = await activateScoreView(root)
+    compactStageS12RoutineCopy(root)
+    bindStageS12MobileScoreInteraction(root)
+    return Boolean(restored)
+  } finally {
+    state.recoveringScore = false
+  }
 }
 
 export function focusStageS12WorkspaceAfterRender(root = document) {
@@ -295,8 +401,10 @@ function installObserver(root, state) {
   state.observer = new Observer(() => {
     moveStageS12PrimaryScoreActions(root)
     bindStageS12MobileScoreInteraction(root)
+    compactStageS12RoutineCopy(root)
     syncStageS12InputSlot(root)
     focusStageS12WorkspaceAfterRender(root)
+    void recoverStageS12ScoreAfterCursorFailure(root)
   })
   state.observer.observe(workspace, {
     subtree: true,
@@ -314,8 +422,10 @@ export function applyStageS12MobileProductionAcceptanceUi(root = document, { obs
   const state = stateFor(root)
   const moved = moveStageS12PrimaryScoreActions(root)
   bindStageS12MobileScoreInteraction(root)
+  compactStageS12RoutineCopy(root)
   syncStageS12InputSlot(root)
   focusStageS12WorkspaceAfterRender(root)
+  void recoverStageS12ScoreAfterCursorFailure(root)
   if (observe) installObserver(root, state)
 
   const workspace = root.getElementById?.('stage-s05-score-workspace')
