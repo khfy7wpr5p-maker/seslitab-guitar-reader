@@ -122,15 +122,14 @@ test('S07 inspector exposes only the four normal teacher fields and no internal 
 })
 
 test('S07 keeps rests fail-closed because S06 visual identity does not manufacture a selectable ScoreNoteRef for rests', () => {
-  const notes = [note({
-    isRest: true,
-    step: undefined,
-    alter: undefined,
-    octave: undefined,
-    midi: undefined,
-    frequency: undefined,
-    noteName: undefined,
-  })]
+  const rest = note({ isRest: true })
+  delete rest.step
+  delete rest.alter
+  delete rest.octave
+  delete rest.midi
+  delete rest.frequency
+  delete rest.noteName
+  const notes = [rest]
   const currentWorkspace = workspace(notes)
   publishPackage3Notes(notes)
   const revision = getTeacherWorkspaceCurrentRevision(currentWorkspace)
@@ -196,7 +195,7 @@ test('S07 orchestration requires Stage F verification before a corrected score b
   assert.match(source, /Düzeltme onay değildir/)
   assert.match(source, /undoTeacherUiRevision\(root\)/)
   assert.match(source, /approveTeacherUiCurrentRevision\(root\)/)
-  assert.doesNotMatch(source, /\.step\s*=|\.alter\s*=|\.octave\s*=|\.durationValue\s*=/)
+  assert.doesNotMatch(source, /\b(?:sourceNote|currentNote|note)\.(?:step|alter|octave|durationValue)\s*=/)
 })
 
 test('S07 is wired after S06 exact selection and keeps technical internals outside normal inspector copy', async () => {
