@@ -3,11 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <title>SesliTab score runtime browser proof</title>
-  <style>body{margin:0}#st-score-root{width:960px}</style>
+  <style>
+    @font-face { font-family:'Bravura'; src:url('../../public/smufl-keypad/Bravura.woff2') format('woff2'); font-display:block; }
+    body{margin:0}#st-score-root{width:960px}
+  </style>
 </head>
 <body>
   <div id="st-score-root"></div>
-  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false" data-prb-editor-selection-pass="false" data-prb-stale-render-pass="false" data-prb-part-name-pass="false">PENDING</div>
+  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false" data-prb-editor-selection-pass="false" data-prb-stale-render-pass="false" data-prb-part-name-pass="false" data-prc-bravura-font-pass="false" data-prc-keypad-manifest-pass="false" data-prc-keypad-timing-pass="false" data-prc-keypad-commit-pass="false">PENDING</div>
 
   <script src="../../public/st-score-editor-core-runtime/st-score-editor-core.runtime.js"></script>
   <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
@@ -25,6 +28,7 @@
   <script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
   <script type="module">
     import { createAutomaticRevision } from '../../src/services/teacherRevisionModel.js'
+    import { buildStageS06SelectionIdentity } from '../../src/services/stageS06SelectionIdentity.js'
     import {
       getCurrentScoreRenderEvidence,
       hitTestScoreNoteDetailed,
@@ -34,6 +38,11 @@
       createEditorSelectionContext,
       selectDetailedRendererHitWithEditor,
     } from '../../src/services/editorRendererSelectionBridge.js'
+    import {
+      commitBasicEditorKeypadAction,
+      createBasicEditorKeypadContext,
+      readEditorKeypadManifest,
+    } from '../../src/services/editorKeypadIntegration.js'
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
@@ -76,6 +85,16 @@
       return null
     }
 
+    function eventForNoteId(score, noteId) {
+      for (const part of score.parts) for (const staff of part.staves) for (const measure of staff.measures) for (const voice of measure.voices) {
+        for (const event of voice.events) {
+          if (event.kind === 'note' && event.note?.id === noteId) return event
+          if (event.kind === 'chord' && event.notes?.some((note) => note.id === noteId)) return event
+        }
+      }
+      return null
+    }
+
     ;(async () => {
       try {
         if (document.documentElement.dataset.stScoreRuntimeReady !== 'true') throw new Error('runtime not ready')
@@ -84,6 +103,10 @@
         if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function' || typeof host.hitTestNoteDetailed !== 'function' || typeof host.highlight !== 'function' || typeof host.clearHighlights !== 'function') {
           throw new Error('detailed-hit ST runtime host missing')
         }
+
+        await document.fonts.load('32px Bravura')
+        if (!document.fonts.check('32px Bravura')) throw new Error('pinned Bravura font not available')
+        status.dataset.prcBravuraFontPass = 'true'
 
         await renderScoreView(host, xml, { ticket: '1', autoResize: false, drawTitle: false, drawComposer: false })
         const firstEvidence = getCurrentScoreRenderEvidence(host)
@@ -119,15 +142,13 @@
         status.dataset.noteVoice = String(ref.voice)
 
         const revision = createAutomaticRevision({ revisionId:'browser-rev-1', sourceId:'browser-source-1', content:canonicalNotes })
-        const snapshot = {
-          selectionNotes: revision.content,
-          revisionIdentity: {
-            sourceId: revision.sourceId,
-            sourceRevisionId: revision.sourceRevisionId,
-            revisionId: revision.revisionId,
-            contentFingerprint: revision.contentFingerprint,
-          },
-        }
+        const revisionIdentity = Object.freeze({
+          sourceId: revision.sourceId,
+          sourceRevisionId: revision.sourceRevisionId,
+          revisionId: revision.revisionId,
+          contentFingerprint: revision.contentFingerprint,
+        })
+        const snapshot = { selectionNotes: revision.content, revisionIdentity }
         const editorRuntime = globalThis.STScoreEditorCoreRuntime
         const context = await createEditorSelectionContext({
           package3Snapshot:snapshot,
@@ -147,6 +168,51 @@
         status.dataset.scoreNoteResolverPass = 'true'
         status.dataset.canonicalNoteIndex = String(selected.resolved.noteIndex)
 
+        const manifest = readEditorKeypadManifest(editorRuntime)
+        const durationEighth = manifest.groups.flatMap((group) => group.actions).find((action) => action.actionId === 'duration.eighth')
+        if (durationEighth?.glyph?.smuflGlyphName !== 'note8thUp' || manifest.semanticAuthority !== 'ACTION_ID_ONLY') throw new Error('real Editor keypad manifest mismatch')
+        status.dataset.prcKeypadManifestPass = 'true'
+
+        const selectedIndex = selected.resolved.noteIndex
+        const selectedMeasureKey = revision.content[selectedIndex].measureKey
+        const selectedNoteIdentity = buildStageS06SelectionIdentity({
+          notes: revision.content,
+          measureKey: selectedMeasureKey,
+          noteIndex: selectedIndex,
+          revisionIdentity,
+          rendererTarget: hit.detailed.target,
+          interaction: 'score-editor-current-hit',
+        })
+        if (!selectedNoteIdentity) throw new Error('PR-B current selection identity rebuild failed')
+        const keypadSnapshot = Object.freeze({
+          notes: revision.content,
+          selectionNotes: revision.content,
+          selectedMeasureKey,
+          selectedNoteIndex: selectedIndex,
+          revisionIdentity,
+          selectedNoteIdentity,
+        })
+        const keypadContext = await createBasicEditorKeypadContext({
+          package3Snapshot: keypadSnapshot,
+          teacherRevision: revision,
+          musicXml: xml,
+          editorRuntime,
+          cryptoScope: globalThis.crypto,
+          DOMParserCtor: globalThis.DOMParser,
+        })
+        const beforeNoteId = keypadContext.noteIds[selectedIndex]
+        const beforeEvent = eventForNoteId(keypadContext.session.history.present.score, beforeNoteId)
+        if (beforeEvent?.duration?.numerator !== 1 || beforeEvent.duration.denominator !== 4) throw new Error('SesliTab beat timing was not converted to Editor whole-note timing')
+        status.dataset.prcKeypadTimingPass = 'true'
+
+        const committed = commitBasicEditorKeypadAction(keypadContext, 'duration.eighth', {
+          identity: Object.freeze({ version:'1.0.0', transactionId:'browser-prc-duration', nextRevisionId:'browser-rev-2' }),
+        })
+        if (committed.kind !== 'COMMITTED' || committed.nextRevisionId !== 'browser-rev-2' || committed.context.productSyncPending !== true) throw new Error('real Editor Core basic keypad commit failed')
+        const afterEvent = eventForNoteId(committed.context.session.history.present.score, beforeNoteId)
+        if (afterEvent?.duration?.numerator !== 1 || afterEvent.duration.denominator !== 8) throw new Error('real Editor duration.eighth action did not produce 1/8')
+        status.dataset.prcKeypadCommitPass = 'true'
+
         await host.clearHighlights()
         await host.highlight({ target: hit.detailed.target, className: 'seslitab-note-focus' })
         if (hit.element.getAttribute('data-st-score-highlight') !== 'true' || !hit.element.classList.contains('seslitab-note-focus')) throw new Error('post-Editor exact note highlight evidence missing')
@@ -161,6 +227,10 @@
         status.dataset.scoreNoteHighlightPass = 'false'
         status.dataset.prbEditorSelectionPass = 'false'
         status.dataset.prbPartNamePass = 'false'
+        status.dataset.prcBravuraFontPass = 'false'
+        status.dataset.prcKeypadManifestPass = 'false'
+        status.dataset.prcKeypadTimingPass = 'false'
+        status.dataset.prcKeypadCommitPass = 'false'
         status.dataset.renderError = String(error?.message ?? error)
         status.textContent = 'FAIL'
       }
