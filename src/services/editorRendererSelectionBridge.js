@@ -5,8 +5,10 @@
 // SesliTab's exact Package 3 projection, then uses a pre-built canonical-index →
 // Editor note-id association to select exactly one opaque token from the current
 // Editor manifest. Only Editor Core resolves that token into SemanticAddress.
-// No pitch, nearest-note, DOM/SVG or quality-marker fallback exists here.
+// No pitch, nearest-note, DOM/SVG, synthetic part-name or quality-marker fallback
+// exists here.
 
+import { inspectMusicXml } from '../../musicXmlSecurity.js'
 import { createEditorCoreRevisionBinding, assertEditorCoreSessionInitialization } from './editorCoreIntegrationAuthority.js'
 import { resolveCanonicalNoteFromScoreRef } from './scoreNoteIdentity.js'
 import { isTeacherRevision } from './teacherRevisionModel.js'
@@ -51,6 +53,77 @@ function requireText(value, field) {
     throw new Error(`Exact Editor projection requires ${field} to be a non-empty trimmed string.`)
   }
   return value
+}
+
+function localName(node) {
+  const value = node?.localName ?? node?.tagName ?? node?.tag ?? ''
+  return String(value).replace(/^.*:/, '')
+}
+
+function directChildren(node, name) {
+  return [...(node?.children ?? [])].filter((child) => localName(child) === name)
+}
+
+function nodesByLocalName(root, name) {
+  if (typeof root?.getElementsByTagNameNS === 'function') return [...root.getElementsByTagNameNS('*', name)]
+  if (typeof root?.getElementsByTagName === 'function') return [...root.getElementsByTagName(name)]
+  return []
+}
+
+export function extractEditorPartNameEvidence(musicXml, { DOMParserCtor = globalThis.DOMParser } = {}) {
+  const security = inspectMusicXml(musicXml)
+  if (!security.ok) throw new Error('Exact Editor projection requires safe current MusicXML part-name evidence.')
+  if (typeof DOMParserCtor !== 'function') {
+    throw new Error('Exact Editor projection requires a browser XML parser for part-name evidence.')
+  }
+
+  let documentNode
+  try {
+    documentNode = new DOMParserCtor().parseFromString(security.xmlForParsing, 'application/xml')
+  } catch {
+    throw new Error('Exact Editor projection could not parse current MusicXML part-name evidence.')
+  }
+  if (!documentNode || nodesByLocalName(documentNode, 'parsererror').length > 0) {
+    throw new Error('Exact Editor projection could not parse current MusicXML part-name evidence.')
+  }
+
+  const partLists = nodesByLocalName(documentNode, 'part-list')
+  if (partLists.length !== 1) throw new Error('Exact Editor projection requires exactly one MusicXML part-list.')
+  const scoreParts = directChildren(partLists[0], 'score-part')
+  if (scoreParts.length === 0) throw new Error('Exact Editor projection requires MusicXML score-part evidence.')
+
+  const seen = new Set()
+  const evidence = []
+  for (let index = 0; index < scoreParts.length; index++) {
+    const scorePart = scoreParts[index]
+    const partId = requireText(scorePart.getAttribute?.('id'), `MusicXML score-part ${index} id`)
+    if (seen.has(partId)) throw new Error(`Exact Editor projection found duplicate MusicXML score-part id ${partId}.`)
+    const names = directChildren(scorePart, 'part-name')
+    if (names.length !== 1) throw new Error(`Exact Editor projection requires one explicit part-name for ${partId}.`)
+    const name = String(names[0]?.textContent ?? '').trim()
+    requireText(name, `MusicXML score-part ${partId} part-name`)
+    seen.add(partId)
+    evidence.push(Object.freeze({ partId, name }))
+  }
+  return Object.freeze(evidence)
+}
+
+function partNameMapFromEvidence(evidence) {
+  if (!Array.isArray(evidence) || evidence.length === 0) {
+    throw new Error('Exact Editor projection requires explicit MusicXML part-name evidence; synthetic fallback is forbidden.')
+  }
+  const names = new Map()
+  for (let index = 0; index < evidence.length; index++) {
+    const item = evidence[index]
+    if (!isPlainObject(item) || Object.keys(item).length !== 2 || !Object.hasOwn(item, 'partId') || !Object.hasOwn(item, 'name')) {
+      throw new Error(`Exact Editor projection part-name evidence ${index} is malformed.`)
+    }
+    const partId = requireText(item.partId, `part-name evidence ${index} partId`)
+    const name = requireText(item.name, `part-name evidence ${index} name`)
+    if (names.has(partId)) throw new Error(`Exact Editor projection part-name evidence duplicates ${partId}.`)
+    names.set(partId, name)
+  }
+  return names
 }
 
 function gcd(left, right) {
@@ -109,9 +182,7 @@ function onsetRational(note, globalIndex) {
   const startBeat = note.startBeat
   if (Number.isSafeInteger(divisions) && divisions > 0 && typeof startBeat === 'number' && Number.isFinite(startBeat)) {
     const scaled = startBeat * divisions
-    if (Number.isSafeInteger(scaled)) {
-      return reducedRational(scaled, divisions, `note ${globalIndex} onset`, { allowZero: true })
-    }
+    if (Number.isSafeInteger(scaled)) return reducedRational(scaled, divisions, `note ${globalIndex} onset`, { allowZero: true })
   }
   return decimalRational(startBeat, `note ${globalIndex} onset`, { allowZero: true })
 }
@@ -190,10 +261,14 @@ export function resolveEditorCoreRuntime(globalScope = globalThis) {
   return runtime
 }
 
-export async function projectTeacherRevisionToEditorScore(teacherRevision, { cryptoScope = globalThis.crypto } = {}) {
+export async function projectTeacherRevisionToEditorScore(teacherRevision, {
+  cryptoScope = globalThis.crypto,
+  partNameEvidence,
+} = {}) {
   if (!isTeacherRevision(teacherRevision) || !Array.isArray(teacherRevision.content) || teacherRevision.content.length === 0) {
     throw new Error('A current immutable Package 8 note revision is required for exact Editor projection.')
   }
+  const partNames = partNameMapFromEvidence(partNameEvidence)
 
   const canonicalJson = JSON.stringify(teacherRevision.content)
   const canonicalBytes = new TextEncoder().encode(canonicalJson)
@@ -228,7 +303,11 @@ export async function projectTeacherRevisionToEditorScore(teacherRevision, { cry
     const partKey = keyForPart(note)
     let part = parts.get(partKey)
     if (!part) {
-      part = { id: entityId(prefix, 'part', partIndex + 1), name: null, partIndex, partId, staves: new Map() }
+      const partName = partNames.get(partId)
+      if (!partName) {
+        throw new Error(`Exact Editor projection has no explicit MusicXML part-name evidence for ${partId}; synthetic fallback is forbidden.`)
+      }
+      part = { id: entityId(prefix, 'part', partIndex + 1), name: partName, partIndex, partId, staves: new Map() }
       parts.set(partKey, part)
     }
 
@@ -364,10 +443,14 @@ export async function createEditorSelectionContext({
   teacherRevision,
   editorRuntime,
   cryptoScope = globalThis.crypto,
+  musicXml,
+  partNameEvidence,
+  DOMParserCtor = globalThis.DOMParser,
 } = {}) {
   const runtime = editorRuntime ?? resolveEditorCoreRuntime()
   if (!runtime) throw new Error(EDITOR_SELECTION_DIAGNOSTIC.RUNTIME_UNAVAILABLE)
-  const projection = await projectTeacherRevisionToEditorScore(teacherRevision, { cryptoScope })
+  const names = partNameEvidence ?? extractEditorPartNameEvidence(musicXml, { DOMParserCtor })
+  const projection = await projectTeacherRevisionToEditorScore(teacherRevision, { cryptoScope, partNameEvidence: names })
   const score = runtime.createScoreDocument(projection.scoreInput)
   const notation = runtime.emptyNotationDocument(score)
   const session = runtime.createEditorSessionWithRendererProfile(score, notation, ST_RENDERING_LAYER_EDITOR_PROFILE)
