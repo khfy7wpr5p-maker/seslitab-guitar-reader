@@ -9,6 +9,12 @@
 </head>
 <body>
   <div id="aria-live-region" aria-live="polite"></div>
+  <div id="proof"
+    data-stage-s08-exact-pass="false"
+    data-stage-s08-accessible-pass="false"
+    data-stage-s08-inspector-pass="false"
+    data-stage-s08-stale-pass="false"
+    data-stage-s08-mobile-pass="false">PENDING</div>
   <main>
     <div class="result-tabs" role="tablist"></div>
     <section id="stage-s05-score-workspace" data-stage-s07-score-state="source">
@@ -23,12 +29,6 @@
       </aside>
     </section>
   </main>
-  <div id="proof"
-    data-stage-s08-exact-pass="false"
-    data-stage-s08-accessible-pass="false"
-    data-stage-s08-inspector-pass="false"
-    data-stage-s08-stale-pass="false"
-    data-stage-s08-mobile-pass="false">PENDING</div>
 
 <script type="module">
 import {
@@ -136,10 +136,10 @@ try {
   if (!active?.matches?.('[data-stage-s07-field]')) throw new Error('inspector did not receive focus')
   proof.dataset.stageS08InspectorPass = 'true'
 
+  // Capture mobile/touch measurements while the markers still exist, but do
+  // not fail on them until after stale-evidence clearing has been proved.
   const minHeight = Number.parseFloat(getComputedStyle(markers[0]).minHeight)
-  if (!(minHeight >= 44)) throw new Error(`quality marker touch target too small: ${minHeight}`)
-  if (window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1) throw new Error('mobile overflow')
-  proof.dataset.stageS08MobilePass = 'true'
+  const mobileOverflow = window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1
 
   // S07 owns correction/revalidation. S08 owns the presentation reaction to
   // that exact score-state seam: once S07 marks a correction as revalidating
@@ -157,6 +157,10 @@ try {
   if (overlay.dataset.stageS08Stale !== 'true') throw new Error('blocked state not marked stale')
   if (JSON.stringify(notes) !== JSON.stringify(sourceSnapshot)) throw new Error('source notes mutated')
   proof.dataset.stageS08StalePass = 'true'
+
+  if (!(minHeight >= 44)) throw new Error(`quality marker touch target too small: ${minHeight}`)
+  if (mobileOverflow) throw new Error('mobile overflow')
+  proof.dataset.stageS08MobilePass = 'true'
 
   unregisterQualityReportForNotes(notes)
   proof.textContent = 'PASS'
