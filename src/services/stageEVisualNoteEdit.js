@@ -1,11 +1,13 @@
-// Stage E — bounded visual note editor projection.
+// Stage E / S06 — bounded visual note editor projection.
 //
 // This module does not mutate notes and does not create revision/history truth.
-// It exposes only four teacher-visible primitive correction targets for the
-// exact Stage C canonical note selection. The existing Package 8 immutable
-// correction/history boundary remains authoritative for applying changes.
+// It exposes only four teacher-visible primitive correction targets after S06
+// proves that the selected canonical note belongs to the exact current teacher
+// revision. The existing Package 8 immutable correction/history boundary remains
+// authoritative for applying changes.
 
 import { getTeacherWorkspaceCurrentRevision } from './teacherWorkspaceModel.js'
+import { stageS06SelectionMatchesRevision } from './stageS06SelectionIdentity.js'
 
 export const STAGE_E_EDIT_FIELD = Object.freeze({
   PITCH: 'step',
@@ -63,6 +65,11 @@ export function buildStageEVisualEditModel({ workspace, snapshot } = {}) {
 
   const revision = getTeacherWorkspaceCurrentRevision(workspace)
   if (!Array.isArray(revision.content)) return null
+  // S06 hard gate: a numeric note index alone is never sufficient to open the
+  // editor. The selection must be current, exact-ScoreNoteRef capable, bound to
+  // this source/revision/content fingerprint, and structurally the same event.
+  if (!stageS06SelectionMatchesRevision(snapshot, revision)) return null
+
   const noteIndex = snapshot.selectedNoteIndex
   if (noteIndex < 0 || noteIndex >= revision.content.length || noteIndex >= snapshot.notes.length) return null
 

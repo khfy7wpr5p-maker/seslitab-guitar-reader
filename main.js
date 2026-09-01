@@ -38,6 +38,7 @@ import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentati
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
 import { initStageS05ScoreWorkspaceUi } from './src/stageS05ScoreWorkspaceUi.js'
+import { initStageS06ExactSelectionUi } from './src/stageS06ExactSelectionUi.js'
 import { initStageLShareUi } from './src/stageLShareUi.js'
 
 if (typeof document !== 'undefined') {
@@ -46,5 +47,6 @@ if (typeof document !== 'undefined') {
   initStageKTunerPresentation(document)
   initStageS04MiniTunerUi(document)
   initStageS05ScoreWorkspaceUi(document)
+  initStageS06ExactSelectionUi(document)
   initStageLShareUi(document)
 }

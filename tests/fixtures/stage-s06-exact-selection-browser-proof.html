@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>S06 exact selection browser proof</title>
+</head>
+<body>
+  <div id="aria-live-region" aria-live="polite"></div>
+  <section id="results-section">
+    <div class="result-tabs" role="tablist"></div>
+  </section>
+  <aside id="stage-s05-score-inspector" aria-labelledby="stage-s05-score-inspector-heading">
+    <h3 id="stage-s05-score-inspector-heading">Nota İncelemesi</h3>
+    <p id="stage-s05-score-inspector-placeholder"></p>
+  </aside>
+  <button id="mouse-select" type="button">Mouse select</button>
+  <button id="keyboard-select" type="button">Keyboard select</button>
+  <div id="touch-select" role="button" tabindex="0">Touch select</div>
+  <div id="proof"
+    data-stage-s06-identity-pass="false"
+    data-stage-s06-revision-invalidation-pass="false"
+    data-stage-s06-input-parity-pass="false"
+    data-stage-s06-abstain-pass="false"
+    data-stage-s06-accessibility-pass="false">PENDING</div>
+
+  <script type="module">
+    import {
+      bindPackage3RevisionIdentity,
+      getPackage3MeasureSnapshot,
+      publishPackage3Notes,
+      selectPackage3MeasureKey,
+      selectPackage3NoteIndex,
+    } from '../../package3MeasureBridge.js'
+    import {
+      applyTeacherUiCorrection,
+      getTeacherUiWorkspace,
+      initPackage8TeacherUi,
+      startTeacherWorkspace,
+    } from '../../src/package8TeacherUi.js'
+    import {
+      applyStageS06ExactSelectionUi,
+      renderStageS06SelectionStatus,
+      syncStageS06RevisionBinding,
+    } from '../../src/stageS06ExactSelectionUi.js'
+    import { buildStageEVisualEditModel } from '../../src/services/stageEVisualNoteEdit.js'
+    import { getTeacherWorkspaceCurrentRevision } from '../../src/services/teacherWorkspaceModel.js'
+    import { resolveCanonicalNoteFromScoreRef } from '../../src/services/scoreNoteIdentity.js'
+    import { isStageS06SelectionCurrent } from '../../src/services/stageS06SelectionIdentity.js'
+
+    const proof = document.getElementById('proof')
+    const notes = [
+      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:0, isRest:false, isGrace:false, isChordNote:false, step:'C', alter:0, octave:4, durationValue:1, duration:'quarter', beats:1, midi:60, frequency:261.6256, noteName:'Do4', string:5, fret:3, tieStart:false, tieStop:false },
+      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:1, isRest:false, isGrace:false, isChordNote:false, step:'C', alter:0, octave:4, durationValue:1, duration:'quarter', beats:1, midi:60, frequency:261.6256, noteName:'Do4', string:5, fret:3, tieStart:false, tieStop:false },
+    ]
+    const exactRef = { partId:'P1', measureIndex:0, noteIndex:1, voice:1 }
+    const wrongRef = { partId:'P1', measureIndex:0, noteIndex:0, voice:1 }
+    let idCounter = 0
+    const adapters = {
+      id(prefix) { idCounter += 1; return `${prefix}-${idCounter}` },
+      now() { return '2026-09-01T01:00:00.000Z' },
+    }
+
+    function fail(message) {
+      proof.dataset.renderError = message
+      proof.textContent = 'FAIL'
+    }
+
+    function exactSelect(interaction) {
+      const resolved = resolveCanonicalNoteFromScoreRef(notes, exactRef)
+      if (!resolved || resolved.note !== notes[1] || resolved.noteIndex !== 1) return false
+      if (!selectPackage3MeasureKey(resolved.measureKey)) return false
+      return selectPackage3NoteIndex(resolved.noteIndex, {
+        rendererTarget: exactRef,
+        interaction,
+      })
+    }
+
+    ;(async () => {
+      try {
+        initPackage8TeacherUi(document, adapters)
+        publishPackage3Notes(notes)
+        document.getElementById('teacher-actor-id').value = 'teacher-browser-proof'
+        const workspace = startTeacherWorkspace(document)
+        if (!workspace) throw new Error('teacher workspace missing')
+        if (!applyStageS06ExactSelectionUi(document, { observe: false })) throw new Error('S06 UI did not initialize')
+        if (!syncStageS06RevisionBinding(document)) throw new Error('revision identity did not bind')
+
+        const revision = getTeacherWorkspaceCurrentRevision(getTeacherUiWorkspace(document))
+        if (!bindPackage3RevisionIdentity({ notes, sourceId:revision.sourceId, sourceRevisionId:revision.sourceRevisionId, revisionId:revision.revisionId, contentFingerprint:revision.contentFingerprint })) {
+          throw new Error('exact revision identity bind failed')
+        }
+
+        const selectedIndexes = []
+        document.getElementById('mouse-select').addEventListener('click', () => {
+          if (exactSelect('mouse')) selectedIndexes.push(getPackage3MeasureSnapshot().selectedNoteIndex)
+        })
+        document.getElementById('keyboard-select').addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' && exactSelect('keyboard')) selectedIndexes.push(getPackage3MeasureSnapshot().selectedNoteIndex)
+        })
+        document.getElementById('touch-select').addEventListener('pointerup', (event) => {
+          if (event.pointerType === 'touch' && exactSelect('touch')) selectedIndexes.push(getPackage3MeasureSnapshot().selectedNoteIndex)
+        })
+
+        document.getElementById('mouse-select').click()
+        document.getElementById('keyboard-select').dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', bubbles:true }))
+        document.getElementById('touch-select').dispatchEvent(new PointerEvent('pointerup', { pointerType:'touch', bubbles:true }))
+
+        const selected = getPackage3MeasureSnapshot()
+        if (selectedIndexes.length !== 3 || selectedIndexes.some((index) => index !== 1)) throw new Error('mouse/keyboard/touch canonical parity failed')
+        if (selected.selectedNoteIdentity?.note !== notes[1] || !isStageS06SelectionCurrent(selected, { requireRevision:true })) throw new Error('exact selection identity missing')
+        proof.dataset.stageS06InputParityPass = 'true'
+        proof.dataset.stageS06IdentityPass = 'true'
+        proof.dataset.canonicalNoteIndex = '1'
+
+        renderStageS06SelectionStatus(document, selected)
+        const inspector = document.getElementById('stage-s05-score-inspector')
+        const inspectorStatus = document.getElementById('stage-s05-score-inspector-placeholder')
+        if (inspector.dataset.stageS06SelectionGate !== 'verified' || inspectorStatus.dataset.stageS06SelectionState !== 'verified' || inspectorStatus.getAttribute('role') !== 'status' || inspectorStatus.getAttribute('aria-live') !== 'polite') {
+          throw new Error('accessible verified selection status missing')
+        }
+        proof.dataset.stageS06AccessibilityPass = 'true'
+
+        selectPackage3MeasureKey('P1:m0')
+        if (selectPackage3NoteIndex(1, { rendererTarget: wrongRef, interaction:'mismatch' })) throw new Error('mismatched renderer target was accepted')
+        if (getPackage3MeasureSnapshot().selectedNoteIndex !== null) throw new Error('mismatched target changed selection')
+        proof.dataset.stageS06AbstainPass = 'true'
+
+        if (!exactSelect('stale-revision-proof')) throw new Error('pre-correction selection failed')
+        const staleSnapshot = getPackage3MeasureSnapshot()
+        const select = document.getElementById('teacher-field-select')
+        const input = document.getElementById('teacher-field-value')
+        select.value = '1:step'
+        input.value = 'D'
+        const nextWorkspace = applyTeacherUiCorrection(document)
+        if (!nextWorkspace) throw new Error('teacher correction failed')
+        if (buildStageEVisualEditModel({ workspace: nextWorkspace, snapshot: staleSnapshot }) !== null) throw new Error('stale revision selection opened editor')
+        syncStageS06RevisionBinding(document)
+        const afterRevision = getPackage3MeasureSnapshot()
+        if (afterRevision.selectedNoteIndex !== null || afterRevision.selectedNoteIdentity !== null) throw new Error('revision change did not invalidate selection')
+        proof.dataset.stageS06RevisionInvalidationPass = 'true'
+
+        proof.dataset.viewportWidth = String(window.innerWidth)
+        proof.textContent = 'PASS'
+      } catch (error) {
+        fail(String(error?.message ?? error))
+      }
+    })()
+  </script>
+</body>
+</html>

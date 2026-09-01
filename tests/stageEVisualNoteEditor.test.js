@@ -2,7 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-import { createTeacherWorkspace } from '../src/services/teacherWorkspaceModel.js'
+import {
+  createTeacherWorkspace,
+  getTeacherWorkspaceCurrentRevision,
+} from '../src/services/teacherWorkspaceModel.js'
+import {
+  buildStageS06SelectionIdentity,
+  createStageS06RevisionIdentity,
+} from '../src/services/stageS06SelectionIdentity.js'
 import {
   buildStageEVisualEditModel,
   STAGE_E_EDIT_FIELD,
@@ -20,6 +27,8 @@ function note(overrides = {}) {
     staff: 1,
     startBeat: 0,
     isRest: false,
+    isGrace: false,
+    isChordNote: false,
     step: 'C',
     alter: 0,
     octave: 4,
@@ -48,11 +57,30 @@ function workspace(notes) {
   })
 }
 
-test('Stage E exposes only pitch accidental octave and duration for the exact selected note', () => {
+function exactSnapshot(notes, currentWorkspace, noteIndex = 0, measureKey = 'P1:m0') {
+  const revision = getTeacherWorkspaceCurrentRevision(currentWorkspace)
+  const revisionIdentity = createStageS06RevisionIdentity(revision)
+  const selectedNoteIdentity = buildStageS06SelectionIdentity({
+    notes,
+    measureKey,
+    noteIndex,
+    revisionIdentity,
+  })
+  return {
+    notes,
+    selectedMeasureKey: measureKey,
+    selectedNoteIndex: noteIndex,
+    revisionIdentity,
+    selectedNoteIdentity,
+  }
+}
+
+test('Stage E exposes only pitch accidental octave and duration for the exact revision-bound selected note', () => {
   const notes = [note()]
+  const currentWorkspace = workspace(notes)
   const model = buildStageEVisualEditModel({
-    workspace: workspace(notes),
-    snapshot: { notes, selectedMeasureKey: 'P1:m0', selectedNoteIndex: 0 },
+    workspace: currentWorkspace,
+    snapshot: exactSnapshot(notes, currentWorkspace),
   })
   assert.ok(model)
   assert.deepEqual(model.fields.map((field) => field.field), [
@@ -68,9 +96,10 @@ test('Stage E exposes only pitch accidental octave and duration for the exact se
 
 test('Stage E never exposes string fret MIDI frequency voice staff or tie fields', () => {
   const notes = [note()]
+  const currentWorkspace = workspace(notes)
   const model = buildStageEVisualEditModel({
-    workspace: workspace(notes),
-    snapshot: { notes, selectedMeasureKey: 'P1:m0', selectedNoteIndex: 0 },
+    workspace: currentWorkspace,
+    snapshot: exactSnapshot(notes, currentWorkspace),
   })
   const fields = model.fields.map((field) => field.field)
   for (const forbidden of ['string', 'fret', 'midi', 'frequency', 'voice', 'staff', 'tieStart', 'tieStop']) {
@@ -78,26 +107,31 @@ test('Stage E never exposes string fret MIDI frequency voice staff or tie fields
   }
 })
 
-test('Stage E fails closed for stale or cross-measure note selection', () => {
+test('Stage E fails closed for stale, cross-measure, out-of-range, or unbound note selection', () => {
   const notes = [note()]
   const currentWorkspace = workspace(notes)
+  const exact = exactSnapshot(notes, currentWorkspace)
+
   assert.equal(buildStageEVisualEditModel({
     workspace: currentWorkspace,
-    snapshot: { notes, selectedMeasureKey: 'P1:m1', selectedNoteIndex: 0 },
+    snapshot: { ...exact, selectedMeasureKey: 'P1:m1' },
   }), null)
   assert.equal(buildStageEVisualEditModel({
     workspace: currentWorkspace,
-    snapshot: { notes, selectedMeasureKey: 'P1:m0', selectedNoteIndex: 99 },
+    snapshot: { ...exact, selectedNoteIndex: 99 },
+  }), null)
+  assert.equal(buildStageEVisualEditModel({
+    workspace: currentWorkspace,
+    snapshot: { notes, selectedMeasureKey: 'P1:m0', selectedNoteIndex: 0 },
   }), null)
 })
 
-test('Stage E rests expose duration only and never invent pitch', () => {
+test('Stage E visual editor abstains for rests because the renderer exposes no exact selectable ScoreNoteRef', () => {
   const notes = [note({ isRest: true })]
-  const model = buildStageEVisualEditModel({
-    workspace: workspace(notes),
-    snapshot: { notes, selectedMeasureKey: 'P1:m0', selectedNoteIndex: 0 },
-  })
-  assert.deepEqual(model.fields.map((field) => field.field), [STAGE_E_EDIT_FIELD.DURATION])
+  const currentWorkspace = workspace(notes)
+  const snapshot = exactSnapshot(notes, currentWorkspace)
+  assert.equal(snapshot.selectedNoteIdentity, null)
+  assert.equal(buildStageEVisualEditModel({ workspace: currentWorkspace, snapshot }), null)
 })
 
 test('Stage E validates bounded explicit teacher values', () => {
