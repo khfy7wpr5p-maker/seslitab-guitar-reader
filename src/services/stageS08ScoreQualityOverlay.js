@@ -157,19 +157,25 @@ export function buildStageS08ScoreQualityOverlayModel(snapshot, { scoreState = '
   Object.freeze(markers)
 
   const counts = summarize(markers)
-  const aggregateState = counts.block > 0
-    ? STAGE_S08_NOTE_STATE.BLOCK
-    : counts.review > 0
-      ? STAGE_S08_NOTE_STATE.REVIEW
-      : counts.unknown > 0
-        ? STAGE_S08_NOTE_STATE.UNKNOWN
-        : STAGE_S08_NOTE_STATE.NO_ISSUE_FOUND
+  const aggregateState = markers.length === 0
+    ? STAGE_S08_NOTE_STATE.UNKNOWN
+    : counts.block > 0
+      ? STAGE_S08_NOTE_STATE.BLOCK
+      : counts.review > 0
+        ? STAGE_S08_NOTE_STATE.REVIEW
+        : counts.unknown > 0
+          ? STAGE_S08_NOTE_STATE.UNKNOWN
+          : STAGE_S08_NOTE_STATE.NO_ISSUE_FOUND
+
+  const reason = markers.length === 0
+    ? 'Exact renderer hedefi olan note-level kalite işareti üretilemedi; durum unknown olarak korunuyor.'
+    : aggregateState === STAGE_S08_NOTE_STATE.NO_ISSUE_FOUND
+      ? 'Exact note-level otomatik kontroller sorun göstermedi; bu müzikal doğruluk garantisi değildir.'
+      : 'Exact note-level durum, yalnız mevcut canonical/source doğrulama kanıtından türetildi.'
 
   return Object.freeze({
     state: aggregateState,
-    reason: aggregateState === STAGE_S08_NOTE_STATE.NO_ISSUE_FOUND
-      ? 'Exact note-level otomatik kontroller sorun göstermedi; bu müzikal doğruluk garantisi değildir.'
-      : 'Exact note-level durum, yalnız mevcut canonical/source doğrulama kanıtından türetildi.',
+    reason,
     stale: false,
     exactSourceEvidence: true,
     markers,
