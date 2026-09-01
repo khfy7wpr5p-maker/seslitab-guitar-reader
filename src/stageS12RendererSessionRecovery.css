@@ -1,0 +1,11 @@
+.stage-s12-renderer-retry-btn {
+  min-height: 44px;
+  margin: 0.5rem 0 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .stage-s12-renderer-retry-btn {
+    width: 100%;
+    max-width: 100%;
+  }
+}
