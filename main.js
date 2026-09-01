@@ -24,6 +24,7 @@ import './src/stageS12MobileProductionAcceptance.css'
 import './src/stageS12MobileScoreTools.css'
 import './src/stageS12RendererSessionRecovery.css'
 import './src/stageJDiscoveryPresentation.css'
+import './src/stagePrCKeypad.css'
 import './src/app.js'
 import './src/package3Ui.js'
 import './src/stageCNoteSelectionUi.js'
@@ -47,6 +48,7 @@ import { initStageS12MobileProductionAcceptanceUi } from './src/stageS12MobilePr
 import { initStageS12RendererSessionRecoveryUi } from './src/stageS12RendererSessionRecoveryUi.js'
 import { initStageS12MobileScoreToolsUi } from './src/stageS12MobileScoreToolsUi.js'
 import { initStagePrBEditorSelectionUi } from './src/stagePrBEditorSelectionUi.js'
+import { initStagePrDKeypadIntegrationUi } from './src/stagePrDKeypadIntegrationUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
@@ -71,6 +73,11 @@ if (typeof document !== 'undefined') {
   // selection path, while the S12 layer below continues to own mobile workspace
   // presentation/recovery behavior without becoming a second write authority.
   initStagePrBEditorSelectionUi(document)
+  // PR-D mounts the Editor Core keypad only after the exact selection gate.
+  // It owns keypad writes, immutable product revision audit, revalidation,
+  // rerender and post-rerender rebind. Legacy edit controls are retired while
+  // this path is active; teacher approval remains a separate action.
+  initStagePrDKeypadIntegrationUi(document)
   // S12 adds mobile pointer/touch delivery, post-input workspace focus, and
   // relocates the existing primary playback sections beside the score. It does
   // not change renderer/canonical authority or quality-gate decisions.
@@ -89,8 +96,9 @@ if (typeof document !== 'undefined') {
   // S11 removes the duplicate technical teacher tab from the normal workflow
   // only after S07-S10 have established the score-centered product surfaces.
   initStageS11TeacherWorkflowUi(document)
-  // The compact note palette projects only an already-proven exact selection
-  // into the existing S07 correction controls; it does not add hit-test logic.
+  // The legacy compact note palette may still initialize for unrelated S12
+  // orchestration, but PR-D CSS hides its write controls while the integrated
+  // Editor keypad is mounted so it cannot become a second authority.
   initStageS12MobileScoreToolsUi(document)
   initStageLShareUi(document)
 }
