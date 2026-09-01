@@ -1,12 +1,13 @@
 // S12 production-acceptance addendum — mobile interaction and workspace orchestration only.
 //
 // Renderer hit-testing remains interaction identity, never musical authority.
-// This layer adds touch/pointer delivery for real mobile browsers, keeps the
-// exact ScoreNoteRef -> canonical resolver -> S06 selection chain, relocates
-// existing primary playback controls beside the score without replacing their
-// listeners, and focuses the score workspace after a newly rendered input.
-// It does not alter OMR, quality policy, immutable revision authority, approval,
-// instrument solvers, sharing, or Package 12 authorization.
+// This layer adds touch/pointer/click delivery for real mobile browsers, keeps
+// the exact ScoreNoteRef -> canonical resolver -> S06 selection chain, relocates
+// existing primary playback controls beside the score, hands the input slot to
+// the score after a successful render, and focuses the score workspace without
+// forcing an aggressive page jump. It does not alter OMR, quality policy,
+// immutable revision authority, approval, instrument solvers, sharing, or
+// Package 12 authorization.
 
 import {
   getPackage3MeasureSnapshot,
@@ -22,6 +23,7 @@ import { resolveCanonicalNoteFromScoreRef } from './services/scoreNoteIdentity.j
 const states = new WeakMap()
 const MOBILE_EVENT_DEDUPE_MS = 450
 const MOBILE_EVENT_DEDUPE_DISTANCE_PX = 3
+const CAPTURE_LISTENER_OPTIONS = Object.freeze({ capture: true, passive: true })
 
 function stateFor(root) {
   let state = states.get(root)
@@ -32,6 +34,7 @@ function stateFor(root) {
       boundDocument: null,
       pointerHandler: null,
       touchHandler: null,
+      clickHandler: null,
       loadHandler: null,
       lastInteraction: null,
       lastFocusedMusicXml: null,
@@ -62,15 +65,18 @@ export function resolveStageS12InteractionPoint(event) {
   return Object.freeze({ clientX, clientY })
 }
 
-function duplicateMobileInteraction(state, point, now = Date.now()) {
+function duplicateSuccessfulInteraction(state, point, now = Date.now()) {
   const previous = state.lastInteraction
-  state.lastInteraction = { ...point, at: now }
   if (!previous) return false
   return (
     now - previous.at <= MOBILE_EVENT_DEDUPE_MS &&
     Math.abs(point.clientX - previous.clientX) <= MOBILE_EVENT_DEDUPE_DISTANCE_PX &&
     Math.abs(point.clientY - previous.clientY) <= MOBILE_EVENT_DEDUPE_DISTANCE_PX
   )
+}
+
+function rememberSuccessfulInteraction(state, point, now = Date.now()) {
+  state.lastInteraction = { ...point, at: now }
 }
 
 export function selectStageS12ExactRenderedNote(root, runtime, point) {
@@ -104,8 +110,9 @@ export function selectStageS12ExactRenderedNote(root, runtime, point) {
 
 function detachMobileBinding(state) {
   if (state.boundDocument) {
-    if (state.pointerHandler) state.boundDocument.removeEventListener?.('pointerup', state.pointerHandler)
-    if (state.touchHandler) state.boundDocument.removeEventListener?.('touchend', state.touchHandler)
+    if (state.pointerHandler) state.boundDocument.removeEventListener?.('pointerup', state.pointerHandler, true)
+    if (state.touchHandler) state.boundDocument.removeEventListener?.('touchend', state.touchHandler, true)
+    if (state.clickHandler) state.boundDocument.removeEventListener?.('click', state.clickHandler, true)
   }
   if (state.boundFrame && state.loadHandler) {
     state.boundFrame.removeEventListener?.('load', state.loadHandler)
@@ -114,6 +121,7 @@ function detachMobileBinding(state) {
   state.boundDocument = null
   state.pointerHandler = null
   state.touchHandler = null
+  state.clickHandler = null
   state.loadHandler = null
   state.lastInteraction = null
 }
@@ -153,16 +161,26 @@ export function bindStageS12MobileScoreInteraction(root = document) {
     }
 
     const point = resolveStageS12InteractionPoint(event)
-    if (!point || duplicateMobileInteraction(state, point)) return
+    if (!point || duplicateSuccessfulInteraction(state, point)) return
     const runtime = runtimeForFrame(frame)
-    if (!runtime) return
-    selectStageS12ExactRenderedNote(root, runtime, point)
+    if (!runtime) {
+      announceSelectionStatus(root, 'Görsel nota etkileşim katmanı henüz hazır değil; seçim değiştirilmedi.')
+      return
+    }
+
+    // Do not remember a failed pointer/touch attempt. iPhone Safari may emit a
+    // later synthetic click for the same tap; that retry must remain available.
+    if (selectStageS12ExactRenderedNote(root, runtime, point)) {
+      rememberSuccessfulInteraction(state, point)
+    }
   }
 
   const pointerHandler = (event) => handle(event)
   const touchHandler = (event) => handle(event)
-  frameDocument.addEventListener('pointerup', pointerHandler)
-  frameDocument.addEventListener('touchend', touchHandler)
+  const clickHandler = (event) => handle(event)
+  frameDocument.addEventListener('pointerup', pointerHandler, CAPTURE_LISTENER_OPTIONS)
+  frameDocument.addEventListener('touchend', touchHandler, CAPTURE_LISTENER_OPTIONS)
+  frameDocument.addEventListener('click', clickHandler, CAPTURE_LISTENER_OPTIONS)
 
   const loadHandler = () => {
     // A same-origin iframe navigation replaces its Document. Rebind only to the
@@ -175,6 +193,7 @@ export function bindStageS12MobileScoreInteraction(root = document) {
   state.boundDocument = frameDocument
   state.pointerHandler = pointerHandler
   state.touchHandler = touchHandler
+  state.clickHandler = clickHandler
   state.loadHandler = loadHandler
   return true
 }
@@ -215,23 +234,50 @@ function currentMusicXml(root) {
   return value
 }
 
+function isScoreWorkspaceReady(root) {
+  const workspace = root.getElementById?.('stage-s05-score-workspace')
+  const status = root.getElementById?.('score-view-status')
+  return Boolean(
+    workspace &&
+    workspace.hidden === false &&
+    currentMusicXml(root) &&
+    status &&
+    /^Görsel nota hazır\./.test(String(status.textContent || ''))
+  )
+}
+
+export function syncStageS12InputSlot(root = document) {
+  if (!root || typeof root.getElementById !== 'function') return false
+  const input = root.getElementById('input-section')
+  const workspace = root.getElementById('stage-s05-score-workspace')
+  if (!input || !workspace) return false
+
+  const ready = isScoreWorkspaceReady(root)
+  input.hidden = ready
+  input.setAttribute?.('data-stage-s12-slot-state', ready ? 'score-active' : 'input-active')
+  workspace.setAttribute?.('data-stage-s12-slot-state', ready ? 'score-active' : 'input-active')
+  return ready
+}
+
 export function focusStageS12WorkspaceAfterRender(root = document) {
   if (!root || typeof root.getElementById !== 'function') return false
   const state = stateFor(root)
   const workspace = root.getElementById('stage-s05-score-workspace')
-  const status = root.getElementById('score-view-status')
   const musicxml = currentMusicXml(root)
 
   if (!workspace || workspace.hidden !== false || !musicxml) {
     state.lastFocusedMusicXml = null
     return false
   }
-  if (!status || !/^Görsel nota hazır\./.test(String(status.textContent || ''))) return false
+  if (!isScoreWorkspaceReady(root)) return false
   if (state.lastFocusedMusicXml === musicxml) return true
 
   workspace.setAttribute?.('tabindex', '-1')
   workspace.focus?.({ preventScroll: true })
-  workspace.scrollIntoView?.({ block: 'start', inline: 'nearest' })
+  // The input card is hidden first, so the workspace naturally takes its exact
+  // top-page slot. `nearest` avoids the previous iPhone jump that placed the
+  // score at an unexpected viewport origin while still landing out-of-view users.
+  workspace.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   workspace.setAttribute?.('data-stage-s12-post-input-focus', 'true')
   state.lastFocusedMusicXml = musicxml
   return true
@@ -249,6 +295,7 @@ function installObserver(root, state) {
   state.observer = new Observer(() => {
     moveStageS12PrimaryScoreActions(root)
     bindStageS12MobileScoreInteraction(root)
+    syncStageS12InputSlot(root)
     focusStageS12WorkspaceAfterRender(root)
   })
   state.observer.observe(workspace, {
@@ -267,6 +314,7 @@ export function applyStageS12MobileProductionAcceptanceUi(root = document, { obs
   const state = stateFor(root)
   const moved = moveStageS12PrimaryScoreActions(root)
   bindStageS12MobileScoreInteraction(root)
+  syncStageS12InputSlot(root)
   focusStageS12WorkspaceAfterRender(root)
   if (observe) installObserver(root, state)
 

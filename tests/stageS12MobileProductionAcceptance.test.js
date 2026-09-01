@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import {
   moveStageS12PrimaryScoreActions,
   resolveStageS12InteractionPoint,
+  syncStageS12InputSlot,
 } from '../src/stageS12MobileProductionAcceptanceUi.js'
 
 class FakeElement {
@@ -14,6 +15,7 @@ class FakeElement {
     this.parentElement = null
     this.attributes = new Map()
     this.hidden = false
+    this.textContent = ''
     this._id = ''
   }
   set id(value) { this._id = value; if (value) this.root.nodes.set(value, this) }
@@ -67,6 +69,23 @@ test('S12 moves the existing full-score playback sections beside the score witho
   assert.equal(rail.children.length, 2)
 })
 
+test('S12 hands the input card slot to a successfully rendered score and restores it when score is not ready', () => {
+  const { root } = fakeDocument()
+  const input = root.createElement(); input.id = 'input-section'
+  const workspace = root.createElement(); workspace.id = 'stage-s05-score-workspace'; workspace.hidden = false
+  const status = root.createElement(); status.id = 'score-view-status'; status.textContent = 'Görsel nota hazır. Kaynak çizildi.'
+  const xml = root.createElement(); xml.id = 'xml-output'; xml.textContent = '<score-partwise version="4.0"></score-partwise>'
+
+  assert.equal(syncStageS12InputSlot(root), true)
+  assert.equal(input.hidden, true)
+  assert.equal(input.attributes.get('data-stage-s12-slot-state'), 'score-active')
+
+  workspace.hidden = true
+  assert.equal(syncStageS12InputSlot(root), false)
+  assert.equal(input.hidden, false)
+  assert.equal(input.attributes.get('data-stage-s12-slot-state'), 'input-active')
+})
+
 test('S12 mobile interaction remains exact ScoreNoteRef/canonical selection and adds no musical guessing', () => {
   const source = readFileSync(new URL('../src/stageS12MobileProductionAcceptanceUi.js', import.meta.url), 'utf8')
   assert.match(source, /hitTestScoreNote/)
@@ -75,8 +94,18 @@ test('S12 mobile interaction remains exact ScoreNoteRef/canonical selection and 
   assert.match(source, /selectPackage3NoteIndex/)
   assert.match(source, /pointerup/)
   assert.match(source, /touchend/)
+  assert.match(source, /addEventListener\('click'/)
+  assert.match(source, /capture:\s*true/)
+  assert.match(source, /if \(selectStageS12ExactRenderedNote\([\s\S]*rememberSuccessfulInteraction/)
   assert.doesNotMatch(source, /nearest-note|pitch-label|elementFromPoint|querySelectorAll\([^)]*svg/i)
   assert.doesNotMatch(source, /Audiveris|OMR_PROVIDER|Package 12 authorization.*=/i)
+})
+
+test('S12 score landing replaces the input slot without the previous forced start-scroll jump', () => {
+  const source = readFileSync(new URL('../src/stageS12MobileProductionAcceptanceUi.js', import.meta.url), 'utf8')
+  assert.match(source, /syncStageS12InputSlot\(root\)/)
+  assert.match(source, /scrollIntoView\?\.\(\{ block: 'nearest', inline: 'nearest' \}\)/)
+  assert.doesNotMatch(source, /scrollIntoView\?\.\(\{ block: 'start'/)
 })
 
 test('S12 PASS presentation remains input-origin agnostic and fail-closed policy stays in Stage G', () => {
