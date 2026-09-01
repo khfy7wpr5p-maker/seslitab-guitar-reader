@@ -1,0 +1,105 @@
+.stage-s08-score-quality-overlay {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #d8dde5);
+  border-radius: 0.75rem;
+  background: var(--card-bg, #fff);
+}
+
+.stage-s08-score-quality-overlay h4,
+.stage-s08-score-quality-overlay p {
+  margin-top: 0;
+}
+
+.stage-s08-score-quality-overlay [data-stage-s08-state='BLOCK'] {
+  border-inline-start: 0.3rem solid currentColor;
+}
+
+.stage-s08-score-quality-overlay [data-stage-s08-state='REVIEW'] {
+  border-inline-start: 0.3rem dashed currentColor;
+}
+
+.stage-s08-score-quality-overlay [data-stage-s08-state='NO_ISSUE_FOUND'] {
+  border-inline-start: 0.3rem double currentColor;
+}
+
+.stage-s08-score-quality-overlay [data-stage-s08-state='UNKNOWN'] {
+  border-inline-start: 0.3rem dotted currentColor;
+}
+
+.stage-s08-score-quality-rail {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.25rem 0 0.5rem;
+  scroll-snap-type: x proximity;
+}
+
+.stage-s08-quality-marker {
+  flex: 0 0 min(18rem, 78vw);
+  min-height: 44px;
+  padding: 0.625rem;
+  border: 1px solid currentColor;
+  border-radius: 0.6rem;
+  background: transparent;
+  text-align: start;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.stage-s08-quality-marker[data-stage-s08-state='REVIEW'] {
+  border-style: dashed;
+}
+
+.stage-s08-quality-marker[data-stage-s08-state='BLOCK'] {
+  border-width: 2px;
+}
+
+.stage-s08-quality-marker[data-stage-s08-state='UNKNOWN'] {
+  border-style: dotted;
+}
+
+.stage-s08-quality-marker[aria-pressed='true'] {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+.stage-s08-quality-marker:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+.stage-s08-quality-marker-icon {
+  display: inline-block;
+  min-width: 1.5rem;
+  font-weight: 800;
+}
+
+.stage-s08-quality-marker-label {
+  font-weight: 700;
+}
+
+.stage-s08-quality-marker-reason {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.stage-s08-quality-empty {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 760px) {
+  .stage-s08-score-quality-overlay {
+    padding: 0.625rem;
+  }
+
+  .stage-s08-quality-marker {
+    flex-basis: min(16rem, 82vw);
+    min-height: 48px;
+  }
+}
