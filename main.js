@@ -10,6 +10,7 @@ import './src/stageKTunerPresentation.css'
 import './src/stageS04MiniTuner.css'
 import './src/stageS05ScoreWorkspace.css'
 import './src/stageS07InlineTeacherInspector.css'
+import './src/stageS08ScoreQualityOverlay.css'
 import './src/stageLShareUi.css'
 import './src/appShell.css'
 import './src/mobileReviewUi.css'
@@ -42,6 +43,7 @@ import { initStageS05ScoreWorkspaceUi } from './src/stageS05ScoreWorkspaceUi.js'
 import { initStageS06ExactSelectionUi } from './src/stageS06ExactSelectionUi.js'
 import { initStageS07InlineTeacherInspectorUi } from './src/stageS07InlineTeacherInspectorUi.js'
 import { initStageS07VerifiedSelectionProjection } from './src/stageS07VerifiedSelectionProjection.js'
+import { initStageS08ScoreQualityOverlay } from './src/stageS08ScoreQualityOverlayUi.js'
 import { initStageLShareUi } from './src/stageLShareUi.js'
 
 if (typeof document !== 'undefined') {
@@ -53,5 +55,6 @@ if (typeof document !== 'undefined') {
   initStageS06ExactSelectionUi(document)
   initStageS07InlineTeacherInspectorUi(document)
   initStageS07VerifiedSelectionProjection(document)
+  initStageS08ScoreQualityOverlay(document)
   initStageLShareUi(document)
 }

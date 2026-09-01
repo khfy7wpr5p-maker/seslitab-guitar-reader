@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>S08 score quality overlay browser proof</title>
+  <link rel="stylesheet" href="../../src/stageS07InlineTeacherInspector.css">
+  <link rel="stylesheet" href="../../src/stageS08ScoreQualityOverlay.css">
+</head>
+<body>
+  <div id="aria-live-region" aria-live="polite"></div>
+  <div id="proof"
+    data-stage-s08-exact-pass="false"
+    data-stage-s08-accessible-pass="false"
+    data-stage-s08-inspector-pass="false"
+    data-stage-s08-stale-pass="false"
+    data-stage-s08-mobile-pass="false">PENDING</div>
+  <main>
+    <div class="result-tabs" role="tablist"></div>
+    <section id="stage-s05-score-workspace" data-stage-s07-score-state="source">
+      <div id="stage-s05-score-column">
+        <div id="tab-score-view">
+          <div id="score-view-surface" tabindex="0" role="region" aria-label="Görsel nota sayfası"></div>
+        </div>
+      </div>
+      <aside id="stage-s05-score-inspector" aria-labelledby="stage-s05-score-inspector-heading">
+        <h3 id="stage-s05-score-inspector-heading">Nota İncelemesi</h3>
+        <p id="stage-s05-score-inspector-placeholder"></p>
+      </aside>
+    </section>
+  </main>
+
+<script type="module">
+import {
+  CANONICAL_NOTE_SCHEMA_VERSION,
+  CANONICAL_VERIFICATION_STATUS,
+} from '../../noteTheory.js'
+import {
+  getPackage3MeasureSnapshot,
+  publishPackage3Notes,
+} from '../../package3MeasureBridge.js'
+import {
+  getTeacherUiWorkspace,
+  initPackage8TeacherUi,
+} from '../../src/package8TeacherUi.js'
+import {
+  registerQualityReportForNotes,
+  unregisterQualityReportForNotes,
+} from '../../src/services/qualityGateIntegration.js'
+import {
+  applyStageS07InlineTeacherInspectorUi,
+  renderStageS07InlineInspector,
+} from '../../src/stageS07InlineTeacherInspectorUi.js'
+import { syncStageS06RevisionBinding } from '../../src/stageS06ExactSelectionUi.js'
+import {
+  applyStageS08ScoreQualityOverlay,
+  renderStageS08ScoreQualityOverlay,
+} from '../../src/stageS08ScoreQualityOverlayUi.js'
+
+const proof = document.getElementById('proof')
+
+function verifiedState() {
+  return {
+    schemaVersion: CANONICAL_NOTE_SCHEMA_VERSION,
+    status: CANONICAL_VERIFICATION_STATUS.VERIFIED,
+    pitch: { valid: true, status: CANONICAL_VERIFICATION_STATUS.VERIFIED },
+    time: { valid: true, status: CANONICAL_VERIFICATION_STATUS.VERIFIED },
+  }
+}
+
+function note(startBeat, step) {
+  return {
+    measureKey: 'P1:m0', partId: 'P1', partIndex: 0, measureIndex: 0, measureNumber: 1,
+    voice: 1, staff: 1, startBeat, isRest: false, isGrace: false, isChordNote: false,
+    step, alter: 0, octave: 4, durationValue: 1, duration: 'quarter', divisions: 1, beats: 1,
+    midi: step === 'C' ? 60 : 62, frequency: step === 'C' ? 261.6256 : 293.6648,
+    noteName: step === 'C' ? 'Do4' : 'Re4', string: 5, fret: step === 'C' ? 3 : 5,
+    tieStart: false, tieStop: false, sourceVerificationState: verifiedState(),
+  }
+}
+
+function passReport(count) {
+  return Object.freeze({
+    qualityState: 'source_verified', structurallyValid: true, sourceVerified: true,
+    reviewRequired: false, reliable: true,
+    summary: Object.freeze({ totalFindings: 0, errors: 0, warnings: 0, verifiedNotes: count, unverifiedNotes: 0 }),
+    findings: Object.freeze([]),
+  })
+}
+
+try {
+  let counter = 0
+  initPackage8TeacherUi(document, {
+    id(prefix) { counter += 1; return `${prefix}-s08-${counter}` },
+    now() { counter += 1; return `2026-09-01T07:${String(counter).padStart(2, '0')}:00.000Z` },
+  })
+  document.getElementById('teacher-actor-id').value = 'teacher-s08-browser'
+
+  const notes = [note(0, 'C'), note(1, 'D')]
+  const sourceSnapshot = structuredClone(notes)
+  publishPackage3Notes(notes)
+  registerQualityReportForNotes(notes, passReport(notes.length))
+
+  if (!applyStageS07InlineTeacherInspectorUi(document)) throw new Error('S07 inspector init failed')
+  if (!getTeacherUiWorkspace(document)) throw new Error('teacher workspace missing')
+  syncStageS06RevisionBinding(document)
+  renderStageS07InlineInspector(document)
+
+  if (!applyStageS08ScoreQualityOverlay(document)) throw new Error('S08 overlay init failed')
+  renderStageS08ScoreQualityOverlay(document)
+
+  const workspace = document.getElementById('stage-s05-score-workspace')
+  const overlay = document.getElementById('stage-s08-score-quality-overlay')
+  const markers = [...document.querySelectorAll('.stage-s08-quality-marker')]
+  if (markers.length !== 2) throw new Error(`expected 2 markers, got ${markers.length}`)
+  if (markers.some((button) => button.dataset.stageS08State !== 'NO_ISSUE_FOUND')) throw new Error('PASS marker state mismatch')
+  if (!overlay.textContent.includes('müzikal doğruluk garantisi değildir')) throw new Error('no-issue disclaimer missing')
+  proof.dataset.stageS08ExactPass = 'true'
+
+  for (const marker of markers) {
+    if (!marker.getAttribute('aria-label')?.includes('Otomatik kontrolde sorun bulunmadı')) throw new Error('marker aria status missing')
+    if (!marker.querySelector('.stage-s08-quality-marker-icon')) throw new Error('marker icon missing')
+  }
+  proof.dataset.stageS08AccessiblePass = 'true'
+
+  markers[1].click()
+  const selected = getPackage3MeasureSnapshot()
+  if (selected.selectedNoteIndex !== 1 || selected.selectedNoteIdentity?.rendererTarget?.noteIndex !== 1) {
+    throw new Error('quality marker did not route exact selection')
+  }
+  const fields = document.getElementById('stage-s07-inline-fields')
+  if (!fields || fields.hidden || fields.querySelectorAll('[data-stage-s07-field]').length !== 8) {
+    throw new Error('S07 inspector did not open for exact quality marker')
+  }
+  const active = document.activeElement
+  if (!active?.matches?.('[data-stage-s07-field]')) throw new Error('inspector did not receive focus')
+  proof.dataset.stageS08InspectorPass = 'true'
+
+  // Selecting a marker rerenders the rail, so the original `markers` array can
+  // contain detached buttons. Measure the currently mounted marker instead;
+  // only a real attached element can provide touch-target/layout evidence.
+  const mountedMarker = document.querySelector('.stage-s08-quality-marker')
+  if (!mountedMarker?.isConnected) throw new Error('quality marker is not mounted for touch-target proof')
+  const minHeight = Number.parseFloat(getComputedStyle(mountedMarker).minHeight)
+  const mobileOverflow = window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1
+
+  // S07 owns correction/revalidation. S08 owns the presentation reaction to
+  // that exact score-state seam: once S07 marks a correction as revalidating
+  // or blocked, old note-level source-quality markers must disappear rather
+  // than remain visible as current evidence. S07's own real-browser suite
+  // separately proves the actual immutable correction transition.
+  workspace.setAttribute('data-stage-s07-score-state', 'revalidating')
+  renderStageS08ScoreQualityOverlay(document)
+  if (document.querySelectorAll('.stage-s08-quality-marker').length !== 0) throw new Error('stale markers survived revalidation')
+  if (overlay.dataset.stageS08Stale !== 'true') throw new Error('revalidation not marked stale')
+
+  workspace.setAttribute('data-stage-s07-score-state', 'blocked')
+  renderStageS08ScoreQualityOverlay(document)
+  if (document.querySelectorAll('.stage-s08-quality-marker').length !== 0) throw new Error('stale markers survived blocked state')
+  if (overlay.dataset.stageS08Stale !== 'true') throw new Error('blocked state not marked stale')
+  if (JSON.stringify(notes) !== JSON.stringify(sourceSnapshot)) throw new Error('source notes mutated')
+  proof.dataset.stageS08StalePass = 'true'
+
+  if (!(minHeight >= 44)) throw new Error(`quality marker touch target too small: ${minHeight}`)
+  if (mobileOverflow) throw new Error('mobile overflow')
+  proof.dataset.stageS08MobilePass = 'true'
+
+  unregisterQualityReportForNotes(notes)
+  proof.textContent = 'PASS'
+} catch (error) {
+  proof.dataset.renderError = String(error?.message ?? error)
+  proof.textContent = 'FAIL'
+}
+</script>
+</body>
+</html>
