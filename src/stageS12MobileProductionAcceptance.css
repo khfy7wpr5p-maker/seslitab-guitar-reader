@@ -23,6 +23,66 @@
   min-height: 44px;
 }
 
+/* S12 acceptance: keep routine technical explanations available to assistive
+   technology without filling the visual score workspace with paragraphs. */
+#stage-s05-score-inspector-heading,
+.score-view-panel > h3:first-child,
+#score-view-measure-sync,
+#score-view-note-sync,
+#score-view-mobile-hint,
+.score-view-provenance,
+#stage-s08-score-quality-help,
+.stage-s07-inline-help {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.stage-s08-quality-marker-reason {
+  display: none !important;
+}
+
+.stage-s08-score-quality-overlay {
+  margin: 0.4rem 0;
+  padding: 0.5rem;
+}
+
+.stage-s08-score-quality-overlay h4,
+#stage-s08-score-quality-status {
+  margin: 0 0 0.35rem;
+}
+
+#stage-s08-score-quality-status {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.stage-s08-score-quality-rail {
+  gap: 0.35rem;
+  padding: 0;
+}
+
+.stage-s08-quality-marker {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.45rem 0.6rem;
+}
+
+.stage-s07-inline-teacher-inspector {
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.stage-s07-inline-actions {
+  gap: 0.35rem;
+}
+
 @media (max-width: 760px) {
   .stage-s12-primary-score-actions {
     grid-template-columns: minmax(0, 1fr);
@@ -35,6 +95,15 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
+  }
+
+  .stage-s08-score-quality-overlay {
+    padding: 0.4rem;
+  }
+
+  .stage-s08-quality-marker {
+    min-height: 44px;
+    padding: 0.4rem 0.55rem;
   }
 }
 
