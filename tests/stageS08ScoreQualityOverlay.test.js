@@ -133,6 +133,25 @@ test('S08 projects exact verified source notes as NO_ISSUE_FOUND only under exac
   unregisterQualityReportForNotes(notes)
 })
 
+test('S08 keeps an exact report UNKNOWN when no selectable renderer marker can be produced', () => {
+  const rest = note(CANONICAL_VERIFICATION_STATUS.VERIFIED, {
+    isRest: true,
+    step: undefined,
+    alter: undefined,
+    octave: undefined,
+    midi: undefined,
+    frequency: undefined,
+    noteName: undefined,
+  })
+  const notes = [rest]
+  registerQualityReportForNotes(notes, report())
+  const model = buildStageS08ScoreQualityOverlayModel(snapshot(notes))
+  assert.equal(model.state, STAGE_S08_NOTE_STATE.UNKNOWN)
+  assert.equal(model.markers.length, 0)
+  assert.match(model.reason, /unknown olarak korunuyor/)
+  unregisterQualityReportForNotes(notes)
+})
+
 test('S08 uses note-local canonical evidence for REVIEW and BLOCK without structural guesswork', () => {
   const partial = note(CANONICAL_VERIFICATION_STATUS.PARTIAL)
   const invalid = note(CANONICAL_VERIFICATION_STATUS.INVALID, { startBeat: 1 })
@@ -201,11 +220,14 @@ test('S08 source/UI remain exact-identity, non-color-only and inference-free', a
 
   assert.match(service, /deriveCanonicalNoteSelection/)
   assert.match(service, /selectionNotes !== notes/)
+  assert.match(service, /markers\.length === 0/)
   assert.match(service, /müzikal doğruluk garantisi değildir/)
   assert.match(ui, /selectPackage3NoteIndex/)
   assert.match(ui, /rendererTarget: marker\.rendererTarget/)
   assert.match(ui, /aria-label/)
   assert.match(ui, /stage-s08-quality-marker-icon/)
+  assert.match(ui, /rail\.setAttribute\('role', 'group'\)/)
+  assert.doesNotMatch(ui, /button\.setAttribute\('role', 'listitem'\)/)
   assert.match(css, /min-height:\s*44px/)
 
   const combined = `${service}\n${ui}`
