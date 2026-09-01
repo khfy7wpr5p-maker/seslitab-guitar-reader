@@ -56,6 +56,7 @@ function stateFor(root) {
       queuedRetry: null,
       editorContext: null,
       editorContextKey: null,
+      editorContextMusicXml: null,
       editorContextPromise: null,
       eventCount: 0,
       rendererMissCount: 0,
@@ -120,6 +121,13 @@ function currentRevision(root) {
   try { return getTeacherWorkspaceCurrentRevision(workspace) } catch { return null }
 }
 
+function currentMusicXml(root) {
+  const output = root?.getElementById?.('xml-output')
+  const value = typeof output?.textContent === 'string' ? output.textContent : ''
+  if (!value.trim() || value.startsWith('(TAB modunda')) return null
+  return value
+}
+
 function contextKey(snapshot, revision) {
   const identity = snapshot?.revisionIdentity
   if (!identity || !revision) return null
@@ -157,13 +165,15 @@ async function loadEditorRuntime(root) {
 async function ensureEditorContext(root, state) {
   const snapshot = getPackage3MeasureSnapshot()
   const revision = currentRevision(root)
+  const musicXml = currentMusicXml(root)
   const key = contextKey(snapshot, revision)
-  if (!key || !Array.isArray(snapshot?.selectionNotes)) return null
-  if (state.editorContext && state.editorContextKey === key) return state.editorContext
-  if (state.editorContextPromise && state.editorContextKey === key) return state.editorContextPromise
+  if (!key || !Array.isArray(snapshot?.selectionNotes) || !musicXml) return null
+  if (state.editorContext && state.editorContextKey === key && state.editorContextMusicXml === musicXml) return state.editorContext
+  if (state.editorContextPromise && state.editorContextKey === key && state.editorContextMusicXml === musicXml) return state.editorContextPromise
 
   state.editorContext = null
   state.editorContextKey = key
+  state.editorContextMusicXml = musicXml
   const promise = (async () => {
     const editorRuntime = await loadEditorRuntime(root)
     if (!editorRuntime) return null
@@ -173,6 +183,8 @@ async function ensureEditorContext(root, state) {
         teacherRevision: revision,
         editorRuntime,
         cryptoScope: root?.defaultView?.crypto ?? globalThis.crypto,
+        musicXml,
+        DOMParserCtor: root?.defaultView?.DOMParser ?? globalThis.DOMParser,
       })
       state.editorContext = context
       return context
