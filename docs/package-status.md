@@ -1,7 +1,7 @@
 # SesliTab Package Status
 
-**Documentation review:** 2026-08-31
-**Protected main reference:** `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`
+**Documentation review:** 2026-09-01
+**Protected main reference:** `d480758032f56572dbaf92cd832b0001b9089987`
 **Required check:** `test-and-build`
 
 This page describes the current production package boundaries. Historical closure documents retain the evidence and status that were true when they were written; they are not substitutes for this current status page.
@@ -37,6 +37,17 @@ This page describes the current production package boundaries. Historical closur
 | K | PRODUCTION | Compact local tuner presentation with explicit user action. |
 | L | PRODUCTION / BOUNDED READINESS | Exact revision, recipient metadata and readiness result; no delivery. |
 
+## S12 real-mobile acceptance boundary
+
+S12 is production evidence for the responsive score-workspace interaction bridge:
+touch/pointer/click events use the renderer's exact hit-test result and preserve
+the S06 canonical-selection and S07 verified-revision gates. It adds no musical
+guessing or alternative identity path.
+
+The exact-main CI for `d480758` passed. A physical iPhone/Safari acceptance run,
+including tap selection, visible highlight, edit-save-rerender and undo, is still
+**PENDING**; browser automation and narrow viewport proof do not replace it.
+
 ## Package 12 boundary
 
 Package 12 deliberately separates:
@@ -66,6 +77,6 @@ Use `PRODUCTION`, `BOUNDED`, `OUT_OF_SCOPE` and `BLOCKED_BY_CONTRACT` for curren
 
 ## Verification reference
 
-The required CI workflow runs dependency installation, the full test suite, production build and `scripts/verifyScoreRuntimeBrowser.js`. The fresh-read local baseline passed `npm test` with 1519/1519 tests across 236 suites and passed the production build. Local browser proof was UNVERIFIED because Chrome/Chromium was unavailable. Exact-main status for the reference SHA was not exposed by the available connector query.
+The required CI workflow runs dependency installation, the full test suite, production build and `scripts/verifyScoreRuntimeBrowser.js`. The fresh-read local baseline passed the focused S12 test (9/9) and the production build. Local browser proof was UNVERIFIED because Chrome/Chromium was unavailable. Exact-main CI run #494 for `d480758` was successful.
 
 See `docs/teacher-score-editor-architecture.md` for the canonical architecture and complete Stage A–L matrix.
