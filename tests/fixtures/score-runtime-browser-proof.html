@@ -7,8 +7,9 @@
 </head>
 <body>
   <div id="st-score-root"></div>
-  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false">PENDING</div>
+  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false" data-prb-editor-selection-pass="false" data-prb-stale-render-pass="false">PENDING</div>
 
+  <script src="../../public/st-score-editor-core-runtime/st-score-editor-core.runtime.js"></script>
   <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
   <script type="importmap">
   {
@@ -23,7 +24,16 @@
   </script>
   <script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
   <script type="module">
-    import { resolveCanonicalNoteFromScoreRef } from '../../src/services/scoreNoteIdentity.js'
+    import { createAutomaticRevision } from '../../src/services/teacherRevisionModel.js'
+    import {
+      getCurrentScoreRenderEvidence,
+      hitTestScoreNoteDetailed,
+      renderScoreView,
+    } from '../../src/services/scoreRendererConsumer.js'
+    import {
+      createEditorSelectionContext,
+      selectDetailedRendererHitWithEditor,
+    } from '../../src/services/editorRendererSelectionBridge.js'
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
@@ -42,9 +52,9 @@
 </score-partwise>`
 
     const canonicalNotes = [
-      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:0, isRest:false },
-      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:1, isRest:false },
-      { measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, measureNumber:1, voice:1, staff:1, startBeat:2, isRest:true },
+      { measure:1, measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, voice:1, staff:1, startBeat:0, isRest:false, isGrace:false, isChordNote:false, duration:'quarter', beats:1, durationValue:1, divisions:1, step:'E', alter:0, octave:4 },
+      { measure:1, measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, voice:1, staff:1, startBeat:1, isRest:false, isGrace:false, isChordNote:false, duration:'quarter', beats:1, durationValue:1, divisions:1, step:'G', alter:0, octave:4 },
+      { measure:1, measureKey:'P1:m0', partId:'P1', partIndex:0, measureIndex:0, voice:1, staff:1, startBeat:2, isRest:true, isGrace:false, isChordNote:false, duration:'half', beats:2, durationValue:2, divisions:1 },
     ]
 
     const status = document.getElementById('status')
@@ -58,8 +68,8 @@
         for (const fx of [.25, .5, .75]) {
           for (const fy of [.25, .5, .75]) {
             const point = { clientX: rect.left + rect.width * fx, clientY: rect.top + rect.height * fy }
-            const ref = host.hitTestNote(point)
-            if (ref) return { ref, element }
+            const detailed = hitTestScoreNoteDetailed(host, point)
+            if (detailed.kind === 'HIT') return { detailed, element, point }
           }
         }
       }
@@ -68,26 +78,30 @@
 
     ;(async () => {
       try {
-        if (document.documentElement.dataset.stScoreRuntimeReady !== 'true') {
-          throw new Error('runtime not ready')
-        }
+        if (document.documentElement.dataset.stScoreRuntimeReady !== 'true') throw new Error('runtime not ready')
+        if (!globalThis.STScoreEditorCoreRuntime) throw new Error('Editor Core runtime not ready')
         const host = globalThis.__ST_SCORE_RENDER_HOST__
-        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function' || typeof host.hitTestNote !== 'function' || typeof host.highlight !== 'function' || typeof host.clearHighlights !== 'function') {
-          throw new Error('note-capable ST runtime host missing')
+        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function' || typeof host.hitTestNoteDetailed !== 'function' || typeof host.highlight !== 'function' || typeof host.clearHighlights !== 'function') {
+          throw new Error('detailed-hit ST runtime host missing')
         }
-        await host.renderMusicXml({
-          ticket: '1',
-          contractVersion: '0.2.0',
-          musicxml: xml,
-          pageMode: 'continuous',
-          autoResize: false,
-          drawTitle: false,
-          drawComposer: false,
-        })
+
+        await renderScoreView(host, xml, { ticket: '1', autoResize: false, drawTitle: false, drawComposer: false })
+        const firstEvidence = getCurrentScoreRenderEvidence(host)
+        const firstHit = findExactRuntimeHit(host)
+        if (!firstEvidence || !firstHit) throw new Error('first current-render evidence missing')
+
+        // The exported Workstation runtime creates a new BrowserScoreHost per
+        // replacement. renderEpoch may therefore repeat. Source/ticket
+        // correlation must still invalidate the previous render evidence.
+        await renderScoreView(host, xml, { ticket: '2', autoResize: false, drawTitle: false, drawComposer: false })
+        const secondEvidence = getCurrentScoreRenderEvidence(host)
+        if (!secondEvidence || secondEvidence.sourceId === firstEvidence.sourceId) throw new Error('replacement source correlation did not advance')
+        const stale = hitTestScoreNoteDetailed(host, firstHit.point, firstEvidence)
+        if (stale.kind !== 'STALE' || stale.sourceCorrelationMatch !== false) throw new Error('previous render evidence was not rejected as stale')
+        status.dataset.prbStaleRenderPass = 'true'
+
         const svgPages = await host.exportSvg()
-        if (!Array.isArray(svgPages) || svgPages.length === 0 || !root.querySelector('svg')) {
-          throw new Error('SVG evidence missing')
-        }
+        if (!Array.isArray(svgPages) || svgPages.length === 0 || !root.querySelector('svg')) throw new Error('SVG evidence missing')
         status.dataset.scoreRenderPass = 'true'
 
         await host.moveCursor({ partId: 'P1', measureIndex: 0 })
@@ -96,27 +110,36 @@
         status.dataset.cursorMeasureIndex = '0'
 
         const hit = findExactRuntimeHit(host)
-        if (!hit?.ref || hit.ref.partId !== 'P1' || hit.ref.measureIndex !== 0 || hit.ref.voice !== 1) {
-          throw new Error('exact note hit-test evidence missing')
-        }
+        const ref = hit?.detailed?.target
+        if (!ref || ref.partId !== 'P1' || ref.measureIndex !== 0 || ref.voice !== 1) throw new Error('exact detailed note hit evidence missing')
         status.dataset.scoreNoteHitPass = 'true'
-        status.dataset.notePartId = hit.ref.partId
-        status.dataset.noteMeasureIndex = String(hit.ref.measureIndex)
-        status.dataset.noteIndex = String(hit.ref.noteIndex)
-        status.dataset.noteVoice = String(hit.ref.voice)
+        status.dataset.notePartId = ref.partId
+        status.dataset.noteMeasureIndex = String(ref.measureIndex)
+        status.dataset.noteIndex = String(ref.noteIndex)
+        status.dataset.noteVoice = String(ref.voice)
 
-        const resolved = resolveCanonicalNoteFromScoreRef(canonicalNotes, hit.ref)
-        if (!resolved || resolved.note !== canonicalNotes[resolved.noteIndex] || resolved.measureKey !== 'P1:m0' || resolved.note.isRest === true) {
-          throw new Error('canonical note resolver evidence missing')
+        const revision = createAutomaticRevision({ revisionId:'browser-rev-1', sourceId:'browser-source-1', content:canonicalNotes })
+        const snapshot = {
+          selectionNotes: revision.content,
+          revisionIdentity: {
+            sourceId: revision.sourceId,
+            sourceRevisionId: revision.sourceRevisionId,
+            revisionId: revision.revisionId,
+            contentFingerprint: revision.contentFingerprint,
+          },
         }
+        const editorRuntime = globalThis.STScoreEditorCoreRuntime
+        const context = await createEditorSelectionContext({ package3Snapshot:snapshot, teacherRevision:revision, editorRuntime, cryptoScope:globalThis.crypto })
+        const selected = selectDetailedRendererHitWithEditor({ context, package3Snapshot:snapshot, teacherRevision:revision, detailedHit:hit.detailed, editorRuntime })
+        if (selected.kind !== 'SELECTED' || selected.resolved.note !== revision.content[selected.resolved.noteIndex]) throw new Error('real Editor Core opaque-token selection failed')
+        if (selected.context.session.selection?.primary?.kind !== 'note') throw new Error('Editor Core did not return canonical note selection')
+        status.dataset.prbEditorSelectionPass = 'true'
         status.dataset.scoreNoteResolverPass = 'true'
-        status.dataset.canonicalNoteIndex = String(resolved.noteIndex)
+        status.dataset.canonicalNoteIndex = String(selected.resolved.noteIndex)
 
         await host.clearHighlights()
-        await host.highlight({ target: hit.ref, className: 'seslitab-note-focus' })
-        if (hit.element.getAttribute('data-st-score-highlight') !== 'true' || !hit.element.classList.contains('seslitab-note-focus')) {
-          throw new Error('exact note highlight evidence missing')
-        }
+        await host.highlight({ target: hit.detailed.target, className: 'seslitab-note-focus' })
+        if (hit.element.getAttribute('data-st-score-highlight') !== 'true' || !hit.element.classList.contains('seslitab-note-focus')) throw new Error('post-Editor exact note highlight evidence missing')
         status.dataset.scoreNoteHighlightPass = 'true'
         status.dataset.contractVersion = '0.2.0'
         status.textContent = 'PASS'
@@ -126,6 +149,7 @@
         status.dataset.scoreNoteHitPass = 'false'
         status.dataset.scoreNoteResolverPass = 'false'
         status.dataset.scoreNoteHighlightPass = 'false'
+        status.dataset.prbEditorSelectionPass = 'false'
         status.dataset.renderError = String(error?.message ?? error)
         status.textContent = 'FAIL'
       }
