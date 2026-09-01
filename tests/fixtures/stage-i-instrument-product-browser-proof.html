@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stage I instrument product browser proof</title>
+  <title>Stage I / S09 instrument output rail browser proof</title>
   <link rel="stylesheet" href="../../src/stageIInstrumentProduct.css">
 </head>
 <body>
@@ -19,8 +19,16 @@
     <div id="tab-notes" hidden></div>
     <div id="tab-xml" hidden></div>
     <div id="notes-summary"></div>
+    <section id="stage-s05-score-workspace">
+      <div id="stage-s05-score-column"></div>
+    </section>
   </div>
-  <div id="proof" data-stage-i-product-pass="false" data-stage-i-mobile-pass="false">PENDING</div>
+  <div id="proof"
+    data-stage-i-product-pass="false"
+    data-stage-i-mobile-pass="false"
+    data-stage-i-auto-output-pass="false"
+    data-stage-i-review-clear-pass="false"
+    data-stage-i-workspace-rail-pass="false">PENDING</div>
 
   <script type="module">
     import { ensureGuitarTabPanel } from '../../src/package4Ui.js'
@@ -44,43 +52,58 @@
             state: STAGE_I_PRODUCT_STATE.AVAILABLE,
             actionAllowed: true,
             statusText: STAGE_I_PRODUCT_COPY.GUITAR_AVAILABLE,
+            outputText: 'e|--0--|',
+            mode: 'basic',
           }),
           violin: Object.freeze({
             state: STAGE_I_PRODUCT_STATE.REVIEW_REQUIRED,
             actionAllowed: false,
-            statusText: STAGE_I_PRODUCT_COPY.REVIEW_REQUIRED,
+            statusText: `${STAGE_I_PRODUCT_COPY.REVIEW_REQUIRED} · Kaynak müzikal olarak doğrulanmadı.`,
+            outputText: 'UNSAFE-VIOLIN',
           }),
         }),
       })
 
+      const section = document.getElementById('stage-i-instrument-products')
+      const scoreColumn = document.getElementById('stage-s05-score-column')
       const guitar = document.getElementById('stage-i-guitar-action')
       const violin = document.getElementById('stage-i-violin-action')
       const guitarStatus = document.getElementById('stage-i-guitar-status')
       const violinStatus = document.getElementById('stage-i-violin-status')
-      if (!(guitar instanceof HTMLButtonElement) || !(violin instanceof HTMLButtonElement)) throw new Error('native product buttons missing')
-      if (guitar.disabled || guitar.getAttribute('aria-disabled') !== 'false') throw new Error('safe guitar action not enabled')
-      if (!violin.disabled || violin.getAttribute('aria-disabled') !== 'true') throw new Error('review violin action not withheld')
+      const guitarOutput = document.getElementById('stage-i-guitar-output')
+      const violinOutput = document.getElementById('stage-i-violin-output')
+
+      if (section.parentElement !== scoreColumn) throw new Error('instrument rail is not inside score workspace column')
+      if (!(guitar instanceof HTMLButtonElement) || !(violin instanceof HTMLButtonElement)) throw new Error('native compatibility buttons missing')
+      if (guitar.disabled || guitar.getAttribute('aria-disabled') !== 'false') throw new Error('safe guitar compatibility action not enabled')
+      if (!violin.disabled || violin.getAttribute('aria-disabled') !== 'true') throw new Error('review violin compatibility action not withheld')
       if (guitarStatus.textContent !== STAGE_I_PRODUCT_COPY.GUITAR_AVAILABLE) throw new Error('guitar product status mismatch')
-      if (violinStatus.textContent !== STAGE_I_PRODUCT_COPY.REVIEW_REQUIRED) throw new Error('violin review status mismatch')
+      if (!violinStatus.textContent.includes('Kaynak müzikal olarak doğrulanmadı')) throw new Error('violin review reason missing')
       if (products.guitar.state !== STAGE_I_PRODUCT_STATE.AVAILABLE || products.violin.state !== STAGE_I_PRODUCT_STATE.REVIEW_REQUIRED) throw new Error('product model mismatch')
 
-      guitar.click()
-      if (document.getElementById('tab-guitar-tab').hidden) throw new Error('safe guitar product action did not open existing TAB surface')
-      if (!document.getElementById('tab-violin').hidden) throw new Error('review violin surface became visible')
+      if (guitarOutput.hidden || guitarOutput.textContent !== 'e|--0--|') throw new Error('available Guitar TAB not directly visible in rail')
+      if (!violinOutput.hidden || violinOutput.textContent !== '') throw new Error('REVIEW violin bytes were not cleared')
 
       const buttonHeight = Number.parseFloat(getComputedStyle(guitar).minHeight)
       if (!Number.isFinite(buttonHeight) || buttonHeight < 44) throw new Error('44px product action target missing')
       const gridColumns = getComputedStyle(document.querySelector('.stage-i-instrument-grid')).gridTemplateColumns.trim().split(/\s+/).filter(Boolean)
       if (window.innerWidth <= 640 && gridColumns.length !== 1) throw new Error('narrow viewport instrument grid did not collapse')
+      if (document.documentElement.scrollWidth > window.innerWidth + 1) throw new Error('instrument rail caused horizontal viewport overflow')
 
       proof.dataset.stageIProductPass = 'true'
       proof.dataset.stageIMobilePass = window.innerWidth <= 640 ? 'true' : 'not-applicable'
+      proof.dataset.stageIAutoOutputPass = 'true'
+      proof.dataset.stageIReviewClearPass = 'true'
+      proof.dataset.stageIWorkspaceRailPass = 'true'
       proof.dataset.stageIGuitarState = products.guitar.state
       proof.dataset.stageIViolinState = products.violin.state
       proof.textContent = 'PASS'
     } catch (error) {
       proof.dataset.stageIProductPass = 'false'
       proof.dataset.stageIMobilePass = 'false'
+      proof.dataset.stageIAutoOutputPass = 'false'
+      proof.dataset.stageIReviewClearPass = 'false'
+      proof.dataset.stageIWorkspaceRailPass = 'false'
       proof.dataset.renderError = String(error?.message ?? error)
       proof.textContent = 'FAIL'
     }
