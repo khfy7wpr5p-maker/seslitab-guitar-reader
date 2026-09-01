@@ -39,3 +39,6 @@ jobs:
 
       - name: Verify score runtime in real browser
         run: node scripts/verifyScoreRuntimeBrowser.js
+
+      - name: Verify PR-C keypad in real browser
+        run: node scripts/verifyPrCKeypadBrowser.js
