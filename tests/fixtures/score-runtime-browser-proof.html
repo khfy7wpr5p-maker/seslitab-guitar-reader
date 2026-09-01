@@ -7,7 +7,7 @@
 </head>
 <body>
   <div id="st-score-root"></div>
-  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false">PENDING</div>
+  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false" data-score-render-epoch-pass="false">PENDING</div>
 
   <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
   <script type="importmap">
@@ -23,6 +23,10 @@
   </script>
   <script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
   <script type="module">
+    import {
+      hitTestScoreNoteDetailed,
+      renderScoreView,
+    } from '../../src/services/scoreRendererConsumer.js'
     import { resolveCanonicalNoteFromScoreRef } from '../../src/services/scoreNoteIdentity.js'
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -50,7 +54,7 @@
     const status = document.getElementById('status')
     const root = document.getElementById('st-score-root')
 
-    function findExactRuntimeHit(host) {
+    function findExactRuntimeHit(host, expectedRenderEpoch) {
       const noteheads = [...root.querySelectorAll('.vf-notehead')]
       for (const element of noteheads) {
         const rect = element.getBoundingClientRect()
@@ -58,8 +62,8 @@
         for (const fx of [.25, .5, .75]) {
           for (const fy of [.25, .5, .75]) {
             const point = { clientX: rect.left + rect.width * fx, clientY: rect.top + rect.height * fy }
-            const ref = host.hitTestNote(point)
-            if (ref) return { ref, element }
+            const evidence = hitTestScoreNoteDetailed(host, point, expectedRenderEpoch)
+            if (evidence?.kind === 'HIT') return { evidence, point, element }
           }
         }
       }
@@ -72,18 +76,20 @@
           throw new Error('runtime not ready')
         }
         const host = globalThis.__ST_SCORE_RENDER_HOST__
-        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function' || typeof host.hitTestNote !== 'function' || typeof host.highlight !== 'function' || typeof host.clearHighlights !== 'function') {
-          throw new Error('note-capable ST runtime host missing')
+        if (!host || typeof host.renderMusicXml !== 'function' || typeof host.exportSvg !== 'function' || typeof host.moveCursor !== 'function' || typeof host.hitTestNote !== 'function' || typeof host.hitTestNoteDetailed !== 'function' || typeof host.highlight !== 'function' || typeof host.clearHighlights !== 'function') {
+          throw new Error('current-render note-capable ST runtime host missing')
         }
-        await host.renderMusicXml({
+
+        const firstRender = await renderScoreView(host, xml, {
           ticket: '1',
-          contractVersion: '0.2.0',
-          musicxml: xml,
           pageMode: 'continuous',
           autoResize: false,
           drawTitle: false,
           drawComposer: false,
         })
+        if (typeof firstRender.renderEpoch !== 'string' || !firstRender.renderEpoch) {
+          throw new Error('first render epoch missing')
+        }
         const svgPages = await host.exportSvg()
         if (!Array.isArray(svgPages) || svgPages.length === 0 || !root.querySelector('svg')) {
           throw new Error('SVG evidence missing')
@@ -95,17 +101,41 @@
         status.dataset.cursorPartId = 'P1'
         status.dataset.cursorMeasureIndex = '0'
 
-        const hit = findExactRuntimeHit(host)
-        if (!hit?.ref || hit.ref.partId !== 'P1' || hit.ref.measureIndex !== 0 || hit.ref.voice !== 1) {
-          throw new Error('exact note hit-test evidence missing')
+        const firstHit = findExactRuntimeHit(host, firstRender.renderEpoch)
+        if (!firstHit?.evidence?.target || firstHit.evidence.target.partId !== 'P1' || firstHit.evidence.target.measureIndex !== 0 || firstHit.evidence.target.voice !== 1) {
+          throw new Error('exact current-render note hit evidence missing')
         }
-        status.dataset.scoreNoteHitPass = 'true'
-        status.dataset.notePartId = hit.ref.partId
-        status.dataset.noteMeasureIndex = String(hit.ref.measureIndex)
-        status.dataset.noteIndex = String(hit.ref.noteIndex)
-        status.dataset.noteVoice = String(hit.ref.voice)
 
-        const resolved = resolveCanonicalNoteFromScoreRef(canonicalNotes, hit.ref)
+        const secondRender = await renderScoreView(host, xml, {
+          ticket: '2',
+          pageMode: 'continuous',
+          autoResize: false,
+          drawTitle: false,
+          drawComposer: false,
+        })
+        if (secondRender.renderEpoch === firstRender.renderEpoch) {
+          throw new Error('replacement render did not advance epoch')
+        }
+        const stale = hitTestScoreNoteDetailed(host, firstHit.point, firstRender.renderEpoch)
+        if (stale?.kind !== 'STALE' || stale.renderEpoch !== secondRender.renderEpoch) {
+          throw new Error('old render evidence was not rejected as stale')
+        }
+
+        const hit = findExactRuntimeHit(host, secondRender.renderEpoch)
+        const ref = hit?.evidence?.target
+        if (!ref || ref.partId !== 'P1' || ref.measureIndex !== 0 || ref.voice !== 1) {
+          throw new Error('fresh replacement note hit evidence missing')
+        }
+        status.dataset.scoreRenderEpochPass = 'true'
+        status.dataset.firstRenderEpoch = firstRender.renderEpoch
+        status.dataset.secondRenderEpoch = secondRender.renderEpoch
+        status.dataset.scoreNoteHitPass = 'true'
+        status.dataset.notePartId = ref.partId
+        status.dataset.noteMeasureIndex = String(ref.measureIndex)
+        status.dataset.noteIndex = String(ref.noteIndex)
+        status.dataset.noteVoice = String(ref.voice)
+
+        const resolved = resolveCanonicalNoteFromScoreRef(canonicalNotes, ref)
         if (!resolved || resolved.note !== canonicalNotes[resolved.noteIndex] || resolved.measureKey !== 'P1:m0' || resolved.note.isRest === true) {
           throw new Error('canonical note resolver evidence missing')
         }
@@ -113,7 +143,7 @@
         status.dataset.canonicalNoteIndex = String(resolved.noteIndex)
 
         await host.clearHighlights()
-        await host.highlight({ target: hit.ref, className: 'seslitab-note-focus' })
+        await host.highlight({ target: ref, className: 'seslitab-note-focus' })
         if (hit.element.getAttribute('data-st-score-highlight') !== 'true' || !hit.element.classList.contains('seslitab-note-focus')) {
           throw new Error('exact note highlight evidence missing')
         }
@@ -126,6 +156,7 @@
         status.dataset.scoreNoteHitPass = 'false'
         status.dataset.scoreNoteResolverPass = 'false'
         status.dataset.scoreNoteHighlightPass = 'false'
+        status.dataset.scoreRenderEpochPass = 'false'
         status.dataset.renderError = String(error?.message ?? error)
         status.textContent = 'FAIL'
       }

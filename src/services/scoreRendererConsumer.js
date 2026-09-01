@@ -7,9 +7,30 @@
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
-export const ST_SCORE_RENDERER_REVIEWED_REVISION = '5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f'
+export const ST_SCORE_RENDERER_REVIEWED_REVISION = '5092ecf955b22042878b06e2677915cc18eb5f61'
 export const SCORE_VIEW_MAX_MUSICXML_BYTES = 5 * 1024 * 1024
 export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
+export const SCORE_VIEW_MAX_RENDER_EPOCH_CHARS = 128
+export const SCORE_VIEW_MAX_EVIDENCE_SOURCE_ID_CHARS = 256
+
+const scoreRenderEpochs = new WeakMap()
+const SCORE_NOTE_HIT_MISS_REASONS = new Set([
+  'NO_ELEMENT_AT_POINT',
+  'OUTSIDE_RENDER_CONTAINER',
+  'UNMAPPED_ELEMENT',
+  'AMBIGUOUS_OWNERSHIP',
+  'NO_NOTE_OWNER',
+])
+
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+function hasOnlyKeys(value, allowed) {
+  return Object.keys(value).every((key) => allowed.has(key))
+}
 
 function utf8Length(value) {
   return new TextEncoder().encode(value).byteLength
@@ -46,12 +67,53 @@ export function validateScoreCursorTarget(target) {
   return Object.freeze({ partId, measureIndex })
 }
 
+export function validateScoreRenderEpoch(value) {
+  if (typeof value !== 'string') return null
+  if (!value || value !== value.trim() || value.length > SCORE_VIEW_MAX_RENDER_EPOCH_CHARS || value.includes('\0')) return null
+  return value
+}
+
+function validateEvidenceSourceId(value) {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') return null
+  if (!value || value !== value.trim() || value.length > SCORE_VIEW_MAX_EVIDENCE_SOURCE_ID_CHARS || value.includes('\0')) return null
+  return value
+}
+
+export function validateDetailedScoreNoteHit(value) {
+  if (!isPlainObject(value)) return null
+  const renderEpoch = validateScoreRenderEpoch(value.renderEpoch)
+  if (!renderEpoch) return null
+  const sourceId = validateEvidenceSourceId(value.sourceId)
+  if (sourceId === null) return null
+
+  if (value.kind === 'HIT') {
+    if (!hasOnlyKeys(value, new Set(['kind', 'renderEpoch', 'sourceId', 'target']))) return null
+    const target = validateRendererScoreNoteRef(value.target)
+    if (!target) return null
+    return sourceId === undefined
+      ? Object.freeze({ kind: 'HIT', renderEpoch, target })
+      : Object.freeze({ kind: 'HIT', renderEpoch, sourceId, target })
+  }
+
+  if (value.kind === 'MISS') {
+    if (!hasOnlyKeys(value, new Set(['kind', 'renderEpoch', 'sourceId', 'reason']))) return null
+    if (typeof value.reason !== 'string' || !SCORE_NOTE_HIT_MISS_REASONS.has(value.reason)) return null
+    return sourceId === undefined
+      ? Object.freeze({ kind: 'MISS', renderEpoch, reason: value.reason })
+      : Object.freeze({ kind: 'MISS', renderEpoch, sourceId, reason: value.reason })
+  }
+
+  return null
+}
+
 export function resolveStScoreRuntime(globalScope = globalThis) {
   const host = globalScope?.__ST_SCORE_RENDER_HOST__
   if (!host || typeof host !== 'object') return null
   if (typeof host.renderMusicXml !== 'function') return null
   if (typeof host.moveCursor !== 'function') return null
   if (typeof host.hitTestNote !== 'function') return null
+  if (typeof host.hitTestNoteDetailed !== 'function') return null
   if (typeof host.highlight !== 'function') return null
   if (typeof host.clearHighlights !== 'function') return null
   if (typeof host.dispose !== 'function') return null
@@ -69,7 +131,8 @@ export async function renderScoreView(host, musicxml, options = {}) {
     throw new TypeError('Nota görünümü render ticket değeri geçersiz.')
   }
 
-  return host.renderMusicXml({
+  scoreRenderEpochs.delete(host)
+  const result = await host.renderMusicXml({
     contractVersion: ST_SCORE_RENDERER_CONTRACT_VERSION,
     musicxml: source,
     pageMode: options.pageMode === 'page' ? 'page' : 'continuous',
@@ -78,6 +141,21 @@ export async function renderScoreView(host, musicxml, options = {}) {
     drawComposer: options.drawComposer !== false,
     ticket,
   })
+
+  if (!isPlainObject(result)) {
+    throw new TypeError('ST score renderer current render kanıtı geçersiz.')
+  }
+  const renderEpoch = validateScoreRenderEpoch(result.renderEpoch)
+  if (!renderEpoch) {
+    throw new TypeError('ST score renderer current render epoch kanıtı üretmedi.')
+  }
+  scoreRenderEpochs.set(host, renderEpoch)
+  return result
+}
+
+export function getScoreViewRenderEpoch(host) {
+  if (!host || (typeof host !== 'object' && typeof host !== 'function')) return null
+  return scoreRenderEpochs.get(host) ?? null
 }
 
 export async function moveScoreCursor(host, target) {
@@ -87,8 +165,34 @@ export async function moveScoreCursor(host, target) {
   return host.moveCursor(validateScoreCursorTarget(target))
 }
 
+export function hitTestScoreNoteDetailed(host, point, expectedRenderEpoch = getScoreViewRenderEpoch(host)) {
+  if (!host || typeof host.hitTestNoteDetailed !== 'function') return null
+  if (!point || typeof point !== 'object' || Array.isArray(point)) return null
+  const clientX = point.clientX
+  const clientY = point.clientY
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null
+
+  const expected = validateScoreRenderEpoch(expectedRenderEpoch)
+  if (!expected) return null
+  const evidence = validateDetailedScoreNoteHit(host.hitTestNoteDetailed({ clientX, clientY }))
+  if (!evidence) return null
+  if (evidence.renderEpoch !== expected) {
+    return Object.freeze({
+      kind: 'STALE',
+      expectedRenderEpoch: expected,
+      renderEpoch: evidence.renderEpoch,
+    })
+  }
+  return evidence
+}
+
 export function hitTestScoreNote(host, point) {
-  if (!host || typeof host.hitTestNote !== 'function') return null
+  if (!host || typeof host !== 'object') return null
+  if (typeof host.hitTestNoteDetailed === 'function') {
+    const evidence = hitTestScoreNoteDetailed(host, point)
+    return evidence?.kind === 'HIT' ? evidence.target : null
+  }
+  if (typeof host.hitTestNote !== 'function') return null
   if (!point || typeof point !== 'object' || Array.isArray(point)) return null
   const clientX = point.clientX
   const clientY = point.clientY
@@ -113,6 +217,7 @@ export async function clearScoreHighlights(host) {
 
 export async function clearScoreView(host) {
   if (!host || typeof host.dispose !== 'function') return false
+  scoreRenderEpochs.delete(host)
   await host.dispose()
   return true
 }
