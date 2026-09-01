@@ -1,0 +1,126 @@
+/* S12 — compact note palette + existing S07 correction bottom sheet. */
+
+.stage-s12-note-tools,
+.stage-s12-note-tools * {
+  box-sizing: border-box;
+}
+
+.stage-s12-note-tools,
+.stage-s12-note-tools-close {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .stage-s05-score-column {
+    position: relative;
+  }
+
+  .stage-s12-note-tools {
+    position: fixed;
+    right: max(0.4rem, env(safe-area-inset-right));
+    top: 46dvh;
+    z-index: 72;
+    display: grid;
+    gap: 0.35rem;
+    width: 50px;
+    padding: 0.25rem;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, var(--card-bg, #fff) 94%, transparent);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(8px);
+  }
+
+  .stage-s05-score-workspace[hidden] .stage-s12-note-tools {
+    display: none;
+  }
+
+  .stage-s12-note-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 0.65rem;
+    background: var(--card-bg, #fff);
+    color: var(--neutral-800, #1e293b);
+    font: inherit;
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .stage-s12-note-tool:disabled {
+    opacity: 0.42;
+  }
+
+  .stage-s12-note-tools[data-selected='true'] {
+    border-color: var(--primary-500, #2563eb);
+  }
+
+  .stage-s12-note-tool:focus-visible,
+  .stage-s12-note-tools-close:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  /* Remove the existing inspector from the long phone document flow. Exact
+     note selection opens the same safe S07 controls as a bounded bottom sheet. */
+  .stage-s05-score-inspector {
+    display: none;
+  }
+
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] {
+    position: fixed;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    z-index: 96;
+    display: block;
+    width: auto;
+    max-width: none;
+    max-height: min(58dvh, 30rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0.85rem;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 1rem;
+    background: var(--card-bg, #fff);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+  }
+
+  .stage-s12-note-tools-close {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    float: right;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0 0 0.35rem 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 0.6rem;
+    background: var(--neutral-100, #f1f5f9);
+    color: var(--neutral-800, #1e293b);
+    font: inherit;
+    font-weight: 700;
+  }
+
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-teacher-inspector {
+    clear: both;
+  }
+
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-fields,
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-field,
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-actions {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
