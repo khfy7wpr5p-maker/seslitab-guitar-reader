@@ -45,3 +45,6 @@ jobs:
 
       - name: Verify PR-D editor product pipeline in real browser
         run: node scripts/verifyPrDEditorBrowser.js
+
+      - name: Verify PR-E quality routing recovery in real browser
+        run: node scripts/verifyPrECoexistenceBrowser.js
