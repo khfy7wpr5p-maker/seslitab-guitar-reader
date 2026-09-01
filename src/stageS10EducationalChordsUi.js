@@ -26,6 +26,8 @@ export const STAGE_S10_COPY = Object.freeze({
   educationNote: 'Bu altı akor genel eğitim içeriğidir; açık parçadan çıkarılmamıştır ve parçanın armonisi olarak kabul edilmez.',
 })
 
+const protectedRoots = new WeakSet()
+
 function validRoot(root) {
   return root &&
     typeof root.getElementById === 'function' &&
@@ -69,6 +71,18 @@ function configureSourceGroup(root, panel) {
   }
   if (stop) stop.setAttribute('aria-label', 'Parçada yazılı akorların seslendirmesini durdur')
   return panel
+}
+
+function keepWorkspaceSourceVisible(root) {
+  if (protectedRoots.has(root)) return
+  for (const tab of root.querySelectorAll?.('.tab-btn') ?? []) {
+    if (tab.id === 'chord-tab-btn') continue
+    tab.addEventListener?.('click', () => {
+      const panel = root.getElementById('tab-chords')
+      if (panel?.getAttribute?.('data-stage-s10-source-group') === 'true') panel.hidden = false
+    })
+  }
+  protectedRoots.add(root)
 }
 
 function createEducationGroup(root) {
@@ -146,6 +160,7 @@ export function applyStageS10EducationalChordsUi(root = document) {
   configureSourceGroup(root, sourcePanel)
   if (sourcePanel.parentElement !== shell) shell.appendChild(sourcePanel)
   removeLegacyChordTab(root)
+  keepWorkspaceSourceVisible(root)
 
   let education = root.getElementById('stage-s10-education-group')
   if (!education) {
