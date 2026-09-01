@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "1.0.0",
+  "program": "SESLITAB-EDITOR-INTEGRATION-01",
+  "workPackages": ["STI-08", "STI-09"],
+  "status": "MERGE_CANDIDATE_CAPABILITY_STAGED",
+  "baseMain": "f08e8e9fca19cb4c7457d501577c7eee83ba1331",
+  "upstreams": {
+    "editorCore": {
+      "repository": "khfy7wpr5p-maker/st-score-editor-core",
+      "revision": "b9fcad22568c55184aab5d3e345f74f1c8dc311e",
+      "keypadManifestVersion": "1.0.0",
+      "semanticAuthority": "ACTION_ID_ONLY"
+    },
+    "renderingLayer": {
+      "repository": "khfy7wpr5p-maker/st-score-rendering-layer",
+      "revision": "a8961e0e68a950cbe980162e23c09f23f0ce5d0a"
+    },
+    "bravura": {
+      "repository": "steinbergmedia/bravura",
+      "revision": "37b194378b710cc40e406ab6c4b07608bb9548ae",
+      "version": "1.482",
+      "woff2Path": "redist/woff/Bravura.woff2",
+      "woff2GitBlob": "4c6502f6f8eec2fb4f8c385a304fc757c60c31af",
+      "licensePath": "redist/OFL.txt",
+      "licenseGitBlob": "cfe591f37e6d6ac77a13ac3d97559dadd02786f7",
+      "license": "SIL Open Font License 1.1",
+      "reservedFontName": "Bravura",
+      "modifiedFont": false
+    },
+    "smufl": {
+      "repository": "w3c-cg/smufl",
+      "revision": "14acb17a6a479036f38e337396ed605fc4197b23",
+      "glyphNamesPath": "metadata/glyphnames.json",
+      "glyphNamesGitBlob": "d23147a6a237ac4ef5489d3fc81a81e194206ff7",
+      "specificationLicense": "W3C Community Final Specification Agreement"
+    }
+  },
+  "authority": {
+    "glyphOrCodepointIsEditTarget": false,
+    "editorActionIdIsSemanticAuthority": true,
+    "rendererMutationAuthority": false,
+    "legacyStageES07DualWriteAllowed": false,
+    "newNpmDependency": false,
+    "omrAudiverisProviderChange": false
+  },
+  "basicActions": [
+    "duration.whole", "duration.half", "duration.quarter", "duration.eighth", "duration.16th", "duration.32nd",
+    "rest.whole", "rest.half", "rest.quarter", "rest.eighth", "rest.16th", "rest.32nd",
+    "accidental.flat", "accidental.natural", "accidental.sharp",
+    "dot.set.0", "dot.set.1", "dot.set.2", "dot.set.3"
+  ],
+  "advancedActionsDeferredToSTI10": ["tuplet.triplet", "tie.edit", "slur.edit"],
+  "timingBoundary": {
+    "sesliTabUnit": "quarter-note beat",
+    "editorCoreUnit": "whole-note Rational",
+    "conversion": "SesliTab Rational denominator multiplied by 4 and reduced",
+    "examples": {
+      "oneBeatQuarter": {"numerator": 1, "denominator": 4},
+      "halfBeatEighth": {"numerator": 1, "denominator": 8}
+    }
+  },
+  "commitBoundary": {
+    "exactPRBSelectionRequired": true,
+    "requiredInteraction": "score-editor-current-hit",
+    "oneAcceptedUserActionOneCommitKeypadActionCall": true,
+    "successfulCommitSetsProductSyncPending": true,
+    "secondCommitWhileProductSyncPending": "FAIL_CLOSED",
+    "productProjectionRevalidationRerenderOwner": "STI-11"
+  },
+  "presentation": {
+    "minimumTouchTargetPx": 44,
+    "pages": ["durations-rests", "accidentals-dots", "tuplets-tie-slur"],
+    "fontFailureChangesActionSemantics": false,
+    "accessibleLabelIndependentOfGlyph": true,
+    "legacyPaletteRetiredOnlyWhenNewPathMounted": true
+  },
+  "activationBoundary": {
+    "productionUserCommitMountedByPRC": false,
+    "reason": "PR-C must not leave Package 8 and rendered score stale after an Editor-only commit. STI-11 owns the serialized product revision -> revalidation -> replacement render -> rebind pipeline.",
+    "productionMountOwner": "STI-11",
+    "capabilityAndRealBrowserCommitProofPresent": true
+  },
+  "verification": {
+    "requiredCheck": "test-and-build",
+    "unitTests": [
+      "tests/smuflKeypadAssets.test.js",
+      "tests/editorKeypadIntegration.test.js",
+      "tests/stagePrCKeypadUi.test.js"
+    ],
+    "browserFixture": "tests/fixtures/score-runtime-browser-proof.html",
+    "explicitBrowserVerifier": "scripts/verifyPrCKeypadBrowser.js",
+    "browserProofs": [
+      "pinned Bravura FontFaceSet load",
+      "real Editor Core keypad manifest",
+      "1 beat -> 1/4 whole-note timing",
+      "real Editor Core duration.eighth atomic commit"
+    ]
+  }
+}
