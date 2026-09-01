@@ -1,0 +1,91 @@
+.stage-s12-primary-score-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  min-width: 0;
+}
+
+.stage-s12-primary-score-actions > .playback-card {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stage-s12-primary-score-actions .card-header,
+.stage-s12-primary-score-actions .card-body {
+  padding: 0.75rem;
+}
+
+.stage-s12-primary-score-actions .btn,
+.stage-s12-primary-score-actions input,
+.stage-s12-primary-score-actions button {
+  min-height: 44px;
+}
+
+@media (max-width: 760px) {
+  .stage-s12-primary-score-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #stage-s05-score-workspace,
+  #stage-s05-score-column,
+  .stage-s12-primary-score-actions,
+  .stage-s12-primary-score-actions > .playback-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 390px) {
+  .stage-s12-primary-score-actions {
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+  }
+
+  .stage-s12-primary-score-actions .card-header,
+  .stage-s12-primary-score-actions .card-body {
+    padding: 0.6rem;
+  }
+
+  .stage-s12-primary-score-actions .playback-controls {
+    gap: 0.5rem;
+  }
+
+  .stage-s04-tuner-panel {
+    top: 4.1rem;
+    max-height: min(72dvh, 34rem);
+  }
+
+  .stage-s04-mini-tuner,
+  .stage-s04-mini-tuner .tuner-body {
+    min-height: 0;
+  }
+
+  .stage-s04-mini-tuner .tuner-body {
+    gap: 0.4rem;
+    padding: 0.6rem;
+  }
+
+  .stage-s04-mini-tuner .tuner-display {
+    gap: 0.2rem;
+    padding: 0.5rem;
+  }
+
+  .stage-s04-mini-tuner .tuner-note {
+    font-size: clamp(2.2rem, 14vw, 3.4rem);
+  }
+
+  .stage-s04-mini-tuner .stage-k-tuner-privacy {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+
+  .stage-s04-mini-tuner .stage-k-tuner-details > summary,
+  .stage-s04-mini-tuner .tuner-controls .btn,
+  .stage-s04-tuner-toggle {
+    min-height: 44px;
+  }
+}
