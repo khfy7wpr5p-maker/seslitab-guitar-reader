@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PR-E quality routing recovery browser proof</title>
+  <link rel="stylesheet" href="../../src/stageS08ScoreQualityOverlay.css">
+</head>
+<body>
+  <div id="aria-live-region" aria-live="polite"></div>
+  <div id="proof"
+    data-pre-quality-loop-pass="false"
+    data-pre-current-routing-pass="false"
+    data-pre-recovery-product-pass="false"
+    data-pre-recovery-failclosed-pass="false"
+    data-pre-playback-independent-pass="false">PENDING</div>
+
+  <button id="rhythm-btn" type="button">Müziği Dinle</button>
+  <div class="card-body">
+    <div class="result-tabs" role="tablist"></div>
+    <div id="notes-summary"></div>
+    <pre id="xml-output"></pre>
+    <section id="stage-s05-score-workspace" data-stage-s07-score-state="source">
+      <div id="stage-s05-score-column">
+        <div id="tab-score-view">
+          <div id="score-view-status">Görsel nota hazır.</div>
+          <div id="score-view-surface"></div>
+        </div>
+      </div>
+      <aside id="stage-s05-score-inspector" tabindex="-1"></aside>
+    </section>
+  </div>
+
+<script type="module">
+import {
+  CANONICAL_NOTE_SCHEMA_VERSION,
+  CANONICAL_VERIFICATION_STATUS,
+} from '../../noteTheory.js'
+import {
+  bindPackage3RevisionIdentity,
+  bindPackage3SelectionProjection,
+  getPackage3MeasureSnapshot,
+  publishPackage3Notes,
+  subscribePackage3Measures,
+} from '../../package3MeasureBridge.js'
+import {
+  applyTeacherUiCorrection,
+  getTeacherUiWorkspace,
+  initPackage8TeacherUi,
+  startTeacherWorkspace,
+} from '../../src/package8TeacherUi.js'
+import { getTeacherWorkspaceCurrentRevision } from '../../src/services/teacherWorkspaceModel.js'
+import {
+  registerQualityReportForNotes,
+  unregisterQualityReportForNotes,
+} from '../../src/services/qualityGateIntegration.js'
+import { registerPrDProductMusicXml } from '../../src/services/editorPrDRevisionMusicXmlRegistry.js'
+import {
+  applyStageS08ScoreQualityOverlay,
+  renderStageS08ScoreQualityOverlay,
+} from '../../src/stageS08ScoreQualityOverlayUi.js'
+import {
+  renderStageIInstrumentProductUi,
+  stageICurrentRoutingNotes,
+} from '../../src/stageIInstrumentProductUi.js'
+import {
+  resolveStageS15RecoveryMusicXml,
+  syncStageS12RendererSessionRecovery,
+} from '../../src/stageS12RendererSessionRecoveryUi.js'
+import { STAGE_G_PRODUCT_STATE } from '../../src/services/stageGProductRouting.js'
+
+const proof = document.getElementById('proof')
+const workspaceElement = document.getElementById('stage-s05-score-workspace')
+const sourceXml = `<?xml version="1.0"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><voice>1</voice><staff>1</staff></note></measure></part></score-partwise>`
+const correctedXml = sourceXml.replace('<duration>1</duration><type>quarter</type>', '<duration>2</duration><type>half</type>')
+document.getElementById('xml-output').textContent = sourceXml
+
+function verifiedState() {
+  return {
+    schemaVersion: CANONICAL_NOTE_SCHEMA_VERSION,
+    status: CANONICAL_VERIFICATION_STATUS.VERIFIED,
+    pitch: { valid: true, status: CANONICAL_VERIFICATION_STATUS.VERIFIED },
+    time: { valid: true, status: CANONICAL_VERIFICATION_STATUS.VERIFIED },
+  }
+}
+
+const sourceNotes = [{
+  measureKey: 'P1:m0', partId: 'P1', partIndex: 0, measureIndex: 0, measureNumber: 1,
+  voice: 1, staff: 1, startBeat: 0, isRest: false, isGrace: false, isChordNote: false,
+  step: 'C', alter: 0, octave: 4, durationValue: 1, divisions: 1, duration: 'quarter', beats: 1,
+  dotCount: 0, midi: 60, frequency: 261.6256, noteName: 'Do4', tieStart: false, tieStop: false,
+  sourceVerificationState: verifiedState(),
+}]
+
+const passReport = Object.freeze({
+  qualityState: 'source_verified', structurallyValid: true, sourceVerified: true,
+  reviewRequired: false, reliable: true,
+  summary: Object.freeze({ totalFindings: 0, errors: 0, warnings: 0, verifiedNotes: 1, unverifiedNotes: 0 }),
+  findings: Object.freeze([]),
+})
+
+function bindRevision(revision, selectionNotes = revision.content) {
+  if (!bindPackage3RevisionIdentity({
+    notes: sourceNotes,
+    sourceId: revision.sourceId,
+    sourceRevisionId: revision.sourceRevisionId,
+    revisionId: revision.revisionId,
+    contentFingerprint: revision.contentFingerprint,
+  })) throw new Error('revision identity bind failed')
+  if (selectionNotes !== sourceNotes && !bindPackage3SelectionProjection({
+    notes: sourceNotes,
+    selectionNotes,
+    sourceId: revision.sourceId,
+    sourceRevisionId: revision.sourceRevisionId,
+    revisionId: revision.revisionId,
+    contentFingerprint: revision.contentFingerprint,
+  })) throw new Error('selection projection bind failed')
+}
+
+async function microtask() { await Promise.resolve(); await Promise.resolve() }
+
+try {
+  let ids = 0
+  publishPackage3Notes(sourceNotes)
+  registerQualityReportForNotes(sourceNotes, passReport)
+  initPackage8TeacherUi(document, {
+    id(prefix) { ids += 1; return `${prefix}-pre-${ids}` },
+    now() { ids += 1; return `2026-09-02T12:${String(ids % 60).padStart(2, '0')}:00.000Z` },
+  })
+  document.getElementById('teacher-actor-id').value = 'teacher-pre-browser'
+  const initialWorkspace = startTeacherWorkspace(document)
+  if (!initialWorkspace) throw new Error('teacher workspace did not start')
+  const rootRevision = getTeacherWorkspaceCurrentRevision(initialWorkspace)
+  bindRevision(rootRevision, sourceNotes)
+
+  if (!applyStageS08ScoreQualityOverlay(document)) throw new Error('quality overlay init failed')
+  await microtask()
+
+  let notifications = 0
+  const unsubscribe = subscribePackage3Measures(() => { notifications += 1 })
+  notifications = 0
+
+  for (let index = 0; index < 12; index++) {
+    workspaceElement.setAttribute('data-stage-s07-score-state', 'source')
+    renderStageS08ScoreQualityOverlay(document)
+    const marker = document.querySelector('.stage-s08-quality-marker')
+    if (!marker) throw new Error(`quality marker missing on loop ${index}`)
+    const before = notifications
+    marker.click()
+    if (notifications !== before + 1) throw new Error(`quality marker emitted ${notifications - before} bridge notifications`)
+    workspaceElement.setAttribute('data-stage-s07-score-state', 'revalidating')
+    await microtask()
+    workspaceElement.setAttribute('data-stage-s07-score-state', 'source')
+    await microtask()
+  }
+  if (!document.querySelector('.stage-s08-quality-marker')) throw new Error('quality rail froze after repeated loop')
+  proof.dataset.preQualityLoopPass = 'true'
+  unsubscribe()
+
+  const fieldSelect = document.getElementById('teacher-field-select')
+  const durationOption = [...fieldSelect.options].find((option) => option.value.endsWith(':durationValue'))
+  if (!durationOption) throw new Error('duration field unavailable')
+  fieldSelect.value = durationOption.value
+  document.getElementById('teacher-field-value').value = '2'
+  const correctedWorkspace = applyTeacherUiCorrection(document)
+  if (!correctedWorkspace) throw new Error('corrected revision was not created')
+  const correctedRevision = getTeacherWorkspaceCurrentRevision(correctedWorkspace)
+  bindRevision(correctedRevision, correctedRevision.content)
+
+  const currentNotes = stageICurrentRoutingNotes(getPackage3MeasureSnapshot())
+  if (currentNotes !== correctedRevision.content || currentNotes === sourceNotes) throw new Error('Stage I did not select current editor projection')
+  const products = renderStageIInstrumentProductUi(document, currentNotes, {
+    resolveStageGConsumerRoute(notes) {
+      if (notes !== correctedRevision.content) throw new Error('Stage I route received stale source notes')
+      return Object.freeze({
+        state: STAGE_G_PRODUCT_STATE.REVIEW,
+        automaticProceed: false,
+        definitiveConsumerAllowed: false,
+        reason: 'source-not-verified',
+      })
+    },
+  })
+  if (!products.guitar.teacherReviewRequired || !products.violin.teacherReviewRequired) throw new Error('current revision REVIEW route not preserved')
+  if (!document.getElementById('stage-i-guitar-action').disabled || !document.getElementById('stage-i-violin-action').disabled) throw new Error('gated instrument navigation became active')
+  proof.dataset.preCurrentRoutingPass = 'true'
+
+  registerPrDProductMusicXml(correctedRevision, correctedXml, { evidence: 'pr-e-browser-revalidated-fixture' })
+  const recovery = resolveStageS15RecoveryMusicXml(document)
+  if (!recovery.ok || recovery.musicXml !== correctedXml || recovery.revisionId !== correctedRevision.revisionId) throw new Error('recovery did not choose current product MusicXML')
+  if (recovery.musicXml === sourceXml) throw new Error('recovery silently chose source MusicXML')
+  proof.dataset.preRecoveryProductPass = 'true'
+
+  fieldSelect.value = [...fieldSelect.options].find((option) => option.value.endsWith(':durationValue'))?.value ?? ''
+  document.getElementById('teacher-field-value').value = '3'
+  const unregisteredWorkspace = applyTeacherUiCorrection(document)
+  if (!unregisteredWorkspace) throw new Error('unregistered current revision was not created')
+  const unregisteredRevision = getTeacherWorkspaceCurrentRevision(unregisteredWorkspace)
+  bindRevision(unregisteredRevision, unregisteredRevision.content)
+  const blockedRecovery = resolveStageS15RecoveryMusicXml(document)
+  if (blockedRecovery.ok || blockedRecovery.musicXml !== null || blockedRecovery.reason !== 'current-product-revision-musicxml-unavailable') {
+    throw new Error('recovery did not fail closed for current revision without exact product XML')
+  }
+  document.getElementById('score-view-status').textContent = 'Görsel nota renderer başlatılamadı. Yeniden deneyebilirsiniz.'
+  syncStageS12RendererSessionRecovery(document)
+  if (document.getElementById('stage-s12-renderer-retry-btn')?.disabled !== true) throw new Error('blocked recovery did not disable retry')
+  proof.dataset.preRecoveryFailclosedPass = 'true'
+
+  if (document.getElementById('rhythm-btn').disabled) throw new Error('playback became disabled by editor/renderer recovery state')
+  proof.dataset.prePlaybackIndependentPass = 'true'
+
+  unregisterQualityReportForNotes(sourceNotes)
+  proof.textContent = 'PASS'
+} catch (error) {
+  proof.dataset.renderError = String(error?.message ?? error)
+  proof.textContent = 'FAIL'
+}
+</script>
+</body>
+</html>
