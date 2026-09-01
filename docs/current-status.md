@@ -1,19 +1,17 @@
 # SesliTab Current Status
 
 Last documentation review: 2026-09-01
-Fresh-read protected main: d480758032f56572dbaf92cd832b0001b9089987
-Observed branch metadata: main protected; required check test-and-build.
-Open PRs/issues at fresh-read: none identified.
+STI-01/02 branch base: `4bb5ae76a63935fd6ec7f827e3b7fc7dc4d548ed`
+Observed branch metadata at start: `main` protected; required check `test-and-build`.
 
 ## Current production result
 
 Stage A–L bounded product roadmap production main üzerinde tamamlanmıştır. Bu ifade yalnız uygulanan bounded capability'leri kapsar; evrensel müzikal doğruluk, kaynak görüntüyle birebirlik veya authenticated öğrenci teslimatı anlamına gelmez.
 
-## S12 mobile-score acceptance addendum
+## S12 mobile-score acceptance baseline
 
-The current main pins the reviewed score-renderer revision
-`5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f` for the exact mobile note-hit
-bridge. Pointer, Touch and synthetic click delivery all resolve only through:
+S12 accepted the renderer revision
+`5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f` for the then-current exact mobile note-hit bridge. Pointer, Touch and synthetic click delivery resolve only through:
 
 ```text
 renderer hit-test → exact ScoreNoteRef → canonical note resolver → S06 selection
@@ -24,20 +22,45 @@ If identity cannot be proven, selection and editing remain unchanged. The mobile
 toolbar projects an already verified S06/S07 selection only; it does not create
 musical, revision, quality, approval or routing truth.
 
-This is production code and CI evidence, not a claim that a manual iPhone/Safari
-acceptance session has been completed. The real-device checklist remains pending
-until its tap, highlight, edit-save-rerender and undo observations are recorded.
+This is production code and CI evidence, not a claim that the final JSON 3
+physical iPhone/Safari acceptance has been completed. The final real-device gate
+remains STI-17.
+
+## STI-01/02 integration baseline
+
+The JSON 3 integration branch repins the exact ST Score Rendering Layer source to
+`a8961e0e68a950cbe980162e23c09f23f0ce5d0a`, contract `0.2.0`, OSMD `2.1.2`.
+Runtime admission additionally verifies that the built artifact contains the
+reviewed `hitTestNoteDetailed` and `renderEpoch` surfaces. Consumption of the
+detailed hit result remains STI-04 and is not enabled early by STI-01/02.
+
+The same production build preparation path now admits ST Score Editor Core only
+from exact source revision `b9fcad22568c55184aab5d3e345f74f1c8dc311e`.
+The browser bundle's upstream manifest, byte size and SHA-256 must match exactly;
+network, persistence, server-revision, approval and publication authority must
+all remain disabled.
+
+STI-02 freezes the new keypad authority before any keypad UI is wired:
+
+- new keypad mutation authority: ST Score Editor Core only;
+- renderer mutation authority: none;
+- legacy SesliTab keypad dual-write: forbidden;
+- Package 8 remains SesliTab product revision/audit authority;
+- Package 3 and Package 8 must match exact `sourceId`, `sourceRevisionId`,
+  `revisionId` and `contentFingerprint` before Editor initialization;
+- Editor document/revision/parent revision must match the bound SesliTab
+  revision exactly;
+- Editor Core history navigation is not yet a SesliTab product undo authority.
+  Undo reconciliation remains STI-12.
+
+The machine-readable baseline is `docs/sti-01-02-runtime-authority-baseline.json`.
 
 ## Verification baseline
 
-Fresh local verification with Node 24:
-
-- npm ci: PASS
-- focused S12 mobile acceptance test: 9/9 PASS
-- npm run build: PASS
-- node scripts/verifyScoreRuntimeBrowser.js: UNVERIFIED locally because Chrome/Chromium is not installed
-
-The protected CI workflow is test-and-build; it runs dependency installation, the full test suite, production build and the real-browser proof script. Exact-main CI run #494 for `d480758` completed successfully on 2026-09-01.
+The protected CI workflow is `test-and-build`; it runs dependency installation,
+the full test suite, production build and browser runtime verification. STI-01/02
+must not be merged until its exact PR head passes this workflow and the normal
+pre-merge fresh-read gate.
 
 ## Stage A–L production matrix
 
@@ -56,7 +79,8 @@ The protected CI workflow is test-and-build; it runs dependency installation, th
 | K — Compact tuner | PRODUCTION / BOUNDED | Compact accessible UI with explicit local microphone start/stop |
 | L — Student/share readiness | PRODUCTION / BOUNDED | Exact-revision Package 12 readiness UI; delivery remains BLOCKED_BY_CONTRACT |
 
-Detailed matrix and primary files: docs/teacher-score-editor-architecture.md.
+Detailed historical matrix and primary files: `docs/teacher-score-editor-architecture.md`.
+Full architecture synchronization for the completed JSON 3 program remains STI-18.
 
 ## Package 12 boundary
 

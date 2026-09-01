@@ -7,7 +7,7 @@
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
-export const ST_SCORE_RENDERER_REVIEWED_REVISION = '5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f'
+export const ST_SCORE_RENDERER_REVIEWED_REVISION = 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a'
 export const SCORE_VIEW_MAX_MUSICXML_BYTES = 5 * 1024 * 1024
 export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
 

@@ -1,0 +1,68 @@
+{
+  "contract": "SESLITAB_EDITOR_RENDERER_RUNTIME_AUTHORITY_BASELINE",
+  "version": "1.0.0",
+  "seslitabBase": "4bb5ae76a63935fd6ec7f827e3b7fc7dc4d548ed",
+  "runtimePins": {
+    "stScoreRenderingLayer": {
+      "revision": "a8961e0e68a950cbe980162e23c09f23f0ce5d0a",
+      "contractVersion": "0.2.0",
+      "osmdVersion": "2.1.2",
+      "requiredFeatures": [
+        "hitTestNoteDetailed",
+        "renderEpoch"
+      ]
+    },
+    "stScoreEditorCore": {
+      "revision": "b9fcad22568c55184aab5d3e345f74f1c8dc311e",
+      "browserBundleContract": "ST_SCORE_EDITOR_CORE_BROWSER_BUNDLE",
+      "browserBundleVersion": "1.0.0",
+      "runtimeVersion": "1.0.0",
+      "global": "STScoreEditorCoreRuntime"
+    }
+  },
+  "authority": {
+    "newKeypadWriteAuthority": "st-score-editor-core",
+    "legacySesliTabKeypadMutationAuthority": false,
+    "rendererMutationAuthority": false,
+    "productRevisionAuditAuthority": "seslitab-package-8",
+    "directEditorUndoProductAuthority": false,
+    "editorUndoBridgeEnabled": false
+  },
+  "revisionBinding": {
+    "package3AndPackage8MustMatchExactly": [
+      "sourceId",
+      "sourceRevisionId",
+      "revisionId",
+      "contentFingerprint"
+    ],
+    "selectionProjectionStructuralFields": [
+      "measureKey",
+      "partId",
+      "partIndex",
+      "measureIndex",
+      "voice",
+      "staff",
+      "startBeat",
+      "isRest",
+      "isGrace",
+      "isChordNote"
+    ],
+    "editorSessionInitializationMustMatch": [
+      "editorDocumentId",
+      "editorRevisionId",
+      "editorParentRevisionId"
+    ]
+  },
+  "undoAudit": {
+    "finding": "Editor Core history navigation and SesliTab immutable Package 8 undo have different product-audit semantics.",
+    "baselineRule": "Do not bridge Editor Core UNDO directly into SesliTab product revision authority in STI-02.",
+    "deferredWorkPackage": "STI-12"
+  },
+  "hardNoTouch": [
+    "OMR/Audiveris/provider/runtime",
+    "playback authority",
+    "teacher approval authority",
+    "production deployment activation",
+    "public write APIs"
+  ]
+}
