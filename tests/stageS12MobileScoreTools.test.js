@@ -23,7 +23,7 @@ test('S12 exposes only the four existing bounded S07 edit fields', () => {
   assert.match(source, /STAGE_E_EDIT_FIELD\.OCTAVE/)
   assert.match(source, /STAGE_E_EDIT_FIELD\.DURATION/)
   assert.match(source, /stage-s07-\$\{field\}/)
-  assert.doesNotMatch(source, /nearest[- ]?note|svg proximity|pitch label|inferPitch|guess/i)
+  assert.doesNotMatch(source, /nearest[- ]?note|svg proximity|pitch label|inferPitch|findNearest|distanceTo|Math\.hypot/i)
 })
 
 test('S12 mobile presentation keeps 44px tools and opens the existing inspector as a bounded sheet', () => {
