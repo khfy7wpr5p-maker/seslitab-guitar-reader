@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>S05 score workspace browser proof</title>
+  <link rel="stylesheet" href="../../src/style.css">
+  <link rel="stylesheet" href="../../src/mobileReviewUi.css">
+  <link rel="stylesheet" href="../../src/stageS05ScoreWorkspace.css">
+</head>
+<body>
+  <div id="proof"
+    data-stage-s05-workspace-pass="false"
+    data-stage-s05-auto-score-pass="false"
+    data-stage-s05-tab-preservation-pass="false"
+    data-stage-s05-layout-pass="false">PENDING</div>
+
+  <main class="app-main">
+    <section id="results-section" hidden>
+      <div class="result-tabs" role="tablist">
+        <button id="notes-btn" class="tab-btn active" data-tab="notes" role="tab" aria-selected="true" aria-controls="tab-notes">Notalar</button>
+        <button id="xml-btn" class="tab-btn" data-tab="xml" role="tab" aria-selected="false" aria-controls="tab-xml">MusicXML</button>
+      </div>
+      <div id="tab-notes" class="tab-content">
+        <div id="notes-summary">Özet</div>
+      </div>
+      <div id="tab-xml" class="tab-content" hidden>
+        <pre id="xml-output">&lt;score-partwise version="4.0"&gt;&lt;part-list/&gt;&lt;/score-partwise&gt;</pre>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { applyStageS05ScoreWorkspaceUi } from '../../src/stageS05ScoreWorkspaceUi.js'
+
+    const proof = document.getElementById('proof')
+    const results = document.getElementById('results-section')
+    const notesButton = document.getElementById('notes-btn')
+    const notesPanel = document.getElementById('tab-notes')
+    const xmlButton = document.getElementById('xml-btn')
+    const xmlPanel = document.getElementById('tab-xml')
+    let activationCalls = 0
+
+    try {
+      const activate = async (root) => {
+        activationCalls += 1
+        for (const button of root.querySelectorAll('.result-tabs .tab-btn')) {
+          button.classList.remove('active')
+          button.setAttribute('aria-selected', 'false')
+        }
+        notesPanel.hidden = true
+        xmlPanel.hidden = true
+        root.getElementById('tab-score-view').hidden = false
+        return true
+      }
+
+      if (!applyStageS05ScoreWorkspaceUi(document, { activate })) throw new Error('workspace did not apply')
+      const workspace = document.getElementById('stage-s05-score-workspace')
+      const scorePanel = document.getElementById('tab-score-view')
+      const scoreColumn = document.getElementById('stage-s05-score-column')
+      const inspector = document.getElementById('stage-s05-score-inspector')
+
+      if (!workspace || !scorePanel || !scoreColumn || !inspector) throw new Error('workspace structure missing')
+      if (document.getElementById('result-score-view-btn')) throw new Error('legacy score-view tab still visible')
+      if (scorePanel.parentElement !== scoreColumn) throw new Error('existing score panel was not reused')
+      if (workspace.hidden !== true) throw new Error('workspace must wait for a real result')
+      proof.dataset.stageS05WorkspacePass = 'true'
+
+      results.hidden = false
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      if (activationCalls !== 1) throw new Error(`automatic score activation count ${activationCalls}`)
+      if (workspace.hidden || scorePanel.hidden) throw new Error('score workspace did not become visible')
+      proof.dataset.stageS05AutoScorePass = 'true'
+
+      if (!notesButton.classList.contains('active') || notesButton.getAttribute('aria-selected') !== 'true') {
+        throw new Error('existing Notes result tab selection changed')
+      }
+      if (notesPanel.hidden || !xmlPanel.hidden || xmlButton.getAttribute('aria-selected') !== 'false') {
+        throw new Error('existing result panel visibility changed')
+      }
+      proof.dataset.stageS05TabPreservationPass = 'true'
+
+      const workspaceRect = workspace.getBoundingClientRect()
+      const scoreRect = scoreColumn.getBoundingClientRect()
+      const inspectorRect = inspector.getBoundingClientRect()
+      if (workspaceRect.left < -0.5 || workspaceRect.right > window.innerWidth + 0.5) throw new Error('workspace overflows viewport')
+      if (window.innerWidth <= 760) {
+        if (inspectorRect.top + 0.5 < scoreRect.bottom) throw new Error('mobile inspector did not stack below score')
+      } else if (inspectorRect.left <= scoreRect.left) {
+        throw new Error('desktop inspector is not beside score')
+      }
+      proof.dataset.stageS05LayoutPass = 'true'
+      proof.textContent = 'PASS'
+    } catch (error) {
+      proof.dataset.renderError = String(error?.message ?? error)
+      proof.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>

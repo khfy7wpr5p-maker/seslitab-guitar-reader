@@ -8,6 +8,7 @@ import './src/stageATeacherPresentation.css'
 import './src/package11TunerUi.css'
 import './src/stageKTunerPresentation.css'
 import './src/stageS04MiniTuner.css'
+import './src/stageS05ScoreWorkspace.css'
 import './src/stageLShareUi.css'
 import './src/appShell.css'
 import './src/mobileReviewUi.css'
@@ -36,6 +37,7 @@ import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.j
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
+import { initStageS05ScoreWorkspaceUi } from './src/stageS05ScoreWorkspaceUi.js'
 import { initStageLShareUi } from './src/stageLShareUi.js'
 
 if (typeof document !== 'undefined') {
@@ -43,5 +45,6 @@ if (typeof document !== 'undefined') {
   initStageJDiscoveryPresentation(document)
   initStageKTunerPresentation(document)
   initStageS04MiniTunerUi(document)
+  initStageS05ScoreWorkspaceUi(document)
   initStageLShareUi(document)
 }
