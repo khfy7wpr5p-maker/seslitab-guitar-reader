@@ -34,6 +34,36 @@ function currentMusicXml(root) {
   return value
 }
 
+function snapshotResultTabs(root) {
+  const buttons = [...(root.querySelectorAll?.('.result-tabs .tab-btn') ?? [])]
+  const panels = []
+  const seen = new Set()
+  for (const button of buttons) {
+    const panelId = button.getAttribute?.('aria-controls')
+    const panel = panelId ? root.getElementById?.(panelId) : null
+    if (panel && !seen.has(panel)) {
+      seen.add(panel)
+      panels.push({ panel, hidden: panel.hidden })
+    }
+  }
+  return {
+    buttons: buttons.map((button) => ({
+      button,
+      active: button.classList?.contains?.('active') === true,
+      selected: button.getAttribute?.('aria-selected') ?? 'false',
+    })),
+    panels,
+  }
+}
+
+function restoreResultTabs(snapshot) {
+  for (const item of snapshot.buttons) {
+    item.button.classList?.toggle?.('active', item.active)
+    item.button.setAttribute?.('aria-selected', item.selected)
+  }
+  for (const item of snapshot.panels) item.panel.hidden = item.hidden
+}
+
 export function isStageS12RendererStartupFailure(text) {
   return STARTUP_FAILURE_RE.test(String(text || ''))
 }
@@ -85,8 +115,14 @@ export async function retryStageS12RendererSession(root = document, { automatic 
     : 'Nota ekranı yeniden başlatılıyor…'
   announce(root, 'PDF ve işlenmiş nota verisi korunuyor. Yalnız görsel nota ekranı yeniden başlatılıyor.')
 
+  const tabs = snapshotResultTabs(root)
   try {
-    const restored = await activateScoreView(root)
+    const pending = activateScoreView(root)
+    // activateScoreView changes result-tab presentation synchronously before its
+    // first await. Restore the user's current tab immediately; the score panel
+    // is hosted by the S05 workspace outside the legacy result-tab system.
+    restoreResultTabs(tabs)
+    const restored = await pending
     if (restored) {
       button.hidden = true
       button.disabled = false
@@ -101,6 +137,7 @@ export async function retryStageS12RendererSession(root = document, { automatic 
     announce(root, 'Nota ekranı yeniden başlatılamadı. Yüklenen dosya korunuyor; yeniden deneyebilirsiniz.')
     return false
   } finally {
+    restoreResultTabs(tabs)
     state.retrying = false
   }
 }
