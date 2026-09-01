@@ -18,6 +18,7 @@ export const STAGE_PR_C_BRAVURA_FONT_FAMILY = 'Bravura'
 
 const ADVANCED_ACTION_SET = new Set(ADVANCED_EDITOR_KEYPAD_ACTION_IDS)
 const EXPECTED_ACTIONS = new Set([...BASIC_EDITOR_KEYPAD_ACTION_IDS, ...ADVANCED_EDITOR_KEYPAD_ACTION_IDS])
+const KEYPAD_PAGES = Object.freeze([1, 2, 3])
 
 const GROUP_PAGE = Object.freeze({
   duration: 1,
@@ -192,6 +193,10 @@ function appendPresentation(root, button, action) {
   button.appendChild(visual)
 }
 
+function normalizedPage(page) {
+  return KEYPAD_PAGES.includes(page) ? page : 1
+}
+
 export function renderStagePrCKeypadShell(root, {
   manifest,
   glyphNames,
@@ -201,6 +206,7 @@ export function renderStagePrCKeypadShell(root, {
   onAction = null,
 } = {}) {
   if (!root || typeof root.createElement !== 'function' || typeof root.getElementById !== 'function') return null
+  const pageNow = normalizedPage(activePage)
   const model = buildStagePrCKeypadModel(manifest, glyphNames, { exactSelectionReady, productSyncPending })
   let shell = root.getElementById('stage-prc-keypad')
   if (!shell) {
@@ -214,22 +220,35 @@ export function renderStagePrCKeypadShell(root, {
     scoreColumn.appendChild(shell)
   }
   clearChildren(shell)
-  shell.dataset.page = String(activePage)
+  shell.dataset.page = String(pageNow)
   shell.dataset.exactSelectionReady = exactSelectionReady ? 'true' : 'false'
   shell.dataset.productSyncPending = productSyncPending ? 'true' : 'false'
 
   const tabs = root.createElement('div')
   tabs.className = 'stage-prc-keypad-pages'
   tabs.setAttribute('role', 'tablist')
-  for (const page of [1, 2, 3]) {
+  for (const page of KEYPAD_PAGES) {
     const tab = root.createElement('button')
     tab.type = 'button'
     tab.className = 'stage-prc-keypad-page-button'
     tab.dataset.keypadPage = String(page)
     tab.setAttribute('role', 'tab')
-    tab.setAttribute('aria-selected', page === activePage ? 'true' : 'false')
+    tab.setAttribute('aria-selected', page === pageNow ? 'true' : 'false')
     tab.setAttribute('aria-label', `Nota tuş takımı sayfa ${page}`)
     tab.textContent = String(page)
+    if (page !== pageNow) {
+      tab.addEventListener('click', (event) => {
+        event.stopPropagation?.()
+        renderStagePrCKeypadShell(root, {
+          manifest,
+          glyphNames,
+          exactSelectionReady,
+          productSyncPending,
+          activePage: page,
+          onAction,
+        })
+      })
+    }
     tabs.appendChild(tab)
   }
   shell.appendChild(tabs)
@@ -237,9 +256,9 @@ export function renderStagePrCKeypadShell(root, {
   const panel = root.createElement('div')
   panel.className = 'stage-prc-keypad-panel'
   panel.setAttribute('role', 'tabpanel')
-  panel.dataset.keypadPagePanel = String(activePage)
+  panel.dataset.keypadPagePanel = String(pageNow)
 
-  for (const action of model.actions.filter((item) => item.page === activePage)) {
+  for (const action of model.actions.filter((item) => item.page === pageNow)) {
     const button = root.createElement('button')
     button.type = 'button'
     button.className = 'stage-prc-keypad-action'
