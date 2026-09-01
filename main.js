@@ -20,6 +20,7 @@ import './src/stageFRevisionLifecycle.css'
 import './src/stageIInstrumentProduct.css'
 import './src/stageS10EducationalChords.css'
 import './src/stageS11TeacherWorkflow.css'
+import './src/stageS12MobileProductionAcceptance.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/app.js'
 import './src/package3Ui.js'
@@ -40,6 +41,7 @@ import './src/reviewInspectorUi.js'
 import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.js'
 import { initStageS10EducationalChordsUi } from './src/stageS10EducationalChordsUi.js'
 import { initStageS11TeacherWorkflowUi } from './src/stageS11TeacherWorkflowUi.js'
+import { initStageS12MobileProductionAcceptanceUi } from './src/stageS12MobileProductionAcceptanceUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
@@ -59,6 +61,10 @@ if (typeof document !== 'undefined') {
   initStageS07InlineTeacherInspectorUi(document)
   initStageS07VerifiedSelectionProjection(document)
   initStageS08ScoreQualityOverlay(document)
+  // S12 adds mobile pointer/touch delivery, post-input workspace focus, and
+  // relocates the existing primary playback sections beside the score. It does
+  // not change renderer/canonical authority or quality-gate decisions.
+  initStageS12MobileProductionAcceptanceUi(document)
   // S09 rail is initialized only after the score workspace exists. Package 4/5
   // side-effect listeners still register earlier and synchronously render the
   // exact Package 3 snapshot before this rail mirrors their safe output.
