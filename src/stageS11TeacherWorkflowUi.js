@@ -12,6 +12,8 @@ export const STAGE_S11_COPY = Object.freeze({
   detailsText: 'Her düzeltme yeni immutable sürüm oluşturur. Geri al geçmişi silmez; yeni bir sürüm oluşturur. Öğretmen onayı yalnız exact current revision için ayrı bir işlemdir; kalite kapısı veya öğrenciyle paylaşım izni değildir.',
 })
 
+const focusBoundRoots = new WeakSet()
+
 function validRoot(root) {
   return root &&
     typeof root.getElementById === 'function' &&
@@ -57,6 +59,40 @@ function ensureSafetyDetails(root, inspector) {
   return details
 }
 
+function focusWorkflowStatus(root) {
+  const status = root.getElementById('stage-s07-inline-status')
+  if (status && typeof status.focus === 'function') status.focus()
+}
+
+function focusWhenPrimaryActionSettles(root) {
+  const workspace = root.getElementById('stage-s05-score-workspace')
+  if (workspace?.getAttribute?.('data-stage-s07-score-state') !== 'revalidating') {
+    queueMicrotask(() => focusWorkflowStatus(root))
+    return
+  }
+
+  const Observer = root.defaultView?.MutationObserver ?? globalThis.MutationObserver
+  if (typeof Observer !== 'function') return
+  const observer = new Observer(() => {
+    if (workspace.getAttribute?.('data-stage-s07-score-state') === 'revalidating') return
+    observer.disconnect()
+    focusWorkflowStatus(root)
+  })
+  observer.observe(workspace, { attributes: true, attributeFilter: ['data-stage-s07-score-state'] })
+}
+
+function bindPrimaryFocusRestoration(root, inspector) {
+  if (focusBoundRoots.has(root) || typeof inspector.addEventListener !== 'function') return
+  focusBoundRoots.add(root)
+  inspector.addEventListener('click', (event) => {
+    const target = event.target?.closest?.(
+      '.stage-s07-apply-field, #stage-s07-undo-btn, #stage-s07-approve-btn',
+    )
+    if (!target) return
+    focusWhenPrimaryActionSettles(root)
+  })
+}
+
 function configurePrimaryInspector(root) {
   const inspector = root.getElementById('stage-s07-inline-teacher-inspector')
   if (!inspector) return false
@@ -77,14 +113,13 @@ function configurePrimaryInspector(root) {
   }
 
   const actions = inspector.querySelector?.('.stage-s07-inline-actions') ?? null
-  if (actions) {
-    actions.setAttribute('aria-label', 'Geri alma ve exact sürüm onayı')
-  }
+  if (actions) actions.setAttribute('aria-label', 'Geri alma ve exact sürüm onayı')
 
   const undo = root.getElementById('stage-s07-undo-btn')
   if (undo) undo.textContent = 'Geri al'
 
   ensureSafetyDetails(root, inspector)
+  bindPrimaryFocusRestoration(root, inspector)
   return true
 }
 
