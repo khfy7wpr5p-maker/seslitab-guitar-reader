@@ -47,7 +47,6 @@ import { initStageS08ScoreQualityOverlay } from './src/stageS08ScoreQualityOverl
 import { initStageLShareUi } from './src/stageLShareUi.js'
 
 if (typeof document !== 'undefined') {
-  initStageIInstrumentProductUi(document)
   initStageJDiscoveryPresentation(document)
   initStageKTunerPresentation(document)
   initStageS04MiniTunerUi(document)
@@ -56,5 +55,9 @@ if (typeof document !== 'undefined') {
   initStageS07InlineTeacherInspectorUi(document)
   initStageS07VerifiedSelectionProjection(document)
   initStageS08ScoreQualityOverlay(document)
+  // S09 rail is initialized only after the score workspace exists. Package 4/5
+  // side-effect listeners still register earlier and synchronously render the
+  // exact Package 3 snapshot before this rail mirrors their safe output.
+  initStageIInstrumentProductUi(document)
   initStageLShareUi(document)
 }
