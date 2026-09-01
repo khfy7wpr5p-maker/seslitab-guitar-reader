@@ -72,7 +72,7 @@ test('STI-02 binds Package 3 current projection to exact Package 8 revision iden
   assert.equal(binding.editorUndoBridgeEnabled, false)
 })
 
-test('STI-02 fails closed on stale Package 3 revision or structural projection drift', () => {
+test('STI-02 fails closed on stale Package 3 revision or any projected-content drift', () => {
   const revision = currentRevision()
   const stale = snapshotFor(revision)
   stale.revisionIdentity = { ...stale.revisionIdentity, revisionId: 'stale-revision' }
@@ -81,10 +81,24 @@ test('STI-02 fails closed on stale Package 3 revision or structural projection d
     /revision mismatch: revisionId/,
   )
 
-  const drifted = snapshotFor(revision)
-  drifted.selectionNotes = [{ ...revision.content[0], measureIndex: 9 }]
+  const structuralDrift = snapshotFor(revision)
+  structuralDrift.selectionNotes = [{ ...revision.content[0], measureIndex: 9 }]
   assert.throws(
-    () => createEditorCoreRevisionBinding({ package3Snapshot: drifted, teacherRevision: revision, editorDocumentId: 'editor-doc-1' }),
+    () => createEditorCoreRevisionBinding({ package3Snapshot: structuralDrift, teacherRevision: revision, editorDocumentId: 'editor-doc-1' }),
+    /selection projection does not match/,
+  )
+
+  const musicalDrift = snapshotFor(revision)
+  musicalDrift.selectionNotes = [{ ...revision.content[0], step: 'C' }]
+  assert.throws(
+    () => createEditorCoreRevisionBinding({ package3Snapshot: musicalDrift, teacherRevision: revision, editorDocumentId: 'editor-doc-1' }),
+    /selection projection does not match/,
+  )
+
+  const extraFieldDrift = snapshotFor(revision)
+  extraFieldDrift.selectionNotes = [{ ...revision.content[0], staleDerivedValue: 1 }]
+  assert.throws(
+    () => createEditorCoreRevisionBinding({ package3Snapshot: extraFieldDrift, teacherRevision: revision, editorDocumentId: 'editor-doc-1' }),
     /selection projection does not match/,
   )
 })
