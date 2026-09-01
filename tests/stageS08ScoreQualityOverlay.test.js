@@ -213,7 +213,7 @@ test('S08 clears stale source markers during revalidation and never transfers re
   unregisterQualityReportForNotes(notes)
 })
 
-test('S08 source/UI remain exact-identity, non-color-only and inference-free', async () => {
+test('S08 source/UI remain exact-identity, coalesced, non-color-only and inference-free', async () => {
   const service = await readFile(new URL('../src/services/stageS08ScoreQualityOverlay.js', import.meta.url), 'utf8')
   const ui = await readFile(new URL('../src/stageS08ScoreQualityOverlayUi.js', import.meta.url), 'utf8')
   const css = await readFile(new URL('../src/stageS08ScoreQualityOverlay.css', import.meta.url), 'utf8')
@@ -222,8 +222,12 @@ test('S08 source/UI remain exact-identity, non-color-only and inference-free', a
   assert.match(service, /selectionNotes !== notes/)
   assert.match(service, /markers\.length === 0/)
   assert.match(service, /müzikal doğruluk garantisi değildir/)
-  assert.match(ui, /selectPackage3NoteIndex/)
+  assert.match(ui, /selectPackage3ExactNote/)
+  assert.doesNotMatch(ui, /selectPackage3MeasureKey|selectPackage3NoteIndex/)
   assert.match(ui, /rendererTarget: marker\.rendererTarget/)
+  assert.match(ui, /interaction: 'quality-marker'/)
+  assert.match(ui, /queueMicrotask/)
+  assert.match(ui, /renderScheduled/)
   assert.match(ui, /aria-label/)
   assert.match(ui, /stage-s08-quality-marker-icon/)
   assert.match(ui, /rail\.setAttribute\('role', 'group'\)/)
