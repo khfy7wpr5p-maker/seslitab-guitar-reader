@@ -11,7 +11,9 @@ import {
   QUALITY_GATE_REASON,
 } from '../src/services/qualityGateIntegration.js'
 
-const NOTES = Object.freeze([])
+const NOTES = Object.freeze([
+  Object.freeze({ partId: 'P1', measureIndex: 0, voice: 1, noteName: 'Do', beats: 1 }),
+])
 
 function gateFixture({
   decision,
@@ -19,7 +21,7 @@ function gateFixture({
   allowed,
   definitive,
   automaticAllowed,
-  report,
+  report = null,
   blocked = [],
   boundaryStatus = 'mapped',
 }) {
@@ -30,27 +32,13 @@ function gateFixture({
     allowed: allowed ?? accepted,
     definitive: definitive ?? accepted,
     automaticAllowed: automaticAllowed ?? accepted,
-    report: report ?? null,
+    report,
     classification: Object.freeze({ blocked: Object.freeze([...blocked]) }),
     boundary: Object.freeze({ status: boundaryStatus }),
   })
 }
 
-function safeReviewGate(reason = QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED) {
-  return gateFixture({
-    decision: QUALITY_GATE_DECISION.REVIEW,
-    reason,
-    report: Object.freeze({
-      qualityState: 'review',
-      structurallyValid: true,
-      reliable: true,
-      sourceVerified: false,
-      reviewRequired: true,
-    }),
-  })
-}
-
-test('Stage H preserves ACCEPT as definitive playback', () => {
+test('Stage H preserves exact ACCEPT as definitive playback', () => {
   const route = resolveStageHPlaybackRoute(NOTES, {
     resolver: () => gateFixture({
       decision: QUALITY_GATE_DECISION.ACCEPT,
@@ -72,121 +60,94 @@ test('Stage H preserves ACCEPT as definitive playback', () => {
   assert.equal(Object.isFrozen(route), true)
 })
 
-test('Stage H exposes structurally safe REVIEW only as explicit non-definitive preview', () => {
-  const route = resolveStageHPlaybackRoute(NOTES, {
-    resolver: () => safeReviewGate(),
-  })
-
-  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW)
-  assert.equal(route.reason, QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED)
-  assert.equal(route.actionText, 'İnceleme İçin Dinle')
-  assert.equal(route.noticeText, 'Doğrulanmamış önizleme')
-  assert.equal(route.definitivePlaybackAllowed, false)
-  assert.equal(route.reviewPreviewAllowed, true)
-  assert.equal(route.playbackWithheld, false)
-  assert.equal(route.automaticAllowed, false)
-  assert.equal(route.blocked, false)
-  assert.equal(route.teacherReviewRequired, true)
-  assert.equal(route.teacherApproved, false)
-  assert.equal(route.shareAuthorized, false)
-  assert.equal(route.studentDeliveryAuthorized, false)
-})
-
-test('Stage H permits only bounded existing REVIEW reasons for preview', () => {
-  for (const reason of [
-    QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED,
-    QUALITY_GATE_REASON.REVIEW_REQUIRED,
-    QUALITY_GATE_REASON.CANONICAL_REVIEW,
-  ]) {
-    const route = resolveStageHPlaybackRoute(NOTES, {
-      resolver: () => safeReviewGate(reason),
-    })
-    assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW, reason)
-  }
-
-  const missingReport = resolveStageHPlaybackRoute(NOTES, {
-    resolver: () => gateFixture({
+test('Stage H always exposes REVIEW as non-definitive audible preview when canonical notes already exist', () => {
+  const cases = [
+    gateFixture({
+      decision: QUALITY_GATE_DECISION.REVIEW,
+      reason: QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED,
+      report: { structurallyValid: true, reliable: true },
+    }),
+    gateFixture({
       decision: QUALITY_GATE_DECISION.REVIEW,
       reason: QUALITY_GATE_REASON.REPORT_MISSING,
       report: null,
     }),
-  })
-  assert.equal(missingReport.mode, STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD)
-  assert.equal(missingReport.noticeText, 'İnceleme için dinleme kullanılamıyor')
-  assert.equal(missingReport.reviewPreviewAllowed, false)
-  assert.equal(missingReport.playbackWithheld, true)
-  assert.equal(missingReport.blocked, false)
-  assert.equal(missingReport.teacherReviewRequired, true)
-})
-
-test('Stage H withholds REVIEW preview when structural evidence is unsafe or incomplete', () => {
-  const cases = [
-    safeReviewGate(),
-    safeReviewGate(),
-    safeReviewGate(),
-    safeReviewGate(),
-  ].map((gate, index) => {
-    if (index === 0) return { ...gate, report: { ...gate.report, structurallyValid: false } }
-    if (index === 1) return { ...gate, report: { ...gate.report, reliable: false } }
-    if (index === 2) return { ...gate, classification: { blocked: [{}] } }
-    return { ...gate, boundary: { status: 'pending' } }
-  })
+    gateFixture({
+      decision: QUALITY_GATE_DECISION.REVIEW,
+      reason: QUALITY_GATE_REASON.CANONICAL_REVIEW,
+      report: { structurallyValid: false, reliable: false },
+      blocked: [{}],
+      boundaryStatus: 'pending',
+    }),
+  ]
 
   for (const gate of cases) {
     const route = resolveStageHPlaybackRoute(NOTES, { resolver: () => gate })
-    assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD)
-    assert.equal(route.reviewPreviewAllowed, false)
+    assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW)
+    assert.equal(route.actionText, 'Önizlemeyi Dinle')
+    assert.equal(route.noticeText, 'OMR önizlemesi — hatalar olabilir')
     assert.equal(route.definitivePlaybackAllowed, false)
-    assert.equal(route.playbackWithheld, true)
+    assert.equal(route.reviewPreviewAllowed, true)
+    assert.equal(route.playbackWithheld, false)
+    assert.equal(route.automaticAllowed, false)
     assert.equal(route.blocked, false)
     assert.equal(route.teacherReviewRequired, true)
+    assert.equal(route.teacherApproved, false)
+    assert.equal(route.shareAuthorized, false)
+    assert.equal(route.studentDeliveryAuthorized, false)
   }
 })
 
-test('Stage H never previews a malformed REVIEW that grants definitive permissions', () => {
-  const malformed = safeReviewGate()
-  const route = resolveStageHPlaybackRoute(NOTES, {
-    resolver: () => ({ ...malformed, allowed: true }),
+test('Stage H lets quality BLOCK remain BLOCK for products while playback stays preview-only', () => {
+  const gate = gateFixture({
+    decision: QUALITY_GATE_DECISION.BLOCK,
+    reason: QUALITY_GATE_REASON.STRUCTURE_NOT_VALID,
+    report: { structurallyValid: false, reliable: false },
+    blocked: [{}],
   })
+  const route = resolveStageHPlaybackRoute(NOTES, { resolver: () => gate })
 
-  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD)
-  assert.equal(route.reviewPreviewAllowed, false)
+  assert.equal(route.gate.decision, QUALITY_GATE_DECISION.BLOCK)
+  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW)
+  assert.equal(route.reviewPreviewAllowed, true)
   assert.equal(route.definitivePlaybackAllowed, false)
-  assert.equal(route.playbackWithheld, true)
+  assert.equal(route.playbackWithheld, false)
   assert.equal(route.blocked, false)
+  assert.equal(route.noticeText, STAGE_H_PLAYBACK_COPY.REVIEW_NOTICE)
 })
 
-test('Stage H keeps BLOCK hard-blocked and malformed ACCEPT fail-closed', () => {
-  const blocked = resolveStageHPlaybackRoute(NOTES, {
-    resolver: () => gateFixture({
-      decision: QUALITY_GATE_DECISION.BLOCK,
-      reason: QUALITY_GATE_REASON.STRUCTURE_NOT_VALID,
-    }),
-  })
-  assert.equal(blocked.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
-  assert.equal(blocked.noticeText, 'Kullanım engellendi')
-  assert.equal(blocked.blocked, true)
-  assert.equal(blocked.teacherReviewRequired, false)
-
-  const malformedAccept = resolveStageHPlaybackRoute(NOTES, {
+test('Stage H demotes malformed ACCEPT to preview instead of suppressing playback', () => {
+  const route = resolveStageHPlaybackRoute(NOTES, {
     resolver: () => gateFixture({
       decision: QUALITY_GATE_DECISION.ACCEPT,
       reason: 'malformed-accept',
       automaticAllowed: false,
     }),
   })
-  assert.equal(malformedAccept.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
-  assert.equal(malformedAccept.reason, 'quality-gate-accept-permission-mismatch')
+
+  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW)
+  assert.equal(route.reason, 'quality-gate-accept-permission-mismatch-preview-only')
+  assert.equal(route.definitivePlaybackAllowed, false)
+  assert.equal(route.reviewPreviewAllowed, true)
 })
 
-test('Stage H fails closed for invalid notes and resolver failures', () => {
+test('Stage H keeps audible preview available when quality-gate resolution itself fails', () => {
+  const route = resolveStageHPlaybackRoute(NOTES, {
+    resolver: () => { throw new Error('fixture') },
+  })
+
+  assert.equal(route.mode, STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW)
+  assert.equal(route.reason, 'playback-quality-gate-unavailable-preview-only')
+  assert.equal(route.reviewPreviewAllowed, true)
+  assert.equal(route.playbackWithheld, false)
+  assert.equal(route.gate, null)
+})
+
+test('Stage H blocks only when canonical note array itself is unavailable', () => {
   const invalid = resolveStageHPlaybackRoute(null)
   assert.equal(invalid.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
   assert.equal(invalid.reason, 'canonical-note-array-required')
-
-  const failed = resolveStageHPlaybackRoute(NOTES, {
-    resolver: () => { throw new Error('fixture') },
-  })
-  assert.equal(failed.mode, STAGE_H_PLAYBACK_MODE.BLOCKED)
-  assert.equal(failed.reason, 'playback-quality-gate-resolution-failed')
+  assert.equal(invalid.noticeText, 'Çalınabilir nota bulunamadı')
+  assert.equal(invalid.playbackWithheld, true)
+  assert.equal(invalid.reviewPreviewAllowed, false)
 })
