@@ -22,6 +22,7 @@ import './src/stageS10EducationalChords.css'
 import './src/stageS11TeacherWorkflow.css'
 import './src/stageS12MobileProductionAcceptance.css'
 import './src/stageS12MobileScoreTools.css'
+import './src/stageS12RendererSessionRecovery.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/app.js'
 import './src/package3Ui.js'
@@ -43,6 +44,7 @@ import { initStageIInstrumentProductUi } from './src/stageIInstrumentProductUi.j
 import { initStageS10EducationalChordsUi } from './src/stageS10EducationalChordsUi.js'
 import { initStageS11TeacherWorkflowUi } from './src/stageS11TeacherWorkflowUi.js'
 import { initStageS12MobileProductionAcceptanceUi } from './src/stageS12MobileProductionAcceptanceUi.js'
+import { initStageS12RendererSessionRecoveryUi } from './src/stageS12RendererSessionRecoveryUi.js'
 import { initStageS12MobileScoreToolsUi } from './src/stageS12MobileScoreToolsUi.js'
 import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentation.js'
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
@@ -67,6 +69,10 @@ if (typeof document !== 'undefined') {
   // relocates the existing primary playback sections beside the score. It does
   // not change renderer/canonical authority or quality-gate decisions.
   initStageS12MobileProductionAcceptanceUi(document)
+  // A renderer startup failure must not force a page reload or PDF re-upload.
+  // This recovery layer retries only the existing score view from in-session
+  // MusicXML and leaves OMR, canonical, revision and approval authority intact.
+  initStageS12RendererSessionRecoveryUi(document)
   // S09 rail is initialized only after the score workspace exists. Package 4/5
   // side-effect listeners still register earlier and synchronously render the
   // exact Package 3 snapshot before this rail mirrors their safe output.
