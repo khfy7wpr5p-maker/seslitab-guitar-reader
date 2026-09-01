@@ -7,6 +7,7 @@ import path from 'node:path'
 
 import {
   bindPackage3RevisionIdentity,
+  bindPackage3SelectionProjection,
   clearPackage3Notes,
   getPackage3MeasureSnapshot,
   publishPackage3Notes,
@@ -20,6 +21,8 @@ import {
   getTeacherWorkspaceApplicableApproval,
   getTeacherWorkspaceCurrentRevision,
 } from '../src/services/teacherWorkspaceModel.js'
+import { canonicalizeStageFRevision } from '../src/services/stageFCanonicalization.js'
+import { stageS06SelectionMatchesRevision } from '../src/services/stageS06SelectionIdentity.js'
 import { buildStageS07InlineInspectorModel } from '../src/services/stageS07InlineInspector.js'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -42,11 +45,16 @@ function note(overrides = {}) {
     alter: 0,
     octave: 4,
     durationValue: 4,
+    divisions: 4,
     duration: 'quarter',
     beats: 1,
+    dotCount: 0,
     midi: 60,
     frequency: 261.6256,
     noteName: 'Do',
+    tieStart: false,
+    tieStop: false,
+    tieContinue: false,
     confidence: 0.99,
     verification: 'internal-only',
     ...overrides,
@@ -177,6 +185,68 @@ test('S07 correction creates a new immutable revision, invalidates stale selecti
   const after = getPackage3MeasureSnapshot()
   assert.equal(after.selectedNoteIndex, null)
   assert.equal(after.selectedNoteIdentity, null)
+  assert.equal(after.selectionNotes, notes)
+  clearPackage3Notes()
+})
+
+test('S07 verified duration correction rebinds visual selection to shifted canonical timeline without replacing source notes', () => {
+  const sourceNotes = [
+    note({ startBeat: 0, durationValue: 4, beats: 1 }),
+    note({ startBeat: 1, step: 'D', midi: 62, frequency: 293.6647679174076, noteName: 'Re' }),
+  ]
+  let currentWorkspace = workspace(sourceNotes)
+  publishPackage3Notes(sourceNotes)
+  assert.equal(bind(sourceNotes, getTeacherWorkspaceCurrentRevision(currentWorkspace)), true)
+
+  currentWorkspace = applyTeacherWorkspaceCorrection({
+    workspace: currentWorkspace,
+    fieldKey: '0:durationValue',
+    value: 8,
+    revisionId: 'teacher-s07-duration',
+    eventId: 'event-s07-duration',
+    operationId: 'operation-s07-duration',
+    createdAt: '2026-09-01T02:03:00.000Z',
+  })
+  const canonicalized = canonicalizeStageFRevision({
+    history: currentWorkspace.history,
+    expectation: currentWorkspace.expectation,
+    revisionId: 'canonical-s07-duration',
+    eventId: 'canonical-event-s07-duration',
+    operationIdPrefix: 'canonical-operation-s07-duration',
+    createdAt: '2026-09-01T02:04:00.000Z',
+  })
+  assert.equal(canonicalized.status, 'applied')
+  const verifiedRevision = canonicalized.revision
+  assert.equal(sourceNotes[1].startBeat, 1)
+  assert.equal(verifiedRevision.content[1].startBeat, 2)
+
+  // Revision transition clears any old corrected projection until Stage F proof
+  // has completed. Binding the exact verified revision must not replace source.
+  assert.equal(bind(sourceNotes, verifiedRevision), true)
+  assert.equal(getPackage3MeasureSnapshot().selectionNotes, sourceNotes)
+  assert.equal(bindPackage3SelectionProjection({
+    notes: sourceNotes,
+    selectionNotes: verifiedRevision.content,
+    sourceId: verifiedRevision.sourceId,
+    sourceRevisionId: verifiedRevision.sourceRevisionId,
+    revisionId: verifiedRevision.revisionId,
+    contentFingerprint: verifiedRevision.contentFingerprint,
+  }), true)
+
+  const projected = getPackage3MeasureSnapshot()
+  assert.equal(projected.notes, sourceNotes)
+  assert.equal(projected.notes[1].startBeat, 1)
+  assert.equal(projected.selectionNotes, verifiedRevision.content)
+  assert.equal(projected.selectionNotes[1].startBeat, 2)
+
+  assert.equal(selectPackage3MeasureKey('P1:m0'), true)
+  assert.equal(selectPackage3NoteIndex(1, {
+    rendererTarget: { partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 1 },
+    interaction: 'score-hit-test',
+  }), true)
+  const selected = getPackage3MeasureSnapshot()
+  assert.equal(stageS06SelectionMatchesRevision(selected, verifiedRevision), true)
+  assert.equal(selected.selectedNoteIdentity.note, verifiedRevision.content[1])
   clearPackage3Notes()
 })
 
@@ -198,9 +268,14 @@ test('S07 orchestration requires Stage F verification before a corrected score b
   assert.doesNotMatch(source, /\b(?:sourceNote|currentNote|note)\.(?:step|alter|octave|durationValue)\s*=/)
 })
 
-test('S07 is wired after S06 exact selection and keeps technical internals outside normal inspector copy', async () => {
+test('S07 is wired after S06 exact selection and verified selection projection follows inspector state', async () => {
   const main = await readFile(new URL('../main.js', import.meta.url), 'utf8')
-  assert.ok(main.indexOf('initStageS07InlineTeacherInspectorUi') > main.indexOf('initStageS06ExactSelectionUi'))
+  const s06 = main.indexOf('initStageS06ExactSelectionUi(document)')
+  const s07 = main.indexOf('initStageS07InlineTeacherInspectorUi(document)')
+  const projection = main.indexOf('initStageS07VerifiedSelectionProjection(document)')
+  assert.ok(s06 >= 0)
+  assert.ok(s07 > s06)
+  assert.ok(projection > s07)
   assert.match(main, /stageS07InlineTeacherInspector\.css/)
 
   const ui = await readFile(new URL('../src/stageS07InlineTeacherInspectorUi.js', import.meta.url), 'utf8')
@@ -208,6 +283,11 @@ test('S07 is wired after S06 exact selection and keeps technical internals outsi
   assert.doesNotMatch(ui, /textContent\s*=.*sourceId/)
   assert.doesNotMatch(ui, /textContent\s*=.*midi/i)
   assert.doesNotMatch(ui, /textContent\s*=.*frequency/i)
+
+  const projectionSource = await readFile(new URL('../src/stageS07VerifiedSelectionProjection.js', import.meta.url), 'utf8')
+  assert.match(projectionSource, /data-stage-s07-score-state/)
+  assert.match(projectionSource, /bindPackage3SelectionProjection/)
+  assert.match(projectionSource, /clearPackage3SelectionProjection/)
 })
 
 test('S07 real Chrome proof covers inline fields, hidden internals, stale selection, approval separation, coherence and undo', (t) => {
