@@ -19,7 +19,7 @@ import {
 
 test('score renderer consumer pins the reviewed ST boundary', () => {
   assert.equal(ST_SCORE_RENDERER_CONTRACT_VERSION, '0.2.0')
-  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '35acc0de266643a7f8989dca643597cc21f2968f')
+  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f')
 })
 
 test('MusicXML validation is bounded and fail closed', () => {
