@@ -1,0 +1,71 @@
+.stage-s11-primary-teacher-workflow {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.stage-s11-primary-teacher-workflow .stage-s07-inline-help {
+  max-width: 52ch;
+  line-height: 1.4;
+}
+
+.stage-s11-primary-teacher-workflow .stage-s07-inline-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stage-s11-primary-teacher-workflow button,
+.stage-s11-primary-teacher-workflow input,
+.stage-s11-primary-teacher-workflow select,
+.stage-s11-workflow-details summary {
+  min-height: 44px;
+}
+
+.stage-s11-workflow-details {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--neutral-300, #d1d5db);
+  padding-top: 0.5rem;
+}
+
+.stage-s11-workflow-details summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stage-s11-workflow-details p {
+  max-width: 60ch;
+  margin: 0.5rem 0 0;
+  line-height: 1.45;
+}
+
+.stage-s11-primary-teacher-workflow button:focus-visible,
+.stage-s11-primary-teacher-workflow input:focus-visible,
+.stage-s11-primary-teacher-workflow select:focus-visible,
+.stage-s11-primary-teacher-workflow summary:focus-visible,
+#stage-s07-inline-status:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .stage-s11-primary-teacher-workflow,
+  .stage-s11-primary-teacher-workflow .stage-s07-inline-fields,
+  .stage-s11-primary-teacher-workflow .stage-s07-inline-field,
+  .stage-s11-primary-teacher-workflow .stage-s07-inline-actions,
+  .stage-s11-workflow-details {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .stage-s11-primary-teacher-workflow .stage-s07-inline-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-s11-primary-teacher-workflow input,
+  .stage-s11-primary-teacher-workflow select,
+  .stage-s11-primary-teacher-workflow button {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+}
