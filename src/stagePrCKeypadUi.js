@@ -1,9 +1,10 @@
-// STI-08 — responsive Sibelius-type SMuFL keypad shell.
+// STI-08/10 — responsive Sibelius-type SMuFL keypad shell.
 //
 // Semantics come only from Editor Core actionId descriptors. The SMuFL name is
 // presentation metadata and is resolved through the separately pinned official
 // SMuFL glyphnames.json prepared at build time. Raw codepoints are never stored
-// in Editor Core or treated as edit targets.
+// in Editor Core or treated as edit targets. STI-10 may enable advanced action
+// buttons only when the host explicit-target capture pipeline is ready.
 
 import {
   ADVANCED_EDITOR_KEYPAD_ACTION_IDS,
@@ -130,6 +131,7 @@ function hostPrimitive(descriptor) {
 export function buildStagePrCKeypadModel(manifest, glyphNames, {
   exactSelectionReady = false,
   productSyncPending = false,
+  advancedActionsReady = false,
 } = {}) {
   const verifiedManifest = readEditorKeypadManifest({ getEditorKeypadManifest: () => manifest })
   const actions = []
@@ -145,14 +147,17 @@ export function buildStagePrCKeypadModel(manifest, glyphNames, {
       const primitive = glyph ? null : hostPrimitive(descriptor)
       if (!glyph && !primitive) throw new Error(`No admitted presentation exists for ${descriptor.actionId}.`)
       const basic = isBasicEditorKeypadAction(descriptor.actionId)
-      const enabled = basic && exactSelectionReady && !productSyncPending
+      const advanced = ADVANCED_ACTION_SET.has(descriptor.actionId)
+      const enabled = exactSelectionReady && !productSyncPending && (basic || (advanced && advancedActionsReady))
       const disabledReason = enabled
         ? null
-        : !basic
-          ? 'STI-10 ile etkinleşecek.'
-          : productSyncPending
-            ? 'Skor güncelleme senkronizasyonu bekleniyor.'
-            : 'Exact nota seçimi gerekiyor.'
+        : productSyncPending
+          ? 'Skor güncelleme senkronizasyonu bekleniyor.'
+          : !exactSelectionReady
+            ? 'Exact nota seçimi gerekiyor.'
+            : advanced
+              ? 'Explicit advanced hedef seçimi hazır değil.'
+              : 'Bu tuş mevcut Editor sözleşmesinde kullanılamıyor.'
       actions.push(Object.freeze({
         page,
         groupId: group.id,
@@ -161,7 +166,7 @@ export function buildStagePrCKeypadModel(manifest, glyphNames, {
         accessibleLabel: labelFor(descriptor.accessibleLabelKey),
         glyph,
         primitive,
-        advanced: ADVANCED_ACTION_SET.has(descriptor.actionId),
+        advanced,
         enabled,
         disabledReason,
       }))
@@ -202,12 +207,13 @@ export function renderStagePrCKeypadShell(root, {
   glyphNames,
   exactSelectionReady = false,
   productSyncPending = false,
+  advancedActionsReady = false,
   activePage = 1,
   onAction = null,
 } = {}) {
   if (!root || typeof root.createElement !== 'function' || typeof root.getElementById !== 'function') return null
   const pageNow = normalizedPage(activePage)
-  const model = buildStagePrCKeypadModel(manifest, glyphNames, { exactSelectionReady, productSyncPending })
+  const model = buildStagePrCKeypadModel(manifest, glyphNames, { exactSelectionReady, productSyncPending, advancedActionsReady })
   let shell = root.getElementById('stage-prc-keypad')
   if (!shell) {
     const scoreColumn = root.getElementById('stage-s05-score-column')
@@ -216,13 +222,14 @@ export function renderStagePrCKeypadShell(root, {
     shell.id = 'stage-prc-keypad'
     shell.className = 'stage-prc-keypad'
     shell.setAttribute('aria-label', 'Nota düzenleme tuş takımı')
-    shell.dataset.sti = '08-09'
+    shell.dataset.sti = '08-10'
     scoreColumn.appendChild(shell)
   }
   clearChildren(shell)
   shell.dataset.page = String(pageNow)
   shell.dataset.exactSelectionReady = exactSelectionReady ? 'true' : 'false'
   shell.dataset.productSyncPending = productSyncPending ? 'true' : 'false'
+  shell.dataset.advancedActionsReady = advancedActionsReady ? 'true' : 'false'
 
   const tabs = root.createElement('div')
   tabs.className = 'stage-prc-keypad-pages'
@@ -244,6 +251,7 @@ export function renderStagePrCKeypadShell(root, {
           glyphNames,
           exactSelectionReady,
           productSyncPending,
+          advancedActionsReady,
           activePage: page,
           onAction,
         })
@@ -286,7 +294,7 @@ export function renderStagePrCKeypadShell(root, {
   status.textContent = productSyncPending
     ? 'Düzenleme işlendi. Skor senkronizasyonu bekleniyor.'
     : exactSelectionReady
-      ? 'Exact nota seçildi. Temel nota düzenleme tuşları hazır.'
+      ? 'Exact nota seçildi. Nota düzenleme tuşları hazır.'
       : 'Nota düzenlemek için skordaki exact notaya dokunun.'
   shell.appendChild(status)
 
