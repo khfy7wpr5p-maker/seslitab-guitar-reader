@@ -95,6 +95,12 @@ try {
   }
   proof.dataset.stageS07HiddenInternalsPass = 'true'
 
+  const saveButton = inspector.querySelector('.stage-s07-apply-field')
+  const minHeight = Number.parseFloat(getComputedStyle(saveButton).minHeight)
+  if (!(minHeight >= 44)) throw new Error(`touch target too small: ${minHeight}`)
+  if (window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1) throw new Error('mobile overflow')
+  proof.dataset.stageS07MobilePass = 'true'
+
   // Approval is a separate explicit action on the exact source revision.
   if (!approveStageS07CurrentRevision(document)) throw new Error('explicit approval failed')
   if (!getTeacherWorkspaceApplicableApproval(getTeacherUiWorkspace(document))) throw new Error('explicit approval missing')
@@ -155,12 +161,6 @@ try {
   }
   if (corrected.history.revisions[0].content[0].step !== 'C') throw new Error('undo erased history')
   proof.dataset.stageS07UndoPass = 'true'
-
-  const saveButton = inspector.querySelector('.stage-s07-apply-field')
-  const minHeight = Number.parseFloat(getComputedStyle(saveButton).minHeight)
-  if (!(minHeight >= 44)) throw new Error(`touch target too small: ${minHeight}`)
-  if (window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1) throw new Error('mobile overflow')
-  proof.dataset.stageS07MobilePass = 'true'
   proof.textContent = 'PASS'
 } catch (error) {
   proof.dataset.renderError = String(error?.message ?? error)
