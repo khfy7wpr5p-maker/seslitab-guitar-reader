@@ -4,7 +4,7 @@
 // remains the exact selected-note correction orchestration. This layer removes
 // the duplicate technical teacher tab from the normal workflow, keeps its
 // controls mounted but hidden for the existing safe orchestration seams, and
-// compacts repeated explanation without adding authentication or authority.
+// compacts repeated explanation without adding identity or authority.
 
 export const STAGE_S11_COPY = Object.freeze({
   conciseHelp: 'Bir alanı değiştirip kaydedin. Yeni sürüm yeniden doğrulanır; düzeltme öğretmen onayı değildir.',
