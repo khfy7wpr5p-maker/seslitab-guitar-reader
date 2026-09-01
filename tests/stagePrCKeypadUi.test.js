@@ -5,6 +5,7 @@ import test from 'node:test'
 import {
   buildStagePrCKeypadModel,
   loadStagePrCSmuflPresentation,
+  renderStagePrCKeypadShell,
   resolveSmuflGlyphPresentation,
   smuflCodepointToCharacter,
 } from '../src/stagePrCKeypadUi.js'
@@ -58,6 +59,79 @@ function glyphNames() {
   return Object.fromEntries([...names].map((name) => [name, { codepoint: `U+${(code++).toString(16).toUpperCase()}`, description: name }]))
 }
 
+class FakeClassList {
+  constructor(owner) { this.owner = owner }
+  add(...tokens) {
+    const current = new Set(String(this.owner.className || '').split(/\s+/).filter(Boolean))
+    for (const token of tokens) current.add(token)
+    this.owner.className = [...current].join(' ')
+  }
+  contains(token) { return String(this.owner.className || '').split(/\s+/).includes(token) }
+}
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName.toUpperCase()
+    this.children = []
+    this.parentNode = null
+    this.dataset = {}
+    this.attributes = new Map()
+    this.listeners = new Map()
+    this.className = ''
+    this.classList = new FakeClassList(this)
+    this.textContent = ''
+    this.id = ''
+    this.disabled = false
+    this.type = ''
+    this.title = ''
+  }
+  get firstChild() { return this.children[0] ?? null }
+  appendChild(child) { child.parentNode = this; this.children.push(child); return child }
+  removeChild(child) {
+    const index = this.children.indexOf(child)
+    if (index >= 0) this.children.splice(index, 1)
+    child.parentNode = null
+    return child
+  }
+  setAttribute(name, value) { this.attributes.set(name, String(value)) }
+  getAttribute(name) { return this.attributes.get(name) ?? null }
+  removeAttribute(name) { this.attributes.delete(name) }
+  addEventListener(type, listener) {
+    const listeners = this.listeners.get(type) ?? []
+    listeners.push(listener)
+    this.listeners.set(type, listeners)
+  }
+  click() {
+    const event = { stopPropagation() {} }
+    for (const listener of this.listeners.get('click') ?? []) listener(event)
+  }
+  remove() { this.parentNode?.removeChild(this) }
+}
+
+function fakeRoot() {
+  const rootNode = new FakeElement('document')
+  const scoreColumn = new FakeElement('div')
+  scoreColumn.id = 'stage-s05-score-column'
+  const workspace = new FakeElement('div')
+  workspace.id = 'stage-s05-score-workspace'
+  rootNode.appendChild(scoreColumn)
+  rootNode.appendChild(workspace)
+
+  const findById = (node, id) => {
+    if (node.id === id) return node
+    for (const child of node.children) {
+      const found = findById(child, id)
+      if (found) return found
+    }
+    return null
+  }
+
+  return {
+    createElement: (tagName) => new FakeElement(tagName),
+    getElementById: (id) => findById(rootNode, id),
+  }
+}
+
 test('STI-08 resolves official SMuFL codepoint metadata only after Editor manifest supplies a glyph name', () => {
   assert.equal(smuflCodepointToCharacter('U+E1D5'), String.fromCodePoint(0xe1d5))
   const descriptor = manifest().groups[0].actions.find((item) => item.actionId === 'duration.quarter')
@@ -83,6 +157,33 @@ test('STI-08 keypad model pages real duration/rest/accidental/dot/tuplet glyphs 
   assert.equal(triplet.enabled, false)
   assert.match(triplet.disabledReason, /STI-10/)
   assert.equal(quarter.enabled, true)
+})
+
+test('STI-08 keypad page tabs switch the rendered action panel without changing action authority', () => {
+  const root = fakeRoot()
+  const rendered = renderStagePrCKeypadShell(root, {
+    manifest: manifest(),
+    glyphNames: glyphNames(),
+    exactSelectionReady: true,
+    activePage: 1,
+  })
+  assert.ok(rendered)
+  const shell = root.getElementById('stage-prc-keypad')
+  assert.equal(shell.dataset.page, '1')
+  assert.equal(shell.children[1].dataset.keypadPagePanel, '1')
+  assert.equal(shell.children[1].children.some((child) => child.dataset.editorActionId === 'duration.quarter'), true)
+
+  shell.children[0].children[1].click()
+  assert.equal(shell.dataset.page, '2')
+  assert.equal(shell.children[0].children[1].getAttribute('aria-selected'), 'true')
+  assert.equal(shell.children[1].dataset.keypadPagePanel, '2')
+  assert.equal(shell.children[1].children.some((child) => child.dataset.editorActionId === 'accidental.sharp'), true)
+  assert.equal(shell.children[1].children.some((child) => child.dataset.editorActionId === 'duration.quarter'), false)
+
+  shell.children[0].children[2].click()
+  assert.equal(shell.dataset.page, '3')
+  assert.equal(shell.children[1].children.some((child) => child.dataset.editorActionId === 'tuplet.triplet'), true)
+  assert.equal(shell.children[1].children.find((child) => child.dataset.editorActionId === 'tuplet.triplet')?.disabled, true)
 })
 
 test('STI-08/09 basic actions remain disabled without exact selection and during pending product synchronization', () => {
