@@ -8,6 +8,7 @@ const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corr
 const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
 const stageS10EducationalChordsFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-s10-educational-chords-browser-proof.html')
+const stageS11TeacherWorkflowFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-s11-teacher-workflow-browser-proof.html')
 const stageJDiscoveryFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-j-discovery-presentation-browser-proof.html')
 const stageKTunerFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-k-tuner-presentation-browser-proof.html')
 const stageLShareFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-l-share-readiness-browser-proof.html')
@@ -156,6 +157,35 @@ function runStageS10EducationalChordsProof() {
   verifyStageS10Dom(mobileLabel, runChrome(mobileLabel, stageS10EducationalChordsFixturePath, '--window-size=390,844'), true)
 }
 
+function verifyStageS11Dom(label, dom, mobile = false) {
+  for (const marker of [
+    'data-stage-s11-presentation-pass="true"',
+    'data-stage-s11-hidden-technical-pass="true"',
+    'data-stage-s11-focus-pass="true"',
+    'data-stage-s11-announcement-pass="true"',
+    'data-stage-s11-primary-flow-pass="true"',
+  ]) {
+    if (!dom.includes(marker)) fail(label, `teacher workflow evidence missing: ${marker}`, dom)
+  }
+  if (mobile && !dom.includes('data-stage-s11-mobile-pass="true"')) {
+    fail(label, '390px teacher workflow/44px evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-s11-primary-workflow="ready"') || !dom.includes('data-stage-s11-internal-controls="true"')) {
+    fail(label, 'primary/technical teacher surface separation missing.', dom)
+  }
+  if (!dom.includes('id="stage-s11-workflow-details"')) {
+    fail(label, 'secondary teacher safety details missing.', dom)
+  }
+}
+
+function runStageS11TeacherWorkflowProof() {
+  const desktopLabel = 'S11 teacher workflow desktop browser proof'
+  verifyStageS11Dom(desktopLabel, runChrome(desktopLabel, stageS11TeacherWorkflowFixturePath), false)
+
+  const mobileLabel = 'S11 teacher workflow 390px browser proof'
+  verifyStageS11Dom(mobileLabel, runChrome(mobileLabel, stageS11TeacherWorkflowFixturePath, '--window-size=390,844'), true)
+}
+
 function runStageJDiscoveryPresentationProof() {
   const label = 'Stage J discovery presentation browser proof'
   const dom = runChrome(label, stageJDiscoveryFixturePath, '--window-size=390,844')
@@ -189,7 +219,7 @@ function runStageKTunerPresentationProof() {
     fail(label, 'tuner secondary-details/privacy evidence missing.', dom)
   }
   if (!dom.includes('data-stage-k-primary-action="Mikrofonu Başlat"') || !dom.includes('data-stage-k-details-action="Ayarlar ve ölçümler"')) {
-    fail(label, 'tuner primary/secondary action evidence missing.', dom)
+    fail(label, 'tuner primary/secondary action semantics evidence missing.', dom)
   }
 }
 
@@ -219,7 +249,8 @@ runStageFCorrectedMusicXmlProof()
 runStageFDurationHitProof()
 runStageIInstrumentProductProof()
 runStageS10EducationalChordsProof()
+runStageS11TeacherWorkflowProof()
 runStageJDiscoveryPresentationProof()
 runStageKTunerPresentationProof()
 runStageLShareReadinessProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, S10 educational chords, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, S10 educational chords, S11 teacher workflow, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)
