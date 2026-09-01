@@ -141,22 +141,28 @@ test('STI-08 resolves official SMuFL codepoint metadata only after Editor manife
   assert.throws(() => resolveSmuflGlyphPresentation(descriptor, {}), /noteQuarterUp/)
 })
 
-test('STI-08 keypad model pages real duration/rest/accidental/dot/tuplet glyphs and leaves advanced edits disabled for STI-10', () => {
-  const model = buildStagePrCKeypadModel(manifest(), glyphNames(), { exactSelectionReady: true })
-  assert.equal(model.actions.length, 22)
-  const quarter = model.actions.find((item) => item.actionId === 'duration.quarter')
-  const rest = model.actions.find((item) => item.actionId === 'rest.eighth')
-  const sharp = model.actions.find((item) => item.actionId === 'accidental.sharp')
-  const dot2 = model.actions.find((item) => item.actionId === 'dot.set.2')
-  const triplet = model.actions.find((item) => item.actionId === 'tuplet.triplet')
+test('STI-08/10 keypad model keeps advanced actions gated until the explicit-target host is ready', () => {
+  const gated = buildStagePrCKeypadModel(manifest(), glyphNames(), { exactSelectionReady: true })
+  assert.equal(gated.actions.length, 22)
+  const quarter = gated.actions.find((item) => item.actionId === 'duration.quarter')
+  const rest = gated.actions.find((item) => item.actionId === 'rest.eighth')
+  const sharp = gated.actions.find((item) => item.actionId === 'accidental.sharp')
+  const dot2 = gated.actions.find((item) => item.actionId === 'dot.set.2')
+  const triplet = gated.actions.find((item) => item.actionId === 'tuplet.triplet')
   assert.equal(quarter.page, 1)
   assert.equal(rest.page, 1)
   assert.equal(sharp.page, 2)
   assert.equal(dot2.glyph.repeat, 2)
   assert.equal(triplet.page, 3)
   assert.equal(triplet.enabled, false)
-  assert.match(triplet.disabledReason, /STI-10/)
+  assert.match(triplet.disabledReason, /Explicit advanced hedef/)
   assert.equal(quarter.enabled, true)
+
+  const admitted = buildStagePrCKeypadModel(manifest(), glyphNames(), {
+    exactSelectionReady: true,
+    advancedActionsReady: true,
+  })
+  assert.equal(admitted.actions.filter((item) => item.advanced).every((item) => item.enabled), true)
 })
 
 test('STI-08 keypad page tabs switch the rendered action panel without changing action authority', () => {
@@ -186,13 +192,13 @@ test('STI-08 keypad page tabs switch the rendered action panel without changing 
   assert.equal(shell.children[1].children.find((child) => child.dataset.editorActionId === 'tuplet.triplet')?.disabled, true)
 })
 
-test('STI-08/09 basic actions remain disabled without exact selection and during pending product synchronization', () => {
-  const noSelection = buildStagePrCKeypadModel(manifest(), glyphNames(), { exactSelectionReady: false })
-  assert.equal(noSelection.actions.filter((item) => !item.advanced).every((item) => !item.enabled), true)
+test('STI-08/10 actions remain disabled without exact selection and during pending product synchronization', () => {
+  const noSelection = buildStagePrCKeypadModel(manifest(), glyphNames(), { exactSelectionReady: false, advancedActionsReady: true })
+  assert.equal(noSelection.actions.every((item) => !item.enabled), true)
   assert.equal(noSelection.actions.find((item) => item.actionId === 'duration.quarter').disabledReason, 'Exact nota seçimi gerekiyor.')
 
-  const pending = buildStagePrCKeypadModel(manifest(), glyphNames(), { exactSelectionReady: true, productSyncPending: true })
-  assert.equal(pending.actions.filter((item) => !item.advanced).every((item) => !item.enabled), true)
+  const pending = buildStagePrCKeypadModel(manifest(), glyphNames(), { exactSelectionReady: true, productSyncPending: true, advancedActionsReady: true })
+  assert.equal(pending.actions.every((item) => !item.enabled), true)
   assert.match(pending.actions.find((item) => item.actionId === 'accidental.flat').disabledReason, /senkronizasyon/)
 })
 
@@ -221,12 +227,14 @@ test('STI-08 keypad source does not import or execute legacy Stage E/S07 field m
   assert.match(source, /aria-label/)
 })
 
-test('STI-08 mobile CSS enforces 44px controls, Bravura font, safe areas, and retires the legacy palette only under the new path', () => {
+test('STI-08/12 mobile CSS enforces 44px controls, Bravura font, safe areas, and retires legacy write paths only under the integrated gates', () => {
   assert.match(css, /@font-face/)
   assert.match(css, /Bravura\.woff2/)
   assert.match(css, /min-width:\s*44px/)
   assert.match(css, /min-height:\s*44px/)
   assert.match(css, /safe-area-inset-bottom/)
   assert.match(css, /data-sti-prc-keypad-active='true'.*\.stage-s12-note-tools/s)
+  assert.match(css, /data-sti-prd-keypad-active='true'.*#stage-s07-inline-fields/s)
+  assert.match(css, /data-sti-prd-keypad-active='true'.*#stage-f-undo-last-btn/s)
   assert.doesNotMatch(css, /^\.stage-s12-note-tools\s*\{\s*display:\s*none/m)
 })

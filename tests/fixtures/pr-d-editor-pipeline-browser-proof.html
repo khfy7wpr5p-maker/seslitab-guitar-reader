@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>SesliTab PR-D Editor pipeline proof</title></head>
+<body>
+<div id="status"
+  data-prd-runtime-rehydration-pass="false"
+  data-prd-existing-tie-remove-pass="false"
+  data-prd-onset-preservation-pass="false"
+  data-prd-product-revision-pass="false"
+  data-prd-undo-redo-pass="false"
+  data-prd-approval-reset-pass="false">PENDING</div>
+<script src="../../public/st-score-editor-core-runtime/st-score-editor-core.runtime.js"></script>
+<script type="module">
+import { parseMusicXmlToNotes } from '../../src/services/musicEngine.js'
+import { buildStageS06SelectionIdentity } from '../../src/services/stageS06SelectionIdentity.js'
+import {
+  approveTeacherWorkspace,
+  createTeacherWorkspace,
+  getTeacherWorkspaceApplicableApproval,
+  getTeacherWorkspaceCurrentRevision,
+  refreshTeacherWorkspace,
+  withTeacherWorkspaceAuthoritativeHistory,
+} from '../../src/services/teacherWorkspaceModel.js'
+import {
+  commitPrDProductRevision,
+  revalidatePrDEditorMusicXml,
+  restorePrDProductRevision,
+} from '../../src/services/editorPrDProductPipeline.js'
+import { registerPrDProductMusicXml } from '../../src/services/editorPrDRevisionMusicXmlRegistry.js'
+import { createPrDEditorSessionContext, commitPrDEditorAction } from '../../src/services/editorPrDSession.js'
+import { materializePrDEditorSessionMusicXml } from '../../src/services/editorPrDNotationBridge.js'
+
+const status = document.getElementById('status')
+const tieXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><tie type="start"/><voice>1</voice><type>quarter</type><staff>1</staff><notations><tied type="start" number="1"/></notations></note>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><tie type="stop"/><voice>1</voice><type>quarter</type><staff>1</staff><notations><tied type="stop" number="1"/></notations></note>
+    <note><rest/><duration>4</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+  </measure></part>
+</score-partwise>`
+
+function makeWorkspace(xml, suffix) {
+  const parsed = parseMusicXmlToNotes(xml)
+  if (parsed.error || parsed.notes.length !== 3) throw new Error(`fixture parse failed: ${parsed.error ?? parsed.notes.length}`)
+  return createTeacherWorkspace({
+    content: parsed.notes,
+    actorId: `browser-actor-${suffix}`,
+    sourceId: `browser-source-${suffix}`,
+    automaticRevisionId: `browser-root-${suffix}`,
+    historyId: `browser-history-${suffix}`,
+    createdAt: '2026-09-02T00:00:00.000Z',
+  })
+}
+
+function snapshotFor(revision, noteIndex = 0) {
+  const note = revision.content[noteIndex]
+  const revisionIdentity = Object.freeze({
+    sourceId: revision.sourceId,
+    sourceRevisionId: revision.sourceRevisionId,
+    revisionId: revision.revisionId,
+    contentFingerprint: revision.contentFingerprint,
+  })
+  const rendererTarget = Object.freeze({ partId: note.partId, measureIndex: note.measureIndex, noteIndex, voice: note.voice })
+  const selectedNoteIdentity = buildStageS06SelectionIdentity({
+    notes: revision.content,
+    measureKey: note.measureKey,
+    noteIndex,
+    revisionIdentity,
+    rendererTarget,
+    interaction: 'score-editor-current-hit',
+  })
+  if (!selectedNoteIdentity) throw new Error('exact selection identity unavailable')
+  return Object.freeze({
+    notes: revision.content,
+    selectionNotes: revision.content,
+    selectedMeasureKey: note.measureKey,
+    selectedNoteIndex: noteIndex,
+    revisionIdentity,
+    selectedNoteIdentity,
+  })
+}
+
+function currentWorkspace(workspace, result) {
+  return refreshTeacherWorkspace(withTeacherWorkspaceAuthoritativeHistory({ workspace, history: result.history }))
+}
+
+async function contextFor(workspace, xml, noteIndex = 0) {
+  const revision = getTeacherWorkspaceCurrentRevision(workspace)
+  return createPrDEditorSessionContext({
+    package3Snapshot: snapshotFor(revision, noteIndex),
+    teacherRevision: revision,
+    musicXml: xml,
+    editorRuntime: globalThis.STScoreEditorCoreRuntime,
+    cryptoScope: globalThis.crypto,
+    DOMParserCtor: globalThis.DOMParser,
+  })
+}
+
+async function tieRemovalAndHistoryProof() {
+  let workspace = makeWorkspace(tieXml, 'tie')
+  const rootRevision = getTeacherWorkspaceCurrentRevision(workspace)
+  registerPrDProductMusicXml(rootRevision, tieXml, { evidence: 'browser-root-revalidated' })
+  const context = await contextFor(workspace, tieXml, 0)
+  if (context.session.history.present.notation.notes.length !== 2) throw new Error('existing tie notation was not rehydrated')
+  status.dataset.prdRuntimeRehydrationPass = 'true'
+
+  const identity = Object.freeze({ version:'1.0.0', transactionId:'browser-tie-remove', nextRevisionId:'browser-edit-tie' })
+  const committed = commitPrDEditorAction(context, 'tie.edit', { identity, productIndexes:[0, 1] })
+  const xml = materializePrDEditorSessionMusicXml({
+    session: committed.session,
+    teacherRevision: rootRevision,
+    musicXml: tieXml,
+    mapping: committed.mapping,
+    DOMParserCtor: DOMParser,
+    XMLSerializerCtor: XMLSerializer,
+  })
+  if (/<tie\b|<tied\b/.test(xml)) throw new Error('existing tie was not removed from materialized MusicXML')
+  const revalidated = revalidatePrDEditorMusicXml({ musicXml:xml, currentRevision:rootRevision, changedIndexes:committed.changedIndexes, DOMParserCtor:DOMParser })
+  status.dataset.prdExistingTieRemovePass = 'true'
+
+  const product = commitPrDProductRevision({
+    workspace,
+    revalidated,
+    revisionId:'browser-edit-tie',
+    eventId:'editor-keypad-edit-browser-tie',
+    operationIdPrefix:'browser-tie-operation',
+    createdAt:'2026-09-02T00:01:00.000Z',
+  })
+  if (!product.ok || product.revision.revisionId !== identity.nextRevisionId) throw new Error('Package 8 revision did not match Editor atomic revision')
+  workspace = currentWorkspace(workspace, product.result)
+  if (getTeacherWorkspaceCurrentRevision(workspace).revisionId !== 'browser-edit-tie') throw new Error('product current revision mismatch')
+  status.dataset.prdProductRevisionPass = 'true'
+
+  workspace = approveTeacherWorkspace({ workspace, approvalId:'browser-approval-edit', createdAt:'2026-09-02T00:01:30.000Z' })
+  if (!getTeacherWorkspaceApplicableApproval(workspace)) throw new Error('approval fixture did not apply to exact edited revision')
+
+  const undo = restorePrDProductRevision({
+    workspace,
+    targetRevisionId:rootRevision.revisionId,
+    revisionId:'browser-undo-new-revision',
+    eventId:'editor-keypad-undo-browser-tie',
+    createdAt:'2026-09-02T00:02:00.000Z',
+    DOMParserCtor:DOMParser,
+  })
+  if (!undo.ok || undo.revision.revisionId === rootRevision.revisionId || !/<tie\b/.test(undo.musicXml)) throw new Error('immutable undo did not restore exact prior tie state under a new revision id')
+  workspace = currentWorkspace(workspace, undo.result)
+  if (getTeacherWorkspaceApplicableApproval(workspace)) throw new Error('undo inherited approval from edited revision')
+  status.dataset.prdApprovalResetPass = 'true'
+
+  const redo = restorePrDProductRevision({
+    workspace,
+    targetRevisionId:'browser-edit-tie',
+    revisionId:'browser-redo-new-revision',
+    eventId:'editor-keypad-redo-browser-tie',
+    createdAt:'2026-09-02T00:03:00.000Z',
+    DOMParserCtor:DOMParser,
+  })
+  if (!redo.ok || redo.revision.revisionId === 'browser-edit-tie' || /<tie\b|<tied\b/.test(redo.musicXml)) throw new Error('immutable redo did not restore exact edited state under a new revision id')
+  status.dataset.prdUndoRedoPass = 'true'
+}
+
+async function onsetPreservationProof() {
+  const workspace = makeWorkspace(tieXml, 'duration')
+  const revision = getTeacherWorkspaceCurrentRevision(workspace)
+  const context = await contextFor(workspace, tieXml, 0)
+  const identity = Object.freeze({ version:'1.0.0', transactionId:'browser-duration-edit', nextRevisionId:'browser-duration-rev' })
+  const committed = commitPrDEditorAction(context, 'duration.eighth', { identity })
+  const xml = materializePrDEditorSessionMusicXml({
+    session: committed.session,
+    teacherRevision: revision,
+    musicXml: tieXml,
+    mapping: committed.mapping,
+    DOMParserCtor:DOMParser,
+    XMLSerializerCtor:XMLSerializer,
+  })
+  if (!/<forward>[\s\S]*?<duration>1<\/duration>[\s\S]*?<\/forward>/.test(xml)) throw new Error('duration edit did not preserve later onset with exact MusicXML forward movement')
+  const revalidated = revalidatePrDEditorMusicXml({ musicXml:xml, currentRevision:revision, changedIndexes:committed.changedIndexes, DOMParserCtor:DOMParser })
+  const first = revalidated.content[0]
+  const second = parseMusicXmlToNotes(xml).notes[1]
+  if (first.durationValue !== 1 || Math.abs(second.startBeat - 1) > 1e-9) throw new Error('duration edit shifted later onset or produced wrong duration')
+  status.dataset.prdOnsetPreservationPass = 'true'
+}
+
+;(async () => {
+  try {
+    if (!globalThis.STScoreEditorCoreRuntime?.createNotationDocument) throw new Error('pinned Editor runtime notation constructor unavailable')
+    await tieRemovalAndHistoryProof()
+    await onsetPreservationProof()
+    status.textContent = 'PASS'
+  } catch (error) {
+    status.dataset.prdError = String(error?.message ?? error)
+    status.textContent = 'FAIL'
+  }
+})()
+</script>
+</body>
+</html>

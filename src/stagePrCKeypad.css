@@ -1,4 +1,4 @@
-/* STI-08 — Bravura/SMuFL keypad presentation only. */
+/* STI-08/12 — Bravura/SMuFL keypad and immutable edit-history presentation. */
 
 @font-face {
   font-family: 'Bravura';
@@ -21,14 +21,16 @@
 }
 
 .stage-prc-keypad-pages,
-.stage-prc-keypad-panel {
+.stage-prc-keypad-panel,
+.stage-prd-history-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
   gap: 0.4rem;
 }
 
 .stage-prc-keypad-page-button,
-.stage-prc-keypad-action {
+.stage-prc-keypad-action,
+.stage-prd-history-button {
   min-width: 44px;
   min-height: 44px;
   border: 1px solid var(--neutral-300, #cbd5e1);
@@ -51,13 +53,15 @@
   overflow: hidden;
 }
 
-.stage-prc-keypad-action:disabled {
+.stage-prc-keypad-action:disabled,
+.stage-prd-history-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
 .stage-prc-keypad-page-button:focus-visible,
-.stage-prc-keypad-action:focus-visible {
+.stage-prc-keypad-action:focus-visible,
+.stage-prd-history-button:focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 2px;
 }
@@ -102,9 +106,18 @@
 }
 
 /* The old A / sharp / 8 / quarter-note S12 palette is retired only while the
-   new integrated keypad path is explicitly mounted. Unrelated S12 behavior is
-   untouched when PR-C is not active. */
+   integrated Editor keypad path is explicitly mounted. */
 .stage-s05-score-workspace[data-sti-prc-keypad-active='true'] .stage-s12-note-tools {
+  display: none !important;
+}
+
+/* PR-D makes Editor Core the sole keypad write authority. Keep teacher approval
+   separate, but remove legacy correction/history controls that would otherwise
+   create a second mutation/revalidation path. */
+.stage-s05-score-workspace[data-sti-prd-keypad-active='true'] #stage-s07-inline-fields,
+.stage-s05-score-workspace[data-sti-prd-keypad-active='true'] #stage-s07-undo-btn,
+.stage-s05-score-workspace[data-sti-prd-keypad-active='true'] #stage-f-verify-rerender-btn,
+.stage-s05-score-workspace[data-sti-prd-keypad-active='true'] #stage-f-undo-last-btn {
   display: none !important;
 }
 
@@ -123,6 +136,10 @@
 
   .stage-prc-keypad-panel {
     grid-template-columns: repeat(4, minmax(44px, 1fr));
+  }
+
+  .stage-prd-history-actions {
+    grid-template-columns: repeat(2, minmax(44px, 1fr));
   }
 }
 
