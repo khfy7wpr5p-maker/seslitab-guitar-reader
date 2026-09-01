@@ -1,13 +1,13 @@
-// Stage H — bounded REVIEW playback preview routing.
+// Stage H — bounded audible score preview routing.
 //
-// Package 2D remains the quality authority. This module never upgrades REVIEW
-// to ACCEPT and never creates quality evidence. It only decides whether the
-// existing playback consumer may be exposed as an explicitly non-definitive
-// review preview when the existing gate already proves structural safety.
+// Package 2D remains the quality authority for definitive downstream products.
+// Playback is different: when SesliTab already has a canonical NoteObject[] it
+// may audibly preview exactly those notes even when OMR quality is REVIEW/BLOCK.
+// Such playback is explicitly non-definitive and never upgrades quality,
+// authorizes instrument outputs, approves a revision, or infers missing music.
 
 import {
   QUALITY_GATE_DECISION,
-  QUALITY_GATE_REASON,
   resolvePlaybackQualityGate,
 } from './qualityGateIntegration.js'
 
@@ -20,17 +20,11 @@ export const STAGE_H_PLAYBACK_MODE = Object.freeze({
 
 export const STAGE_H_PLAYBACK_COPY = Object.freeze({
   DEFINITIVE_ACTION: 'Notaları Çal',
-  REVIEW_ACTION: 'İnceleme İçin Dinle',
-  REVIEW_NOTICE: 'Doğrulanmamış önizleme',
-  REVIEW_WITHHELD_NOTICE: 'İnceleme için dinleme kullanılamıyor',
-  BLOCKED_NOTICE: 'Kullanım engellendi',
+  REVIEW_ACTION: 'Önizlemeyi Dinle',
+  REVIEW_NOTICE: 'OMR önizlemesi — hatalar olabilir',
+  REVIEW_WITHHELD_NOTICE: 'Önizleme kullanılamıyor',
+  BLOCKED_NOTICE: 'Çalınabilir nota bulunamadı',
 })
-
-const PREVIEW_REVIEW_REASONS = new Set([
-  QUALITY_GATE_REASON.SOURCE_NOT_VERIFIED,
-  QUALITY_GATE_REASON.REVIEW_REQUIRED,
-  QUALITY_GATE_REASON.CANONICAL_REVIEW,
-])
 
 function frozenRoute({ mode, reason, gate }) {
   const definitive = mode === STAGE_H_PLAYBACK_MODE.DEFINITIVE
@@ -65,33 +59,12 @@ function frozenRoute({ mode, reason, gate }) {
   })
 }
 
-function reviewPreviewEvidenceIsSafe(gate) {
-  if (gate?.decision !== QUALITY_GATE_DECISION.REVIEW) return false
-  if (!PREVIEW_REVIEW_REASONS.has(gate?.reason)) return false
-
-  // REVIEW must remain non-definitive. A malformed gate that grants any
-  // definitive/automatic permission fails closed instead of being previewed.
-  if (
-    gate.allowed !== false ||
-    gate.definitive !== false ||
-    gate.automaticAllowed !== false
-  ) {
-    return false
-  }
-
-  // The trusted Package 2D playback boundary must already be mapped.
-  if (gate.boundary?.status !== 'mapped') return false
-
-  const report = gate.report
-  if (!report || typeof report !== 'object' || Array.isArray(report)) return false
-  if (report.structurallyValid !== true) return false
-  if (report.reliable !== true) return false
-  if (report.qualityState === 'unreliable') return false
-
-  const blockedNotes = gate.classification?.blocked
-  if (!Array.isArray(blockedNotes) || blockedNotes.length > 0) return false
-
-  return true
+function previewRoute(reason, gate = null) {
+  return frozenRoute({
+    mode: STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW,
+    reason,
+    gate,
+  })
 }
 
 export function resolveStageHPlaybackRoute(notes, options = {}) {
@@ -108,11 +81,9 @@ export function resolveStageHPlaybackRoute(notes, options = {}) {
   try {
     gate = resolver(notes, options.gateOptions ?? {})
   } catch {
-    return frozenRoute({
-      mode: STAGE_H_PLAYBACK_MODE.BLOCKED,
-      reason: 'playback-quality-gate-resolution-failed',
-      gate: null,
-    })
+    // Quality-gate availability must not remove the user's ability to hear the
+    // already parsed notes. The preview remains explicitly non-definitive.
+    return previewRoute('playback-quality-gate-unavailable-preview-only')
   }
 
   if (gate?.decision === QUALITY_GATE_DECISION.ACCEPT) {
@@ -121,30 +92,21 @@ export function resolveStageHPlaybackRoute(notes, options = {}) {
       gate.definitive === true &&
       gate.automaticAllowed === true
     )
-    return frozenRoute({
-      mode: exactConsumerAuthorization
-        ? STAGE_H_PLAYBACK_MODE.DEFINITIVE
-        : STAGE_H_PLAYBACK_MODE.BLOCKED,
-      reason: exactConsumerAuthorization
-        ? gate.reason
-        : 'quality-gate-accept-permission-mismatch',
-      gate,
-    })
+    if (exactConsumerAuthorization) {
+      return frozenRoute({
+        mode: STAGE_H_PLAYBACK_MODE.DEFINITIVE,
+        reason: gate.reason,
+        gate,
+      })
+    }
+
+    // A malformed ACCEPT cannot be treated as definitive, but the existing
+    // canonical notes may still be heard as a non-definitive preview.
+    return previewRoute('quality-gate-accept-permission-mismatch-preview-only', gate)
   }
 
-  if (gate?.decision === QUALITY_GATE_DECISION.REVIEW) {
-    return frozenRoute({
-      mode: reviewPreviewEvidenceIsSafe(gate)
-        ? STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW
-        : STAGE_H_PLAYBACK_MODE.REVIEW_WITHHELD,
-      reason: gate.reason ?? 'review-preview-evidence-insufficient',
-      gate,
-    })
-  }
-
-  return frozenRoute({
-    mode: STAGE_H_PLAYBACK_MODE.BLOCKED,
-    reason: gate?.reason ?? 'quality-gate-decision-missing',
-    gate: gate ?? null,
-  })
+  // REVIEW and BLOCK continue to govern definitive products (Guitar TAB,
+  // Violin, sharing, etc.) elsewhere. They do not suppress audible preview of
+  // the exact NoteObject[] already present in SesliTab.
+  return previewRoute(gate?.reason ?? 'quality-gate-non-accept-preview-only', gate ?? null)
 }
