@@ -1,12 +1,14 @@
 .stage-i-instrument-products {
-  margin: 0 0 1rem;
+  margin: 1rem 0 0;
   padding: 1rem;
   border: 1px solid var(--border-color, #d8dde6);
   border-radius: 0.75rem;
   background: var(--surface-color, #fff);
+  min-width: 0;
 }
 
-.stage-i-instrument-products h3 {
+.stage-i-instrument-products h3,
+.stage-i-instrument-products h4 {
   margin: 0 0 0.35rem;
 }
 
@@ -28,23 +30,45 @@
   border-radius: 0.65rem;
 }
 
+.stage-i-instrument-status {
+  margin: 0.35rem 0 0.55rem;
+  overflow-wrap: anywhere;
+}
+
+.stage-i-instrument-output {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 0.65rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  white-space: pre;
+  border: 1px solid var(--border-color, #d8dde6);
+  border-radius: 0.5rem;
+  background: var(--surface-subtle, #f7f8fa);
+}
+
+.stage-i-instrument-output[hidden] {
+  display: none;
+}
+
 .stage-i-instrument-action {
   width: 100%;
   min-height: 44px;
   white-space: normal;
 }
 
-.stage-i-instrument-action:focus-visible {
+.stage-i-instrument-action:focus-visible,
+.stage-i-instrument-output:focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 2px;
 }
 
-.stage-i-instrument-status {
-  margin-top: 0.55rem;
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 640px) {
+  .stage-i-instrument-products {
+    padding: 0.75rem;
+  }
+
   .stage-i-instrument-grid {
     grid-template-columns: minmax(0, 1fr);
   }
