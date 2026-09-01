@@ -11,6 +11,8 @@ import {
   selectDetailedRendererHitWithEditor,
 } from '../src/services/editorRendererSelectionBridge.js'
 
+const PART_NAMES = Object.freeze([Object.freeze({ partId: 'P1', name: 'Guitar' })])
+
 function note(overrides = {}) {
   return {
     measure: 1,
@@ -107,8 +109,9 @@ test('STI-06 projects current Package 8 notes to exact Editor entities without u
     note({ step: 'E', startBeat: 0, isChordNote: true }),
     rest,
   ])
-  const projection = await projectTeacherRevisionToEditorScore(current)
+  const projection = await projectTeacherRevisionToEditorScore(current, { partNameEvidence: PART_NAMES })
   const voice = projection.scoreInput.parts[0].staves[0].measures[0].voices[0]
+  assert.equal(projection.scoreInput.parts[0].name, 'Guitar')
   assert.equal(voice.events[0].kind, 'chord')
   assert.equal(voice.events[0].notes.length, 2)
   assert.equal(voice.events[1].kind, 'rest')
@@ -118,11 +121,28 @@ test('STI-06 projects current Package 8 notes to exact Editor entities without u
   assert.doesNotMatch(projection.noteIds[0], /P1|measureIndex|voice/i)
 })
 
+test('STI-06 requires exact source part-name evidence and never synthesizes a fallback', async () => {
+  const current = revision([note()])
+  await assert.rejects(
+    () => projectTeacherRevisionToEditorScore(current),
+    /part-name evidence.*synthetic fallback is forbidden/i,
+  )
+  await assert.rejects(
+    () => projectTeacherRevisionToEditorScore(current, { partNameEvidence: [{ partId: 'P2', name: 'Other' }] }),
+    /no explicit MusicXML part-name evidence for P1.*synthetic fallback is forbidden/i,
+  )
+})
+
 test('STI-06 creates current session with exact Rendering Layer 2.1.2 profile and selects one opaque manifest token', async () => {
   const current = revision([note({ step: 'C' }), note({ step: 'D', startBeat: 1 })])
   const snapshot = snapshotFor(current)
   const runtime = mockEditorRuntime()
-  const context = await createEditorSelectionContext({ package3Snapshot: snapshot, teacherRevision: current, editorRuntime: runtime })
+  const context = await createEditorSelectionContext({
+    package3Snapshot: snapshot,
+    teacherRevision: current,
+    editorRuntime: runtime,
+    partNameEvidence: PART_NAMES,
+  })
   assert.deepEqual(context.session.renderRequest.renderer, ST_RENDERING_LAYER_EDITOR_PROFILE)
 
   const result = selectDetailedRendererHitWithEditor({
@@ -151,7 +171,12 @@ test('STI-06 fails closed for stale revision context, canonical miss and ambiguo
   const current = revision([note()])
   const snapshot = snapshotFor(current)
   const runtime = mockEditorRuntime()
-  const context = await createEditorSelectionContext({ package3Snapshot: snapshot, teacherRevision: current, editorRuntime: runtime })
+  const context = await createEditorSelectionContext({
+    package3Snapshot: snapshot,
+    teacherRevision: current,
+    editorRuntime: runtime,
+    partNameEvidence: PART_NAMES,
+  })
 
   const staleSnapshot = { ...snapshot, revisionIdentity: { ...snapshot.revisionIdentity, revisionId: 'other' } }
   assert.deepEqual(selectDetailedRendererHitWithEditor({
@@ -186,5 +211,8 @@ test('STI-06 fails closed for stale revision context, canonical miss and ambiguo
 
 test('STI-06 abstains instead of inventing unsupported grace timing', async () => {
   const current = revision([note({ isGrace: true, durationValue: null, beats: 0 })])
-  await assert.rejects(() => projectTeacherRevisionToEditorScore(current), /grace-note timing/)
+  await assert.rejects(
+    () => projectTeacherRevisionToEditorScore(current, { partNameEvidence: PART_NAMES }),
+    /grace-note timing/,
+  )
 })
