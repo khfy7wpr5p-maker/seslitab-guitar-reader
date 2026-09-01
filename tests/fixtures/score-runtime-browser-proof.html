@@ -7,7 +7,7 @@
 </head>
 <body>
   <div id="st-score-root"></div>
-  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false" data-prb-editor-selection-pass="false" data-prb-stale-render-pass="false">PENDING</div>
+  <div id="status" data-score-render-pass="false" data-score-cursor-pass="false" data-score-note-hit-pass="false" data-score-note-resolver-pass="false" data-score-note-highlight-pass="false" data-prb-editor-selection-pass="false" data-prb-stale-render-pass="false" data-prb-part-name-pass="false">PENDING</div>
 
   <script src="../../public/st-score-editor-core-runtime/st-score-editor-core.runtime.js"></script>
   <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
@@ -129,7 +129,17 @@
           },
         }
         const editorRuntime = globalThis.STScoreEditorCoreRuntime
-        const context = await createEditorSelectionContext({ package3Snapshot:snapshot, teacherRevision:revision, editorRuntime, cryptoScope:globalThis.crypto })
+        const context = await createEditorSelectionContext({
+          package3Snapshot:snapshot,
+          teacherRevision:revision,
+          editorRuntime,
+          cryptoScope:globalThis.crypto,
+          musicXml:xml,
+          DOMParserCtor:globalThis.DOMParser,
+        })
+        if (context.session?.history?.present?.score?.parts?.[0]?.name !== 'Guitar') throw new Error('exact MusicXML part-name evidence was not preserved')
+        status.dataset.prbPartNamePass = 'true'
+
         const selected = selectDetailedRendererHitWithEditor({ context, package3Snapshot:snapshot, teacherRevision:revision, detailedHit:hit.detailed, editorRuntime })
         if (selected.kind !== 'SELECTED' || selected.resolved.note !== revision.content[selected.resolved.noteIndex]) throw new Error('real Editor Core opaque-token selection failed')
         if (selected.context.session.selection?.primary?.kind !== 'note') throw new Error('Editor Core did not return canonical note selection')
@@ -150,6 +160,7 @@
         status.dataset.scoreNoteResolverPass = 'false'
         status.dataset.scoreNoteHighlightPass = 'false'
         status.dataset.prbEditorSelectionPass = 'false'
+        status.dataset.prbPartNamePass = 'false'
         status.dataset.renderError = String(error?.message ?? error)
         status.textContent = 'FAIL'
       }
