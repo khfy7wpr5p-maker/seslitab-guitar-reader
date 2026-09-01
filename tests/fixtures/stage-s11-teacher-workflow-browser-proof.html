@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>S11 teacher workflow browser proof</title>
+  <link rel="stylesheet" href="../../src/stageS07InlineTeacherInspector.css">
+  <link rel="stylesheet" href="../../src/stageS11TeacherWorkflow.css">
+</head>
+<body>
+  <div id="aria-live-region" aria-live="polite"></div>
+  <main>
+    <div class="result-tabs" role="tablist" aria-label="Çıktı görünümü seç">
+      <button class="tab-btn active" role="tab" aria-selected="true" data-tab="rhythmic">Ritimli Metin</button>
+      <button id="teacher-tab-btn" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-teacher">Öğretmen</button>
+    </div>
+
+    <section id="tab-teacher" role="tabpanel" aria-labelledby="teacher-tab-btn">
+      <p>revisionId=revision-internal-only actorId=actor-internal-only sourceId=source-internal-only</p>
+      <pre id="teacher-current-content">{"raw JSON":"internal-only","contentFingerprint":"secret-technical-detail"}</pre>
+      <input id="teacher-actor-id" value="internal-audit-label">
+      <select id="teacher-field-select"><option value="0:step">step</option></select>
+      <input id="teacher-field-value" value="C">
+      <select id="teacher-undo-select"><option value="old-revision">old revision</option></select>
+    </section>
+
+    <section id="stage-s05-score-workspace" data-stage-s07-score-state="source">
+      <div id="stage-s05-score-column"></div>
+      <aside id="stage-s05-score-inspector" aria-labelledby="stage-s05-score-inspector-heading">
+        <h3 id="stage-s05-score-inspector-heading">Nota İncelemesi</h3>
+        <p id="stage-s05-score-inspector-placeholder">Bir notayı seçtiğinizde araçlar burada gösterilecek.</p>
+        <section id="stage-s07-inline-teacher-inspector" class="stage-s07-inline-teacher-inspector" aria-labelledby="stage-s07-inline-heading">
+          <h4 id="stage-s07-inline-heading">Seçili notayı düzelt</h4>
+          <p id="stage-s07-inline-help">Uzun teknik açıklama.</p>
+          <p id="stage-s07-inline-status" role="status" aria-live="polite">Nota seçildi.</p>
+          <div id="stage-s07-inline-fields" class="stage-s07-inline-fields">
+            <div class="stage-s07-inline-field">
+              <label for="stage-s07-step">Nota</label>
+              <select id="stage-s07-step" data-stage-s07-field="step"><option>C</option><option>D</option></select>
+              <button type="button" class="btn btn-primary stage-s07-apply-field" data-stage-s07-field="step">Nota kaydet</button>
+            </div>
+          </div>
+          <div class="stage-s07-inline-actions" role="group" aria-label="Sürüm işlemleri">
+            <button id="stage-s07-undo-btn" type="button" class="btn btn-secondary">Son değişikliği geri al</button>
+            <button id="stage-s07-approve-btn" type="button" class="btn btn-secondary">Geçerli sürümü ayrıca onayla</button>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <div id="proof"
+    data-stage-s11-presentation-pass="false"
+    data-stage-s11-hidden-technical-pass="false"
+    data-stage-s11-focus-pass="false"
+    data-stage-s11-announcement-pass="false"
+    data-stage-s11-primary-flow-pass="false"
+    data-stage-s11-mobile-pass="false">PENDING</div>
+
+<script type="module">
+import { applyStageS11TeacherWorkflowUi } from '../../src/stageS11TeacherWorkflowUi.js'
+
+const proof = document.getElementById('proof')
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+
+try {
+  if (!applyStageS11TeacherWorkflowUi(document)) throw new Error('S11 application failed')
+
+  const teacherTab = document.getElementById('teacher-tab-btn')
+  const technicalPanel = document.getElementById('tab-teacher')
+  const inspector = document.getElementById('stage-s07-inline-teacher-inspector')
+  const status = document.getElementById('stage-s07-inline-status')
+  const workspace = document.getElementById('stage-s05-score-workspace')
+  const save = inspector.querySelector('.stage-s07-apply-field')
+  const undo = document.getElementById('stage-s07-undo-btn')
+  const approve = document.getElementById('stage-s07-approve-btn')
+
+  if (!teacherTab.hidden || teacherTab.getAttribute('aria-hidden') !== 'true' || teacherTab.getAttribute('tabindex') !== '-1') {
+    throw new Error('technical teacher tab remained in primary flow')
+  }
+  if (!technicalPanel.hidden || technicalPanel.getAttribute('aria-hidden') !== 'true') {
+    throw new Error('technical teacher panel remained visible')
+  }
+  if (inspector.dataset.stageS11PrimaryWorkflow !== 'ready' || workspace.dataset.stageS11TeacherWorkflow !== 'ready') {
+    throw new Error('primary score workflow markers missing')
+  }
+  if (!document.getElementById('stage-s05-score-inspector-placeholder').hidden) throw new Error('legacy inspector placeholder remained')
+  if (!document.getElementById('stage-s11-workflow-details')) throw new Error('secondary safety details missing')
+  proof.dataset.stageS11PresentationPass = 'true'
+
+  const visibleText = document.body.innerText.toLowerCase()
+  for (const forbidden of ['revisionid=revision-internal-only', 'actorid=actor-internal-only', 'sourceid=source-internal-only', 'secret-technical-detail']) {
+    if (visibleText.includes(forbidden)) throw new Error(`technical metadata visible: ${forbidden}`)
+  }
+  proof.dataset.stageS11HiddenTechnicalPass = 'true'
+
+  const primaryControls = [document.getElementById('stage-s07-step'), save, undo, approve]
+  if (primaryControls.some((control) => !inspector.contains(control))) throw new Error('primary action escaped score inspector')
+  if (!teacherTab.hidden) throw new Error('tab switch still required')
+  document.getElementById('stage-s07-step').focus()
+  if (!inspector.contains(document.activeElement)) throw new Error('keyboard flow did not start inside inspector')
+  proof.dataset.stageS11PrimaryFlowPass = 'true'
+
+  const announcements = []
+  const announce = (text) => { status.textContent = text; announcements.push(text) }
+  announce('Düzeltme kaydediliyor.')
+  workspace.setAttribute('data-stage-s07-score-state', 'revalidating')
+  announce('Düzeltme yeniden doğrulanıyor.')
+  save.click()
+  workspace.setAttribute('data-stage-s07-score-state', 'verified')
+  announce('Düzeltme doğrulandı ve skor güncellendi.')
+  await nextFrame()
+
+  if (document.activeElement !== status) throw new Error('focus did not return to workflow status')
+  proof.dataset.stageS11FocusPass = 'true'
+
+  if (
+    announcements.length !== 3 ||
+    !announcements[0].includes('kaydediliyor') ||
+    !announcements[1].includes('yeniden doğrulanıyor') ||
+    !announcements[2].includes('doğrulandı') ||
+    status.getAttribute('aria-live') !== 'polite' ||
+    status.getAttribute('aria-atomic') !== 'true'
+  ) {
+    throw new Error('announcement order/semantics invalid')
+  }
+  proof.dataset.stageS11AnnouncementPass = 'true'
+
+  for (const control of [save, undo, approve]) {
+    const minHeight = Number.parseFloat(getComputedStyle(control).minHeight)
+    if (!(minHeight >= 44)) throw new Error(`touch target too small: ${control.id || control.className} ${minHeight}`)
+  }
+  const detailsSummary = document.querySelector('#stage-s11-workflow-details summary')
+  if (!(Number.parseFloat(getComputedStyle(detailsSummary).minHeight) >= 44)) throw new Error('details target too small')
+  if (window.innerWidth <= 420 && document.documentElement.scrollWidth > window.innerWidth + 1) throw new Error('mobile overflow')
+  proof.dataset.stageS11MobilePass = 'true'
+
+  proof.textContent = 'PASS'
+} catch (error) {
+  proof.dataset.renderError = String(error?.message ?? error)
+  proof.textContent = 'FAIL'
+}
+</script>
+</body>
+</html>
