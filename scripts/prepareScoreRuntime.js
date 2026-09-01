@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const SCORE_RENDERER_REPOSITORY = 'https://github.com/khfy7wpr5p-maker/st-score-rendering-layer.git'
-export const SCORE_RENDERER_REVISION = '5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f'
+export const SCORE_RENDERER_REVISION = 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a'
 export const SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
 export const SCORE_RENDERER_OSMD_VERSION = '2.1.2'
 
@@ -44,6 +44,19 @@ export function verifyRuntimeManifest(manifest) {
   return manifest
 }
 
+export function verifyRuntimeFeatureSources({ bootstrap, browserHost } = {}) {
+  if (typeof bootstrap !== 'string' || typeof browserHost !== 'string') {
+    throw new TypeError('ST score runtime feature sources are required.')
+  }
+  if (!bootstrap.includes('hitTestNoteDetailed')) {
+    throw new Error('ST score runtime detailed hit-test feature is missing.')
+  }
+  if (!browserHost.includes('renderEpoch')) {
+    throw new Error('ST score runtime renderEpoch feature is missing.')
+  }
+  return true
+}
+
 function run(command, args, cwd, env = process.env) {
   execFileSync(command, args, {
     cwd,
@@ -74,6 +87,10 @@ export async function prepareScoreRuntime() {
     const manifest = verifyRuntimeManifest(JSON.parse(
       await readFile(path.join(generatedRuntimeRoot, 'runtime-manifest.json'), 'utf8'),
     ))
+    verifyRuntimeFeatureSources({
+      bootstrap: await readFile(path.join(generatedRuntimeRoot, 'workstation-bootstrap.mjs'), 'utf8'),
+      browserHost: await readFile(path.join(generatedRuntimeRoot, 'modules', 'browser-host.js'), 'utf8'),
+    })
 
     await mkdir(path.dirname(publicRuntimeRoot), { recursive: true })
     await cp(generatedRuntimeRoot, publicRuntimeRoot, { recursive: true, force: true })
