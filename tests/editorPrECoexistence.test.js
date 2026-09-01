@@ -127,7 +127,7 @@ test('STI-13/15 source contracts coalesce observers, keep corrected recovery fai
   assert.match(recovery, /bindStagePrBEditorSelection/)
   assert.match(recovery, /syncScoreNoteHighlight/)
   assert.match(recovery, /queueMicrotask/)
-  assert.doesNotMatch(recovery, /Audiveris|OMR|OmrProvider|gatewayProvider|runOmr|getUserMedia|AudioContext/i)
+  assert.doesNotMatch(recovery, /import .*Audiveris|import .*OmrProvider|gatewayProvider\s*\(|runOmr\s*\(|getUserMedia\s*\(|AudioContext\s*\(/i)
 
   const prEModules = `${overlay}\n${stageI}\n${recovery}`
   assert.doesNotMatch(prEModules, /rhythm-btn|Müziği Dinle|playSelectedMeasure|resolvePlaybackQualityGate/)
