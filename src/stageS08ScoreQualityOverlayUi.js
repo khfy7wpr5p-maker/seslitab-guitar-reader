@@ -58,7 +58,7 @@ function ensureRegion(root) {
   const rail = root.createElement('div')
   rail.id = 'stage-s08-score-quality-rail'
   rail.className = 'stage-s08-score-quality-rail'
-  rail.setAttribute('role', 'list')
+  rail.setAttribute('role', 'group')
   rail.setAttribute('aria-label', 'Exact nota kalite işaretleri')
 
   region.appendChild(heading)
@@ -110,7 +110,6 @@ function markerButton(root, marker, selectedNoteIndex) {
   button.dataset.stageS08State = marker.state
   button.dataset.noteIndex = String(marker.noteIndex)
   button.dataset.measureKey = marker.measureKey
-  button.setAttribute('role', 'listitem')
   button.setAttribute('aria-pressed', marker.noteIndex === selectedNoteIndex ? 'true' : 'false')
   button.setAttribute('aria-label', markerAccessibleLabel(marker))
 
