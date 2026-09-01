@@ -41,6 +41,7 @@ import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
 import { initStageS05ScoreWorkspaceUi } from './src/stageS05ScoreWorkspaceUi.js'
 import { initStageS06ExactSelectionUi } from './src/stageS06ExactSelectionUi.js'
 import { initStageS07InlineTeacherInspectorUi } from './src/stageS07InlineTeacherInspectorUi.js'
+import { initStageS07VerifiedSelectionProjection } from './src/stageS07VerifiedSelectionProjection.js'
 import { initStageLShareUi } from './src/stageLShareUi.js'
 
 if (typeof document !== 'undefined') {
@@ -51,5 +52,6 @@ if (typeof document !== 'undefined') {
   initStageS05ScoreWorkspaceUi(document)
   initStageS06ExactSelectionUi(document)
   initStageS07InlineTeacherInspectorUi(document)
+  initStageS07VerifiedSelectionProjection(document)
   initStageLShareUi(document)
 }
