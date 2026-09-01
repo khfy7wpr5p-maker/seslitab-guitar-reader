@@ -13,6 +13,7 @@ export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
 export const SCORE_VIEW_MAX_RENDER_EPOCH_CHARS = 128
 export const SCORE_VIEW_MAX_EVIDENCE_SOURCE_ID_CHARS = 256
 
+const scoreRenderEpochs = new WeakMap()
 const SCORE_NOTE_HIT_MISS_REASONS = new Set([
   'NO_ELEMENT_AT_POINT',
   'OUTSIDE_RENDER_CONTAINER',
@@ -130,6 +131,7 @@ export async function renderScoreView(host, musicxml, options = {}) {
     throw new TypeError('Nota görünümü render ticket değeri geçersiz.')
   }
 
+  scoreRenderEpochs.delete(host)
   const result = await host.renderMusicXml({
     contractVersion: ST_SCORE_RENDERER_CONTRACT_VERSION,
     musicxml: source,
@@ -140,10 +142,20 @@ export async function renderScoreView(host, musicxml, options = {}) {
     ticket,
   })
 
-  if (!isPlainObject(result) || !validateScoreRenderEpoch(result.renderEpoch)) {
+  if (!isPlainObject(result)) {
+    throw new TypeError('ST score renderer current render kanıtı geçersiz.')
+  }
+  const renderEpoch = validateScoreRenderEpoch(result.renderEpoch)
+  if (!renderEpoch) {
     throw new TypeError('ST score renderer current render epoch kanıtı üretmedi.')
   }
+  scoreRenderEpochs.set(host, renderEpoch)
   return result
+}
+
+export function getScoreViewRenderEpoch(host) {
+  if (!host || (typeof host !== 'object' && typeof host !== 'function')) return null
+  return scoreRenderEpochs.get(host) ?? null
 }
 
 export async function moveScoreCursor(host, target) {
@@ -153,16 +165,7 @@ export async function moveScoreCursor(host, target) {
   return host.moveCursor(validateScoreCursorTarget(target))
 }
 
-export function hitTestScoreNote(host, point) {
-  if (!host || typeof host.hitTestNote !== 'function') return null
-  if (!point || typeof point !== 'object' || Array.isArray(point)) return null
-  const clientX = point.clientX
-  const clientY = point.clientY
-  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null
-  return validateRendererScoreNoteRef(host.hitTestNote({ clientX, clientY }))
-}
-
-export function hitTestScoreNoteDetailed(host, point, expectedRenderEpoch) {
+export function hitTestScoreNoteDetailed(host, point, expectedRenderEpoch = getScoreViewRenderEpoch(host)) {
   if (!host || typeof host.hitTestNoteDetailed !== 'function') return null
   if (!point || typeof point !== 'object' || Array.isArray(point)) return null
   const clientX = point.clientX
@@ -183,6 +186,20 @@ export function hitTestScoreNoteDetailed(host, point, expectedRenderEpoch) {
   return evidence
 }
 
+export function hitTestScoreNote(host, point) {
+  if (!host || typeof host !== 'object') return null
+  if (typeof host.hitTestNoteDetailed === 'function') {
+    const evidence = hitTestScoreNoteDetailed(host, point)
+    return evidence?.kind === 'HIT' ? evidence.target : null
+  }
+  if (typeof host.hitTestNote !== 'function') return null
+  if (!point || typeof point !== 'object' || Array.isArray(point)) return null
+  const clientX = point.clientX
+  const clientY = point.clientY
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null
+  return validateRendererScoreNoteRef(host.hitTestNote({ clientX, clientY }))
+}
+
 export async function highlightScoreNote(host, target) {
   if (!host || typeof host.highlight !== 'function') {
     throw new TypeError('ST score renderer highlight runtime bağlı değil.')
@@ -200,6 +217,7 @@ export async function clearScoreHighlights(host) {
 
 export async function clearScoreView(host) {
   if (!host || typeof host.dispose !== 'function') return false
+  scoreRenderEpochs.delete(host)
   await host.dispose()
   return true
 }
