@@ -18,9 +18,9 @@ import {
 } from './teacherRevisionConcurrency.js'
 import { getCurrentTeacherRevision } from './teacherRevisionHistory.js'
 import {
-  registerMusicXmlSourceForNotes,
-  resolveMusicXmlSourceForNotes,
-} from './musicXmlSourceRegistry.js'
+  registerPrDProductMusicXml,
+  resolvePrDProductMusicXml,
+} from './editorPrDRevisionMusicXmlRegistry.js'
 import { extractPrDProductNotationByIndex } from './editorPrDNotationBridge.js'
 
 export const SESLITAB_EDITOR_PRD_PRODUCT_PIPELINE_VERSION = '1.0.0'
@@ -227,7 +227,7 @@ export function commitPrDProductRevision({
   })
   if (result.status === TEACHER_CONCURRENCY_STATUS.CONFLICT) return Object.freeze({ ok: false, reason: result.conflictReason, result })
   if (result.revision?.revisionId !== revisionId) throw new Error('Package 8 product revision id diverged from Editor Core atomic revision id.')
-  registerMusicXmlSourceForNotes(result.revision.content, revalidated.musicXml)
+  registerPrDProductMusicXml(result.revision, revalidated.musicXml)
   return Object.freeze({ ok: true, result, revision: result.revision, musicXml: revalidated.musicXml })
 }
 
@@ -270,8 +270,8 @@ export function restorePrDProductRevision({
   if (!workspace?.history || !workspace?.expectation) throw new Error('Current Package 8 workspace is required for immutable restore.')
   const target = workspace.history.revisions.find((item) => item.revisionId === targetRevisionId)
   if (!target) throw new Error('Immutable restore target revision is not preserved in Package 8 history.')
-  const source = resolveMusicXmlSourceForNotes(target.content)
-  if (!source?.musicXml) throw new Error('Exact MusicXML for the immutable restore target is unavailable; no guessed reconstruction is allowed.')
+  const source = resolvePrDProductMusicXml(target)
+  if (!source?.musicXml) throw new Error('Exact revalidated MusicXML for the immutable restore target is unavailable; no guessed reconstruction is allowed.')
   validatePrDRestoredRevisionMusicXml({ revision: target, musicXml: source.musicXml, DOMParserCtor })
 
   const result = undoTeacherRevisionHistoryWithExpectation({
@@ -285,11 +285,10 @@ export function restorePrDProductRevision({
   })
   if (result.status === TEACHER_CONCURRENCY_STATUS.CONFLICT) return Object.freeze({ ok: false, reason: result.conflictReason, result })
   if (result.revision?.revisionId !== revisionId) throw new Error('Immutable restore revision identity diverged from requested product revision id.')
-  registerMusicXmlSourceForNotes(result.revision.content, source.musicXml)
+  registerPrDProductMusicXml(result.revision, source.musicXml, { evidence: 'immutable-history-restore-revalidated' })
   return Object.freeze({ ok: true, result, revision: result.revision, musicXml: source.musicXml, targetRevision: target })
 }
 
 export function currentPrDRevisionMusicXml(revision) {
-  const source = revision?.content ? resolveMusicXmlSourceForNotes(revision.content) : null
-  return source?.musicXml ?? null
+  return resolvePrDProductMusicXml(revision)?.musicXml ?? null
 }
