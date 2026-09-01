@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const SCORE_EDITOR_REPOSITORY = 'https://github.com/khfy7wpr5p-maker/st-score-editor-core.git'
-export const SCORE_EDITOR_REVISION = 'b9fcad22568c55184aab5d3e345f74f1c8dc311e'
+export const SCORE_EDITOR_REVISION = '2e6b975b4b6b8b558593ca43132309848dc3ccab'
 export const SCORE_EDITOR_BROWSER_CONTRACT = 'ST_SCORE_EDITOR_CORE_BROWSER_BUNDLE'
 export const SCORE_EDITOR_BROWSER_VERSION = '1.0.0'
 export const SCORE_EDITOR_RUNTIME_VERSION = '1.0.0'
