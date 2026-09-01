@@ -7,6 +7,7 @@ const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'score-runtime-brow
 const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corrected-musicxml-browser-proof.html')
 const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
+const stageS10EducationalChordsFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-s10-educational-chords-browser-proof.html')
 const stageJDiscoveryFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-j-discovery-presentation-browser-proof.html')
 const stageKTunerFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-k-tuner-presentation-browser-proof.html')
 const stageLShareFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-l-share-readiness-browser-proof.html')
@@ -126,6 +127,35 @@ function runStageIInstrumentProductProof() {
   }
 }
 
+function verifyStageS10Dom(label, dom, mobile = false) {
+  if (!dom.includes('data-stage-s10-presentation-pass="true"')) {
+    fail(label, 'bounded educational chord presentation evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-s10-source-pass="true"')) {
+    fail(label, 'real MusicXML harmony source evidence missing.', dom)
+  }
+  if (!dom.includes('data-stage-s10-no-inference-pass="true"')) {
+    fail(label, 'no-harmony/no-inference evidence missing.', dom)
+  }
+  if (mobile && !dom.includes('data-stage-s10-mobile-pass="true"')) {
+    fail(label, '390px educational chord layout evidence missing.', dom)
+  }
+  if (!dom.includes('id="stage-s10-educational-chords"') || !dom.includes('id="stage-s10-education-list"')) {
+    fail(label, 'educational chord workspace/group evidence missing.', dom)
+  }
+  if (dom.includes('id="chord-tab-btn"')) {
+    fail(label, 'legacy Akorlar tab clutter remains.', dom)
+  }
+}
+
+function runStageS10EducationalChordsProof() {
+  const desktopLabel = 'S10 educational chords desktop browser proof'
+  verifyStageS10Dom(desktopLabel, runChrome(desktopLabel, stageS10EducationalChordsFixturePath), false)
+
+  const mobileLabel = 'S10 educational chords 390px browser proof'
+  verifyStageS10Dom(mobileLabel, runChrome(mobileLabel, stageS10EducationalChordsFixturePath, '--window-size=390,844'), true)
+}
+
 function runStageJDiscoveryPresentationProof() {
   const label = 'Stage J discovery presentation browser proof'
   const dom = runChrome(label, stageJDiscoveryFixturePath, '--window-size=390,844')
@@ -188,7 +218,8 @@ runProof('Narrow viewport score browser proof', '--window-size=390,844')
 runStageFCorrectedMusicXmlProof()
 runStageFDurationHitProof()
 runStageIInstrumentProductProof()
+runStageS10EducationalChordsProof()
 runStageJDiscoveryPresentationProof()
 runStageKTunerPresentationProof()
 runStageLShareReadinessProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)
+console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, S10 educational chords, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)
