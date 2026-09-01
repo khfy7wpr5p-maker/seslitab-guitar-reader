@@ -1,7 +1,7 @@
 # SesliTab Current Status
 
-Last documentation review: 2026-08-31
-Fresh-read protected main: e40e3b3e8d9029673efd780d44c6eefe34ba1e18
+Last documentation review: 2026-09-01
+Fresh-read protected main: d480758032f56572dbaf92cd832b0001b9089987
 Observed branch metadata: main protected; required check test-and-build.
 Open PRs/issues at fresh-read: none identified.
 
@@ -9,16 +9,35 @@ Open PRs/issues at fresh-read: none identified.
 
 Stage A–L bounded product roadmap production main üzerinde tamamlanmıştır. Bu ifade yalnız uygulanan bounded capability'leri kapsar; evrensel müzikal doğruluk, kaynak görüntüyle birebirlik veya authenticated öğrenci teslimatı anlamına gelmez.
 
+## S12 mobile-score acceptance addendum
+
+The current main pins the reviewed score-renderer revision
+`5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f` for the exact mobile note-hit
+bridge. Pointer, Touch and synthetic click delivery all resolve only through:
+
+```text
+renderer hit-test → exact ScoreNoteRef → canonical note resolver → S06 selection
+```
+
+There is no nearest-note, pitch-label, SVG-proximity or DOM-element fallback.
+If identity cannot be proven, selection and editing remain unchanged. The mobile
+toolbar projects an already verified S06/S07 selection only; it does not create
+musical, revision, quality, approval or routing truth.
+
+This is production code and CI evidence, not a claim that a manual iPhone/Safari
+acceptance session has been completed. The real-device checklist remains pending
+until its tap, highlight, edit-save-rerender and undo observations are recorded.
+
 ## Verification baseline
 
 Fresh local verification with Node 24:
 
 - npm ci: PASS
-- npm test: 1519/1519 tests, 236 suites, 0 failed/skipped/cancelled/todo
+- focused S12 mobile acceptance test: 9/9 PASS
 - npm run build: PASS
 - node scripts/verifyScoreRuntimeBrowser.js: UNVERIFIED locally because Chrome/Chromium is not installed
 
-The protected CI workflow is test-and-build; it runs dependency installation, the full test suite, production build and the real-browser proof script. The current exact-main docs-only commit had no separate workflow run/status exposed by the available connector query, so old PR runs are not presented as an exact-main run.
+The protected CI workflow is test-and-build; it runs dependency installation, the full test suite, production build and the real-browser proof script. Exact-main CI run #494 for `d480758` completed successfully on 2026-09-01.
 
 ## Stage A–L production matrix
 

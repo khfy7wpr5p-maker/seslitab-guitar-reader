@@ -290,7 +290,29 @@ The following are not missing Stage L details; they require a separate security/
 
 Also outside this docs refresh are new OMR/recognizer behavior, universal musical verification, renderer semantic expansion, new dependencies, unrelated refactors, and Package 8B model training/replacement.
 
-## 21. CI / production verification model
+## 21. S12 real-mobile acceptance addendum
+
+The current production score-runtime pin is renderer revision
+`5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f`, contract `0.2.0` and OSMD
+`2.1.2`. Mobile interaction handling normalizes Pointer Events, Touch Events and
+synthetic click coordinates, then follows this single bounded path:
+
+```text
+renderer hit-test → exact ScoreNoteRef → exact canonical resolver
+→ S06 current-revision selection gate → S07 verified editor projection
+```
+
+No nearest-note, pitch label, SVG geometry/proximity or DOM lookup fallback is
+permitted. A failed hit-test or failed canonical resolution abstains and leaves
+the active selection unchanged. The S12 compact tools merely expose fields after
+the existing verified selection gate succeeds.
+
+Exact-main CI run #494 passed for commit
+`d480758032f56572dbaf92cd832b0001b9089987`. This does not certify a physical
+iPhone/Safari session: that acceptance proof remains pending until the recorded
+test demonstrates selection, highlight, edit-save-rerender and undo on-device.
+
+## 22. CI / production verification model
 
 Production verification is evaluated as:
 
@@ -304,9 +326,13 @@ protected main
 
 The CI workflow installs Node 24 dependencies, runs `npm test`, runs `npm run build`, and executes `scripts/verifyScoreRuntimeBrowser.js`. The browser script covers desktop/narrow score runtime and the bounded Stage F/I/J/K/L proofs when Chrome/Chromium is available.
 
-Fresh-read on 31 Ağustos 2026: current protected `main` is `e40e3b3…`; the connector exposed no separate workflow run/status for that exact docs-only merge commit. This is recorded as an evidence limitation, not converted into a false exact-main pass. The fresh local baseline independently produced 1519/1519 tests and a successful production build; local browser proof was **UNVERIFIED** because Chrome/Chromium was not installed.
+Fresh-read on 1 Eylül 2026: current protected `main` is `d480758…`; the
+connector shows exact-main CI run #494 as successful. The fresh local baseline
+independently produced a passing focused S12 test (9/9) and a successful
+production build; local browser proof was **UNVERIFIED** because Chrome/Chromium
+was not installed.
 
-## 22. Future development rules
+## 23. Future development rules
 
 - Begin every change with fresh-read of protected `main`, rules/checks, open PR/issues, code, tests and runtime evidence.
 - Keep documentation-only changes separate from behavior changes.
