@@ -37,8 +37,8 @@ function validManifest(artifact = validArtifact()) {
   }
 }
 
-test('Editor Core runtime pin is exact reviewed production-integration revision', () => {
-  assert.equal(SCORE_EDITOR_REVISION, 'b9fcad22568c55184aab5d3e345f74f1c8dc311e')
+test('Editor Core runtime pin is exact reviewed notation-rehydration revision', () => {
+  assert.equal(SCORE_EDITOR_REVISION, '2e6b975b4b6b8b558593ca43132309848dc3ccab')
   const manifest = validManifest()
   assert.equal(verifyEditorRuntimeManifest(manifest), manifest)
 })
