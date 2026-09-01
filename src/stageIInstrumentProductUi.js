@@ -2,10 +2,10 @@
 //
 // This is presentation/orchestration glue only. Package 4/5 remain the
 // quality-gated rendering owners and Stage G remains the routing authority.
-// The rail never invokes an instrument solver in production; it mirrors only
-// the current synchronous Package 4/5 presentation result for the exact
-// Package 3 NoteObject[] snapshot. REVIEW/BLOCK therefore expose reasons but
-// no definitive instrument bytes.
+// The rail never invents quality evidence. After an Editor revision it may
+// request Package 4/5 to recompute from the exact current selection projection;
+// missing quality evidence therefore remains REVIEW/BLOCK rather than inheriting
+// the source report.
 
 import {
   getPackage3MeasureSnapshot,
@@ -21,20 +21,27 @@ import {
   STAGE_I_PRODUCT_COPY,
   STAGE_I_PRODUCT_STATE,
 } from './services/stageIInstrumentProduct.js'
-import { activateGuitarTabResultTab } from './package4Ui.js'
-import { activateViolinResultTab } from './package5Ui.js'
+import {
+  activateGuitarTabResultTab,
+  renderGuitarTabPanel,
+} from './package4Ui.js'
+import {
+  activateViolinResultTab,
+  renderViolinPanel,
+} from './package5Ui.js'
 
 export const STAGE_I_UI_COPY = Object.freeze({
   heading: 'Çalgı Çıktıları',
   help: 'PASS olduğunda Gitar TAB ve Keman çıktısı otomatik görünür. REVIEW veya BLOCK durumunda kesin çıktı gösterilmez. Otomatik öneriler öğretmen onayı değildir.',
   guitarHeading: 'Gitar TAB',
   violinHeading: 'Keman',
-  guitarAction: "Gitar TAB sekmesini aç",
+  guitarAction: 'Gitar TAB sekmesini aç',
   violinAction: 'Keman sekmesini aç',
 })
 
 const rootSubscriptions = new WeakMap()
 const actionStateByRoot = new WeakMap()
+const renderStates = new WeakMap()
 
 function validRoot(root) {
   return root &&
@@ -98,6 +105,21 @@ function readLegacyPresentation(root, instrument) {
   return Object.freeze({ state, mode, text })
 }
 
+/**
+ * Product routing follows the current immutable editor revision when S07 has
+ * bound a verified selection projection. `notes` remains the source/quality
+ * identity; using `selectionNotes` here never transfers the source report.
+ */
+export function stageICurrentRoutingNotes(snapshot) {
+  if (!Array.isArray(snapshot?.notes)) return null
+  if (
+    Array.isArray(snapshot.selectionNotes) &&
+    snapshot.revisionIdentity &&
+    snapshot.selectionNotes.length === snapshot.notes.length
+  ) return snapshot.selectionNotes
+  return snapshot.notes
+}
+
 function productFromCurrentPresentation(root, notes, instrument, routeResolver, stageGOptions = {}) {
   if (!Array.isArray(notes)) {
     return frozenRailModel(instrument, STAGE_I_PRODUCT_STATE.INVALID, STAGE_I_PRODUCT_COPY.BLOCKED, '', null, 'canonical-note-array-required')
@@ -126,10 +148,6 @@ function productFromCurrentPresentation(root, notes, instrument, routeResolver, 
     return frozenRailModel(instrument, STAGE_I_PRODUCT_STATE.INVALID, STAGE_I_PRODUCT_COPY.BLOCKED, '', null, 'stage-g-pass-permission-mismatch')
   }
 
-  // Package 4/5 subscriptions are registered before this rail in production.
-  // They synchronously render from the same Package 3 snapshot before this
-  // listener runs. If that presentation is absent or non-definitive, fail
-  // closed instead of calling the solver a second time.
   const presentation = readLegacyPresentation(root, instrument)
   if (!presentation) {
     return frozenRailModel(instrument, STAGE_I_PRODUCT_STATE.INVALID, STAGE_I_PRODUCT_COPY.BLOCKED, '', null, 'instrument-presentation-not-ready')
@@ -153,17 +171,13 @@ function productFromCurrentPresentation(root, notes, instrument, routeResolver, 
 }
 
 function resolveRailProducts(root, notes, adapters = {}) {
-  // Preserve the historical adapter seam for tests/embedded hosts. Production
-  // intentionally avoids resolveStageIInstrumentProducts here because that
-  // service invokes Package 9/10 builders and would duplicate the existing
-  // Package 4/5 subscription build.
   if (typeof adapters.resolveStageIInstrumentProducts === 'function') {
     return adapters.resolveStageIInstrumentProducts(notes, adapters.productOptions ?? {})
   }
 
   const current = getPackage3MeasureSnapshot()
-  if (current.notes !== notes) {
-    const invalid = frozenRailModel('guitar', STAGE_I_PRODUCT_STATE.INVALID, STAGE_I_PRODUCT_COPY.BLOCKED, '', null, 'stale-canonical-note-array')
+  if (stageICurrentRoutingNotes(current) !== notes) {
+    const invalid = frozenRailModel('guitar', STAGE_I_PRODUCT_STATE.INVALID, STAGE_I_PRODUCT_COPY.BLOCKED, '', null, 'stale-current-revision-note-array')
     return Object.freeze({
       guitar: invalid,
       violin: Object.freeze({ ...invalid, instrument: 'violin' }),
@@ -214,8 +228,6 @@ function createInstrumentCard(root, instrument, headingText, actionLabel) {
   output.setAttribute('tabindex', '0')
   output.setAttribute('aria-label', instrument === 'guitar' ? 'Otomatik Gitar TAB çıktısı' : 'Otomatik keman çalışma çıktısı')
 
-  // Secondary compatibility action: the output is already visible in the rail,
-  // so opening the legacy result tab is optional rather than required.
   const button = root.createElement('button')
   button.id = `stage-i-${instrument}-action`
   button.type = 'button'
@@ -336,6 +348,40 @@ export function renderStageIInstrumentProductUi(root, notes, adapters = {}) {
   return products
 }
 
+function refreshCurrentRevisionPresentations(root, snapshot, adapters) {
+  if (typeof adapters.resolveStageIInstrumentProducts === 'function') return stageICurrentRoutingNotes(snapshot)
+  const notes = stageICurrentRoutingNotes(snapshot)
+  if (!Array.isArray(notes)) return notes
+
+  // Package 4/5 already process the source `snapshot.notes` synchronously.
+  // Only a distinct current editor projection needs an explicit recompute.
+  if (notes !== snapshot.notes) {
+    renderGuitarTabPanel(root, notes, adapters.guitarPanelAdapters ?? {})
+    renderViolinPanel(root, notes, adapters.violinPanelAdapters ?? {})
+  }
+  return notes
+}
+
+function scheduleStageIRender(root, state, snapshot, adapters) {
+  state.latestSnapshot = snapshot
+  if (state.scheduled) return false
+  state.scheduled = true
+  queueMicrotask(() => {
+    state.scheduled = false
+    const latest = state.latestSnapshot ?? getPackage3MeasureSnapshot()
+    state.latestSnapshot = null
+    const notes = refreshCurrentRevisionPresentations(root, latest, adapters)
+    renderStageIInstrumentProductUi(root, notes, adapters)
+  })
+  return true
+}
+
+function renderStageIAdapterSnapshotNow(root, snapshot, adapters) {
+  const notes = stageICurrentRoutingNotes(snapshot)
+  renderStageIInstrumentProductUi(root, notes, adapters)
+  return true
+}
+
 export function initStageIInstrumentProductUi(root = document, adapters = {}) {
   const init = () => {
     if (!ensureStageIInstrumentProductUi(root, adapters)) return false
@@ -343,13 +389,24 @@ export function initStageIInstrumentProductUi(root = document, adapters = {}) {
     const oldUnsubscribe = rootSubscriptions.get(root)
     if (oldUnsubscribe) oldUnsubscribe()
 
+    let state = renderStates.get(root)
+    if (!state) {
+      state = { scheduled: false, latestSnapshot: null }
+      renderStates.set(root, state)
+    }
+
+    // Test/custom product adapters are an existing public orchestration seam and
+    // historically receive Package 3 snapshots synchronously. Preserve that
+    // contract. Production routing keeps microtask coalescing so revision bursts
+    // cannot multiply Package 4/5 recomputation.
+    const synchronousAdapter = typeof adapters.resolveStageIInstrumentProducts === 'function'
     const unsubscribe = subscribePackage3Measures((snapshot) => {
-      renderStageIInstrumentProductUi(root, snapshot?.notes ?? null, adapters)
+      if (synchronousAdapter) renderStageIAdapterSnapshotNow(root, snapshot, adapters)
+      else scheduleStageIRender(root, state, snapshot, adapters)
     })
     rootSubscriptions.set(root, unsubscribe)
 
-    const current = getPackage3MeasureSnapshot()
-    renderStageIInstrumentProductUi(root, current.notes, adapters)
+    if (!synchronousAdapter) scheduleStageIRender(root, state, getPackage3MeasureSnapshot(), adapters)
     return true
   }
 

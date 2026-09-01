@@ -6,8 +6,7 @@
 
 import {
   getPackage3MeasureSnapshot,
-  selectPackage3MeasureKey,
-  selectPackage3NoteIndex,
+  selectPackage3ExactNote,
   subscribePackage3Measures,
 } from '../package3MeasureBridge.js'
 import {
@@ -91,8 +90,8 @@ function focusInspector(root) {
 
 export function activateStageS08QualityMarker(root, marker) {
   if (!marker?.rendererTarget || !Number.isSafeInteger(marker.noteIndex)) return false
-  if (!selectPackage3MeasureKey(marker.measureKey)) return false
-  if (!selectPackage3NoteIndex(marker.noteIndex, {
+  if (!selectPackage3ExactNote(marker.noteIndex, {
+    measureKey: marker.measureKey,
     rendererTarget: marker.rendererTarget,
     interaction: 'quality-marker',
   })) return false
@@ -172,6 +171,19 @@ export function renderStageS08ScoreQualityOverlay(root = document, snapshot = ge
   return true
 }
 
+function scheduleRender(root, state, snapshot = getPackage3MeasureSnapshot()) {
+  state.latestSnapshot = snapshot
+  if (state.renderScheduled) return false
+  state.renderScheduled = true
+  queueMicrotask(() => {
+    state.renderScheduled = false
+    const latest = state.latestSnapshot ?? getPackage3MeasureSnapshot()
+    state.latestSnapshot = null
+    renderStageS08ScoreQualityOverlay(root, latest)
+  })
+  return true
+}
+
 function installScoreStateObserver(root, state) {
   if (state.observer) return true
   const workspace = root.getElementById?.('stage-s05-score-workspace')
@@ -179,7 +191,7 @@ function installScoreStateObserver(root, state) {
   if (!workspace || typeof Observer !== 'function') return false
 
   state.observer = new Observer(() => {
-    renderStageS08ScoreQualityOverlay(root, getPackage3MeasureSnapshot())
+    scheduleRender(root, state, getPackage3MeasureSnapshot())
   })
   state.observer.observe(workspace, {
     attributes: true,
@@ -194,14 +206,14 @@ export function applyStageS08ScoreQualityOverlay(root = document) {
 
   let state = states.get(root)
   if (!state) {
-    state = { unsubscribe: null, observer: null }
+    state = { unsubscribe: null, observer: null, renderScheduled: false, latestSnapshot: null }
     state.unsubscribe = subscribePackage3Measures((snapshot) => {
-      renderStageS08ScoreQualityOverlay(root, snapshot)
+      scheduleRender(root, state, snapshot)
     })
     states.set(root, state)
   }
   installScoreStateObserver(root, state)
-  renderStageS08ScoreQualityOverlay(root, getPackage3MeasureSnapshot())
+  scheduleRender(root, state, getPackage3MeasureSnapshot())
   return true
 }
 

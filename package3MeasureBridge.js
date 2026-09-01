@@ -186,27 +186,49 @@ export function selectPackage3MeasureKey(measureKey) {
   return true
 }
 
-export function selectPackage3NoteIndex(noteIndex, options = {}) {
-  if (!currentSelectionNotes || !selectedMeasureKey) return false
+/**
+ * Select one exact current-projection note and its measure in a single bridge
+ * transition. This is the preferred path for already-proven renderer/quality
+ * targets because it prevents a transient measure-only notification from
+ * multiplying observer/rerender work. Identity remains revision-bound and is
+ * built by the same S06 contract used by the legacy two-step API.
+ */
+export function selectPackage3ExactNote(noteIndex, {
+  measureKey,
+  rendererTarget = null,
+  interaction = 'canonical-control',
+} = {}) {
+  const key = typeof measureKey === 'string' ? measureKey.trim() : ''
+  if (!currentSelectionNotes || !key) return false
   if (!Number.isSafeInteger(noteIndex) || noteIndex < 0 || noteIndex >= currentSelectionNotes.length) return false
 
   const note = currentSelectionNotes[noteIndex]
-  if (!note || note.measureKey !== selectedMeasureKey) return false
+  if (!note || note.measureKey !== key) return false
 
   const identity = buildStageS06SelectionIdentity({
     notes: currentSelectionNotes,
-    measureKey: selectedMeasureKey,
+    measureKey: key,
     noteIndex,
     revisionIdentity,
-    rendererTarget: options?.rendererTarget ?? null,
-    interaction: options?.interaction ?? 'canonical-control',
+    rendererTarget,
+    interaction,
   })
   if (!identity) return false
 
+  selectedMeasureKey = key
   selectedNoteIndex = noteIndex
   selectedNoteIdentity = identity
   notify()
   return true
+}
+
+export function selectPackage3NoteIndex(noteIndex, options = {}) {
+  if (!selectedMeasureKey) return false
+  return selectPackage3ExactNote(noteIndex, {
+    measureKey: selectedMeasureKey,
+    rendererTarget: options?.rendererTarget ?? null,
+    interaction: options?.interaction ?? 'canonical-control',
+  })
 }
 
 export function clearPackage3NoteSelection() {
