@@ -1,0 +1,176 @@
+/* S12 — real-iPhone mobile score tools acceptance layer. */
+
+.stage-s12-note-tools,
+.stage-s12-note-tools * {
+  box-sizing: border-box;
+}
+
+.stage-s12-note-tools {
+  display: none;
+}
+
+.stage-s12-note-tools-close {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .stage-s05-score-column {
+    position: relative;
+  }
+
+  .stage-s12-note-tools {
+    position: fixed;
+    right: max(0.4rem, env(safe-area-inset-right));
+    top: 46dvh;
+    z-index: 72;
+    display: grid;
+    gap: 0.35rem;
+    width: 48px;
+    padding: 0.25rem;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, var(--card-bg, #fff) 94%, transparent);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(8px);
+  }
+
+  .stage-s05-score-workspace[hidden] .stage-s12-note-tools {
+    display: none;
+  }
+
+  .stage-s12-note-tool {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 0.65rem;
+    background: var(--card-bg, #fff);
+    color: var(--neutral-800, #1e293b);
+    font: inherit;
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .stage-s12-note-tool:disabled {
+    opacity: 0.4;
+  }
+
+  .stage-s12-note-tools[data-selected='true'] {
+    border-color: var(--primary-500, #2563eb);
+  }
+
+  .stage-s12-note-tool:not(:disabled):active {
+    transform: scale(0.96);
+  }
+
+  .stage-s12-note-tool:focus-visible,
+  .stage-s12-note-tools-close:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  /* Keep the ordinary inspector out of the long mobile document flow. The
+     exact-note selection automatically opens it as a bounded bottom sheet. */
+  .stage-s05-score-inspector {
+    display: none;
+  }
+
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] {
+    position: fixed;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    z-index: 96;
+    display: block;
+    width: auto;
+    max-width: none;
+    max-height: min(58dvh, 30rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0.85rem;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 1rem;
+    background: var(--card-bg, #fff);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+  }
+
+  .stage-s12-note-tools-close {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    float: right;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0 0 0.35rem 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--neutral-300, #cbd5e1);
+    border-radius: 0.6rem;
+    background: var(--neutral-100, #f1f5f9);
+    color: var(--neutral-800, #1e293b);
+    font: inherit;
+    font-weight: 700;
+  }
+
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-teacher-inspector {
+    clear: both;
+  }
+
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-fields,
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-field,
+  .stage-s05-score-inspector[data-stage-s12-tools-open='true'] .stage-s07-inline-actions {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Real-iPhone acceptance: tuner must remain a secondary compact overlay and
+     must not consume most of the screen before a signal exists. */
+  .stage-s04-tuner-panel {
+    width: min(20rem, calc(100vw - 1rem));
+    max-height: min(68dvh, 30rem);
+  }
+
+  .stage-s04-mini-tuner .tuner-body {
+    gap: 0.45rem;
+    padding: 0.6rem;
+  }
+
+  .stage-s04-mini-tuner .tuner-controls {
+    gap: 0.4rem;
+  }
+
+  .stage-s04-mini-tuner .tuner-display {
+    gap: 0.2rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.65rem;
+  }
+
+  .stage-s04-mini-tuner .tuner-note {
+    font-size: clamp(2.2rem, 12vw, 3.25rem);
+  }
+
+  .stage-s04-mini-tuner .tuner-direction {
+    min-height: 1.2em;
+    font-size: 0.9rem;
+  }
+
+  .stage-s04-mini-tuner .stage-k-tuner-privacy {
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+
+  .stage-s04-mini-tuner .stage-k-tuner-details > summary {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-s12-note-tool:not(:disabled):active {
+    transform: none;
+  }
+}
