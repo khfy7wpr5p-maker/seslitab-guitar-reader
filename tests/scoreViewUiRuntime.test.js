@@ -8,6 +8,7 @@ test('score view resolves only the reviewed note-capable ST-owned runtime host c
     async renderMusicXml() {},
     async moveCursor() {},
     hitTestNote() {},
+    hitTestNoteDetailed() {},
     async highlight() {},
     async clearHighlights() {},
     async dispose() {},
@@ -17,6 +18,7 @@ test('score view resolves only the reviewed note-capable ST-owned runtime host c
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: { renderMusicXml() {}, dispose() {} } }), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: { renderMusicXml() {}, moveCursor() {}, dispose() {} } }), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: { ...host, hitTestNote: undefined } }), null)
+  assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: { ...host, hitTestNoteDetailed: undefined } }), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: { ...host, highlight: undefined } }), null)
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: { ...host, clearHighlights: undefined } }), null)
 })
