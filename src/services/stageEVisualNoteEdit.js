@@ -1,10 +1,11 @@
-// Stage E / S06 — bounded visual note editor projection.
+// Stage E / S06-S07 — bounded visual note editor projection.
 //
 // This module does not mutate notes and does not create revision/history truth.
 // It exposes only four teacher-visible primitive correction targets after S06
 // proves that the selected canonical note belongs to the exact current teacher
-// revision. The existing Package 8 immutable correction/history boundary remains
-// authoritative for applying changes.
+// revision. S07 may supply a verified corrected selection projection while the
+// original `snapshot.notes` remains source truth for existing consumers. The
+// existing Package 8 immutable correction/history boundary remains authoritative.
 
 import { getTeacherWorkspaceCurrentRevision } from './teacherWorkspaceModel.js'
 import { stageS06SelectionMatchesRevision } from './stageS06SelectionIdentity.js'
@@ -71,13 +72,16 @@ export function buildStageEVisualEditModel({ workspace, snapshot } = {}) {
   if (!stageS06SelectionMatchesRevision(snapshot, revision)) return null
 
   const noteIndex = snapshot.selectedNoteIndex
-  if (noteIndex < 0 || noteIndex >= revision.content.length || noteIndex >= snapshot.notes.length) return null
+  const selectionNotes = Array.isArray(snapshot.selectionNotes)
+    ? snapshot.selectionNotes
+    : snapshot.notes
+  if (noteIndex < 0 || noteIndex >= revision.content.length || noteIndex >= selectionNotes.length) return null
 
-  const sourceNote = snapshot.notes[noteIndex]
+  const selectedNote = selectionNotes[noteIndex]
   const currentNote = revision.content[noteIndex]
-  if (!sourceNote || !currentNote) return null
-  if (sourceNote.measureKey !== snapshot.selectedMeasureKey) return null
-  if (currentNote.measureKey !== sourceNote.measureKey) return null
+  if (!selectedNote || !currentNote) return null
+  if (selectedNote.measureKey !== snapshot.selectedMeasureKey) return null
+  if (currentNote.measureKey !== selectedNote.measureKey) return null
 
   const isRest = currentNote.isRest === true
   const fields = []
@@ -101,7 +105,8 @@ export function buildStageEVisualEditModel({ workspace, snapshot } = {}) {
   return Object.freeze({
     noteIndex,
     measureKey: snapshot.selectedMeasureKey,
-    sourceNote,
+    sourceNote: snapshot.notes[noteIndex],
+    selectedNote,
     currentNote,
     fields: Object.freeze(fields),
   })
