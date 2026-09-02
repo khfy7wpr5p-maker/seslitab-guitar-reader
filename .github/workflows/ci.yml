@@ -48,3 +48,6 @@ jobs:
 
       - name: Verify PR-E quality routing recovery in real browser
         run: node scripts/verifyPrECoexistenceBrowser.js
+
+      - name: Verify PR-F accessibility mobile regression in real browser
+        run: node scripts/verifyPrFAccessibilityBrowser.js
