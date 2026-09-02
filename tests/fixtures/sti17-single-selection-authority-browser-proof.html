@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>STI-17 single selection authority proof</title>
+  <style>
+    body { margin: 0; }
+    #score-view-runtime-frame { width: 390px; height: 700px; border: 0; }
+  </style>
+</head>
+<body>
+  <section id="results-shell"><div class="result-tabs"></div></section>
+  <button id="reset-btn" type="button">reset</button>
+  <div id="aria-live-region" aria-live="polite"></div>
+  <div id="stage-s05-score-workspace" data-stage-s07-score-state="verified" data-sti-prd-keypad-active="true"></div>
+  <p id="score-view-note-sync" data-note-synced="false"></p>
+  <pre id="xml-output"></pre>
+  <iframe id="score-view-runtime-frame" title="ST score runtime" src="/public/st-score-runtime/index.html"></iframe>
+  <div id="status"
+    data-initial-editor-tap-pass="false"
+    data-legacy-authority-blocked-pass="false"
+    data-edited-current-revision-pass="false"
+    data-second-editor-tap-pass="false"
+    data-keypad-ready-selection-pass="false">PENDING</div>
+
+  <script src="/public/st-score-editor-core-runtime/st-score-editor-core.runtime.js"></script>
+  <script type="module">
+    import {
+      bindPackage3RevisionIdentity,
+      getPackage3MeasureSnapshot,
+      publishPackage3Notes,
+    } from '/package3MeasureBridge.js'
+    import {
+      getTeacherUiWorkspace,
+      initPackage8TeacherUi,
+      refreshTeacherUiAfterConflict,
+      setTeacherUiAuthoritativeHistory,
+      startTeacherWorkspace,
+    } from '/src/package8TeacherUi.js'
+    import { parseMusicXmlToNotes } from '/src/services/musicEngine.js'
+    import { getTeacherWorkspaceCurrentRevision } from '/src/services/teacherWorkspaceModel.js'
+    import {
+      commitPrDProductRevision,
+      revalidatePrDEditorMusicXml,
+    } from '/src/services/editorPrDProductPipeline.js'
+    import {
+      hitTestScoreNoteDetailed,
+      renderScoreView,
+      resolveStScoreRuntime,
+    } from '/src/services/scoreRendererConsumer.js'
+    import {
+      bindStagePrBEditorSelection,
+      getStagePrBInteractionDiagnostics,
+    } from '/src/stagePrBEditorSelectionUi.js'
+    import { syncStageS06RevisionBinding } from '/src/stageS06ExactSelectionUi.js'
+    import { syncStageS07VerifiedSelectionProjection } from '/src/stageS07VerifiedSelectionProjection.js'
+    import { stageS06SelectionMatchesRevision } from '/src/services/stageS06SelectionIdentity.js'
+
+    const status = document.getElementById('status')
+    const frame = document.getElementById('score-view-runtime-frame')
+    const workspaceElement = document.getElementById('stage-s05-score-workspace')
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    const sourceXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+    <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+    <note><rest/><duration>4</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+  </measure></part>
+</score-partwise>`
+
+    const editedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><staff>1</staff></note>
+    <forward><duration>1</duration></forward>
+    <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+    <note><rest/><duration>4</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+  </measure></part>
+</score-partwise>`
+
+    async function waitForRuntime() {
+      const deadline = performance.now() + 12000
+      while (performance.now() < deadline) {
+        try {
+          const host = resolveStScoreRuntime(frame.contentWindow)
+          if (host && frame.contentDocument?.documentElement?.dataset?.stScoreRuntimeReady === 'true') return host
+        } catch {}
+        await delay(40)
+      }
+      throw new Error('renderer runtime did not become ready')
+    }
+
+    async function waitFor(predicate, label, timeoutMs = 5000) {
+      const deadline = performance.now() + timeoutMs
+      while (performance.now() < deadline) {
+        if (predicate()) return true
+        await delay(25)
+      }
+      throw new Error(`timeout waiting for ${label}`)
+    }
+
+    function pointForProductIndex(host, productIndex) {
+      const root = frame.contentDocument?.getElementById('st-score-root')
+      const noteheads = root ? [...root.querySelectorAll('.vf-notehead')] : []
+      for (const element of noteheads) {
+        const rect = element.getBoundingClientRect()
+        if (!(rect.width > 0 && rect.height > 0)) continue
+        for (const fx of [.25, .5, .75]) {
+          for (const fy of [.25, .5, .75]) {
+            const point = { clientX: rect.left + rect.width * fx, clientY: rect.top + rect.height * fy }
+            const detailed = hitTestScoreNoteDetailed(host, point)
+            if (detailed.kind === 'HIT' && detailed.target.noteIndex === productIndex) return point
+          }
+        }
+      }
+      throw new Error(`renderer point for note ${productIndex} unavailable`)
+    }
+
+    function dispatchTouchPointer(point) {
+      const Pointer = frame.contentWindow.PointerEvent
+      const EventCtor = typeof Pointer === 'function' ? Pointer : frame.contentWindow.MouseEvent
+      const event = new EventCtor('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        clientX: point.clientX,
+        clientY: point.clientY,
+        pointerType: 'touch',
+      })
+      const target = frame.contentDocument.elementFromPoint(point.clientX, point.clientY)
+      if (!target) throw new Error('event target unavailable')
+      target.dispatchEvent(event)
+    }
+
+    function exactEditorSelection(index, revision) {
+      const snapshot = getPackage3MeasureSnapshot()
+      return snapshot.selectedNoteIndex === index &&
+        snapshot.selectedNoteIdentity?.interaction === 'score-editor-current-hit' &&
+        stageS06SelectionMatchesRevision(snapshot, revision)
+    }
+
+    ;(async () => {
+      try {
+        if (!globalThis.STScoreEditorCoreRuntime) throw new Error('Editor runtime unavailable')
+        document.getElementById('xml-output').textContent = sourceXml
+
+        let sequence = 0
+        initPackage8TeacherUi(document, {
+          id(prefix) { sequence += 1; return `${prefix}-sti17-${sequence}` },
+          now() { sequence += 1; return `2026-09-02T10:${String(sequence).padStart(2, '0')}:00.000Z` },
+        })
+        const parsed = parseMusicXmlToNotes(sourceXml)
+        if (parsed.error || parsed.notes.length !== 3) throw new Error('source parse failed')
+        publishPackage3Notes(parsed.notes)
+        document.getElementById('teacher-actor-id').value = 'sti17-browser'
+        const initialWorkspace = startTeacherWorkspace(document)
+        if (!initialWorkspace) throw new Error('teacher workspace failed')
+        const rootRevision = getTeacherWorkspaceCurrentRevision(initialWorkspace)
+        if (!bindPackage3RevisionIdentity({
+          notes: parsed.notes,
+          sourceId: rootRevision.sourceId,
+          sourceRevisionId: rootRevision.sourceRevisionId,
+          revisionId: rootRevision.revisionId,
+          contentFingerprint: rootRevision.contentFingerprint,
+        })) throw new Error('initial Package 3 revision bind failed')
+        workspaceElement.setAttribute('data-stage-s07-score-state', 'verified')
+        syncStageS07VerifiedSelectionProjection(document)
+
+        const host = await waitForRuntime()
+        await renderScoreView(host, sourceXml, { ticket: '201', autoResize: false, drawTitle: false, drawComposer: false })
+        if (!bindStagePrBEditorSelection(document)) throw new Error('PR-B did not bind to ready iframe')
+
+        let legacyDocumentCaptureCount = 0
+        frame.contentDocument.addEventListener('pointerup', () => { legacyDocumentCaptureCount += 1 }, true)
+
+        dispatchTouchPointer(pointForProductIndex(host, 0))
+        await waitFor(() => exactEditorSelection(0, rootRevision), 'initial exact Editor selection')
+        status.dataset.initialEditorTapPass = 'true'
+        if (legacyDocumentCaptureCount !== 0) throw new Error('legacy document capture received PR-B-owned tap')
+        status.dataset.legacyAuthorityBlockedPass = 'true'
+
+        const currentWorkspace = getTeacherUiWorkspace(document)
+        const revalidated = revalidatePrDEditorMusicXml({
+          musicXml: editedXml,
+          currentRevision: rootRevision,
+          changedIndexes: [0],
+          DOMParserCtor: DOMParser,
+        })
+        const product = commitPrDProductRevision({
+          workspace: currentWorkspace,
+          revalidated,
+          revisionId: 'sti17-edited-revision',
+          eventId: 'sti17-edited-event',
+          operationIdPrefix: 'sti17-edited-operation',
+          createdAt: '2026-09-02T10:40:00.000Z',
+        })
+        if (!product.ok) throw new Error(`product commit failed: ${product.reason ?? 'unknown'}`)
+        setTeacherUiAuthoritativeHistory(document, product.result.history)
+        refreshTeacherUiAfterConflict(document)
+        const editedRevision = getTeacherWorkspaceCurrentRevision(getTeacherUiWorkspace(document))
+        if (editedRevision.revisionId !== 'sti17-edited-revision') throw new Error('edited revision not current')
+        syncStageS06RevisionBinding(document)
+        if (!syncStageS07VerifiedSelectionProjection(document)) throw new Error('edited selection projection failed')
+        await renderScoreView(host, editedXml, { ticket: '202', autoResize: false, drawTitle: false, drawComposer: false })
+        status.dataset.editedCurrentRevisionPass = 'true'
+
+        dispatchTouchPointer(pointForProductIndex(host, 1))
+        await waitFor(() => exactEditorSelection(1, editedRevision), 'second exact Editor selection after rerender')
+        status.dataset.secondEditorTapPass = 'true'
+        if (legacyDocumentCaptureCount !== 0) throw new Error('legacy authority ran after edited rerender')
+
+        const diagnostics = getStagePrBInteractionDiagnostics(document)
+        if (!diagnostics.boundToCurrentIframe || diagnostics.selectedCount < 2 || diagnostics.lastDiagnostic !== 'PRB_SELECTED') {
+          throw new Error('PR-B diagnostics do not prove two current iframe selections')
+        }
+        const finalSnapshot = getPackage3MeasureSnapshot()
+        if (!['score-editor-current-hit', 'editor-keypad-rebind'].includes(finalSnapshot.selectedNoteIdentity?.interaction)) {
+          throw new Error('final selection is not keypad-admissible')
+        }
+        status.dataset.keypadReadySelectionPass = 'true'
+        status.textContent = 'PASS'
+      } catch (error) {
+        status.dataset.error = String(error?.message ?? error)
+        status.textContent = 'FAIL'
+      }
+    })()
+  </script>
+</body>
+</html>
