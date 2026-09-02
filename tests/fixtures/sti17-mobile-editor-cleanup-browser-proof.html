@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>STI-17 mobile editor cleanup proof</title>
+  <link rel="stylesheet" href="../../src/stageS12MobileScoreTools.css">
+  <link rel="stylesheet" href="../../src/stagePrCKeypad.css">
+  <style>
+    html,body{margin:0;padding:0}
+    .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+  </style>
+</head>
+<body>
+  <div id="stage-s05-score-workspace" data-sti-prc-keypad-active="true" data-sti-prd-keypad-active="true">
+    <div id="stage-s05-score-column"></div>
+    <aside id="stage-s05-score-inspector" class="stage-s05-score-inspector" data-stage-s12-tools-open="true">
+      <section id="stage-s07-inline-teacher-inspector" class="stage-s07-inline-teacher-inspector">
+        <h4>Seçili notayı düzelt</h4>
+        <p>Uzun eski düzeltme açıklaması burada görünmemelidir.</p>
+        <details open><summary>Düzeltme ve onay hakkında</summary><p>Eski açıklama.</p></details>
+      </section>
+    </aside>
+  </div>
+
+  <p id="stage-prc-keypad-status" class="stage-prc-keypad-status" role="status" aria-live="polite" aria-atomic="true">Exact nota seçildi. Nota düzenleme tuşları hazır.</p>
+  <div id="aria-live-region" class="sr-only" aria-live="polite"></div>
+  <div id="status" data-legacy-sheet-closed="false" data-legacy-sheet-hidden="false" data-keypad-status-voiceover-only="false">PENDING</div>
+
+  <script type="module">
+    import { syncStageS12MobileScoreTools } from '../../src/stageS12MobileScoreToolsUi.js'
+
+    const status = document.getElementById('status')
+    try {
+      const inspector = document.getElementById('stage-s05-score-inspector')
+      const snapshot = Object.freeze({ selectedNoteIdentity: Object.freeze({ id: 'selected-1' }), selectedNoteIndex: 0 })
+      if (!syncStageS12MobileScoreTools(document, snapshot)) throw new Error('S12 sync failed')
+      if (inspector.getAttribute('data-stage-s12-tools-open') !== 'false') throw new Error('legacy inspector stayed open')
+      status.dataset.legacySheetClosed = 'true'
+
+      if (getComputedStyle(inspector).display !== 'none') throw new Error('legacy inspector remained visually visible')
+      status.dataset.legacySheetHidden = 'true'
+
+      const live = document.getElementById('stage-prc-keypad-status')
+      const style = getComputedStyle(live)
+      if (style.position !== 'absolute' || live.offsetWidth > 1 || live.offsetHeight > 1 || !live.textContent.includes('Exact nota seçildi')) {
+        throw new Error('keypad status is not VoiceOver-only')
+      }
+      status.dataset.keypadStatusVoiceoverOnly = 'true'
+      status.textContent = 'PASS'
+    } catch (error) {
+      status.dataset.error = String(error?.message ?? error)
+      status.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>

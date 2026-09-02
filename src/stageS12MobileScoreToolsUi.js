@@ -40,6 +40,14 @@ function announce(root, message) {
   if (globalLive) globalLive.textContent = message
 }
 
+function integratedEditorKeypadActive(root) {
+  const workspace = root.getElementById?.('stage-s05-score-workspace')
+  return Boolean(
+    workspace?.getAttribute?.('data-sti-prd-keypad-active') === 'true' ||
+    workspace?.getAttribute?.('data-sti-prc-keypad-active') === 'true'
+  )
+}
+
 function closeInspector(root, { returnFocus = false } = {}) {
   const inspector = root.getElementById?.('stage-s05-score-inspector')
   if (!inspector) return false
@@ -68,6 +76,15 @@ function ensureCloseButton(root, inspector) {
 }
 
 function openField(root, field) {
+  // PR-D/PR-C keypad is the current write surface. The old S12/S07 bottom sheet
+  // must never re-open on top of it, otherwise two generations of editor UI are
+  // visible at once even though only Editor Core owns new keypad writes.
+  if (integratedEditorKeypadActive(root)) {
+    closeInspector(root)
+    announce(root, 'Nota düzenleme tuş takımını kullanın.')
+    return false
+  }
+
   const inspector = root.getElementById?.('stage-s05-score-inspector')
   const input = root.getElementById?.(`stage-s07-${field}`)
   if (!inspector || !input) {
@@ -146,6 +163,17 @@ export function syncStageS12MobileScoreTools(root = document, snapshot = getPack
     state.lastSelectionIdentity = null
     closeInspector(root)
     announce(root, 'Düzenlemek için görsel notaya dokunun.')
+    return true
+  }
+
+  // When the integrated Editor keypad is mounted, S12 is legacy presentation
+  // only. Keep its accessibility announcement, but never auto-open the old S07
+  // bottom sheet over the score/keypad. This is intentionally independent of
+  // quality/approval authority and does not remove any underlying history.
+  if (integratedEditorKeypadActive(root)) {
+    state.lastSelectionIdentity = snapshot.selectedNoteIdentity
+    closeInspector(root)
+    announce(root, 'Nota seçildi.')
     return true
   }
 
