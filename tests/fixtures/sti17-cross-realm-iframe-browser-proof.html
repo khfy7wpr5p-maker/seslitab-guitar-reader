@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>STI-17 cross-realm iframe renderer proof</title>
+  <style>
+    body { margin: 0; }
+    #runtime { width: 390px; height: 700px; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe id="runtime" title="ST score runtime" src="/public/st-score-runtime/index.html"></iframe>
+  <div id="status"
+    data-sti17-iframe-render-pass="false"
+    data-sti17-iframe-hit-pass="false"
+    data-sti17-iframe-outbound-pass="false"
+    data-sti17-iframe-highlight-pass="false">PENDING</div>
+
+  <script type="module">
+    import {
+      getCurrentScoreRenderEvidence,
+      highlightScoreNote,
+      hitTestScoreNoteDetailed,
+      moveScoreCursor,
+      renderScoreView,
+      resolveStScoreRuntime,
+    } from '/src/services/scoreRendererConsumer.js'
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes>
+      <divisions>1</divisions>
+      <key><fifths>0</fifths></key>
+      <time><beats>4</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef>
+    </attributes>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><voice>1</voice><staff>1</staff></note>
+    <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><voice>1</voice><staff>1</staff></note>
+    <note><rest/><duration>2</duration><type>half</type><voice>1</voice><staff>1</staff></note>
+  </measure></part>
+</score-partwise>`
+
+    const frame = document.getElementById('runtime')
+    const status = document.getElementById('status')
+
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    async function waitForRuntime() {
+      const deadline = performance.now() + 12000
+      while (performance.now() < deadline) {
+        try {
+          const host = resolveStScoreRuntime(frame.contentWindow)
+          if (host && frame.contentDocument?.documentElement?.dataset?.stScoreRuntimeReady === 'true') return host
+        } catch {
+          // Keep waiting for the same-origin iframe runtime to finish booting.
+        }
+        await delay(50)
+      }
+      throw new Error('iframe renderer runtime did not become ready')
+    }
+
+    function findExactRuntimeHit(host) {
+      const root = frame.contentDocument?.getElementById('st-score-root')
+      const noteheads = root ? [...root.querySelectorAll('.vf-notehead')] : []
+      for (const element of noteheads) {
+        const rect = element.getBoundingClientRect()
+        if (!(rect.width > 0 && rect.height > 0)) continue
+        for (const fx of [.25, .5, .75]) {
+          for (const fy of [.25, .5, .75]) {
+            const point = { clientX: rect.left + rect.width * fx, clientY: rect.top + rect.height * fy }
+            const detailed = hitTestScoreNoteDetailed(host, point)
+            if (detailed.kind === 'HIT') return { detailed, element }
+          }
+        }
+      }
+      return null
+    }
+
+    ;(async () => {
+      try {
+        const host = await waitForRuntime()
+        if (Object.getPrototypeOf(host) === Object.prototype) throw new Error('runtime host did not cross iframe realm boundary')
+
+        const rendered = await renderScoreView(host, xml, {
+          ticket: '91',
+          autoResize: false,
+          drawTitle: false,
+          drawComposer: false,
+        })
+        if (Object.getPrototypeOf(rendered) === Object.prototype) throw new Error('render evidence did not originate in iframe realm')
+        const evidence = getCurrentScoreRenderEvidence(host)
+        if (!evidence?.renderEpoch || evidence.sourceId !== 'workstation:91') throw new Error('current iframe render evidence missing')
+        if (!frame.contentDocument?.querySelector('#st-score-root svg')) throw new Error('iframe SVG missing')
+        status.dataset.sti17IframeRenderPass = 'true'
+
+        await moveScoreCursor(host, { partId: 'P1', measureIndex: 0 })
+        status.dataset.sti17IframeOutboundPass = 'true'
+
+        const hit = findExactRuntimeHit(host)
+        const target = hit?.detailed?.target
+        if (!target || target.partId !== 'P1' || target.measureIndex !== 0 || target.voice !== 1) {
+          throw new Error('cross-realm exact ScoreNoteRef hit missing')
+        }
+        status.dataset.sti17IframeHitPass = 'true'
+
+        await highlightScoreNote(host, target)
+        if (hit.element.getAttribute('data-st-score-highlight') !== 'true' || !hit.element.classList.contains('seslitab-note-focus')) {
+          throw new Error('cross-realm highlight payload failed')
+        }
+        status.dataset.sti17IframeHighlightPass = 'true'
+        status.textContent = 'PASS'
+      } catch (error) {
+        status.dataset.renderError = String(error?.message ?? error)
+        status.textContent = 'FAIL'
+      }
+    })()
+  </script>
+</body>
+</html>
