@@ -1,10 +1,12 @@
-// STI-08/10 — responsive Sibelius-type SMuFL keypad shell.
+// STI-08/10/16 — responsive Sibelius-type SMuFL keypad shell.
 //
 // Semantics come only from Editor Core actionId descriptors. The SMuFL name is
 // presentation metadata and is resolved through the separately pinned official
 // SMuFL glyphnames.json prepared at build time. Raw codepoints are never stored
 // in Editor Core or treated as edit targets. STI-10 may enable advanced action
 // buttons only when the host explicit-target capture pipeline is ready.
+// STI-16 keeps focus inside the logical keypad workflow across DOM replacement
+// without changing action authority or stealing focus after the user leaves it.
 
 import {
   ADVANCED_EDITOR_KEYPAD_ACTION_IDS,
@@ -20,6 +22,7 @@ export const STAGE_PR_C_BRAVURA_FONT_FAMILY = 'Bravura'
 const ADVANCED_ACTION_SET = new Set(ADVANCED_EDITOR_KEYPAD_ACTION_IDS)
 const EXPECTED_ACTIONS = new Set([...BASIC_EDITOR_KEYPAD_ACTION_IDS, ...ADVANCED_EDITOR_KEYPAD_ACTION_IDS])
 const KEYPAD_PAGES = Object.freeze([1, 2, 3])
+const focusMemoryByRoot = new WeakMap()
 
 const GROUP_PAGE = Object.freeze({
   duration: 1,
@@ -69,6 +72,81 @@ function isPlainObject(value) {
 
 function labelFor(key) {
   return LABELS_TR[key] ?? key
+}
+
+function domToken(value) {
+  return String(value).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()
+}
+
+function belongsToShell(element, shell) {
+  let current = element ?? null
+  while (current) {
+    if (current === shell) return true
+    current = current.parentNode ?? current.parentElement ?? null
+  }
+  return false
+}
+
+function focusDescriptor(element) {
+  if (!element?.dataset) return null
+  if (typeof element.dataset.editorActionId === 'string' && element.dataset.editorActionId) {
+    return Object.freeze({ kind: 'action', value: element.dataset.editorActionId })
+  }
+  if (typeof element.dataset.keypadPage === 'string' && element.dataset.keypadPage) {
+    return Object.freeze({ kind: 'page', value: element.dataset.keypadPage })
+  }
+  if (typeof element.dataset.prdHistoryAction === 'string' && element.dataset.prdHistoryAction) {
+    return Object.freeze({ kind: 'history', value: element.dataset.prdHistoryAction })
+  }
+  return null
+}
+
+function rememberCurrentFocus(root, shell) {
+  const active = root?.activeElement ?? null
+  const remembered = focusMemoryByRoot.get(root) ?? null
+  if (shell && belongsToShell(active, shell)) {
+    const descriptor = focusDescriptor(active)
+    if (descriptor?.kind === 'action' || !remembered) focusMemoryByRoot.set(root, descriptor)
+    return
+  }
+  if (
+    remembered &&
+    active &&
+    active !== root?.body &&
+    active !== root?.documentElement
+  ) {
+    focusMemoryByRoot.delete(root)
+  }
+}
+
+function focusTargetFor(root, descriptor) {
+  if (!descriptor) return null
+  if (descriptor.kind === 'action') {
+    return root.getElementById?.(`stage-prc-keypad-action-${domToken(descriptor.value)}`) ?? null
+  }
+  if (descriptor.kind === 'page') {
+    return root.getElementById?.(`stage-prc-keypad-page-${descriptor.value}`) ?? null
+  }
+  if (descriptor.kind === 'history') {
+    return root.getElementById?.(`stage-prd-history-${domToken(descriptor.value)}`) ?? null
+  }
+  return null
+}
+
+function restoreRememberedFocus(root, shell, pageNow) {
+  const descriptor = focusMemoryByRoot.get(root) ?? null
+  if (!descriptor) return false
+  const target = focusTargetFor(root, descriptor)
+  if (target && target.disabled !== true && typeof target.focus === 'function') {
+    target.focus({ preventScroll: true })
+    focusMemoryByRoot.delete(root)
+    return true
+  }
+
+  const fallback = root.getElementById?.(`stage-prc-keypad-page-${pageNow}`) ?? shell
+  if (fallback && typeof fallback.focus === 'function') fallback.focus({ preventScroll: true })
+  if (descriptor.kind === 'history') focusMemoryByRoot.delete(root)
+  return false
 }
 
 export function smuflCodepointToCharacter(codepoint) {
@@ -215,6 +293,7 @@ export function renderStagePrCKeypadShell(root, {
   const pageNow = normalizedPage(activePage)
   const model = buildStagePrCKeypadModel(manifest, glyphNames, { exactSelectionReady, productSyncPending, advancedActionsReady })
   let shell = root.getElementById('stage-prc-keypad')
+  rememberCurrentFocus(root, shell)
   if (!shell) {
     const scoreColumn = root.getElementById('stage-s05-score-column')
     if (!scoreColumn) return null
@@ -222,7 +301,9 @@ export function renderStagePrCKeypadShell(root, {
     shell.id = 'stage-prc-keypad'
     shell.className = 'stage-prc-keypad'
     shell.setAttribute('aria-label', 'Nota düzenleme tuş takımı')
-    shell.dataset.sti = '08-10'
+    shell.setAttribute('aria-describedby', 'stage-prc-keypad-status')
+    shell.setAttribute('tabindex', '-1')
+    shell.dataset.sti = '08-10-16'
     scoreColumn.appendChild(shell)
   }
   clearChildren(shell)
@@ -234,18 +315,22 @@ export function renderStagePrCKeypadShell(root, {
   const tabs = root.createElement('div')
   tabs.className = 'stage-prc-keypad-pages'
   tabs.setAttribute('role', 'tablist')
+  tabs.setAttribute('aria-label', 'Nota tuş takımı sayfaları')
   for (const page of KEYPAD_PAGES) {
     const tab = root.createElement('button')
+    tab.id = `stage-prc-keypad-page-${page}`
     tab.type = 'button'
     tab.className = 'stage-prc-keypad-page-button'
     tab.dataset.keypadPage = String(page)
     tab.setAttribute('role', 'tab')
     tab.setAttribute('aria-selected', page === pageNow ? 'true' : 'false')
+    tab.setAttribute('aria-controls', `stage-prc-keypad-panel-${page}`)
     tab.setAttribute('aria-label', `Nota tuş takımı sayfa ${page}`)
     tab.textContent = String(page)
     if (page !== pageNow) {
       tab.addEventListener('click', (event) => {
         event.stopPropagation?.()
+        focusMemoryByRoot.set(root, Object.freeze({ kind: 'page', value: String(page) }))
         renderStagePrCKeypadShell(root, {
           manifest,
           glyphNames,
@@ -262,23 +347,38 @@ export function renderStagePrCKeypadShell(root, {
   shell.appendChild(tabs)
 
   const panel = root.createElement('div')
+  panel.id = `stage-prc-keypad-panel-${pageNow}`
   panel.className = 'stage-prc-keypad-panel'
   panel.setAttribute('role', 'tabpanel')
+  panel.setAttribute('aria-labelledby', `stage-prc-keypad-page-${pageNow}`)
   panel.dataset.keypadPagePanel = String(pageNow)
 
   for (const action of model.actions.filter((item) => item.page === pageNow)) {
+    const token = domToken(action.actionId)
     const button = root.createElement('button')
+    button.id = `stage-prc-keypad-action-${token}`
     button.type = 'button'
     button.className = 'stage-prc-keypad-action'
     button.dataset.editorActionId = action.actionId
     button.setAttribute('aria-label', action.accessibleLabel)
+    button.setAttribute('aria-disabled', action.enabled ? 'false' : 'true')
     button.title = action.disabledReason ? `${action.accessibleLabel} — ${action.disabledReason}` : action.accessibleLabel
     button.disabled = !action.enabled
-    if (action.disabledReason) button.dataset.disabledReason = action.disabledReason
+    if (action.disabledReason) {
+      const reasonId = `stage-prc-keypad-reason-${token}`
+      button.dataset.disabledReason = action.disabledReason
+      button.setAttribute('aria-describedby', reasonId)
+      const description = root.createElement('span')
+      description.id = reasonId
+      description.className = 'sr-only'
+      description.textContent = action.disabledReason
+      panel.appendChild(description)
+    }
     appendPresentation(root, button, action)
     if (action.enabled && typeof onAction === 'function') {
       button.addEventListener('click', (event) => {
         event.stopPropagation?.()
+        focusMemoryByRoot.set(root, Object.freeze({ kind: 'action', value: action.actionId }))
         onAction(action.actionId)
       })
     }
@@ -288,9 +388,10 @@ export function renderStagePrCKeypadShell(root, {
 
   const status = root.createElement('p')
   status.id = 'stage-prc-keypad-status'
-  status.className = 'sr-only'
+  status.className = 'stage-prc-keypad-status'
   status.setAttribute('role', 'status')
   status.setAttribute('aria-live', 'polite')
+  status.setAttribute('aria-atomic', 'true')
   status.textContent = productSyncPending
     ? 'Düzenleme işlendi. Skor senkronizasyonu bekleniyor.'
     : exactSelectionReady
@@ -300,12 +401,14 @@ export function renderStagePrCKeypadShell(root, {
 
   const workspace = root.getElementById('stage-s05-score-workspace')
   workspace?.setAttribute('data-sti-prc-keypad-active', 'true')
+  restoreRememberedFocus(root, shell, pageNow)
   return Object.freeze({ shell, model })
 }
 
 export function removeStagePrCKeypadShell(root = document) {
   const shell = root?.getElementById?.('stage-prc-keypad')
   shell?.remove?.()
+  focusMemoryByRoot.delete(root)
   root?.getElementById?.('stage-s05-score-workspace')?.removeAttribute?.('data-sti-prc-keypad-active')
   return Boolean(shell)
 }
