@@ -4,7 +4,7 @@
 // st-score-rendering-layer. It must not import OpenSheetMusicDisplay or treat
 // rendering output as musical authority.
 
-import { isRealmSafePlainObject } from './realmSafePlainObject.js'
+import { createRealmPlainObjectFor, isRealmSafePlainObject } from './realmSafePlainObject.js'
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
@@ -126,7 +126,7 @@ export async function renderScoreView(host, musicxml, options = {}) {
 
   renderEvidenceByHost.delete(host)
   try {
-    const result = await host.renderMusicXml({
+    const payload = createRealmPlainObjectFor(host, {
       contractVersion: ST_SCORE_RENDERER_CONTRACT_VERSION,
       musicxml: source,
       pageMode: options.pageMode === 'page' ? 'page' : 'continuous',
@@ -135,6 +135,7 @@ export async function renderScoreView(host, musicxml, options = {}) {
       drawComposer: options.drawComposer !== false,
       ticket,
     })
+    const result = await host.renderMusicXml(payload)
     const current = freezeCurrentEvidence(result)
     if (!current) {
       throw new TypeError('ST score renderer başarılı render için current renderEpoch/source evidence üretmedi.')
@@ -151,7 +152,8 @@ export async function moveScoreCursor(host, target) {
   if (!host || typeof host.moveCursor !== 'function') {
     throw new TypeError('ST score renderer cursor runtime bağlı değil.')
   }
-  return host.moveCursor(validateScoreCursorTarget(target))
+  const validated = validateScoreCursorTarget(target)
+  return host.moveCursor(createRealmPlainObjectFor(host, validated))
 }
 
 export function hitTestScoreNoteDetailed(host, point, expectedEvidence = getCurrentScoreRenderEvidence(host)) {
@@ -168,7 +170,7 @@ export function hitTestScoreNoteDetailed(host, point, expectedEvidence = getCurr
 
   let raw
   try {
-    raw = host.hitTestNoteDetailed(normalizedPoint)
+    raw = host.hitTestNoteDetailed(createRealmPlainObjectFor(host, normalizedPoint))
   } catch {
     return Object.freeze({ kind: 'INVALID', diagnosticCode: SCORE_RENDER_DIAGNOSTIC.INVALID_EVIDENCE })
   }
@@ -231,7 +233,9 @@ export async function highlightScoreNote(host, target) {
   }
   const validated = validateRendererScoreNoteRef(target)
   if (!validated) throw new TypeError('ST score renderer note hedefi geçersiz.')
-  return host.highlight({ target: validated, className: 'seslitab-note-focus' })
+  const hostTarget = createRealmPlainObjectFor(host, validated)
+  const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'seslitab-note-focus' })
+  return host.highlight(payload)
 }
 
 export async function clearScoreHighlights(host) {
