@@ -4,6 +4,7 @@
 // st-score-rendering-layer. It must not import OpenSheetMusicDisplay or treat
 // rendering output as musical authority.
 
+import { createRealmPlainObjectFor, isRealmSafePlainObject } from './realmSafePlainObject.js'
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
@@ -35,18 +36,12 @@ function utf8Length(value) {
   return new TextEncoder().encode(value).byteLength
 }
 
-function isPlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
-
 function validOpaqueEvidenceText(value, max = 256) {
   return typeof value === 'string' && value.length > 0 && value.length <= max && value === value.trim() && !value.includes('\0')
 }
 
 function freezeCurrentEvidence(value) {
-  if (!isPlainObject(value) || !validOpaqueEvidenceText(value.renderEpoch, 128)) return null
+  if (!isRealmSafePlainObject(value) || !validOpaqueEvidenceText(value.renderEpoch, 128)) return null
   const sourceId = value.sourceId
   if (sourceId !== undefined && !validOpaqueEvidenceText(sourceId, 256)) return null
   return sourceId === undefined
@@ -64,7 +59,7 @@ function sameRenderEvidence(expected, observed) {
 }
 
 function requirePoint(point) {
-  if (!isPlainObject(point) || !Number.isFinite(point.clientX) || !Number.isFinite(point.clientY)) return null
+  if (!isRealmSafePlainObject(point) || !Number.isFinite(point.clientX) || !Number.isFinite(point.clientY)) return null
   return Object.freeze({ clientX: point.clientX, clientY: point.clientY })
 }
 
@@ -131,7 +126,7 @@ export async function renderScoreView(host, musicxml, options = {}) {
 
   renderEvidenceByHost.delete(host)
   try {
-    const result = await host.renderMusicXml({
+    const payload = createRealmPlainObjectFor(host, {
       contractVersion: ST_SCORE_RENDERER_CONTRACT_VERSION,
       musicxml: source,
       pageMode: options.pageMode === 'page' ? 'page' : 'continuous',
@@ -140,6 +135,7 @@ export async function renderScoreView(host, musicxml, options = {}) {
       drawComposer: options.drawComposer !== false,
       ticket,
     })
+    const result = await host.renderMusicXml(payload)
     const current = freezeCurrentEvidence(result)
     if (!current) {
       throw new TypeError('ST score renderer başarılı render için current renderEpoch/source evidence üretmedi.')
@@ -156,7 +152,8 @@ export async function moveScoreCursor(host, target) {
   if (!host || typeof host.moveCursor !== 'function') {
     throw new TypeError('ST score renderer cursor runtime bağlı değil.')
   }
-  return host.moveCursor(validateScoreCursorTarget(target))
+  const validated = validateScoreCursorTarget(target)
+  return host.moveCursor(createRealmPlainObjectFor(host, validated))
 }
 
 export function hitTestScoreNoteDetailed(host, point, expectedEvidence = getCurrentScoreRenderEvidence(host)) {
@@ -173,11 +170,11 @@ export function hitTestScoreNoteDetailed(host, point, expectedEvidence = getCurr
 
   let raw
   try {
-    raw = host.hitTestNoteDetailed(normalizedPoint)
+    raw = host.hitTestNoteDetailed(createRealmPlainObjectFor(host, normalizedPoint))
   } catch {
     return Object.freeze({ kind: 'INVALID', diagnosticCode: SCORE_RENDER_DIAGNOSTIC.INVALID_EVIDENCE })
   }
-  if (!isPlainObject(raw) || !['HIT', 'MISS'].includes(raw.kind)) {
+  if (!isRealmSafePlainObject(raw) || !['HIT', 'MISS'].includes(raw.kind)) {
     return Object.freeze({ kind: 'INVALID', diagnosticCode: SCORE_RENDER_DIAGNOSTIC.INVALID_EVIDENCE })
   }
 
@@ -236,7 +233,9 @@ export async function highlightScoreNote(host, target) {
   }
   const validated = validateRendererScoreNoteRef(target)
   if (!validated) throw new TypeError('ST score renderer note hedefi geçersiz.')
-  return host.highlight({ target: validated, className: 'seslitab-note-focus' })
+  const hostTarget = createRealmPlainObjectFor(host, validated)
+  const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'seslitab-note-focus' })
+  return host.highlight(payload)
 }
 
 export async function clearScoreHighlights(host) {

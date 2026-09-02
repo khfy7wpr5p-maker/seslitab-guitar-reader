@@ -40,6 +40,9 @@ jobs:
       - name: Verify score runtime in real browser
         run: node scripts/verifyScoreRuntimeBrowser.js
 
+      - name: Verify STI-17 cross-realm iframe renderer in real browser
+        run: node scripts/verifySti17CrossRealmBrowser.js
+
       - name: Verify PR-C keypad in real browser
         run: node scripts/verifyPrCKeypadBrowser.js
 

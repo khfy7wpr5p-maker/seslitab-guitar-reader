@@ -2,11 +2,7 @@
 // identity. Rendering remains presentation-only; this module never derives
 // musical truth from SVG, pitch, proximity, or visible labels.
 
-function isPlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const proto = Object.getPrototypeOf(value)
-  return proto === Object.prototype || proto === null
-}
+import { isRealmSafePlainObject } from './realmSafePlainObject.js'
 
 function normalizePartId(value) {
   if (typeof value !== 'string') return null
@@ -28,7 +24,7 @@ function normalizeStartBeat(value) {
 }
 
 export function validateRendererScoreNoteRef(value) {
-  if (!isPlainObject(value)) return null
+  if (!isRealmSafePlainObject(value)) return null
   const keys = Object.keys(value)
   if (keys.some((key) => !['partId', 'measureIndex', 'noteIndex', 'voice'].includes(key))) return null
 
@@ -50,7 +46,7 @@ function collectMeasureRecords(notes, partId, measureIndex) {
 
   for (let globalIndex = 0; globalIndex < notes.length; globalIndex++) {
     const note = notes[globalIndex]
-    if (!isPlainObject(note)) return null
+    if (!isRealmSafePlainObject(note)) return null
     if (note.partId !== partId || note.measureIndex !== measureIndex) continue
 
     const voice = normalizeNonNegativeInteger(note.voice)
@@ -121,7 +117,7 @@ export function deriveScoreNoteRefForCanonicalNote(notes, globalNoteIndex) {
   }
 
   const note = notes[globalNoteIndex]
-  if (!isPlainObject(note) || note.isRest === true) return null
+  if (!isRealmSafePlainObject(note) || note.isRest === true) return null
   const partId = normalizePartId(note.partId)
   const measureIndex = normalizeNonNegativeInteger(note.measureIndex)
   const voice = normalizeNonNegativeInteger(note.voice)
