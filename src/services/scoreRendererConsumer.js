@@ -4,6 +4,7 @@
 // st-score-rendering-layer. It must not import OpenSheetMusicDisplay or treat
 // rendering output as musical authority.
 
+import { isRealmSafePlainObject } from './realmSafePlainObject.js'
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
@@ -35,18 +36,12 @@ function utf8Length(value) {
   return new TextEncoder().encode(value).byteLength
 }
 
-function isPlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
-
 function validOpaqueEvidenceText(value, max = 256) {
   return typeof value === 'string' && value.length > 0 && value.length <= max && value === value.trim() && !value.includes('\0')
 }
 
 function freezeCurrentEvidence(value) {
-  if (!isPlainObject(value) || !validOpaqueEvidenceText(value.renderEpoch, 128)) return null
+  if (!isRealmSafePlainObject(value) || !validOpaqueEvidenceText(value.renderEpoch, 128)) return null
   const sourceId = value.sourceId
   if (sourceId !== undefined && !validOpaqueEvidenceText(sourceId, 256)) return null
   return sourceId === undefined
@@ -64,7 +59,7 @@ function sameRenderEvidence(expected, observed) {
 }
 
 function requirePoint(point) {
-  if (!isPlainObject(point) || !Number.isFinite(point.clientX) || !Number.isFinite(point.clientY)) return null
+  if (!isRealmSafePlainObject(point) || !Number.isFinite(point.clientX) || !Number.isFinite(point.clientY)) return null
   return Object.freeze({ clientX: point.clientX, clientY: point.clientY })
 }
 
@@ -177,7 +172,7 @@ export function hitTestScoreNoteDetailed(host, point, expectedEvidence = getCurr
   } catch {
     return Object.freeze({ kind: 'INVALID', diagnosticCode: SCORE_RENDER_DIAGNOSTIC.INVALID_EVIDENCE })
   }
-  if (!isPlainObject(raw) || !['HIT', 'MISS'].includes(raw.kind)) {
+  if (!isRealmSafePlainObject(raw) || !['HIT', 'MISS'].includes(raw.kind)) {
     return Object.freeze({ kind: 'INVALID', diagnosticCode: SCORE_RENDER_DIAGNOSTIC.INVALID_EVIDENCE })
   }
 
