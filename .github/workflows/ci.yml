@@ -43,6 +43,9 @@ jobs:
       - name: Verify STI-17 cross-realm iframe renderer in real browser
         run: node scripts/verifySti17CrossRealmBrowser.js
 
+      - name: Verify STI-17 mobile editor cleanup in real browser
+        run: node scripts/verifySti17MobileEditorCleanupBrowser.js
+
       - name: Verify PR-C keypad in real browser
         run: node scripts/verifyPrCKeypadBrowser.js
 
