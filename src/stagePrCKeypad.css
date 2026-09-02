@@ -59,6 +59,15 @@
   cursor: not-allowed;
 }
 
+/* A serialized edit must remain non-interactive until commit/revalidation/rebind
+   finishes, but that brief safety lock should not look like the whole editor
+   failed. Keep unavailable/no-selection controls muted while busy controls stay
+   visually stable enough on iPhone Safari. */
+.stage-prc-keypad[data-product-sync-pending='true'] .stage-prc-keypad-action:disabled,
+.stage-prc-keypad[data-product-sync-pending='true'] .stage-prd-history-button:disabled {
+  opacity: 0.82;
+}
+
 .stage-prc-keypad-page-button:focus-visible,
 .stage-prc-keypad-action:focus-visible,
 .stage-prd-history-button:focus-visible,

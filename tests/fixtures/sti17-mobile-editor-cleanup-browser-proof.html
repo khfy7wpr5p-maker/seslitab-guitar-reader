@@ -23,9 +23,18 @@
     </aside>
   </div>
 
+  <section id="stage-prc-keypad" class="stage-prc-keypad" data-product-sync-pending="true" aria-label="Nota düzenleme tuş takımı">
+    <div class="stage-prc-keypad-panel">
+      <button id="busy-action" class="stage-prc-keypad-action" type="button" disabled aria-disabled="true">♩</button>
+    </div>
+    <div class="stage-prd-history-actions">
+      <button id="busy-history" class="stage-prd-history-button" type="button" disabled>Geri al</button>
+    </div>
+  </section>
+
   <p id="stage-prc-keypad-status" class="stage-prc-keypad-status" role="status" aria-live="polite" aria-atomic="true">Exact nota seçildi. Nota düzenleme tuşları hazır.</p>
   <div id="aria-live-region" class="sr-only" aria-live="polite"></div>
-  <div id="status" data-legacy-sheet-closed="false" data-legacy-sheet-hidden="false" data-keypad-status-voiceover-only="false">PENDING</div>
+  <div id="status" data-legacy-sheet-closed="false" data-legacy-sheet-hidden="false" data-keypad-status-voiceover-only="false" data-busy-visual-stable="false">PENDING</div>
 
   <script type="module">
     import { syncStageS12MobileScoreTools } from '../../src/stageS12MobileScoreToolsUi.js'
@@ -47,6 +56,15 @@
         throw new Error('keypad status is not VoiceOver-only')
       }
       status.dataset.keypadStatusVoiceoverOnly = 'true'
+
+      const busyAction = document.getElementById('busy-action')
+      const busyHistory = document.getElementById('busy-history')
+      const actionOpacity = Number.parseFloat(getComputedStyle(busyAction).opacity)
+      const historyOpacity = Number.parseFloat(getComputedStyle(busyHistory).opacity)
+      if (!busyAction.disabled || !busyHistory.disabled) throw new Error('busy safety lock was weakened')
+      if (actionOpacity < 0.8 || historyOpacity < 0.8) throw new Error(`busy keypad still fades too strongly (${actionOpacity}/${historyOpacity})`)
+      status.dataset.busyVisualStable = 'true'
+
       status.textContent = 'PASS'
     } catch (error) {
       status.dataset.error = String(error?.message ?? error)

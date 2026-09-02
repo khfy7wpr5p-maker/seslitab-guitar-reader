@@ -45,6 +45,7 @@ const required = [
   'data-legacy-sheet-closed="true"',
   'data-legacy-sheet-hidden="true"',
   'data-keypad-status-voiceover-only="true"',
+  'data-busy-visual-stable="true"',
   '>PASS</div>',
 ]
 for (const marker of required) {

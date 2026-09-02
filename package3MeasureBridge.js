@@ -180,6 +180,13 @@ export function selectPackage3MeasureKey(measureKey) {
   const key = typeof measureKey === 'string' ? measureKey.trim() : ''
   if (!key || !currentSelectionNotes) return false
   if (!currentSelectionNotes.some((note) => note?.measureKey === key)) return false
+
+  // Rebinding a verified revision commonly leaves the same measure selected
+  // while the note identity has already been cleared. Publishing that identical
+  // measure-only snapshot again multiplies keypad/observer redraw work without
+  // changing any selection semantics, which is especially visible on iPhone.
+  if (selectedMeasureKey === key && selectedNoteIndex === null && selectedNoteIdentity === null) return true
+
   selectedMeasureKey = key
   clearNoteSelectionState()
   notify()
