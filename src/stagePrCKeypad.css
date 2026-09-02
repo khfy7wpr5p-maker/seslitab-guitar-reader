@@ -106,12 +106,18 @@
   transform: scaleY(2.5);
 }
 
+/* Keep edit-state announcements available to VoiceOver without spending scarce
+   phone screen space on explanatory prose. */
 .stage-prc-keypad-status {
-  margin: 0;
-  min-height: 1.25rem;
-  font-size: 0.8rem;
-  line-height: 1.3;
-  color: var(--neutral-700, #334155);
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 /* The old A / sharp / 8 / quarter-note S12 palette is retired only while the
