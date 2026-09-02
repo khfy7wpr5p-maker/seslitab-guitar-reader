@@ -126,7 +126,7 @@ function proveAccessibleUi() {
   const action = document.getElementById('stage-prc-keypad-action-duration-quarter')
   const rect = action.getBoundingClientRect()
   if (rect.width < 44 || rect.height < 44) throw new Error(`touch target below 44px: ${rect.width}x${rect.height}`)
-  status.dataset.prf44pxPass = 'true'
+  status.setAttribute('data-prf-44px-pass', 'true')
 
   action.focus({ preventScroll: true })
   renderStagePrCKeypadShell(document, {
