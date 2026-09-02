@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>SesliTab PR-F accessibility browser proof</title>
+  <link rel="stylesheet" href="../../src/stagePrCKeypad.css">
+  <style>
+    html, body { margin: 0; padding: 0; max-width: 100%; }
+    body { min-height: 100vh; font-family: system-ui, sans-serif; }
+    #stage-s05-score-column { min-height: 100vh; padding: 8px; }
+    #status { position: fixed; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; }
+    .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+  </style>
+</head>
+<body>
+<div id="stage-s05-score-workspace"></div>
+<div id="stage-s05-score-column"></div>
+<div id="status"
+  data-prf-44px-pass="false"
+  data-prf-focus-pass="false"
+  data-prf-disabled-reason-pass="false"
+  data-prf-viewport-pass="false"
+  data-prf-stress-loop-pass="false"
+  data-prf-exact-selection-loop-pass="false">PENDING</div>
+<script src="../../public/st-score-editor-core-runtime/st-score-editor-core.runtime.js"></script>
+<script type="module">
+import { renderStagePrCKeypadShell } from '../../src/stagePrCKeypadUi.js'
+import { parseMusicXmlToNotes } from '../../src/services/musicEngine.js'
+import { buildStageS06SelectionIdentity } from '../../src/services/stageS06SelectionIdentity.js'
+import {
+  createTeacherWorkspace,
+  getTeacherWorkspaceCurrentRevision,
+  refreshTeacherWorkspace,
+  withTeacherWorkspaceAuthoritativeHistory,
+} from '../../src/services/teacherWorkspaceModel.js'
+import {
+  commitPrDProductRevision,
+  revalidatePrDEditorMusicXml,
+  restorePrDProductRevision,
+} from '../../src/services/editorPrDProductPipeline.js'
+import { registerPrDProductMusicXml } from '../../src/services/editorPrDRevisionMusicXmlRegistry.js'
+import { createPrDEditorSessionContext, commitPrDEditorAction } from '../../src/services/editorPrDSession.js'
+import { materializePrDEditorSessionMusicXml } from '../../src/services/editorPrDNotationBridge.js'
+
+const status = document.getElementById('status')
+const groups = [
+  ['duration', 'duration', [
+    ['duration.whole', 'noteWhole'], ['duration.half', 'noteHalfUp'], ['duration.quarter', 'noteQuarterUp'],
+    ['duration.eighth', 'note8thUp'], ['duration.16th', 'note16thUp'], ['duration.32nd', 'note32ndUp'],
+  ]],
+  ['rests', 'rests', [
+    ['rest.whole', 'restWhole'], ['rest.half', 'restHalf'], ['rest.quarter', 'restQuarter'],
+    ['rest.eighth', 'rest8th'], ['rest.16th', 'rest16th'], ['rest.32nd', 'rest32nd'],
+  ]],
+  ['accidentals', 'accidentals', [
+    ['accidental.flat', 'accidentalFlat'], ['accidental.natural', 'accidentalNatural'], ['accidental.sharp', 'accidentalSharp'],
+  ]],
+  ['dots', 'dots', [
+    ['dot.set.0', null], ['dot.set.1', 'augmentationDot'], ['dot.set.2', 'augmentationDot'], ['dot.set.3', 'augmentationDot'],
+  ]],
+  ['tuplets', 'tuplets', [['tuplet.triplet', 'tuplet3']]],
+  ['connections', 'connections', [['tie.edit', null], ['slur.edit', null]]],
+]
+
+function manifest() {
+  return Object.freeze({
+    version: '1.0.0',
+    mode: 'EXISTING_SCORE_CORRECTION',
+    semanticAuthority: 'ACTION_ID_ONLY',
+    glyphMetadataAuthority: false,
+    rawGlyphCodepointsIncluded: false,
+    fontAssetsIncluded: false,
+    groups: Object.freeze(groups.map(([id, label, actions]) => Object.freeze({
+      id,
+      accessibleLabelKey: `keypad.group.${label}`,
+      actions: Object.freeze(actions.map(([actionId, glyphName]) => Object.freeze({
+        actionId,
+        accessibleLabelKey: `keypad.${actionId}`,
+        glyph: glyphName ? Object.freeze({
+          smuflGlyphName: glyphName,
+          repeat: actionId === 'dot.set.2' ? 2 : actionId === 'dot.set.3' ? 3 : 1,
+        }) : null,
+        hostPrimitiveHint: actionId === 'tie.edit' ? 'tie' : actionId === 'slur.edit' ? 'slur' : null,
+      }))),
+    }))),
+  })
+}
+
+function glyphNames() {
+  const names = new Set(groups.flatMap(([, , actions]) => actions.map(([, glyph]) => glyph).filter(Boolean)))
+  let code = 0xe100
+  return Object.fromEntries([...names].map((name) => [name, { codepoint: `U+${(code++).toString(16).toUpperCase()}` }]))
+}
+
+const tieXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><tie type="start"/><voice>1</voice><type>quarter</type><staff>1</staff><notations><tied type="start" number="1"/></notations></note>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><tie type="stop"/><voice>1</voice><type>quarter</type><staff>1</staff><notations><tied type="stop" number="1"/></notations></note>
+    <note><rest/><duration>4</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+  </measure></part>
+</score-partwise>`
+
+function viewportKind() {
+  if (innerWidth <= 360) return 'narrow'
+  if (innerWidth <= 760 && innerWidth > innerHeight) return 'landscape'
+  return 'desktop'
+}
+
+function renderReady(onAction = null) {
+  return renderStagePrCKeypadShell(document, {
+    manifest: manifest(),
+    glyphNames: glyphNames(),
+    exactSelectionReady: true,
+    advancedActionsReady: true,
+    activePage: 1,
+    onAction,
+  })
+}
+
+function proveAccessibleUi() {
+  renderReady(() => {})
+  const action = document.getElementById('stage-prc-keypad-action-duration-quarter')
+  const rect = action.getBoundingClientRect()
+  if (rect.width < 44 || rect.height < 44) throw new Error(`touch target below 44px: ${rect.width}x${rect.height}`)
+  status.setAttribute('data-prf-44px-pass', 'true')
+
+  action.focus({ preventScroll: true })
+  renderStagePrCKeypadShell(document, {
+    manifest: manifest(), glyphNames: glyphNames(), exactSelectionReady: true,
+    advancedActionsReady: true, productSyncPending: true, activePage: 1,
+  })
+  if (document.activeElement?.dataset?.keypadPage !== '1') throw new Error('busy rerender did not retain focus in keypad workflow')
+  renderReady(() => {})
+  if (document.activeElement?.dataset?.editorActionId !== 'duration.quarter') throw new Error('ready rerender did not restore logical action focus')
+  document.getElementById('stage-prc-keypad-page-2').click()
+  if (document.activeElement?.dataset?.keypadPage !== '2') throw new Error('page replacement did not retain page focus')
+  status.dataset.prfFocusPass = 'true'
+
+  renderStagePrCKeypadShell(document, {
+    manifest: manifest(), glyphNames: glyphNames(), exactSelectionReady: false, activePage: 1,
+  })
+  const disabled = document.getElementById('stage-prc-keypad-action-duration-quarter')
+  const descriptionId = disabled.getAttribute('aria-describedby')
+  const description = descriptionId ? document.getElementById(descriptionId) : null
+  const live = document.getElementById('stage-prc-keypad-status')
+  if (disabled.getAttribute('aria-disabled') !== 'true' || !description?.textContent.includes('Exact nota seçimi')) {
+    throw new Error('disabled action reason is not programmatically exposed')
+  }
+  if (!live || live.classList.contains('sr-only') || live.offsetHeight <= 0) throw new Error('concise disabled-state status is not visibly available')
+  status.dataset.prfDisabledReasonPass = 'true'
+
+  renderReady(() => {})
+  const shell = document.getElementById('stage-prc-keypad')
+  const shellRect = shell.getBoundingClientRect()
+  if (document.documentElement.scrollWidth > innerWidth + 1) throw new Error(`horizontal overflow ${document.documentElement.scrollWidth}/${innerWidth}`)
+  if (innerWidth <= 760 && (shellRect.left < -1 || shellRect.right > innerWidth + 1 || shellRect.bottom > innerHeight + 1)) {
+    throw new Error('mobile keypad escaped the viewport')
+  }
+  status.dataset.prfViewport = viewportKind()
+  status.dataset.prfViewportPass = 'true'
+}
+
+function makeWorkspace() {
+  const parsed = parseMusicXmlToNotes(tieXml)
+  if (parsed.error || parsed.notes.length !== 3) throw new Error(`stress fixture parse failed: ${parsed.error ?? parsed.notes.length}`)
+  return createTeacherWorkspace({
+    content: parsed.notes,
+    actorId: 'prf-browser-actor',
+    sourceId: 'prf-browser-source',
+    automaticRevisionId: 'prf-browser-root',
+    historyId: 'prf-browser-history',
+    createdAt: '2026-09-02T02:00:00.000Z',
+  })
+}
+
+function snapshotFor(revision, noteIndex = 0) {
+  const note = revision.content[noteIndex]
+  const revisionIdentity = Object.freeze({
+    sourceId: revision.sourceId,
+    sourceRevisionId: revision.sourceRevisionId,
+    revisionId: revision.revisionId,
+    contentFingerprint: revision.contentFingerprint,
+  })
+  const rendererTarget = Object.freeze({
+    partId: note.partId,
+    measureIndex: note.measureIndex,
+    noteIndex,
+    voice: note.voice,
+  })
+  const selectedNoteIdentity = buildStageS06SelectionIdentity({
+    notes: revision.content,
+    measureKey: note.measureKey,
+    noteIndex,
+    revisionIdentity,
+    rendererTarget,
+    interaction: 'score-editor-current-hit',
+  })
+  if (!selectedNoteIdentity) throw new Error('stress exact selection identity unavailable')
+  return Object.freeze({
+    notes: revision.content,
+    selectionNotes: revision.content,
+    selectedMeasureKey: note.measureKey,
+    selectedNoteIndex: noteIndex,
+    revisionIdentity,
+    selectedNoteIdentity,
+  })
+}
+
+function currentWorkspace(workspace, result) {
+  return refreshTeacherWorkspace(withTeacherWorkspaceAuthoritativeHistory({ workspace, history: result.history }))
+}
+
+async function stressExactSelectionEditRerenderUndo() {
+  if (!globalThis.STScoreEditorCoreRuntime?.createNotationDocument) throw new Error('pinned Editor runtime unavailable')
+  let workspace = makeWorkspace()
+  let musicXml = tieXml
+  const rootRevision = getTeacherWorkspaceCurrentRevision(workspace)
+  registerPrDProductMusicXml(rootRevision, tieXml, { evidence: 'prf-browser-root-revalidated' })
+  let browserActionCount = 0
+
+  for (let index = 0; index < 8; index++) {
+    const before = getTeacherWorkspaceCurrentRevision(workspace)
+    const snapshot = snapshotFor(before, 0)
+    const buttonRender = renderReady((actionId) => {
+      if (actionId !== 'duration.eighth') throw new Error(`unexpected browser action ${actionId}`)
+      browserActionCount++
+    })
+    if (!buttonRender) throw new Error('keypad did not render during stress loop')
+    const action = document.getElementById('stage-prc-keypad-action-duration-eighth')
+    action.focus({ preventScroll: true })
+    action.click()
+
+    const context = await createPrDEditorSessionContext({
+      package3Snapshot: snapshot,
+      teacherRevision: before,
+      musicXml,
+      editorRuntime: globalThis.STScoreEditorCoreRuntime,
+      cryptoScope: globalThis.crypto,
+      DOMParserCtor: globalThis.DOMParser,
+    })
+    const nextRevisionId = `prf-edit-${index}`
+    const committed = commitPrDEditorAction(context, 'duration.eighth', {
+      identity: Object.freeze({
+        version: '1.0.0',
+        transactionId: `prf-tx-${index}`,
+        nextRevisionId,
+      }),
+    })
+    const editedXml = materializePrDEditorSessionMusicXml({
+      session: committed.session,
+      teacherRevision: before,
+      musicXml,
+      mapping: committed.mapping,
+      DOMParserCtor: DOMParser,
+      XMLSerializerCtor: XMLSerializer,
+    })
+    const revalidated = revalidatePrDEditorMusicXml({
+      musicXml: editedXml,
+      currentRevision: before,
+      changedIndexes: committed.changedIndexes,
+      DOMParserCtor: DOMParser,
+    })
+    const product = commitPrDProductRevision({
+      workspace,
+      revalidated,
+      revisionId: nextRevisionId,
+      eventId: `editor-keypad-edit-prf-${index}`,
+      operationIdPrefix: `prf-operation-${index}`,
+      createdAt: `2026-09-02T02:${String(index).padStart(2, '0')}:00.000Z`,
+    })
+    if (!product.ok || product.revision.revisionId !== nextRevisionId) throw new Error(`stress edit ${index} did not create exact immutable revision`)
+    workspace = currentWorkspace(workspace, product.result)
+
+    renderStagePrCKeypadShell(document, {
+      manifest: manifest(), glyphNames: glyphNames(), exactSelectionReady: true,
+      advancedActionsReady: true, productSyncPending: true, activePage: 1,
+    })
+    renderReady(() => {})
+    if (document.activeElement?.dataset?.editorActionId !== 'duration.eighth') throw new Error(`stress rerender ${index} lost logical keypad focus`)
+
+    const undo = restorePrDProductRevision({
+      workspace,
+      targetRevisionId: before.revisionId,
+      revisionId: `prf-undo-${index}`,
+      eventId: `editor-keypad-undo-prf-${index}`,
+      createdAt: `2026-09-02T02:${String(index).padStart(2, '0')}:30.000Z`,
+      DOMParserCtor: DOMParser,
+    })
+    if (!undo.ok || undo.revision.contentFingerprint !== before.contentFingerprint) throw new Error(`stress undo ${index} did not restore exact prior content`)
+    workspace = currentWorkspace(workspace, undo.result)
+    musicXml = undo.musicXml
+    renderReady(() => {})
+  }
+
+  if (browserActionCount !== 8) throw new Error(`browser action loop count mismatch ${browserActionCount}`)
+  status.dataset.prfExactSelectionLoopPass = 'true'
+  status.dataset.prfStressLoopPass = 'true'
+}
+
+;(async () => {
+  try {
+    proveAccessibleUi()
+    await stressExactSelectionEditRerenderUndo()
+    status.textContent = 'PASS'
+  } catch (error) {
+    status.dataset.prfError = String(error?.message ?? error)
+    status.textContent = 'FAIL'
+  }
+})()
+</script>
+</body>
+</html>
