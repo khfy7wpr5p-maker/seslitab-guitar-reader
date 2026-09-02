@@ -16,33 +16,42 @@ test('STI-07 diagnostics distinguish event delivery, renderer miss, canonical mi
   assert.equal(diagnostics.canonicalMissCount, 0)
   assert.equal(diagnostics.uiStateFailureCount, 0)
   assert.equal(diagnostics.selectedCount, 0)
+  assert.equal(diagnostics.boundToCurrentIframe, false)
 })
 
-test('STI-07 preserves Safari pointer/touch/click retry while blocking legacy duplicate authority', () => {
+test('STI-17 makes PR-B window-capture the single Safari selection authority and retries iframe readiness', () => {
   const source = readFileSync(new URL('../src/stagePrBEditorSelectionUi.js', import.meta.url), 'utf8')
   assert.match(source, /pointerup/)
   assert.match(source, /touchend/)
-  assert.match(source, /addEventListener\('click'/)
+  assert.match(source, /win\.addEventListener\('click'/)
   assert.match(source, /capture:\s*true/)
   assert.match(source, /stopImmediatePropagation/)
   assert.match(source, /lastSuccess/)
   assert.match(source, /queuedRetry/)
   assert.match(source, /if \(success\) state\.lastSuccess/)
   assert.match(source, /frame\.addEventListener\?\.\('load'/)
-  assert.match(source, /state\.boundFrame === frame && state\.boundDocument === doc/)
+  assert.match(source, /scheduleBindRetry/)
+  assert.match(source, /BIND_RETRY_LIMIT/)
   assert.match(source, /button,input,select,textarea,a/)
   assert.doesNotMatch(source, /nearest-note|pitch-label|elementFromPoint|svgId|domId/i)
 })
 
-test('STI-07 orders Editor selection before Package 3 projection and does not commit keypad edits', () => {
+test('STI-17 projects Editor selection atomically and does not expose legacy two-step selection', () => {
   const source = readFileSync(new URL('../src/stagePrBEditorSelectionUi.js', import.meta.url), 'utf8')
   const editorSelection = source.indexOf('selectDetailedRendererHitWithEditor({')
-  const measureProjection = source.indexOf('selectPackage3MeasureKey(result.resolved.measureKey)')
-  const noteProjection = source.indexOf('selectPackage3NoteIndex(result.resolved.noteIndex')
+  const exactProjection = source.indexOf('selectPackage3ExactNote(result.resolved.noteIndex')
   assert.ok(editorSelection >= 0)
-  assert.ok(measureProjection > editorSelection)
-  assert.ok(noteProjection > editorSelection)
+  assert.ok(exactProjection > editorSelection)
+  assert.doesNotMatch(source, /selectPackage3MeasureKey\(/)
+  assert.doesNotMatch(source, /selectPackage3NoteIndex\(/)
   assert.doesNotMatch(source, /commitKeypadAction|commitSession|applyTeacherUiCorrection/)
+})
+
+test('STI-17 exact selection context prefers current PR-D product MusicXML and fails closed for edited revision without it', () => {
+  const source = readFileSync(new URL('../src/stagePrBEditorSelectionUi.js', import.meta.url), 'utf8')
+  assert.match(source, /resolvePrDProductMusicXml\(revision\)/)
+  assert.match(source, /revision\.revisionId !== rootRevision\.revisionId/)
+  assert.match(source, /return null/)
 })
 
 test('main initializes the PR-B capture gate before legacy S12 mobile delivery', () => {
