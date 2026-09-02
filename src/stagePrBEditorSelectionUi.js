@@ -1,18 +1,18 @@
-// STI-07 — current-render exact Editor selection gate for desktop/mobile score taps.
+// STI-07 / STI-17 — current-render exact Editor selection gate for desktop/mobile score taps.
 //
 // This gate is initialized before the legacy S12 mobile delivery layer. It owns
-// the capture-phase score-selection decision and calls stopImmediatePropagation
-// so the older bubble/capture selection handlers cannot become a second
-// canonical authority. Failed pointer/touch attempts are not deduped, allowing
-// Safari's later synthetic click to retry the same exact chain.
+// the iframe WINDOW capture-phase score-selection decision and calls
+// stopImmediatePropagation so older document-level S12/ScoreView handlers cannot
+// become a second canonical authority. Failed pointer/touch attempts are not
+// deduped, allowing Safari's later synthetic click to retry the same exact chain.
 
 import {
   getPackage3MeasureSnapshot,
-  selectPackage3MeasureKey,
-  selectPackage3NoteIndex,
+  selectPackage3ExactNote,
 } from '../package3MeasureBridge.js'
 import { getTeacherUiWorkspace } from './package8TeacherUi.js'
 import { getTeacherWorkspaceCurrentRevision } from './services/teacherWorkspaceModel.js'
+import { resolvePrDProductMusicXml } from './services/editorPrDRevisionMusicXmlRegistry.js'
 import {
   hitTestScoreNoteDetailed,
   resolveStScoreRuntime,
@@ -39,6 +39,8 @@ const DEDUPE_MS = 450
 const DEDUPE_PX = 3
 const CAPTURE_OPTIONS = Object.freeze({ capture: true, passive: true })
 const EDITOR_RUNTIME_SRC = '/st-score-editor-core-runtime/st-score-editor-core.runtime.js'
+const BIND_RETRY_MS = 50
+const BIND_RETRY_LIMIT = 200
 
 function stateFor(root) {
   let state = states.get(root)
@@ -47,10 +49,13 @@ function stateFor(root) {
       observer: null,
       boundFrame: null,
       boundDocument: null,
+      boundWindow: null,
       pointerHandler: null,
       touchHandler: null,
       clickHandler: null,
       loadHandler: null,
+      bindRetryTimer: null,
+      bindRetryAttempts: 0,
       lastSuccess: null,
       inFlight: false,
       queuedRetry: null,
@@ -111,6 +116,10 @@ function frameDocument(frame) {
   try { return frame?.contentDocument ?? null } catch { return null }
 }
 
+function frameWindow(frame) {
+  try { return frame?.contentWindow ?? null } catch { return null }
+}
+
 function frameRuntime(frame) {
   try { return resolveStScoreRuntime(frame?.contentWindow) } catch { return null }
 }
@@ -121,11 +130,26 @@ function currentRevision(root) {
   try { return getTeacherWorkspaceCurrentRevision(workspace) } catch { return null }
 }
 
-function currentMusicXml(root) {
+function sourceMusicXml(root) {
   const output = root?.getElementById?.('xml-output')
   const value = typeof output?.textContent === 'string' ? output.textContent : ''
   if (!value.trim() || value.startsWith('(TAB modunda')) return null
   return value
+}
+
+function currentMusicXml(root, revision) {
+  if (!revision) return null
+  const product = resolvePrDProductMusicXml(revision)
+  if (product?.musicXml) return product.musicXml
+
+  const workspace = getTeacherUiWorkspace(root)
+  const rootRevision = workspace?.history?.revisions?.[0] ?? null
+  if (rootRevision && revision.revisionId !== rootRevision.revisionId) {
+    // A corrected/undo/redo revision must never silently project against the raw
+    // source XML. Missing exact product XML is an intentional fail-closed state.
+    return null
+  }
+  return sourceMusicXml(root)
 }
 
 function contextKey(snapshot, revision) {
@@ -165,7 +189,7 @@ async function loadEditorRuntime(root) {
 async function ensureEditorContext(root, state) {
   const snapshot = getPackage3MeasureSnapshot()
   const revision = currentRevision(root)
-  const musicXml = currentMusicXml(root)
+  const musicXml = currentMusicXml(root, revision)
   const key = contextKey(snapshot, revision)
   if (!key || !Array.isArray(snapshot?.selectionNotes) || !musicXml) return null
   if (state.editorContext && state.editorContextKey === key && state.editorContextMusicXml === musicXml) return state.editorContext
@@ -246,10 +270,10 @@ export async function selectStagePrBExactRenderedNote(root, rendererRuntime, poi
   }
 
   // Editor selection is already canonical and revision-bound at this point.
-  // Only now may SesliTab project that proven result into its existing S06/S07
-  // selection state. Existing highlight subscription therefore also runs only
-  // after Editor Core selection succeeds.
-  if (!selectPackage3MeasureKey(result.resolved.measureKey) || !selectPackage3NoteIndex(result.resolved.noteIndex, {
+  // Project measure + note atomically so no transient legacy/measure-only state
+  // can redraw the keypad or be mistaken for a valid Editor selection.
+  if (!selectPackage3ExactNote(result.resolved.noteIndex, {
+    measureKey: result.resolved.measureKey,
     rendererTarget: result.rendererTarget,
     interaction: 'score-editor-current-hit',
   })) {
@@ -273,33 +297,81 @@ async function runPoint(root, frame, state, point) {
   return success
 }
 
-function detach(state) {
-  if (state.boundDocument) {
-    if (state.pointerHandler) state.boundDocument.removeEventListener?.('pointerup', state.pointerHandler, true)
-    if (state.touchHandler) state.boundDocument.removeEventListener?.('touchend', state.touchHandler, true)
-    if (state.clickHandler) state.boundDocument.removeEventListener?.('click', state.clickHandler, true)
+function clearBindRetry(state) {
+  if (state.bindRetryTimer) clearTimeout(state.bindRetryTimer)
+  state.bindRetryTimer = null
+}
+
+function detachEventBinding(state) {
+  if (state.boundWindow) {
+    if (state.pointerHandler) state.boundWindow.removeEventListener?.('pointerup', state.pointerHandler, true)
+    if (state.touchHandler) state.boundWindow.removeEventListener?.('touchend', state.touchHandler, true)
+    if (state.clickHandler) state.boundWindow.removeEventListener?.('click', state.clickHandler, true)
   }
-  if (state.boundFrame && state.loadHandler) state.boundFrame.removeEventListener?.('load', state.loadHandler)
-  state.boundFrame = null
   state.boundDocument = null
+  state.boundWindow = null
   state.pointerHandler = null
   state.touchHandler = null
   state.clickHandler = null
-  state.loadHandler = null
   state.lastSuccess = null
   state.inFlight = false
   state.queuedRetry = null
 }
 
+function detachFrame(state) {
+  detachEventBinding(state)
+  clearBindRetry(state)
+  if (state.boundFrame && state.loadHandler) state.boundFrame.removeEventListener?.('load', state.loadHandler)
+  state.boundFrame = null
+  state.loadHandler = null
+  state.bindRetryAttempts = 0
+}
+
+function scheduleBindRetry(root, state) {
+  if (state.bindRetryTimer || state.bindRetryAttempts >= BIND_RETRY_LIMIT) return false
+  state.bindRetryAttempts += 1
+  state.bindRetryTimer = setTimeout(() => {
+    state.bindRetryTimer = null
+    bindStagePrBEditorSelection(root)
+  }, BIND_RETRY_MS)
+  return true
+}
+
 export function bindStagePrBEditorSelection(root = document) {
   if (!root || typeof root.getElementById !== 'function') return false
   const frame = root.getElementById('score-view-runtime-frame')
-  const doc = frameDocument(frame)
-  if (!frame || !doc?.addEventListener) return false
-
   const state = stateFor(root)
-  if (state.boundFrame === frame && state.boundDocument === doc) return true
-  detach(state)
+  if (!frame) {
+    if (state.boundFrame) detachFrame(state)
+    return false
+  }
+
+  if (state.boundFrame !== frame) {
+    detachFrame(state)
+    state.boundFrame = frame
+    state.loadHandler = () => {
+      detachEventBinding(state)
+      clearBindRetry(state)
+      state.bindRetryAttempts = 0
+      queueMicrotask(() => bindStagePrBEditorSelection(root))
+    }
+    frame.addEventListener?.('load', state.loadHandler)
+  }
+
+  const doc = frameDocument(frame)
+  const win = frameWindow(frame)
+  const runtime = frameRuntime(frame)
+  if (!doc?.addEventListener || !win?.addEventListener || !runtime) {
+    scheduleBindRetry(root, state)
+    return false
+  }
+
+  if (state.boundDocument === doc && state.boundWindow === win) {
+    clearBindRetry(state)
+    state.bindRetryAttempts = 0
+    return true
+  }
+  detachEventBinding(state)
 
   const handle = (event) => {
     if (event?.type === 'pointerup') {
@@ -310,9 +382,10 @@ export function bindStagePrBEditorSelection(root = document) {
     const point = pointFromEvent(event)
     if (!point || duplicateSuccess(state, point)) return
 
-    // This capture gate intentionally prevents the old direct Package 3 click
-    // path from running. A failed exact attempt is still retryable by a later
-    // Safari synthetic click because only successful points enter lastSuccess.
+    // Window capture runs before document-level legacy S12/ScoreView handlers,
+    // making PR-B the single product selection authority when the Editor keypad
+    // is active. Failure remains fail-closed; legacy direct selection does not
+    // get a chance to create a visually-selected-but-not-editable state.
     event.stopImmediatePropagation?.()
     state.eventCount += 1
     if (state.inFlight) {
@@ -340,18 +413,17 @@ export function bindStagePrBEditorSelection(root = document) {
   const pointerHandler = (event) => handle(event)
   const touchHandler = (event) => handle(event)
   const clickHandler = (event) => handle(event)
-  doc.addEventListener('pointerup', pointerHandler, CAPTURE_OPTIONS)
-  doc.addEventListener('touchend', touchHandler, CAPTURE_OPTIONS)
-  doc.addEventListener('click', clickHandler, CAPTURE_OPTIONS)
+  win.addEventListener('pointerup', pointerHandler, CAPTURE_OPTIONS)
+  win.addEventListener('touchend', touchHandler, CAPTURE_OPTIONS)
+  win.addEventListener('click', clickHandler, CAPTURE_OPTIONS)
 
-  const loadHandler = () => bindStagePrBEditorSelection(root)
-  frame.addEventListener?.('load', loadHandler)
-  state.boundFrame = frame
   state.boundDocument = doc
+  state.boundWindow = win
   state.pointerHandler = pointerHandler
   state.touchHandler = touchHandler
   state.clickHandler = clickHandler
-  state.loadHandler = loadHandler
+  clearBindRetry(state)
+  state.bindRetryAttempts = 0
   void ensureEditorContext(root, state)
   return true
 }
@@ -366,6 +438,7 @@ export function getStagePrBInteractionDiagnostics(root = document) {
     selectedCount: state.selectedCount,
     lastDiagnostic: state.lastDiagnostic,
     eventDelivery: state.eventCount === 0 ? PR_B_INTERACTION_DIAGNOSTIC.EVENT_NOT_RECEIVED : 'PRB_EVENT_RECEIVED',
+    boundToCurrentIframe: Boolean(state.boundFrame && state.boundDocument && state.boundWindow),
   })
 }
 
@@ -388,7 +461,7 @@ export function applyStagePrBEditorSelectionUi(root = document, { observe = true
   const bound = bindStagePrBEditorSelection(root)
   if (observe) installObserver(root, state)
   void ensureEditorContext(root, state)
-  root.getElementById?.('stage-s05-score-workspace')?.setAttribute?.('data-prb-editor-selection', 'ready')
+  root.getElementById?.('stage-s05-score-workspace')?.setAttribute?.('data-prb-editor-selection', bound ? 'ready' : 'pending')
   return bound || Boolean(root.getElementById?.('stage-s05-score-workspace'))
 }
 
