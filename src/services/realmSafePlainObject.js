@@ -23,3 +23,26 @@ export function isRealmSafePlainObject(value) {
     return false
   }
 }
+
+// Build a data-only payload whose immediate prototype is the same ordinary
+// Object.prototype as a trusted plain-object anchor (for example the renderer
+// host living inside a same-origin iframe). This preserves the receiver's
+// existing strict plain-object check without using eval, constructors or a
+// second semantic path.
+export function createRealmPlainObjectFor(anchor, fields) {
+  if (!isRealmSafePlainObject(anchor) || !isRealmSafePlainObject(fields)) {
+    throw new TypeError('Cross-realm payload requires plain-object anchor and fields.')
+  }
+
+  const prototype = Object.getPrototypeOf(anchor)
+  const payload = Object.create(prototype)
+  for (const [key, value] of Object.entries(fields)) {
+    Object.defineProperty(payload, key, {
+      value,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    })
+  }
+  return Object.freeze(payload)
+}
