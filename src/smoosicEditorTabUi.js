@@ -37,6 +37,9 @@ function setHostStatus(root, text, kind = 'info') {
 }
 
 function currentMusicXml(root) {
+  const results = root.getElementById?.('results-section')
+  if (!results || results.hidden === true || results.hasAttribute?.('hidden')) return ''
+
   const text = String(root.getElementById?.('xml-output')?.textContent || '').trim()
   if (!text || !text.includes('<score-')) return ''
   return text
@@ -108,17 +111,17 @@ async function waitForEditorReady(frame) {
   throw new Error('Nota editörü zamanında hazır olmadı.')
 }
 
-async function waitForMusicXmlLoad(frame) {
+async function waitForMusicXmlLoad(frame, expectedFileName) {
   const deadline = Date.now() + LOAD_TIMEOUT_MS
   while (Date.now() < deadline) {
     const status = iframeStatus(frame)
-    if (status.startsWith('Yüklendi:')) return status
+    if (status.startsWith('Yüklendi:') && status.includes(expectedFileName)) return status
     if (status.startsWith('XML hatası:') || status.startsWith('Hata:') || status.startsWith('Başlatma hatası:')) {
       throw new Error(status)
     }
     await sleep(120)
   }
-  throw new Error('MusicXML editöre zamanında yüklenmedi.')
+  throw new Error(`MusicXML editöre zamanında yüklenmedi: ${expectedFileName}`)
 }
 
 function makeIframeFile(frame, xml, fileName) {
@@ -143,10 +146,17 @@ function assignInputFile(frame, input, file) {
   })
 }
 
+function resetIframeStatusForTransfer(frame, fileName) {
+  const status = frame.contentDocument?.getElementById('poc-status')
+  if (status) status.textContent = `SesliTab aktarımı: ${fileName}`
+}
+
 async function loadSourceIntoEditor(root, frame) {
   const state = stateFor(root)
   const xml = currentMusicXml(root)
   if (!xml) {
+    state.lastSourceXml = null
+    state.lastSourceName = 'seslitab-current.musicxml'
     setHostStatus(root, 'Önce PDF veya MusicXML açın. Editör şu an boş eserle hazır.', 'info')
     return false
   }
@@ -163,9 +173,10 @@ async function loadSourceIntoEditor(root, frame) {
   const fileName = currentSourceName(root)
   const file = makeIframeFile(frame, xml, fileName)
   assignInputFile(frame, input, file)
+  resetIframeStatusForTransfer(frame, fileName)
   setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
   input.dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }))
-  await waitForMusicXmlLoad(frame)
+  await waitForMusicXmlLoad(frame, fileName)
 
   state.lastSourceXml = xml
   state.lastSourceName = fileName
