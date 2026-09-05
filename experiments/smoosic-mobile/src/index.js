@@ -1,4 +1,4 @@
-const { SuiApplication } = require('smoosic');
+const { SuiApplication, SuiSampleMedia, SmoScore } = require('smoosic');
 
 function sendKey(key, options = {}) {
   const event = new KeyboardEvent('keydown', {
@@ -41,17 +41,47 @@ function wireMobileControls() {
   });
 }
 
-function boot() {
-  const domContainer = document.getElementById('smoo');
+function setStatus(text) {
   const status = document.getElementById('poc-status');
+  if (status) status.textContent = text;
+}
+
+async function boot() {
+  const domContainer = document.getElementById('smoo');
+  wireMobileControls();
+
+  window.addEventListener('error', (event) => {
+    setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    setStatus(`Hata: ${String(event.reason || 'başlatma reddedildi')}`);
+  });
+
   try {
-    SuiApplication.configure({ mode: 'application', domContainer });
-    if (status) status.textContent = 'Editör hazır';
+    setStatus('Editör başlatılıyor…');
+
+    // Smoosic application mode eagerly downloads every soundfont before it creates
+    // the editable score UI. That startup path is too heavy for iPhone Safari and
+    // can leave the page looking blank. Editing does not require those samples, so
+    // the mobile POC skips eager audio loading. Playback can be added lazily later.
+    SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
+      if (typeof setProgress === 'function') setProgress(100);
+    };
+
+    // Supplying an explicit initial score also avoids the first-time help modal.
+    const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
+    const application = await SuiApplication.configure({
+      mode: 'application',
+      domContainer,
+      initialScore
+    });
+
+    const rendered = Boolean(application && application.view && application.view.renderer);
+    setStatus(rendered ? 'Editör hazır' : 'Renderer oluşmadı');
   } catch (error) {
     console.error(error);
-    if (status) status.textContent = `Başlatma hatası: ${String(error)}`;
+    setStatus(`Başlatma hatası: ${String(error)}`);
   }
-  wireMobileControls();
 }
 
 document.addEventListener('DOMContentLoaded', boot);
