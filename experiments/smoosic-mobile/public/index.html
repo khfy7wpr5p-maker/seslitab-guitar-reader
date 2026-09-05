@@ -25,6 +25,8 @@
   <audio crossorigin="anonymous" id="samplebb4" data-pitch="bb/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-bb4-iowa.mp3"></audio>
   <audio crossorigin="anonymous" id="sample-piano-a2" data-pitch="a/2" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-a2.mp3"></audio>
 
+  <input id="mobile-xml-input" type="file" accept=".xml,.mxml,.musicxml,application/xml,text/xml" hidden>
+
   <div id="smoo"></div>
 
   <nav id="mobile-toolbar" aria-label="Mobil nota araçları">
@@ -47,7 +49,7 @@
     <button data-key="-" type="button">−½ ses</button>
     <button data-key="l" data-alt="true" type="button">Grace seç</button>
     <button data-key="G" data-shift="true" type="button">Grace +</button>
-    <button data-key=" " type="button">▶︎/Ⅱ</button>
+    <button id="mobile-xml-open" type="button">XML Aç</button>
   </nav>
 </body>
 </html>
