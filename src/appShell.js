@@ -1,6 +1,5 @@
 export const APP_SHELL_FEATURES = Object.freeze([
   Object.freeze({ id: 'workspace', label: 'Çalışma Alanı', targetId: 'input-section', kind: 'section' }),
-  Object.freeze({ id: 'discovery', label: 'Nota Ara', targetId: 'input-section', controlId: 'discovery-tab-btn', kind: 'tab' }),
   Object.freeze({ id: 'tuner', label: 'Akort', targetId: 'chromatic-tuner-section', kind: 'section' }),
 ])
 
@@ -65,14 +64,25 @@ function compactIdentity(root, header) {
   header.setAttribute?.('data-stage-s03-shell', 'ready')
 }
 
+function retireDiscoveryTab(root) {
+  const tab = root.getElementById?.('discovery-tab-btn')
+  if (!tab) return false
+  tab.remove?.()
+  return true
+}
+
 function revealDiscoveryOnSearch(root, form) {
   if (!form?.addEventListener || boundDiscoveryForms.has(form)) return
   boundDiscoveryForms.add(form)
 
   form.addEventListener('submit', () => {
-    const discoveryTab = root.getElementById('discovery-tab-btn')
-    discoveryTab?.click?.()
-    root.getElementById('discovery-panel')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    const panel = root.getElementById('discovery-panel')
+    if (panel) {
+      panel.hidden = false
+      panel.removeAttribute?.('aria-hidden')
+      panel.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    }
+    retireDiscoveryTab(root)
   })
 }
 
@@ -93,6 +103,8 @@ function moveDiscoverySearch(root, shell) {
   shell.appendChild(label)
   shell.appendChild(queryRow)
   revealDiscoveryOnSearch(root, form)
+  retireDiscoveryTab(root)
+  queueMicrotask(() => retireDiscoveryTab(root))
   return true
 }
 
