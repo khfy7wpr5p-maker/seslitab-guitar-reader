@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const hostCss = readFileSync(new URL('../src/smoosicEditorTab.css', import.meta.url), 'utf8')
 const innerMobileCss = readFileSync(new URL('../experiments/smoosic-mobile/public/mobile.css', import.meta.url), 'utf8')
+const innerMobileJs = readFileSync(new URL('../experiments/smoosic-mobile/src/index.js', import.meta.url), 'utf8')
 
 test('S14 mobile Smoosic workspace widens the host by reducing only active main padding', () => {
   assert.match(hostCss, /@media \(max-width: 820px\)/)
@@ -24,6 +25,7 @@ test('S14 inner mobile layout targets the real Smoosic DOM ids so hidden control
   assert.match(innerMobileCss, /body\.mobile-menu-open #controls-left \{[\s\S]*?transform: translateX\(0\);/)
   assert.match(innerMobileCss, /\[id\$='-top-bar'\] \{[\s\S]*?flex-flow: row nowrap !important;[\s\S]*?height: var\(--seslitab-mobile-topbar-height\) !important;/)
   assert.match(innerMobileCss, /#controls-top,[\s\S]*?#controls-top \.control-bar,[\s\S]*?#controls-top \.row \{[\s\S]*?flex-flow: row nowrap !important;/)
+  assert.match(innerMobileJs, /target\.closest\('#controls-left button, \.controls-left button'\)/)
 })
 
 test('S14 inner mobile score viewport and toolbar favor notation space without shrinking touch targets', () => {
@@ -31,6 +33,6 @@ test('S14 inner mobile score viewport and toolbar favor notation space without s
   assert.match(innerMobileCss, /\.workspace \{[\s\S]*?flex-flow: column nowrap !important;/)
   assert.match(innerMobileCss, /\.media \{[\s\S]*?width: 100vw !important;[\s\S]*?flex: 1 1 auto !important;/)
   assert.match(innerMobileCss, /\.musicRelief \{[\s\S]*?width: 100vw !important;[\s\S]*?margin: 0 !important;[\s\S]*?padding: 0 !important;/)
-  assert.match(innerMobileCss, /#mobile-toolbar \{[\s\S]*?grid-template-columns: repeat\(8, minmax\(0, 1fr\)\);/)
-  assert.match(innerMobileCss, /#mobile-toolbar button \{[\s\S]*?height: 44px;[\s\S]*?min-height: 44px;/)
+  assert.match(innerMobileCss, /#mobile-toolbar \{[\s\S]*?grid-template-columns: repeat\(8, minmax\(44px, 1fr\)\);[\s\S]*?overflow-x: auto;/)
+  assert.match(innerMobileCss, /#mobile-toolbar button \{[\s\S]*?min-width: 44px;[\s\S]*?height: 44px;[\s\S]*?min-height: 44px;/)
 })
