@@ -35,6 +35,22 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function waitForChildExit(child, timeoutMs = 2000) {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  await new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      child.removeListener('exit', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, timeoutMs)
+    child.once('exit', finish)
+  })
+}
+
 async function waitForDevToolsPort(userDataDir, child) {
   const portFile = path.join(userDataDir, 'DevToolsActivePort')
   const deadline = Date.now() + 10000
@@ -205,8 +221,9 @@ async function runCase(testCase) {
     }
   } finally {
     try { cdp?.close() } catch {}
-    if (child.exitCode === null) child.kill('SIGKILL')
-    rmSync(userDataDir, { recursive: true, force: true })
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+    await waitForChildExit(child)
+    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
