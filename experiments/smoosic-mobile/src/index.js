@@ -3,9 +3,11 @@ const {
   SuiSampleMedia,
   SmoScore,
   XmlToSmo,
+  SmoToXml,
   SuiOscillator,
   SuiSampler,
-  SuiAudioPlayer
+  SuiAudioPlayer,
+  ScoreRoadMapBuilder
 } = require('smoosic');
 
 let applicationInstance = null;
@@ -13,6 +15,13 @@ let editorReady = false;
 let activePlaybackInstrument = 'piano';
 let nativeAudioBridgeInstalled = false;
 let nativeStopWrapped = false;
+let nativePlayWrapped = false;
+let nativeAnimationWrapped = false;
+let metronomeEnabled = false;
+let metronomeAwaitingStart = false;
+let metronomeTimer = null;
+let metronomeRunToken = 0;
+let currentScoreBaseName = 'score';
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
 
@@ -39,7 +48,7 @@ function setStatus(text) {
 }
 
 function setEditorControlsEnabled(enabled) {
-  ['mobile-xml-open'].forEach((id) => {
+  ['mobile-xml-open', 'mobile-xml-export', 'mobile-metronome'].forEach((id) => {
     const button = document.getElementById(id);
     if (button) button.disabled = !enabled;
   });
@@ -58,6 +67,12 @@ function readFileText(file) {
   });
 }
 
+function stripMusicXmlExtension(name) {
+  return String(name || 'score')
+    .replace(/\.(musicxml|mxml|xml)$/i, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-') || 'score';
+}
+
 function stopActiveSoundfont() {
   Object.values(mobileSoundfonts).forEach((sampler) => {
     if (sampler && typeof sampler.stop === 'function') {
@@ -66,7 +81,17 @@ function stopActiveSoundfont() {
   });
 }
 
+function stopMetronomeTimeline() {
+  metronomeRunToken += 1;
+  metronomeAwaitingStart = false;
+  if (metronomeTimer) {
+    clearTimeout(metronomeTimer);
+    metronomeTimer = null;
+  }
+}
+
 function stopNativePlayback() {
+  stopMetronomeTimeline();
   if (applicationInstance && applicationInstance.view && typeof applicationInstance.view.stopPlayer === 'function') {
     applicationInstance.view.stopPlayer();
   } else if (SuiAudioPlayer && typeof SuiAudioPlayer.stopPlayer === 'function') {
@@ -99,6 +124,7 @@ async function loadMusicXmlFile(file) {
     score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
   }
   await applicationInstance.view.changeScore(score);
+  currentScoreBaseName = stripMusicXmlExtension(name);
   window.dispatchEvent(new Event('resize'));
   setStatus(`Yüklendi: ${name}`);
 }
@@ -178,15 +204,269 @@ function installNativeAudioBridge() {
   return true;
 }
 
+function getSelectedStartMeasure() {
+  const view = applicationInstance && applicationInstance.view;
+  if (!view || !view.tracker) return 0;
+  try {
+    if (typeof view.tracker.getExtremeSelection === 'function') {
+      const selection = view.tracker.getExtremeSelection(-1);
+      if (selection && selection.selector && Number.isFinite(Number(selection.selector.measure))) {
+        return Math.max(0, Number(selection.selector.measure));
+      }
+    }
+    const selection = view.tracker.selections && view.tracker.selections[0];
+    if (selection && selection.selector && Number.isFinite(Number(selection.selector.measure))) {
+      return Math.max(0, Number(selection.selector.measure));
+    }
+  } catch (error) {
+    console.warn('Başlangıç ölçüsü okunamadı', error);
+  }
+  return 0;
+}
+
+function getMeasureTicks(measure) {
+  if (!measure) return 0;
+  if (typeof measure.getMaxTicksVoice === 'function') {
+    const value = Number(measure.getMaxTicksVoice() || 0);
+    if (value > 0) return value;
+  }
+  let maxTicks = 0;
+  const voices = Array.isArray(measure.voices) ? measure.voices : [];
+  voices.forEach((voice) => {
+    const notes = voice && Array.isArray(voice.notes) ? voice.notes : [];
+    const ticks = notes.reduce((sum, note) => sum + Math.max(0, Number(note.tickCount || 0)), 0);
+    maxTicks = Math.max(maxTicks, ticks);
+  });
+  return maxTicks;
+}
+
+function getMeterBeatTicks(measure) {
+  const timeSignature = measure && measure.timeSignature;
+  const denominator = Math.max(1, Number(timeSignature && timeSignature.beatDuration) || 4);
+  const ticks = (4096 * 4) / denominator;
+  return Number.isFinite(ticks) && ticks > 0 ? ticks : 4096;
+}
+
+function buildMetronomeEvents(score, startMeasure) {
+  if (!score || !Array.isArray(score.staves) || !score.staves.length) return [];
+  const events = [];
+  const roadMap = new ScoreRoadMapBuilder(score);
+  roadMap.populate(startMeasure);
+  let elapsedSeconds = 0;
+  let guard = 0;
+
+  while (!roadMap.isDone && guard < 20000) {
+    const measureIx = roadMap.getAndAdvance();
+    guard += 1;
+    if (!Number.isFinite(Number(measureIx)) || measureIx < 0) continue;
+    const measure = score.staves[0] && score.staves[0].measures[measureIx];
+    if (!measure) continue;
+
+    const tempo = typeof measure.getTempo === 'function' ? measure.getTempo() : null;
+    const bpm = Math.max(20, Number((tempo && tempo.bpm) || 120));
+    const tempoBeatTicks = Math.max(1, Number((tempo && tempo.beatDuration) || 4096));
+    const secondsPerTick = 60 / (bpm * tempoBeatTicks);
+    const measureTicks = getMeasureTicks(measure);
+    const clickTicks = getMeterBeatTicks(measure);
+
+    for (let tick = 0, beat = 0; tick < measureTicks - 0.5; tick += clickTicks, beat += 1) {
+      events.push({ at: elapsedSeconds + (tick * secondsPerTick), accent: beat === 0 });
+      if (events.length > 12000) throw new Error('Metronom için skor çok uzun');
+    }
+    elapsedSeconds += measureTicks * secondsPerTick;
+  }
+
+  return events;
+}
+
+function playMetronomeClick(accent) {
+  const audio = SuiOscillator && SuiOscillator.audio;
+  if (!audio) return;
+  if (audio.state === 'suspended') audio.resume().catch(() => {});
+  try {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    const now = audio.currentTime;
+    osc.frequency.value = accent ? 1700 : 1150;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(accent ? 0.16 : 0.09, now + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
+    osc.connect(gain);
+    gain.connect(audio.destination);
+    osc.start(now);
+    osc.stop(now + 0.05);
+  } catch (error) {
+    console.warn('Metronom click hatası', error);
+  }
+}
+
+function startMetronomeTimeline(startMeasure) {
+  stopMetronomeTimeline();
+  if (!metronomeEnabled || !applicationInstance || !applicationInstance.view) return;
+
+  let events = [];
+  try {
+    events = buildMetronomeEvents(applicationInstance.view.score, startMeasure);
+  } catch (error) {
+    console.error(error);
+    setStatus(`Metronom hatası: ${String(error)}`);
+    return;
+  }
+  if (!events.length) return;
+
+  const token = ++metronomeRunToken;
+  const origin = performance.now();
+  const schedule = (index) => {
+    if (token !== metronomeRunToken || index >= events.length) return;
+    const event = events[index];
+    const target = origin + event.at * 1000;
+    const delay = Math.max(0, target - performance.now());
+    metronomeTimer = setTimeout(() => {
+      if (token !== metronomeRunToken) return;
+      playMetronomeClick(event.accent);
+      schedule(index + 1);
+    }, delay);
+  };
+  schedule(0);
+}
+
+function wrapNativePlay() {
+  if (nativePlayWrapped || !applicationInstance || !applicationInstance.view) return;
+  const view = applicationInstance.view;
+  if (typeof view.playFromSelection !== 'function') return;
+  const originalPlay = view.playFromSelection.bind(view);
+  view.playFromSelection = async function mobileAwarePlayFromSelection(...args) {
+    stopMetronomeTimeline();
+    metronomeAwaitingStart = metronomeEnabled;
+    const measureIx = getSelectedStartMeasure();
+    setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label} · ölçü ${measureIx + 1}`);
+    return originalPlay(...args);
+  };
+  nativePlayWrapped = true;
+}
+
+function wrapNativeAudioAnimation() {
+  if (nativeAnimationWrapped || !applicationInstance || !applicationInstance.view) return;
+  const audioAnimation = applicationInstance.view.audioAnimation;
+  if (!audioAnimation || typeof audioAnimation.audioAnimationHandler !== 'function') return;
+
+  const originalAnimation = audioAnimation.audioAnimationHandler;
+  audioAnimation.audioAnimationHandler = function mobileAwareAudioAnimation(view, selector, offsetPct, durationPct) {
+    if (metronomeAwaitingStart && metronomeEnabled) {
+      metronomeAwaitingStart = false;
+      const startMeasure = selector && Number.isFinite(Number(selector.measure))
+        ? Number(selector.measure)
+        : getSelectedStartMeasure();
+      startMetronomeTimeline(startMeasure);
+    }
+    return originalAnimation(view, selector, offsetPct, durationPct);
+  };
+
+  if (typeof audioAnimation.clearAudioAnimationHandler === 'function') {
+    const originalClear = audioAnimation.clearAudioAnimationHandler;
+    audioAnimation.clearAudioAnimationHandler = function mobileAwareClearAnimation(delay) {
+      if (!delay || delay < 1) stopMetronomeTimeline();
+      return originalClear(delay);
+    };
+  }
+  nativeAnimationWrapped = true;
+}
+
 function wrapNativeStop() {
   if (nativeStopWrapped || !SuiAudioPlayer || typeof SuiAudioPlayer.stopPlayer !== 'function') return;
   const originalStopPlayer = SuiAudioPlayer.stopPlayer.bind(SuiAudioPlayer);
   SuiAudioPlayer.stopPlayer = function mobileAwareStopPlayer() {
+    stopMetronomeTimeline();
     const result = originalStopPlayer();
     stopActiveSoundfont();
     return result;
   };
   nativeStopWrapped = true;
+}
+
+function updateMetronomeButton() {
+  const button = document.getElementById('mobile-metronome');
+  if (!button) return;
+  button.setAttribute('aria-pressed', metronomeEnabled ? 'true' : 'false');
+  button.textContent = metronomeEnabled ? 'Metronom ✓' : 'Metronom';
+}
+
+function toggleMetronome() {
+  metronomeEnabled = !metronomeEnabled;
+  updateMetronomeButton();
+  if (!metronomeEnabled) stopMetronomeTimeline();
+  const suffix = SuiAudioPlayer && SuiAudioPlayer.playing ? ' · sonraki Play' : '';
+  setStatus(`Metronom ${metronomeEnabled ? 'açık' : 'kapalı'}${suffix}`);
+}
+
+function scoreShape(score) {
+  const staves = Array.isArray(score && score.staves) ? score.staves : [];
+  let measures = 0;
+  let voices = 0;
+  let notes = 0;
+  staves.forEach((staff) => {
+    const staffMeasures = Array.isArray(staff.measures) ? staff.measures : [];
+    measures += staffMeasures.length;
+    staffMeasures.forEach((measure) => {
+      const measureVoices = Array.isArray(measure.voices) ? measure.voices : [];
+      voices += measureVoices.length;
+      measureVoices.forEach((voice) => {
+        notes += voice && Array.isArray(voice.notes) ? voice.notes.length : 0;
+      });
+    });
+  });
+  return { staves: staves.length, measures, voices, notes };
+}
+
+function sameScoreShape(a, b) {
+  return a.staves === b.staves && a.measures === b.measures && a.voices === b.voices && a.notes === b.notes;
+}
+
+async function exportMusicXml() {
+  if (!editorReady || !applicationInstance || !applicationInstance.view) {
+    throw new Error('Editör henüz hazır değil');
+  }
+  stopNativePlayback();
+  setStatus('MusicXML hazırlanıyor…');
+
+  const sourceScore = applicationInstance.view.storeScore || applicationInstance.view.score;
+  const xmlDom = SmoToXml.convert(sourceScore);
+  const xmlText = new XMLSerializer().serializeToString(xmlDom);
+  if (!xmlText || !xmlText.includes('<score-')) throw new Error('MusicXML üretilemedi');
+
+  const parsed = new DOMParser().parseFromString(xmlText, 'text/xml');
+  if (parsed.querySelector('parsererror')) throw new Error('Üretilen MusicXML yeniden ayrıştırılamadı');
+  const roundTripScore = XmlToSmo.convert(parsed);
+  const shapeBefore = scoreShape(sourceScore);
+  const shapeAfter = scoreShape(roundTripScore);
+  const roundTripOk = sameScoreShape(shapeBefore, shapeAfter);
+
+  const fileName = `${currentScoreBaseName}-edited.musicxml`;
+  const file = new File([xmlText], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
+  setStatus(roundTripOk ? 'MusicXML round-trip doğrulandı' : 'MusicXML üretildi · yapı farkı tespit edildi');
+
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: fileName });
+      return;
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        setStatus('MusicXML paylaşımı iptal edildi');
+        return;
+      }
+      console.warn('Web Share başarısız, indirme yoluna geçiliyor', error);
+    }
+  }
+
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function wireNativeTransportGuard() {
@@ -196,17 +476,13 @@ function wireNativeTransportGuard() {
     const playButton = target.closest('#playButton2');
     if (!playButton || !editorReady) return;
 
-    if (mobileSoundfonts[activePlaybackInstrument]) {
-      setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label}`);
-      return;
-    }
+    if (mobileSoundfonts[activePlaybackInstrument]) return;
 
     event.preventDefault();
     event.stopPropagation();
     if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
     try {
       await loadInstrumentSound(activePlaybackInstrument);
-      setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label}`);
       await applicationInstance.view.playFromSelection();
     } catch (error) {
       console.error(error);
@@ -218,6 +494,7 @@ function wireNativeTransportGuard() {
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (target.closest('#stopButton2')) {
+      stopMetronomeTimeline();
       stopActiveSoundfont();
       setStatus('Playback durdu');
     }
@@ -254,6 +531,15 @@ function wireMobileControls() {
     });
   }
 
+  const exportButton = document.getElementById('mobile-xml-export');
+  if (exportButton) exportButton.addEventListener('click', async () => {
+    try { await exportMusicXml(); }
+    catch (error) { console.error(error); setStatus(`XML export hatası: ${String(error)}`); }
+  });
+
+  const metronomeButton = document.getElementById('mobile-metronome');
+  if (metronomeButton) metronomeButton.addEventListener('click', toggleMetronome);
+
   document.querySelectorAll('[data-instrument]').forEach((button) => {
     button.addEventListener('click', async () => {
       try { await selectPlaybackInstrument(button.dataset.instrument); }
@@ -274,6 +560,7 @@ async function boot() {
   const domContainer = document.getElementById('smoo');
   wireMobileControls();
   wireNativeTransportGuard();
+  updateMetronomeButton();
   setEditorControlsEnabled(false);
   window.addEventListener('error', (event) => setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`));
   window.addEventListener('unhandledrejection', (event) => setStatus(`Hata: ${String(event.reason || 'başlatma reddedildi')}`));
@@ -293,6 +580,10 @@ async function boot() {
     applicationInstance = await SuiApplication.configure({ mode: 'application', domContainer, initialScore });
     const rendered = Boolean(applicationInstance && applicationInstance.view && applicationInstance.view.renderer);
     editorReady = rendered;
+    if (rendered) {
+      wrapNativePlay();
+      wrapNativeAudioAnimation();
+    }
     setEditorControlsEnabled(rendered);
 
     if (!rendered) setStatus('Renderer oluşmadı');
