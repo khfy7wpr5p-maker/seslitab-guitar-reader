@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "smplr": "^0.16.3",
     "smoosic": "1.0.44",
     "webpack": "^5.109.0",
     "webpack-cli": "^6.0.1"
