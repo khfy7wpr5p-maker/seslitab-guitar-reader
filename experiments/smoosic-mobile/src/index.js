@@ -4,14 +4,25 @@ const {
   SmoScore,
   XmlToSmo,
   SuiOscillator,
-  SmoInstrument,
-  SmoSelection
+  SuiOscillatorSoundfont
 } = require('smoosic');
+const { Soundfont } = require('smplr');
 
 let applicationInstance = null;
-let soundsReady = false;
-let soundsLoadingPromise = null;
-const realSamplePromise = SuiSampleMedia.samplePromise.bind(SuiSampleMedia);
+let activePlaybackInstrument = 'piano';
+const mobileSoundfonts = {};
+const mobileSoundLoads = {};
+
+const MOBILE_SOUNDS = {
+  piano: {
+    sampler: 'acoustic_grand_piano',
+    label: 'Piyano'
+  },
+  eGuitar: {
+    sampler: 'electric_guitar_jazz',
+    label: 'Gitar'
+  }
+};
 
 function sendKey(key, options = {}) {
   const event = new KeyboardEvent('keydown', {
@@ -71,57 +82,68 @@ async function loadMusicXmlFile(file) {
   setStatus(`Yüklendi: ${name}`);
 }
 
-async function loadMobileSounds() {
-  if (soundsReady) return;
-  if (soundsLoadingPromise) return soundsLoadingPromise;
+function installMobilePlaybackBridge() {
+  if (!SuiOscillatorSoundfont || !SuiOscillatorSoundfont.prototype) {
+    throw new Error('Smoosic soundfont oynatıcısı bulunamadı');
+  }
+  if (SuiOscillatorSoundfont.prototype.__seslitabMobilePatched) return;
 
-  soundsLoadingPromise = (async () => {
-    try {
-      setStatus('Smoosic sesleri yükleniyor…');
-      if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
-        await SuiOscillator.audio.resume();
-      }
+  SuiOscillatorSoundfont.prototype.play = function mobileSoundfontPlay() {
+    const sampler = mobileSoundfonts[activePlaybackInstrument];
+    if (!sampler || !this.velocity || this.velocity <= 0) return;
 
-      // Use Smoosic's own loader. It owns the private instrument map and the
-      // loadedSoundfonts table used later by playback. We call it lazily after
-      // a user gesture so iOS does not pay this cost during editor startup.
-      await realSamplePromise(SuiOscillator.audio, (percent) => {
-        setStatus(`Ses yükleniyor %${percent}`);
-      });
-
-      soundsReady = true;
-      setStatus('Ses hazır');
-    } finally {
-      soundsLoadingPromise = null;
+    if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
+      SuiOscillator.audio.resume().catch(() => {});
     }
-  })();
 
-  return soundsLoadingPromise;
+    const currentTime = SuiOscillator.audio.currentTime;
+    try {
+      sampler.start({
+        note: this.midinumber,
+        time: currentTime + (this.delayTime || 0),
+        duration: this.duration,
+        velocity: this.velocity,
+        detune: this.detune || 0
+      });
+    } catch (error) {
+      console.error('Mobil soundfont play hatası', error);
+    }
+  };
+  SuiOscillatorSoundfont.prototype.__seslitabMobilePatched = true;
 }
 
-async function setMobileInstrument(instrumentKey) {
-  if (!applicationInstance || !applicationInstance.view) {
-    throw new Error('Editör henüz hazır değil');
+async function loadInstrumentSound(instrumentKey) {
+  const config = MOBILE_SOUNDS[instrumentKey];
+  if (!config) throw new Error('Desteklenmeyen mobil ses');
+  if (mobileSoundfonts[instrumentKey]) return mobileSoundfonts[instrumentKey];
+  if (mobileSoundLoads[instrumentKey]) return mobileSoundLoads[instrumentKey];
+
+  mobileSoundLoads[instrumentKey] = (async () => {
+    setStatus(`${config.label} sesi yükleniyor…`);
+    if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
+      await SuiOscillator.audio.resume();
+    }
+
+    const sampler = new Soundfont(SuiOscillator.audio, {
+      instrument: config.sampler
+    });
+    await sampler.load;
+    mobileSoundfonts[instrumentKey] = sampler;
+    setStatus(`${config.label} sesi hazır`);
+    return sampler;
+  })();
+
+  try {
+    return await mobileSoundLoads[instrumentKey];
+  } finally {
+    delete mobileSoundLoads[instrumentKey];
   }
+}
 
-  await loadMobileSounds();
-  const view = applicationInstance.view;
-  const currentSelection = view.tracker && view.tracker.selections && view.tracker.selections[0];
-  const staffIndex = currentSelection && currentSelection.selector ? currentSelection.selector.staff : 0;
-  const staff = view.score.staves[staffIndex];
-  if (!staff) throw new Error('Staff bulunamadı');
-
-  const baseInstrument = staff.measureInstrumentMap[0] || SmoInstrument.defaults;
-  const instrument = new SmoInstrument(baseInstrument);
-  instrument.instrument = instrumentKey;
-  instrument.instrumentName = instrumentKey === 'eGuitar' ? 'Electric Guitar' : 'Grand Piano';
-  instrument.family = SuiSampleMedia.getFamilyForInstrument(instrumentKey);
-  instrument.keyOffset = SmoInstrument.instrumentKeyOffset[instrumentKey] || 0;
-  instrument.midiInstrument = (SmoInstrument.instrumentMidiMap[instrumentKey] || 1) - 1;
-
-  const selections = SmoSelection.selectionsToEnd(view.score, staffIndex, 0);
-  await view.changeInstrument(instrument, selections);
-  setStatus(instrumentKey === 'eGuitar' ? 'Gitar seçildi' : 'Piyano seçildi');
+async function selectPlaybackInstrument(instrumentKey) {
+  activePlaybackInstrument = instrumentKey;
+  await loadInstrumentSound(instrumentKey);
+  setStatus(`${MOBILE_SOUNDS[instrumentKey].label} dinleme sesi seçildi`);
 }
 
 function wireMobileControls() {
@@ -165,7 +187,7 @@ function wireMobileControls() {
   if (soundButton) {
     soundButton.addEventListener('click', async () => {
       try {
-        await loadMobileSounds();
+        await loadInstrumentSound(activePlaybackInstrument);
       } catch (error) {
         console.error(error);
         setStatus(`Ses hatası: ${String(error)}`);
@@ -176,7 +198,7 @@ function wireMobileControls() {
   document.querySelectorAll('[data-instrument]').forEach((button) => {
     button.addEventListener('click', async () => {
       try {
-        await setMobileInstrument(button.dataset.instrument);
+        await selectPlaybackInstrument(button.dataset.instrument);
       } catch (error) {
         console.error(error);
         setStatus(`Enstrüman hatası: ${String(error)}`);
@@ -188,7 +210,7 @@ function wireMobileControls() {
   if (playButton) {
     playButton.addEventListener('click', async () => {
       try {
-        await loadMobileSounds();
+        await loadInstrumentSound(activePlaybackInstrument);
         sendKey(' ');
       } catch (error) {
         console.error(error);
@@ -221,11 +243,12 @@ async function boot() {
   try {
     setStatus('Editör başlatılıyor…');
 
-    // Keep startup light on iOS. The original loader was captured before this
-    // override and is invoked only after Ses/Piyano/Gitar/Play is tapped.
+    // Never run Smoosic's eager all-instrument loader on iOS. Playback is
+    // bridged to one lazily loaded smplr soundfont at a time.
     SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
       if (typeof setProgress === 'function') setProgress(100);
     };
+    installMobilePlaybackBridge();
 
     const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
     applicationInstance = await SuiApplication.configure({
