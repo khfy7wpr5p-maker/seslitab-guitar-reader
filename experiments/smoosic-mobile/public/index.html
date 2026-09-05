@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Smoosic Mobile POC</title>
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/fonts.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/media.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/ribbon.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/dialogs.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/menus.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/piano.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/tree.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/bravura-font-codes.css">
+  <link rel="stylesheet" href="https://smoosic.github.io/Smoosic/src/styles/bootstrap.min.css">
+  <link rel="stylesheet" href="/mobile.css">
+  <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
+  <script defer src="/build/mobile.js"></script>
+</head>
+<body>
+  <div id="poc-status">Yükleniyor…</div>
+
+  <audio crossorigin="anonymous" id="samplecn4" data-pitch="c/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-c4-iowa.mp3"></audio>
+  <audio crossorigin="anonymous" id="samplebb4" data-pitch="bb/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-bb4-iowa.mp3"></audio>
+  <audio crossorigin="anonymous" id="sample-piano-a2" data-pitch="a/2" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-a2.mp3"></audio>
+
+  <div id="smoo"></div>
+
+  <nav id="mobile-toolbar" aria-label="Mobil nota araçları">
+    <button id="mobile-menu-toggle" type="button">Menü</button>
+    <button data-key="ArrowLeft" type="button">←</button>
+    <button data-key="ArrowRight" type="button">→</button>
+    <button data-key="," type="button">½ süre</button>
+    <button data-key="." type="button">2× süre</button>
+    <button data-key="z" data-ctrl="true" type="button">Geri al</button>
+
+    <button data-key="c" type="button">Do</button>
+    <button data-key="d" type="button">Re</button>
+    <button data-key="e" type="button">Mi</button>
+    <button data-key="f" type="button">Fa</button>
+    <button data-key="g" type="button">Sol</button>
+    <button data-key="a" type="button">La</button>
+
+    <button data-key="b" type="button">Si</button>
+    <button data-key="=" type="button">+½ ses</button>
+    <button data-key="-" type="button">−½ ses</button>
+    <button data-key="l" data-alt="true" type="button">Grace seç</button>
+    <button data-key="G" data-shift="true" type="button">Grace +</button>
+    <button data-key=" " type="button">▶︎/Ⅱ</button>
+  </nav>
+</body>
+</html>
