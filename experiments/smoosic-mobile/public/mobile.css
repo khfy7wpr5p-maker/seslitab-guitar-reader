@@ -219,19 +219,23 @@ html, body {
     position: fixed;
     box-sizing: border-box;
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(44px, 1fr));
     gap: 4px;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 10050;
     padding: 5px 5px calc(5px + env(safe-area-inset-bottom, 0px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
     background: rgba(248,248,248,.97);
     border-top: 1px solid #bbb;
   }
 
   #mobile-toolbar button {
-    min-width: 0;
+    min-width: 44px;
     height: 44px;
     min-height: 44px;
     padding: 2px 1px;
