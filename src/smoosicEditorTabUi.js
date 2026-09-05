@@ -19,6 +19,7 @@ function stateFor(root) {
       observedSourceXml: null,
       observedSourceName: null,
       observedSourcePending: false,
+      sourceObservationInitialized: false,
       sourceObserver: null,
       sourceRevision: 0,
       syncPromise: Promise.resolve(false),
@@ -69,6 +70,21 @@ function currentSourceName(root) {
   ).trim()
   if (/\.(musicxml|mxml|xml)$/i.test(fileName)) return fileName
   return `${fileName || 'seslitab-current'}.musicxml`
+}
+
+function acceptedSource(root) {
+  const state = stateFor(root)
+  if (state.sourceObservationInitialized) {
+    if (!state.observedSourceXml) return null
+    return {
+      xml: state.observedSourceXml,
+      fileName: state.observedSourceName || 'seslitab-current.musicxml',
+    }
+  }
+
+  const xml = currentMusicXml(root)
+  if (!xml) return null
+  return { xml, fileName: currentSourceName(root) }
 }
 
 function setTabActive(root, active) {
@@ -171,15 +187,13 @@ async function loadSourceIntoEditor(root, frame) {
   const state = stateFor(root)
 
   if (sourceTransitionPending(root)) {
-    state.lastSourceXml = null
-    state.lastSourceName = 'seslitab-current.musicxml'
     frame.hidden = true
     setHostStatus(root, 'Yeni eser hazırlanıyor…', 'loading')
     return false
   }
 
-  const xml = currentMusicXml(root)
-  if (!xml) {
+  const source = acceptedSource(root)
+  if (!source) {
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
     frame.hidden = true
@@ -187,7 +201,7 @@ async function loadSourceIntoEditor(root, frame) {
     return false
   }
 
-  const fileName = currentSourceName(root)
+  const { xml, fileName } = source
   if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
     frame.hidden = false
     setHostStatus(root, '', 'ready')
@@ -210,16 +224,14 @@ async function loadSourceIntoEditor(root, frame) {
 
   // A newer PDF/MusicXML may have completed while this import was running.
   // Never mark the older transfer as current in that case; the queued sync
-  // will immediately apply the latest source revision.
-  const latestXml = currentMusicXml(root)
-  const latestName = latestXml ? currentSourceName(root) : ''
+  // will immediately apply the latest accepted source revision.
+  const latestSource = acceptedSource(root)
   if (
     targetRevision !== state.sourceRevision ||
-    latestXml !== xml ||
-    latestName !== fileName
+    !latestSource ||
+    latestSource.xml !== xml ||
+    latestSource.fileName !== fileName
   ) {
-    state.lastSourceXml = null
-    state.lastSourceName = 'seslitab-current.musicxml'
     return false
   }
 
@@ -264,19 +276,71 @@ function enqueueEditorSync(root) {
   return state.syncPromise
 }
 
-function refreshObservedSource(root) {
+function refreshObservedSource(root, { xmlChanged = false, allowInitial = false } = {}) {
   const state = stateFor(root)
   const pending = sourceTransitionPending(root)
-  const xml = pending ? '' : currentMusicXml(root)
+
+  if (pending) {
+    const changed = state.observedSourcePending === false
+    state.observedSourcePending = true
+    state.sourceObservationInitialized = true
+    if (changed) {
+      // Invalidate any in-flight transfer, but keep the last accepted source.
+      // If the replacement fails, that accepted source remains authoritative.
+      state.sourceRevision += 1
+      if (state.frame?.isConnected && state.frame.getAttribute('src')) {
+        void enqueueEditorSync(root)
+      }
+    }
+    return changed
+  }
+
+  const wasPending = state.observedSourcePending
+  state.observedSourcePending = false
+  const xml = currentMusicXml(root)
   const fileName = xml ? currentSourceName(root) : ''
+  state.sourceObservationInitialized = true
 
-  if (
-    pending === state.observedSourcePending &&
-    xml === state.observedSourceXml &&
-    fileName === state.observedSourceName
-  ) return false
+  if (!xml) {
+    const hadAcceptedSource = Boolean(state.observedSourceXml)
+    if (!hadAcceptedSource) {
+      if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
+        void enqueueEditorSync(root)
+      }
+      return wasPending
+    }
 
-  state.observedSourcePending = pending
+    // A reset, TAB conversion, or other explicit non-MusicXML result clears
+    // the accepted source. This cannot be confused with a failed replacement,
+    // because failed replacement leaves the old valid XML in the result DOM.
+    state.observedSourceXml = null
+    state.observedSourceName = null
+    state.sourceRevision += 1
+    state.lastSourceXml = null
+    state.lastSourceName = 'seslitab-current.musicxml'
+    if (state.frame?.isConnected && state.frame.getAttribute('src')) {
+      void enqueueEditorSync(root)
+    }
+    return true
+  }
+
+  // Leaving a pending replacement without an xml-output mutation means the
+  // replacement failed or was cancelled. Keep the previously accepted XML and
+  // filename; never combine stale XML with the newly selected filename.
+  if (!allowInitial && !xmlChanged) {
+    if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
+      void enqueueEditorSync(root)
+    }
+    return false
+  }
+
+  if (xml === state.observedSourceXml && fileName === state.observedSourceName) {
+    if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
+      void enqueueEditorSync(root)
+    }
+    return false
+  }
+
   state.observedSourceXml = xml
   state.observedSourceName = fileName
   state.sourceRevision += 1
@@ -296,8 +360,9 @@ function bindSourceLifecycle(root) {
   const Observer = root.defaultView?.MutationObserver ?? globalThis.MutationObserver
   if (typeof Observer !== 'function') return false
 
+  const xmlOutput = root.getElementById?.('xml-output')
   const targets = [
-    [root.getElementById?.('xml-output'), { childList: true, characterData: true, subtree: true }],
+    [xmlOutput, { childList: true, characterData: true, subtree: true }],
     [root.getElementById?.('results-section'), { attributes: true, attributeFilter: ['hidden'] }],
     [root.getElementById?.('progress-container'), { attributes: true, attributeFilter: ['hidden'] }],
     [root.getElementById?.('musicxml-progress'), { attributes: true, attributeFilter: ['hidden'] }],
@@ -305,10 +370,15 @@ function bindSourceLifecycle(root) {
 
   if (!targets.length) return false
 
-  const observer = new Observer(() => refreshObservedSource(root))
+  const observer = new Observer((records) => {
+    const xmlChanged = records.some((record) => (
+      record.target === xmlOutput || xmlOutput?.contains?.(record.target)
+    ))
+    refreshObservedSource(root, { xmlChanged })
+  })
   for (const [node, options] of targets) observer.observe(node, options)
   state.sourceObserver = observer
-  refreshObservedSource(root)
+  refreshObservedSource(root, { allowInitial: true })
   return true
 }
 
