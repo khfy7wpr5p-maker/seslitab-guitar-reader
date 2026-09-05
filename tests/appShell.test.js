@@ -11,21 +11,19 @@ test('app shell exposes only bounded primary product surfaces', () => {
     APP_SHELL_FEATURES.map(({ id, label, targetId }) => [id, label, targetId]),
     [
       ['workspace', 'Çalışma Alanı', 'input-section'],
-      ['discovery', 'Nota Ara', 'input-section'],
       ['tuner', 'Akort', 'chromatic-tuner-section'],
     ],
   )
 
+  assert.equal(APP_SHELL_FEATURES.some(({ id }) => id === 'discovery'), false)
   assert.equal(APP_SHELL_FEATURES.some(({ id }) => id === 'teacher'), false)
   assert.equal(APP_SHELL_FEATURES.some(({ id }) => id === 'results'), false)
 })
 
 test('app shell activates an existing feature without inventing availability', () => {
-  let clicked = 0
   let focused = 0
   let scrolled = 0
   const nodes = new Map()
-  nodes.set('discovery-tab-btn', { click() { clicked += 1 } })
   nodes.set('input-section', {
     hidden: true,
     attributes: new Map(),
@@ -37,12 +35,11 @@ test('app shell activates an existing feature without inventing availability', (
   nodes.set('aria-live-region', { textContent: '' })
   const root = { getElementById(id) { return nodes.get(id) ?? null } }
 
-  assert.equal(activateAppShellFeature(root, 'discovery'), true)
-  assert.equal(clicked, 1)
+  assert.equal(activateAppShellFeature(root, 'workspace'), true)
   assert.equal(scrolled, 1)
   assert.equal(focused, 1)
   assert.equal(nodes.get('input-section').hidden, false)
-  assert.equal(nodes.get('aria-live-region').textContent, 'Nota Ara açıldı.')
+  assert.equal(nodes.get('aria-live-region').textContent, 'Çalışma Alanı açıldı.')
 })
 
 test('app shell fails closed when a feature surface is absent', () => {
