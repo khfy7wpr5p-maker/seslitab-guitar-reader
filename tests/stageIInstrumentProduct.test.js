@@ -388,7 +388,7 @@ test('Stage I UI subscription preserves exact Package 3 NoteObject[] identity an
   assert.equal(root.getElementById('stage-i-guitar-status').textContent, STAGE_I_PRODUCT_COPY.EMPTY)
 })
 
-test('Stage I source stays presentation-only and main loads its CSS and explicit initializer', () => {
+test('Stage I source stays presentation-only, while S14 retires the duplicate product rail from production', () => {
   const service = readFileSync(new URL('../src/services/stageIInstrumentProduct.js', import.meta.url), 'utf8')
   const ui = readFileSync(new URL('../src/stageIInstrumentProductUi.js', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
@@ -396,6 +396,10 @@ test('Stage I source stays presentation-only and main loads its CSS and explicit
   assert.doesNotMatch(service, /teacherApproval|authorizeShare|studentPayload|Audiveris|omrWorker|cloud-omr/i)
   assert.doesNotMatch(ui, /\.innerHTML\s*=/)
   assert.doesNotMatch(ui, /Audiveris|omrWorker|omrProvider|cloud-omr/i)
-  assert.match(main, /import ['"]\.\/src\/stageIInstrumentProduct\.css['"]/)
-  assert.match(main, /initStageIInstrumentProductUi\(document\)/)
+  assert.doesNotMatch(main, /stageIInstrumentProduct\.css/)
+  assert.doesNotMatch(main, /stageIInstrumentProductUi\.js/)
+  assert.doesNotMatch(main, /initStageIInstrumentProductUi\(document\)/)
+  assert.match(main, /import '\.\/src\/package4Ui\.js'/)
+  assert.match(main, /import '\.\/src\/package5Ui\.js'/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
