@@ -31,10 +31,14 @@
 }
 
 @media (max-width: 820px) {
+  .app-main:has(#input-section.smoosic-editor-active) {
+    padding-left: max(0.25rem, env(safe-area-inset-left));
+    padding-right: max(0.25rem, env(safe-area-inset-right));
+  }
+
   #input-section.smoosic-editor-active {
-    width: calc(100vw - 0.5rem);
+    width: 100%;
     max-width: none;
-    align-self: center;
   }
 
   #input-section.smoosic-editor-active > .card-header {
