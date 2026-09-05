@@ -33,16 +33,6 @@ const MOBILE_SOUNDS = {
   eGuitar: { sampler: 'electric_guitar_jazz', label: 'Gitar' }
 };
 
-const PITCH_LABELS = {
-  c: 'Do',
-  d: 'Re',
-  e: 'Mi',
-  f: 'Fa',
-  g: 'Sol',
-  a: 'La',
-  b: 'Si'
-};
-
 function sendKey(key, options = {}) {
   const event = new KeyboardEvent('keydown', {
     key,
@@ -612,51 +602,6 @@ async function exportMusicXml() {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-async function runDirectMobileEdit(button) {
-  const view = applicationInstance && applicationInstance.view;
-  if (!view) return false;
-  const key = String(button.dataset.key || '');
-
-  if (SuiAudioPlayer && SuiAudioPlayer.playing) stopNativePlayback();
-
-  if (key === ',' && typeof view.batchDurationOperation === 'function') {
-    await view.batchDurationOperation('halveDuration');
-    setStatus('Düzenlendi: süre yarıya indi');
-    return true;
-  }
-  if (key === '.' && typeof view.batchDurationOperation === 'function') {
-    await view.batchDurationOperation('doubleDuration');
-    setStatus('Düzenlendi: süre iki katına çıktı');
-    return true;
-  }
-  if (key === '=' && typeof view.transposeSelections === 'function') {
-    await view.transposeSelections(1);
-    setStatus('Düzenlendi: +½ ses');
-    return true;
-  }
-  if (key === '-' && typeof view.transposeSelections === 'function') {
-    await view.transposeSelections(-1);
-    setStatus('Düzenlendi: −½ ses');
-    return true;
-  }
-  if (key === 'G' && button.dataset.shift === 'true' && typeof view.addGraceNote === 'function') {
-    await view.addGraceNote();
-    setStatus('Düzenlendi: grace nota eklendi');
-    return true;
-  }
-  if (key === 'z' && button.dataset.ctrl === 'true' && typeof view.undo === 'function') {
-    await view.undo();
-    setStatus('Geri alındı');
-    return true;
-  }
-  if (Object.prototype.hasOwnProperty.call(PITCH_LABELS, key) && typeof view.setPitch === 'function') {
-    await view.setPitch(key);
-    setStatus(`Düzenlendi: ${PITCH_LABELS[key]}`);
-    return true;
-  }
-  return false;
-}
-
 function wireNativeTransportGuard() {
   document.addEventListener('click', async (event) => {
     const target = event.target;
@@ -692,21 +637,13 @@ function wireNativeTransportGuard() {
 
 function wireMobileControls() {
   document.querySelectorAll('[data-key]').forEach((button) => {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', () => {
       if (!editorReady) return setStatus('Editör hazırlanıyor…');
-      try {
-        const handledDirectly = await runDirectMobileEdit(button);
-        if (!handledDirectly) {
-          sendKey(button.dataset.key, {
-            ctrlKey: button.dataset.ctrl === 'true',
-            altKey: button.dataset.alt === 'true',
-            shiftKey: button.dataset.shift === 'true'
-          });
-        }
-      } catch (error) {
-        console.error(error);
-        setStatus(`Düzenleme hatası: ${String(error)}`);
-      }
+      sendKey(button.dataset.key, {
+        ctrlKey: button.dataset.ctrl === 'true',
+        altKey: button.dataset.alt === 'true',
+        shiftKey: button.dataset.shift === 'true'
+      });
       button.blur();
     });
   });
@@ -786,7 +723,7 @@ async function boot() {
     if (!rendered) setStatus('Renderer oluşmadı');
     else if (!bridgeReady) setStatus('Editör hazır · native ses köprüsü bulunamadı');
     else if (!exactStartReady) setStatus('Editör hazır · nota başlangıç köprüsü bulunamadı');
-    else setStatus('Editör hazır · mobil düzenleme API köprüsü aktif');
+    else setStatus('Editör hazır · seçili notadan Smoosic ▶ kullanın');
   } catch (error) {
     console.error(error);
     editorReady = false;
