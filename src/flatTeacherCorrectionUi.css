@@ -1,0 +1,62 @@
+.flat-teacher-correction {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d8d8d8);
+  border-radius: 0.75rem;
+  background: var(--card-bg, #fff);
+}
+
+.flat-teacher-correction__header,
+.flat-teacher-correction__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.flat-teacher-correction__header {
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.flat-teacher-correction__header h3 {
+  margin: 0;
+}
+
+.flat-teacher-correction__badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.flat-teacher-correction__status {
+  margin: 0.75rem 0 0;
+}
+
+.flat-teacher-correction__editor {
+  width: 100%;
+  min-height: 560px;
+  margin-top: 1rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+.flat-teacher-correction__editor > iframe {
+  width: 100%;
+  min-height: 560px;
+  border: 0;
+}
+
+@media (max-width: 720px) {
+  .flat-teacher-correction {
+    padding: 0.75rem;
+  }
+
+  .flat-teacher-correction__actions .btn {
+    min-height: 44px;
+  }
+
+  .flat-teacher-correction__editor,
+  .flat-teacher-correction__editor > iframe {
+    min-height: 480px;
+  }
+}
