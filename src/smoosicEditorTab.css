@@ -1,0 +1,43 @@
+#input-section.smoosic-editor-active {
+  width: min(1180px, calc(100vw - 2rem));
+  max-width: 1180px;
+}
+
+.smoosic-editor-panel {
+  padding: 0 !important;
+  overflow: hidden;
+  background: #fff;
+}
+
+.smoosic-editor-host-status {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.smoosic-editor-host-status[data-kind='error'] {
+  font-weight: 600;
+}
+
+.smoosic-editor-frame {
+  display: block;
+  width: 100%;
+  height: min(78vh, 900px);
+  min-height: 640px;
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 820px) {
+  #input-section.smoosic-editor-active {
+    width: 100%;
+    max-width: none;
+  }
+
+  .smoosic-editor-frame {
+    height: 76vh;
+    min-height: 600px;
+  }
+}
