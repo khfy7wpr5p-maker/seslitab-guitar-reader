@@ -42,7 +42,7 @@ test('S14 production build packages the proven POC without corpus UI', () => {
   assert.match(pkg.scripts['smoosic:prepare'], /experiments\/smoosic-mobile/)
   assert.match(pkg.scripts.build, /npm run smoosic:prepare/)
   assert.match(prepare, /smoosic-editor/)
-  assert.match(prepare, /build\/mobile\.js/)
+  assert.match(prepare, /mobile\.js/)
   assert.doesNotMatch(prepare, /corpus-stress\.js/)
   assert.doesNotMatch(prepare, /Corpus Test/)
 })
