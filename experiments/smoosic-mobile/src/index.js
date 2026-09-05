@@ -4,14 +4,15 @@ const {
   SmoScore,
   XmlToSmo,
   SuiOscillator,
-  SmoMusic
+  SuiSampler,
+  SuiAudioPlayer
 } = require('smoosic');
 
 let applicationInstance = null;
 let editorReady = false;
 let activePlaybackInstrument = 'piano';
-let mobilePlaying = false;
-let playbackEndTimer = null;
+let nativeAudioBridgeInstalled = false;
+let nativeStopWrapped = false;
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
 
@@ -38,7 +39,7 @@ function setStatus(text) {
 }
 
 function setEditorControlsEnabled(enabled) {
-  ['mobile-xml-open', 'mobile-sound-load', 'mobile-play'].forEach((id) => {
+  ['mobile-xml-open'].forEach((id) => {
     const button = document.getElementById(id);
     if (button) button.disabled = !enabled;
   });
@@ -57,17 +58,21 @@ function readFileText(file) {
   });
 }
 
-function stopMobilePlayback() {
-  const sampler = mobileSoundfonts[activePlaybackInstrument];
-  if (sampler && typeof sampler.stop === 'function') {
-    try { sampler.stop(); } catch (error) { console.warn(error); }
+function stopActiveSoundfont() {
+  Object.values(mobileSoundfonts).forEach((sampler) => {
+    if (sampler && typeof sampler.stop === 'function') {
+      try { sampler.stop(); } catch (error) { console.warn('Soundfont stop hatası', error); }
+    }
+  });
+}
+
+function stopNativePlayback() {
+  if (applicationInstance && applicationInstance.view && typeof applicationInstance.view.stopPlayer === 'function') {
+    applicationInstance.view.stopPlayer();
+  } else if (SuiAudioPlayer && typeof SuiAudioPlayer.stopPlayer === 'function') {
+    SuiAudioPlayer.stopPlayer();
   }
-  if (playbackEndTimer) {
-    clearTimeout(playbackEndTimer);
-    playbackEndTimer = null;
-  }
-  mobilePlaying = false;
-  setStatus('Playback durdu');
+  stopActiveSoundfont();
 }
 
 async function loadMusicXmlFile(file) {
@@ -76,7 +81,7 @@ async function loadMusicXmlFile(file) {
   }
   if (!file) return;
 
-  stopMobilePlayback();
+  stopNativePlayback();
   const name = String(file.name || 'score.musicxml');
   const lower = name.toLowerCase();
   if (!lower.endsWith('.xml') && !lower.endsWith('.mxml') && !lower.endsWith('.musicxml')) {
@@ -117,7 +122,7 @@ async function loadInstrumentSound(instrumentKey) {
     if (sampler.load) await sampler.load;
     else if (sampler.ready) await sampler.ready;
     mobileSoundfonts[instrumentKey] = sampler;
-    setStatus(`${config.label} sesi hazır`);
+    setStatus(`${config.label} sesi hazır · Smoosic ▶ kullanın`);
     return sampler;
   })();
 
@@ -129,114 +134,94 @@ async function loadInstrumentSound(instrumentKey) {
 }
 
 async function selectPlaybackInstrument(instrumentKey) {
-  if (mobilePlaying) stopMobilePlayback();
+  stopNativePlayback();
   activePlaybackInstrument = instrumentKey;
   await loadInstrumentSound(instrumentKey);
-  setStatus(`${MOBILE_SOUNDS[instrumentKey].label} dinleme sesi seçildi`);
+  setStatus(`${MOBILE_SOUNDS[instrumentKey].label} seçildi · Smoosic ▶ kullanın`);
 }
 
-function pitchToMidi(measure, note, pitch, pitchIx) {
-  try {
-    const microtone = typeof note.getMicrotone === 'function' ? note.getMicrotone(pitchIx) : undefined;
-    const result = SmoMusic.midiNumberAndDetuneFromPitch(
-      pitch,
-      -1 * Number(measure.transposeIndex || 0),
-      microtone
-    );
-    return { note: result.midinumber, detune: result.detune || 0 };
-  } catch (error) {
-    console.warn('Pitch dönüştürülemedi', error);
-    return null;
+function installNativeAudioBridge() {
+  if (nativeAudioBridgeInstalled) return true;
+  if (!SuiSampler || !SuiSampler.prototype || typeof SuiSampler.prototype.play !== 'function') {
+    return false;
   }
-}
 
-function collectPlaybackEvents(score) {
-  const events = [];
-  let scoreTime = 0;
-  const staffCount = Array.isArray(score.staves) ? score.staves.length : 0;
-  const measureCount = staffCount ? Math.max(...score.staves.map((s) => s.measures.length)) : 0;
+  SuiSampler.prototype.play = function mobileNativeSamplerPlay() {
+    const sampler = mobileSoundfonts[activePlaybackInstrument];
+    const velocity = Number(this.velocity || 0);
+    const note = Number(this.midinumber || 0);
+    if (!sampler || velocity <= 0 || note <= 0) return;
 
-  for (let measureIx = 0; measureIx < measureCount; measureIx += 1) {
-    const referenceMeasure = score.staves[0] && score.staves[0].measures[measureIx];
-    if (!referenceMeasure) continue;
-    const tempo = typeof referenceMeasure.getTempo === 'function' ? referenceMeasure.getTempo() : null;
-    const bpm = Math.max(20, Number((tempo && tempo.bpm) || 120));
-    const beatDuration = Math.max(1, Number((tempo && tempo.beatDuration) || 4096));
-    const secondsPerTick = 60 / (bpm * beatDuration);
-    let measureTicks = 0;
-
-    score.staves.forEach((staff) => {
-      const measure = staff.measures[measureIx];
-      if (!measure || !Array.isArray(measure.voices)) return;
-      measure.voices.forEach((voice) => {
-        let tick = 0;
-        const notes = voice && Array.isArray(voice.notes) ? voice.notes : [];
-        notes.forEach((note) => {
-          const tickCount = Math.max(0, Number(note.tickCount || 0));
-          if (note.noteType === 'n' && Array.isArray(note.pitches)) {
-            const duration = Math.max(0.04, tickCount * secondsPerTick * 0.92);
-            note.pitches.forEach((pitch, pitchIx) => {
-              const midi = pitchToMidi(measure, note, pitch, pitchIx);
-              if (midi) {
-                events.push({
-                  at: scoreTime + tick * secondsPerTick,
-                  duration,
-                  note: midi.note,
-                  detune: midi.detune
-                });
-              }
-            });
-          }
-          tick += tickCount;
-        });
-        measureTicks = Math.max(measureTicks, tick);
-      });
-    });
-
-    if (!measureTicks && typeof referenceMeasure.getMaxTicksVoice === 'function') {
-      measureTicks = Number(referenceMeasure.getMaxTicksVoice() || 0);
+    if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
+      SuiOscillator.audio.resume().catch(() => {});
     }
-    scoreTime += Math.max(0, measureTicks * secondsPerTick);
-  }
 
-  if (events.length > 6000) throw new Error('Bu test için skor çok büyük');
-  return { events, duration: scoreTime };
+    const delay = Math.max(0, Number(this.delayTime || 0));
+    const duration = Math.max(0.035, Number(this.duration || 0.2));
+    const detune = Number(this.detune || 0);
+    const currentTime = SuiOscillator.audio.currentTime;
+
+    try {
+      sampler.start({
+        note,
+        time: currentTime + delay,
+        duration,
+        velocity: Math.max(1, Math.min(127, Math.round(velocity))),
+        detune
+      });
+    } catch (error) {
+      console.error('Native mobil sampler hatası', error);
+    }
+  };
+
+  nativeAudioBridgeInstalled = true;
+  return true;
 }
 
-async function toggleMobilePlayback() {
-  if (!editorReady || !applicationInstance || !applicationInstance.view) {
-    throw new Error('Editör henüz hazır değil');
-  }
-  if (mobilePlaying) {
-    stopMobilePlayback();
-    return;
-  }
+function wrapNativeStop() {
+  if (nativeStopWrapped || !SuiAudioPlayer || typeof SuiAudioPlayer.stopPlayer !== 'function') return;
+  const originalStopPlayer = SuiAudioPlayer.stopPlayer.bind(SuiAudioPlayer);
+  SuiAudioPlayer.stopPlayer = function mobileAwareStopPlayer() {
+    const result = originalStopPlayer();
+    stopActiveSoundfont();
+    return result;
+  };
+  nativeStopWrapped = true;
+}
 
-  const sampler = await loadInstrumentSound(activePlaybackInstrument);
-  if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
-    await SuiOscillator.audio.resume();
-  }
-  const score = applicationInstance.view.score;
-  const { events, duration } = collectPlaybackEvents(score);
-  if (!events.length) throw new Error('Çalınacak nota bulunamadı');
+function wireNativeTransportGuard() {
+  document.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const playButton = target.closest('#playButton2');
+    if (!playButton || !editorReady) return;
 
-  const startAt = SuiOscillator.audio.currentTime + 0.08;
-  events.forEach((event) => {
-    sampler.start({
-      note: event.note,
-      time: startAt + event.at,
-      duration: event.duration,
-      velocity: 88,
-      detune: event.detune
-    });
+    if (mobileSoundfonts[activePlaybackInstrument]) {
+      setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label}`);
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+    try {
+      await loadInstrumentSound(activePlaybackInstrument);
+      setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label}`);
+      await applicationInstance.view.playFromSelection();
+    } catch (error) {
+      console.error(error);
+      setStatus(`Playback hatası: ${String(error)}`);
+    }
+  }, true);
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('#stopButton2')) {
+      stopActiveSoundfont();
+      setStatus('Playback durdu');
+    }
   });
-  mobilePlaying = true;
-  setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label}`);
-  playbackEndTimer = setTimeout(() => {
-    mobilePlaying = false;
-    playbackEndTimer = null;
-    setStatus('Playback tamamlandı');
-  }, Math.max(100, Math.ceil((duration + 0.25) * 1000)));
 }
 
 function wireMobileControls() {
@@ -269,23 +254,11 @@ function wireMobileControls() {
     });
   }
 
-  const soundButton = document.getElementById('mobile-sound-load');
-  if (soundButton) soundButton.addEventListener('click', async () => {
-    try { await loadInstrumentSound(activePlaybackInstrument); }
-    catch (error) { console.error(error); setStatus(`Ses hatası: ${String(error)}`); }
-  });
-
   document.querySelectorAll('[data-instrument]').forEach((button) => {
     button.addEventListener('click', async () => {
       try { await selectPlaybackInstrument(button.dataset.instrument); }
       catch (error) { console.error(error); setStatus(`Enstrüman hatası: ${String(error)}`); }
     });
-  });
-
-  const playButton = document.getElementById('mobile-play');
-  if (playButton) playButton.addEventListener('click', async () => {
-    try { await toggleMobilePlayback(); }
-    catch (error) { console.error(error); setStatus(`Playback hatası: ${String(error)}`); }
   });
 
   document.addEventListener('click', (event) => {
@@ -300,21 +273,31 @@ function wireMobileControls() {
 async function boot() {
   const domContainer = document.getElementById('smoo');
   wireMobileControls();
+  wireNativeTransportGuard();
   setEditorControlsEnabled(false);
   window.addEventListener('error', (event) => setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`));
   window.addEventListener('unhandledrejection', (event) => setStatus(`Hata: ${String(event.reason || 'başlatma reddedildi')}`));
 
   try {
     setStatus('Editör başlatılıyor…');
+
+    // Keep Smoosic's scheduler/cursor, but do not preload its full soundfont bank on iPhone.
     SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
       if (typeof setProgress === 'function') setProgress(100);
     };
+
+    const bridgeReady = installNativeAudioBridge();
+    wrapNativeStop();
+
     const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
     applicationInstance = await SuiApplication.configure({ mode: 'application', domContainer, initialScore });
     const rendered = Boolean(applicationInstance && applicationInstance.view && applicationInstance.view.renderer);
     editorReady = rendered;
     setEditorControlsEnabled(rendered);
-    setStatus(rendered ? 'Editör hazır' : 'Renderer oluşmadı');
+
+    if (!rendered) setStatus('Renderer oluşmadı');
+    else if (!bridgeReady) setStatus('Editör hazır · native ses köprüsü bulunamadı');
+    else setStatus('Editör hazır · Piyano/Gitar seçin, Smoosic ▶ kullanın');
   } catch (error) {
     console.error(error);
     editorReady = false;
