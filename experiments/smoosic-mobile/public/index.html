@@ -17,7 +17,6 @@
   <link rel="stylesheet" href="/mobile.css">
   <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
   <script defer src="/musicxml-compat.js"></script>
-  <script defer src="/build/smoosic-engine.js"></script>
   <script defer src="/build/mobile.js"></script>
   <script defer src="/build/corpus-stress.js"></script>
   <script defer src="/corpus-diagnostic.js"></script>
@@ -29,9 +28,9 @@
     <pre id="corpus-results" style="white-space:pre-wrap;font-size:12px;max-height:28vh;overflow:auto;margin:6px 10px;"></pre>
   </details>
 
-  <audio crossorigin="anonymous" preload="none" id="samplecn4" data-pitch="c/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-c4-iowa.mp3"></audio>
-  <audio crossorigin="anonymous" preload="none" id="samplebb4" data-pitch="bb/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-bb4-iowa.mp3"></audio>
-  <audio crossorigin="anonymous" preload="none" id="sample-piano-a2" data-pitch="a/2" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-a2.mp3"></audio>
+  <audio crossorigin="anonymous" id="samplecn4" data-pitch="c/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-c4-iowa.mp3"></audio>
+  <audio crossorigin="anonymous" id="samplebb4" data-pitch="bb/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-bb4-iowa.mp3"></audio>
+  <audio crossorigin="anonymous" id="sample-piano-a2" data-pitch="a/2" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-a2.mp3"></audio>
 
   <input id="mobile-xml-input" type="file" accept=".xml,.mxml,.musicxml,application/xml,text/xml" hidden>
   <input id="mobile-corpus-input" type="file" accept=".txt,.zip,text/plain,application/zip" hidden>
