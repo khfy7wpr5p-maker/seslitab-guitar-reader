@@ -25,6 +25,7 @@ import './src/stageS12MobileScoreTools.css'
 import './src/stageS12RendererSessionRecovery.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/stagePrCKeypad.css'
+import './src/flatTeacherCorrectionUi.css'
 import './src/app.js'
 import './src/package3Ui.js'
 import './src/stageCNoteSelectionUi.js'
@@ -58,6 +59,7 @@ import { initStageS07InlineTeacherInspectorUi } from './src/stageS07InlineTeache
 import { initStageS07VerifiedSelectionProjection } from './src/stageS07VerifiedSelectionProjection.js'
 import { initStageS08ScoreQualityOverlay } from './src/stageS08ScoreQualityOverlayUi.js'
 import { initStageLShareUi } from './src/stageLShareUi.js'
+import { initFlatTeacherCorrectionUi } from './src/flatTeacherCorrectionUi.js'
 
 if (typeof document !== 'undefined') {
   initStageJDiscoveryPresentation(document)
@@ -96,6 +98,10 @@ if (typeof document !== 'undefined') {
   // S11 removes the duplicate technical teacher tab from the normal workflow
   // only after S07-S10 have established the score-centered product surfaces.
   initStageS11TeacherWorkflowUi(document)
+  // Flat remains an isolated teacher-editing experiment. It reads the current
+  // MusicXML and can export an edited copy, but it does not write canonical
+  // revisions, OMR evidence, approval or quality state in this prototype.
+  initFlatTeacherCorrectionUi(document)
   // The legacy compact note palette may still initialize for unrelated S12
   // orchestration, but PR-D CSS hides its write controls while the integrated
   // Editor keypad is mounted so it cannot become a second authority.
