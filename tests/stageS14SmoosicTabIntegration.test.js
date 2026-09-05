@@ -1,0 +1,48 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
+const host = readFileSync(new URL('../src/smoosicEditorTabUi.js', import.meta.url), 'utf8')
+const prepare = readFileSync(new URL('../scripts/prepareSmoosicEditor.js', import.meta.url), 'utf8')
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+
+test('S14 makes Nota Düzenle the lazy same-origin Smoosic entry point', () => {
+  assert.match(host, /button\.textContent = 'Nota Düzenle'/)
+  assert.match(host, /const EDITOR_URL = '\/smoosic-editor\/index\.html'/)
+  assert.match(host, /if \(!frame\.getAttribute\('src'\)\)/)
+  assert.match(host, /root\.getElementById\?\.\('xml-output'\)/)
+  assert.match(host, /mobile-xml-input/)
+  assert.match(host, /DataTransfer/)
+})
+
+test('S14 does not start the retired teacher score workspace or keypad presentation', () => {
+  for (const retired of [
+    'reviewInspectorUi.js',
+    'package8TeacherUi.js',
+    'stageEVisualNoteEditorUi.js',
+    'stageFRevisionLifecycleUi.js',
+    'scoreViewUi.js',
+    'stageS05ScoreWorkspaceUi.js',
+    'stageS07InlineTeacherInspectorUi.js',
+    'stagePrDKeypadIntegrationUi.js',
+    'stageIInstrumentProductUi.js',
+    'stageS10EducationalChordsUi.js',
+    'stageLShareUi.js',
+  ]) {
+    assert.doesNotMatch(main, new RegExp(retired.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+
+  assert.match(main, /import '\.\/src\/package4Ui\.js'/)
+  assert.match(main, /import '\.\/src\/package5Ui\.js'/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
+})
+
+test('S14 production build packages the proven POC without corpus UI', () => {
+  assert.match(pkg.scripts['smoosic:prepare'], /experiments\/smoosic-mobile/)
+  assert.match(pkg.scripts.build, /npm run smoosic:prepare/)
+  assert.match(prepare, /smoosic-editor/)
+  assert.match(prepare, /build\/mobile\.js/)
+  assert.doesNotMatch(prepare, /corpus-stress\.js/)
+  assert.doesNotMatch(prepare, /Corpus Test/)
+})
