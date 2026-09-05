@@ -19,6 +19,7 @@ function stateFor(root) {
       observedSourceXml: null,
       observedSourceName: null,
       observedSourcePending: false,
+      pendingSourceName: null,
       sourceObservationInitialized: false,
       sourceObserver: null,
       sourceRevision: 0,
@@ -51,6 +52,26 @@ function sourceTransitionPending(root) {
   return false
 }
 
+function normalizeSourceName(fileName) {
+  const normalized = String(fileName || '').trim()
+  if (/\.(musicxml|mxml|xml)$/i.test(normalized)) return normalized
+  return `${normalized || 'seslitab-current'}.musicxml`
+}
+
+function pendingSourceName(root) {
+  const pdfProgress = root.getElementById?.('progress-container')
+  if (pdfProgress && pdfProgress.hidden === false) {
+    return normalizeSourceName(root.getElementById?.('file-name')?.textContent)
+  }
+
+  const musicXmlProgress = root.getElementById?.('musicxml-progress')
+  if (musicXmlProgress && musicXmlProgress.hidden === false) {
+    return normalizeSourceName(root.getElementById?.('musicxml-file-name')?.textContent)
+  }
+
+  return ''
+}
+
 function currentMusicXml(root) {
   if (sourceTransitionPending(root)) return ''
 
@@ -68,8 +89,7 @@ function currentSourceName(root) {
       || root.getElementById?.('file-name')?.textContent
       || 'seslitab-current.musicxml',
   ).trim()
-  if (/\.(musicxml|mxml|xml)$/i.test(fileName)) return fileName
-  return `${fileName || 'seslitab-current'}.musicxml`
+  return normalizeSourceName(fileName)
 }
 
 function acceptedSource(root) {
@@ -281,6 +301,9 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   const pending = sourceTransitionPending(root)
 
   if (pending) {
+    const transitionName = pendingSourceName(root)
+    if (transitionName) state.pendingSourceName = transitionName
+
     const changed = state.observedSourcePending === false
     state.observedSourcePending = true
     state.sourceObservationInitialized = true
@@ -296,12 +319,16 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   }
 
   const wasPending = state.observedSourcePending
+  const transitionSourceName = state.pendingSourceName
   state.observedSourcePending = false
   const xml = currentMusicXml(root)
-  const fileName = xml ? currentSourceName(root) : ''
+  const fileName = xml
+    ? ((wasPending && transitionSourceName) || currentSourceName(root))
+    : ''
   state.sourceObservationInitialized = true
 
   if (!xml) {
+    state.pendingSourceName = null
     const hadAcceptedSource = Boolean(state.observedSourceXml)
     if (!hadAcceptedSource) {
       if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
@@ -328,12 +355,14 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   // replacement failed or was cancelled. Keep the previously accepted XML and
   // filename; never combine stale XML with the newly selected filename.
   if (!allowInitial && !xmlChanged) {
+    state.pendingSourceName = null
     if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
       void enqueueEditorSync(root)
     }
     return false
   }
 
+  state.pendingSourceName = null
   if (xml === state.observedSourceXml && fileName === state.observedSourceName) {
     if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
       void enqueueEditorSync(root)
