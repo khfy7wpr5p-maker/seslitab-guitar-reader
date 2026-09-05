@@ -106,6 +106,15 @@ const proofHtml = `<!doctype html>
       input.dispatchEvent(new win.Event('change', { bubbles: true }));
     }
 
+    function assignPdf(win, doc, fileName) {
+      const input = doc.getElementById('file-input');
+      const file = new win.File(['%PDF-1.4\\n%%EOF'], fileName, { type: 'application/pdf' });
+      const transfer = new win.DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    }
+
     async function openMusicXml(win, doc, xml, fileName, expectedStep) {
       doc.getElementById('musicxml-tab-btn').click();
       assignMusicXml(win, doc, xml, fileName);
@@ -119,16 +128,20 @@ const proofHtml = `<!doctype html>
     }
 
     async function waitEditorLoaded(editorDoc, fileName, label) {
-      return waitFor(() => {
+      const result = await waitFor(() => {
         const text = String(editorDoc.getElementById('poc-status')?.textContent || '');
-        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) fail(text);
-        return text.startsWith('Yüklendi:') && text.includes(fileName) ? text : '';
+        if (text.startsWith('Yüklendi:') && text.includes(fileName)) return text;
+        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) return '__ERROR__' + text;
+        return '';
       }, label, 120000);
+      if (result.startsWith('__ERROR__')) fail(result.slice('__ERROR__'.length));
+      return result;
     }
 
-    async function beginPdfTransition(doc, editorFrame, pdfName) {
-      doc.getElementById('musicxml-file-name').textContent = '';
-      doc.getElementById('file-name').textContent = pdfName;
+    async function beginPdfTransition(win, doc, editorFrame, pdfName) {
+      doc.getElementById('pdf-tab-btn').click();
+      assignPdf(win, doc, pdfName);
+      await waitFor(() => String(doc.getElementById('file-name')?.textContent || '') === pdfName, pdfName + ' real selection');
       doc.getElementById('progress-container').hidden = false;
       await waitFor(() => editorFrame.hidden === true, pdfName + ' pending hides stale editor');
     }
@@ -163,36 +176,34 @@ const proofHtml = `<!doctype html>
 
       doc.getElementById('smoosic-tab-btn').click();
       await waitFor(() => editorFrame.hidden === false, 'A restored after B failure');
-      await sleep(400);
-      const afterFailure = String(editorDoc.getElementById('poc-status')?.textContent || '');
-      if (!afterFailure.includes('source-a.musicxml')) fail('MusicXML B failure did not retain A: ' + afterFailure);
+      const afterFailure = await waitEditorLoaded(editorDoc, 'source-a.musicxml', 'MusicXML A restored after B failure');
       if (afterFailure.includes('source-b-invalid.musicxml')) fail('MusicXML B failure was promoted as a successful source');
 
       await openMusicXml(win, doc, musicXmlC, 'source-c.musicxml', 'E');
       await waitEditorLoaded(editorDoc, 'source-c.musicxml', 'MusicXML C automatic refresh');
       body.setAttribute('data-s14-musicxml-abc-pass', 'true');
 
-      // PDF host lifecycle proof without touching or mocking the OMR provider:
-      // drive only the existing DOM contract that the PDF success/failure path publishes.
-      await beginPdfTransition(doc, editorFrame, 'pdf-a.pdf');
+      // PDF host lifecycle proof without touching or mocking the OMR provider.
+      // The real PDF file-input selection path is used so stale MusicXML filename
+      // state remains present exactly as it does in production; only the OMR
+      // completion DOM contract is driven locally.
+      await beginPdfTransition(win, doc, editorFrame, 'pdf-a.pdf');
       completePdfSuccess(doc, pdfXmlA);
       await waitEditorLoaded(editorDoc, 'pdf-a.pdf.musicxml', 'PDF A success refresh');
 
-      await beginPdfTransition(doc, editorFrame, 'pdf-b.pdf');
+      await beginPdfTransition(win, doc, editorFrame, 'pdf-b.pdf');
       completePdfSuccess(doc, pdfXmlB);
       await waitEditorLoaded(editorDoc, 'pdf-b.pdf.musicxml', 'PDF B success refresh');
       body.setAttribute('data-s14-pdf-sequential-pass', 'true');
 
-      await beginPdfTransition(doc, editorFrame, 'pdf-c-failed.pdf');
+      await beginPdfTransition(win, doc, editorFrame, 'pdf-c-failed.pdf');
       doc.getElementById('progress-container').hidden = true;
       await waitFor(() => editorFrame.hidden === false, 'PDF C failure restores last accepted editor');
-      await sleep(400);
-      const afterPdfFailure = String(editorDoc.getElementById('poc-status')?.textContent || '');
-      if (!afterPdfFailure.includes('pdf-b.pdf.musicxml')) fail('PDF failure did not retain PDF B: ' + afterPdfFailure);
+      const afterPdfFailure = await waitEditorLoaded(editorDoc, 'pdf-b.pdf.musicxml', 'PDF B retained after PDF C failure');
       if (afterPdfFailure.includes('pdf-c-failed.pdf')) fail('Failed PDF was promoted as a successful source');
       body.setAttribute('data-s14-pdf-failure-pass', 'true');
 
-      await beginPdfTransition(doc, editorFrame, 'pdf-d.pdf');
+      await beginPdfTransition(win, doc, editorFrame, 'pdf-d.pdf');
       completePdfSuccess(doc, pdfXmlD);
       const finalStatus = await waitEditorLoaded(editorDoc, 'pdf-d.pdf.musicxml', 'PDF D recovery refresh');
       body.setAttribute('data-s14-pdf-recovery-pass', 'true');
