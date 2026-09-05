@@ -21,6 +21,7 @@ let metronomeEnabled = false;
 let metronomeAwaitingStart = false;
 let metronomeTimer = null;
 let metronomeRunToken = 0;
+let metronomeNodes = [];
 let currentScoreBaseName = 'score';
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
@@ -81,6 +82,16 @@ function stopActiveSoundfont() {
   });
 }
 
+function clearMetronomeNodes() {
+  const nodes = metronomeNodes;
+  metronomeNodes = [];
+  nodes.forEach(({ osc, gain }) => {
+    try { osc.stop(); } catch (error) {}
+    try { osc.disconnect(); } catch (error) {}
+    try { gain.disconnect(); } catch (error) {}
+  });
+}
+
 function stopMetronomeTimeline() {
   metronomeRunToken += 1;
   metronomeAwaitingStart = false;
@@ -88,6 +99,7 @@ function stopMetronomeTimeline() {
     clearTimeout(metronomeTimer);
     metronomeTimer = null;
   }
+  clearMetronomeNodes();
 }
 
 function stopNativePlayback() {
@@ -240,13 +252,6 @@ function getMeasureTicks(measure) {
   return maxTicks;
 }
 
-function getMeterBeatTicks(measure) {
-  const timeSignature = measure && measure.timeSignature;
-  const denominator = Math.max(1, Number(timeSignature && timeSignature.beatDuration) || 4);
-  const ticks = (4096 * 4) / denominator;
-  return Number.isFinite(ticks) && ticks > 0 ? ticks : 4096;
-}
-
 function buildMetronomeEvents(score, startMeasure) {
   if (!score || !Array.isArray(score.staves) || !score.staves.length) return [];
   const events = [];
@@ -265,12 +270,21 @@ function buildMetronomeEvents(score, startMeasure) {
     const tempo = typeof measure.getTempo === 'function' ? measure.getTempo() : null;
     const bpm = Math.max(20, Number((tempo && tempo.bpm) || 120));
     const tempoBeatTicks = Math.max(1, Number((tempo && tempo.beatDuration) || 4096));
+
+    // Match Smoosic player.ts exactly: msPerTick = 60000 / (bpm * beatDuration).
     const secondsPerTick = 60 / (bpm * tempoBeatTicks);
     const measureTicks = getMeasureTicks(measure);
-    const clickTicks = getMeterBeatTicks(measure);
 
+    // A metronome click is the beat unit of the tempo marking, not the time-signature denominator.
+    const clickTicks = tempoBeatTicks;
     for (let tick = 0, beat = 0; tick < measureTicks - 0.5; tick += clickTicks, beat += 1) {
-      events.push({ at: elapsedSeconds + (tick * secondsPerTick), accent: beat === 0 });
+      events.push({
+        at: elapsedSeconds + (tick * secondsPerTick),
+        accent: beat === 0,
+        bpm,
+        beatDuration: tempoBeatTicks,
+        measure: measureIx
+      });
       if (events.length > 12000) throw new Error('Metronom için skor çok uzun');
     }
     elapsedSeconds += measureTicks * secondsPerTick;
@@ -279,22 +293,28 @@ function buildMetronomeEvents(score, startMeasure) {
   return events;
 }
 
-function playMetronomeClick(accent) {
+function scheduleMetronomeClick(accent, when) {
   const audio = SuiOscillator && SuiOscillator.audio;
   if (!audio) return;
-  if (audio.state === 'suspended') audio.resume().catch(() => {});
   try {
     const osc = audio.createOscillator();
     const gain = audio.createGain();
-    const now = audio.currentTime;
+    const start = Math.max(audio.currentTime, Number(when) || audio.currentTime);
     osc.frequency.value = accent ? 1700 : 1150;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(accent ? 0.16 : 0.09, now + 0.003);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(accent ? 0.16 : 0.09, start + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.045);
     osc.connect(gain);
     gain.connect(audio.destination);
-    osc.start(now);
-    osc.stop(now + 0.05);
+    const entry = { osc, gain };
+    metronomeNodes.push(entry);
+    osc.onended = () => {
+      metronomeNodes = metronomeNodes.filter((item) => item !== entry);
+      try { osc.disconnect(); } catch (error) {}
+      try { gain.disconnect(); } catch (error) {}
+    };
+    osc.start(start);
+    osc.stop(start + 0.05);
   } catch (error) {
     console.warn('Metronom click hatası', error);
   }
@@ -303,6 +323,10 @@ function playMetronomeClick(accent) {
 function startMetronomeTimeline(startMeasure) {
   stopMetronomeTimeline();
   if (!metronomeEnabled || !applicationInstance || !applicationInstance.view) return;
+
+  const audio = SuiOscillator && SuiOscillator.audio;
+  if (!audio) return;
+  if (audio.state === 'suspended') audio.resume().catch(() => {});
 
   let events = [];
   try {
@@ -315,19 +339,28 @@ function startMetronomeTimeline(startMeasure) {
   if (!events.length) return;
 
   const token = ++metronomeRunToken;
-  const origin = performance.now();
-  const schedule = (index) => {
-    if (token !== metronomeRunToken || index >= events.length) return;
-    const event = events[index];
-    const target = origin + event.at * 1000;
-    const delay = Math.max(0, target - performance.now());
-    metronomeTimer = setTimeout(() => {
-      if (token !== metronomeRunToken) return;
-      playMetronomeClick(event.accent);
-      schedule(index + 1);
-    }, delay);
+  const origin = audio.currentTime;
+  let index = 0;
+
+  // setTimeout only fills a future WebAudio queue. The click itself is timed by AudioContext.
+  const fillAudioQueue = () => {
+    if (token !== metronomeRunToken) return;
+    const horizon = audio.currentTime + 5.0;
+    while (index < events.length) {
+      const event = events[index];
+      const when = origin + event.at;
+      if (when > horizon) break;
+      scheduleMetronomeClick(event.accent, when);
+      index += 1;
+    }
+    if (index < events.length) {
+      metronomeTimer = setTimeout(fillAudioQueue, 1800);
+    }
   };
-  schedule(0);
+
+  fillAudioQueue();
+  const first = events[0];
+  setStatus(`Metronom kilitli: ${Math.round(first.bpm)} BPM · Smoosic tempo`);
 }
 
 function wrapNativePlay() {
@@ -568,7 +601,6 @@ async function boot() {
   try {
     setStatus('Editör başlatılıyor…');
 
-    // Keep Smoosic's scheduler/cursor, but do not preload its full soundfont bank on iPhone.
     SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
       if (typeof setProgress === 'function') setProgress(100);
     };
