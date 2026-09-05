@@ -178,7 +178,7 @@ test('Stage F UI binds canonicalization, exact-source materialization, corrected
   assert.doesNotMatch(source, /teacherShareEligibility|teacherShareAuthorization|opensheetmusicdisplay|OSMD/i)
 })
 
-test('Stage F controls are accessible and main wiring follows Stage E', async () => {
+test('Stage F controls remain accessible but S14 removes the legacy lifecycle UI from production wiring', async () => {
   const ui = await readFile(new URL('../src/stageFRevisionLifecycleUi.js', import.meta.url), 'utf8')
   const css = await readFile(new URL('../src/stageFRevisionLifecycle.css', import.meta.url), 'utf8')
   const main = await readFile(new URL('../main.js', import.meta.url), 'utf8')
@@ -187,6 +187,8 @@ test('Stage F controls are accessible and main wiring follows Stage E', async ()
   assert.match(ui, /Doğrula ve görünümü yenile/)
   assert.match(css, /min-height: 44px/)
   assert.match(css, /:focus-visible/)
-  assert.ok(main.indexOf("import './src/stageFRevisionLifecycleUi.js'") > main.indexOf("import './src/stageEVisualNoteEditorUi.js'"))
-  assert.match(main, /stageFRevisionLifecycle\.css/)
+  assert.doesNotMatch(main, /stageEVisualNoteEditorUi\.js/)
+  assert.doesNotMatch(main, /stageFRevisionLifecycleUi\.js/)
+  assert.doesNotMatch(main, /stageFRevisionLifecycle\.css/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
