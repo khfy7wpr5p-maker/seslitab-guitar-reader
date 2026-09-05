@@ -129,8 +129,12 @@ const proofHtml = `<!doctype html>
 
       doc.getElementById('smoosic-tab-btn').click();
       await waitFor(() => editorFrame.hidden === false, 'accepted editor restored after failure');
-      await sleep(500);
-      const editorStatus = String(editorDoc.getElementById('poc-status')?.textContent || '');
+      const editorStatus = await waitFor(() => {
+        const text = String(editorDoc.getElementById('poc-status')?.textContent || '');
+        if (text.includes('accepted-source.musicxml')) return text;
+        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) return text;
+        return '';
+      }, 'accepted source loaded after failed replacement');
       if (!editorStatus.includes('accepted-source.musicxml')) {
         fail('Smoosic did not retain the last accepted source after replacement failure: ' + editorStatus);
       }
