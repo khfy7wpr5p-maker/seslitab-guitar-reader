@@ -6,10 +6,11 @@ const {
   SuiOscillator,
   SuiOscillatorSoundfont
 } = require('smoosic');
-const { Soundfont } = require('smplr');
 
 let applicationInstance = null;
+let editorReady = false;
 let activePlaybackInstrument = 'piano';
+let playbackBridgeInstalled = false;
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
 
@@ -41,6 +42,16 @@ function setStatus(text) {
   if (status) status.textContent = text;
 }
 
+function setEditorControlsEnabled(enabled) {
+  ['mobile-xml-open', 'mobile-sound-load', 'mobile-play'].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = !enabled;
+  });
+  document.querySelectorAll('[data-instrument]').forEach((button) => {
+    button.disabled = !enabled;
+  });
+}
+
 function readFileText(file) {
   if (file && typeof file.text === 'function') {
     return file.text();
@@ -54,7 +65,7 @@ function readFileText(file) {
 }
 
 async function loadMusicXmlFile(file) {
-  if (!applicationInstance || !applicationInstance.view) {
+  if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
   }
   if (!file) return;
@@ -83,10 +94,10 @@ async function loadMusicXmlFile(file) {
 }
 
 function installMobilePlaybackBridge() {
+  if (playbackBridgeInstalled) return;
   if (!SuiOscillatorSoundfont || !SuiOscillatorSoundfont.prototype) {
     throw new Error('Smoosic soundfont oynatıcısı bulunamadı');
   }
-  if (SuiOscillatorSoundfont.prototype.__seslitabMobilePatched) return;
 
   SuiOscillatorSoundfont.prototype.play = function mobileSoundfontPlay() {
     const sampler = mobileSoundfonts[activePlaybackInstrument];
@@ -109,10 +120,11 @@ function installMobilePlaybackBridge() {
       console.error('Mobil soundfont play hatası', error);
     }
   };
-  SuiOscillatorSoundfont.prototype.__seslitabMobilePatched = true;
+  playbackBridgeInstalled = true;
 }
 
 async function loadInstrumentSound(instrumentKey) {
+  if (!editorReady) throw new Error('Editör henüz hazır değil');
   const config = MOBILE_SOUNDS[instrumentKey];
   if (!config) throw new Error('Desteklenmeyen mobil ses');
   if (mobileSoundfonts[instrumentKey]) return mobileSoundfonts[instrumentKey];
@@ -123,6 +135,11 @@ async function loadInstrumentSound(instrumentKey) {
     if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
       await SuiOscillator.audio.resume();
     }
+
+    installMobilePlaybackBridge();
+    const smplr = await import('smplr');
+    const Soundfont = smplr.Soundfont;
+    if (!Soundfont) throw new Error('Soundfont modülü yüklenemedi');
 
     const sampler = new Soundfont(SuiOscillator.audio, {
       instrument: config.sampler
@@ -149,6 +166,10 @@ async function selectPlaybackInstrument(instrumentKey) {
 function wireMobileControls() {
   document.querySelectorAll('[data-key]').forEach((button) => {
     button.addEventListener('click', () => {
+      if (!editorReady) {
+        setStatus('Editör hazırlanıyor…');
+        return;
+      }
       sendKey(button.dataset.key, {
         ctrlKey: button.dataset.ctrl === 'true',
         altKey: button.dataset.alt === 'true',
@@ -169,6 +190,10 @@ function wireMobileControls() {
   const xmlInput = document.getElementById('mobile-xml-input');
   if (xmlButton && xmlInput) {
     xmlButton.addEventListener('click', () => {
+      if (!editorReady) {
+        setStatus('Editör hazırlanıyor…');
+        return;
+      }
       xmlInput.value = '';
       xmlInput.click();
     });
@@ -232,6 +257,7 @@ function wireMobileControls() {
 async function boot() {
   const domContainer = document.getElementById('smoo');
   wireMobileControls();
+  setEditorControlsEnabled(false);
 
   window.addEventListener('error', (event) => {
     setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`);
@@ -243,12 +269,10 @@ async function boot() {
   try {
     setStatus('Editör başlatılıyor…');
 
-    // Never run Smoosic's eager all-instrument loader on iOS. Playback is
-    // bridged to one lazily loaded smplr soundfont at a time.
+    // Never load Smoosic's full instrument bank during editor startup.
     SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
       if (typeof setProgress === 'function') setProgress(100);
     };
-    installMobilePlaybackBridge();
 
     const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
     applicationInstance = await SuiApplication.configure({
@@ -258,9 +282,13 @@ async function boot() {
     });
 
     const rendered = Boolean(applicationInstance && applicationInstance.view && applicationInstance.view.renderer);
+    editorReady = rendered;
+    setEditorControlsEnabled(rendered);
     setStatus(rendered ? 'Editör hazır' : 'Renderer oluşmadı');
   } catch (error) {
     console.error(error);
+    editorReady = false;
+    setEditorControlsEnabled(false);
     setStatus(`Başlatma hatası: ${String(error)}`);
   }
 }
