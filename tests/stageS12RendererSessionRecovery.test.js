@@ -67,9 +67,11 @@ test('STI-15 recovery coalesces observer bursts and provides one bounded automat
   assert.match(css, /max-width:\s*760px/)
 })
 
-test('main wires renderer recovery after mobile production acceptance and before mobile score tools', () => {
-  assert.match(main, /stageS12RendererSessionRecovery\.css/)
-  assert.match(main, /initStageS12RendererSessionRecoveryUi/)
-  assert.ok(main.indexOf('initStageS12RendererSessionRecoveryUi(document)') > main.indexOf('initStageS12MobileProductionAcceptanceUi(document)'))
-  assert.ok(main.indexOf('initStageS12RendererSessionRecoveryUi(document)') < main.indexOf('initStageS12MobileScoreToolsUi(document)'))
+test('S12 renderer recovery remains a tested legacy module, while S14 removes it from production wiring', () => {
+  assert.doesNotMatch(main, /stageS12RendererSessionRecovery\.css/)
+  assert.doesNotMatch(main, /stageS12RendererSessionRecoveryUi\.js/)
+  assert.doesNotMatch(main, /initStageS12RendererSessionRecoveryUi/)
+  assert.doesNotMatch(main, /initStageS12MobileProductionAcceptanceUi\(document\)/)
+  assert.doesNotMatch(main, /initStageS12MobileScoreToolsUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
