@@ -94,12 +94,12 @@ test('STI-11 corrected product MusicXML registry is deliberately separate from P
   assert.equal(resolveMusicXmlSourceForNotes(product.content), null)
 })
 
-test('STI-11/12 production init order keeps PR-B exact selection before PR-D keypad and S12 mobile presentation after it', () => {
+test('S14 retires the PR-B/PR-D/S12 legacy production orchestration in favor of the Smoosic editor entry', () => {
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
-  const prB = main.indexOf('initStagePrBEditorSelectionUi(document)')
-  const prD = main.indexOf('initStagePrDKeypadIntegrationUi(document)')
-  const s12 = main.indexOf('initStageS12MobileProductionAcceptanceUi(document)')
-  assert.ok(prB >= 0 && prD > prB && s12 > prD)
+  assert.doesNotMatch(main, /initStagePrBEditorSelectionUi\(document\)/)
+  assert.doesNotMatch(main, /initStagePrDKeypadIntegrationUi\(document\)/)
+  assert.doesNotMatch(main, /initStageS12MobileProductionAcceptanceUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
 
 test('STI-12 production orchestration does not navigate Editor history to an old revision id', () => {
