@@ -1,0 +1,39 @@
+/* S13 — presentation-only cleanup before Smoosic teacher-editor integration.
+ *
+ * Legacy teacher/editor/share surfaces remain mounted for existing immutable
+ * revision, quality, selection and consumer contracts, but are retired from
+ * the normal product UI. Smoosic will replace the visible editing surface in a
+ * later integration stage. Guitar TAB and Violin product cards remain visible.
+ */
+
+/* The header search is the single Discovery entry point. */
+#discovery-tab-btn,
+#discovery-panel .discovery-intro,
+#discovery-panel .discovery-help,
+#discovery-panel .discovery-filters,
+#discovery-panel .discovery-feature-group {
+  display: none !important;
+}
+
+/* Retire the former teacher approval/edit/share presentation only. */
+#teacher-tab-btn,
+#tab-teacher,
+#review-inspector-panel,
+#stage-s07-inline-teacher-inspector,
+#stage-prc-keypad,
+#stage-e-visual-note-editor,
+#stage-f-revision-lifecycle,
+#stage-l-share-panel {
+  display: none !important;
+}
+
+/* Smoosic will replace the old score-edit/chord work area. */
+#stage-s10-educational-chords {
+  display: none !important;
+}
+
+/* Keep only the Guitar TAB / Violin product cards, not the repeated rail copy. */
+#stage-i-instrument-heading,
+#stage-i-instrument-help {
+  display: none !important;
+}
