@@ -268,15 +268,13 @@ test('S07 orchestration requires Stage F verification before a corrected score b
   assert.doesNotMatch(source, /\b(?:sourceNote|currentNote|note)\.(?:step|alter|octave|durationValue)\s*=/)
 })
 
-test('S07 is wired after S06 exact selection and verified selection projection follows inspector state', async () => {
+test('S07 verified-selection implementation remains tested while S14 retires its production inspector wiring', async () => {
   const main = await readFile(new URL('../main.js', import.meta.url), 'utf8')
-  const s06 = main.indexOf('initStageS06ExactSelectionUi(document)')
-  const s07 = main.indexOf('initStageS07InlineTeacherInspectorUi(document)')
-  const projection = main.indexOf('initStageS07VerifiedSelectionProjection(document)')
-  assert.ok(s06 >= 0)
-  assert.ok(s07 > s06)
-  assert.ok(projection > s07)
-  assert.match(main, /stageS07InlineTeacherInspector\.css/)
+  assert.doesNotMatch(main, /initStageS06ExactSelectionUi\(document\)/)
+  assert.doesNotMatch(main, /initStageS07InlineTeacherInspectorUi\(document\)/)
+  assert.doesNotMatch(main, /initStageS07VerifiedSelectionProjection\(document\)/)
+  assert.doesNotMatch(main, /stageS07InlineTeacherInspector\.css/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 
   const ui = await readFile(new URL('../src/stageS07InlineTeacherInspectorUi.js', import.meta.url), 'utf8')
   assert.doesNotMatch(ui, /textContent\s*=.*revisionId/)
