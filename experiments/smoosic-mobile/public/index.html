@@ -17,15 +17,21 @@
   <link rel="stylesheet" href="/mobile.css">
   <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
   <script defer src="/build/mobile.js"></script>
+  <script defer src="/build/corpus-stress.js"></script>
 </head>
 <body>
   <div id="poc-status">Yükleniyor…</div>
+  <details id="corpus-results-panel" hidden>
+    <summary>Corpus sonucu</summary>
+    <pre id="corpus-results" style="white-space:pre-wrap;font-size:12px;max-height:28vh;overflow:auto;margin:6px 10px;"></pre>
+  </details>
 
   <audio crossorigin="anonymous" id="samplecn4" data-pitch="c/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-c4-iowa.mp3"></audio>
   <audio crossorigin="anonymous" id="samplebb4" data-pitch="bb/4" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-bb4-iowa.mp3"></audio>
   <audio crossorigin="anonymous" id="sample-piano-a2" data-pitch="a/2" data-patch="piano" src="https://smoosic.github.io/SmoSounds/piano/piano-a2.mp3"></audio>
 
   <input id="mobile-xml-input" type="file" accept=".xml,.mxml,.musicxml,application/xml,text/xml" hidden>
+  <input id="mobile-corpus-input" type="file" accept=".txt,.zip,text/plain,application/zip" hidden>
 
   <div id="smoo"></div>
 
@@ -55,6 +61,7 @@
     <button data-instrument="eGuitar" type="button">Gitar</button>
     <button id="mobile-metronome" type="button" aria-pressed="false">Metronom</button>
     <button id="mobile-xml-export" type="button">XML Kaydet</button>
+    <button id="mobile-corpus-test" type="button">Corpus Test</button>
   </nav>
 </body>
 </html>
