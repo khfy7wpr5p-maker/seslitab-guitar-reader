@@ -5,8 +5,7 @@ const {
   XmlToSmo,
   SuiOscillator,
   SmoInstrument,
-  SmoSelection,
-  instrumentSampleMap
+  SmoSelection
 } = require('smoosic');
 
 let applicationInstance = null;
@@ -77,29 +76,22 @@ async function loadMobileSounds() {
   if (soundsLoadingPromise) return soundsLoadingPromise;
 
   soundsLoadingPromise = (async () => {
-    if (!instrumentSampleMap || typeof instrumentSampleMap !== 'object') {
-      throw new Error('Smoosic ses haritası bulunamadı');
-    }
-
-    const originalMap = { ...instrumentSampleMap };
-    const wanted = new Set(['piano', 'eGuitar']);
-    Object.keys(instrumentSampleMap).forEach((key) => {
-      if (!wanted.has(key)) delete instrumentSampleMap[key];
-    });
-
     try {
-      setStatus('Piyano/Gitar sesleri yükleniyor…');
+      setStatus('Smoosic sesleri yükleniyor…');
       if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
         await SuiOscillator.audio.resume();
       }
+
+      // Use Smoosic's own loader. It owns the private instrument map and the
+      // loadedSoundfonts table used later by playback. We call it lazily after
+      // a user gesture so iOS does not pay this cost during editor startup.
       await realSamplePromise(SuiOscillator.audio, (percent) => {
         setStatus(`Ses yükleniyor %${percent}`);
       });
+
       soundsReady = true;
       setStatus('Ses hazır');
     } finally {
-      Object.keys(instrumentSampleMap).forEach((key) => delete instrumentSampleMap[key]);
-      Object.assign(instrumentSampleMap, originalMap);
       soundsLoadingPromise = null;
     }
   })();
@@ -123,7 +115,7 @@ async function setMobileInstrument(instrumentKey) {
   const instrument = new SmoInstrument(baseInstrument);
   instrument.instrument = instrumentKey;
   instrument.instrumentName = instrumentKey === 'eGuitar' ? 'Electric Guitar' : 'Grand Piano';
-  instrument.family = instrumentKey === 'eGuitar' ? 'strings' : 'keyboard';
+  instrument.family = SuiSampleMedia.getFamilyForInstrument(instrumentKey);
   instrument.keyOffset = SmoInstrument.instrumentKeyOffset[instrumentKey] || 0;
   instrument.midiInstrument = (SmoInstrument.instrumentMidiMap[instrumentKey] || 1) - 1;
 
@@ -229,8 +221,8 @@ async function boot() {
   try {
     setStatus('Editör başlatılıyor…');
 
-    // Keep startup light on iOS. The real loader is kept above and is called
-    // only after a user taps Ses / Piyano / Gitar / Play.
+    // Keep startup light on iOS. The original loader was captured before this
+    // override and is invoked only after Ses/Piyano/Gitar/Play is tapped.
     SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
       if (typeof setProgress === 'function') setProgress(100);
     };
