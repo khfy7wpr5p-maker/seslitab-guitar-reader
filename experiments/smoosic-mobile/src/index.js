@@ -17,11 +17,13 @@ let nativeAudioBridgeInstalled = false;
 let nativeStopWrapped = false;
 let nativePlayWrapped = false;
 let nativeAnimationWrapped = false;
+let nativeCueWrapped = false;
 let metronomeEnabled = false;
 let metronomeAwaitingStart = false;
 let metronomeTimer = null;
 let metronomeRunToken = 0;
 let metronomeNodes = [];
+let activePlaybackStartPoint = null;
 let currentScoreBaseName = 'score';
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
@@ -104,6 +106,7 @@ function stopMetronomeTimeline() {
 
 function stopNativePlayback() {
   stopMetronomeTimeline();
+  activePlaybackStartPoint = null;
   if (applicationInstance && applicationInstance.view && typeof applicationInstance.view.stopPlayer === 'function') {
     applicationInstance.view.stopPlayer();
   } else if (SuiAudioPlayer && typeof SuiAudioPlayer.stopPlayer === 'function') {
@@ -216,24 +219,65 @@ function installNativeAudioBridge() {
   return true;
 }
 
-function getSelectedStartMeasure() {
+function getSelectedStartPoint() {
   const view = applicationInstance && applicationInstance.view;
-  if (!view || !view.tracker) return 0;
-  try {
-    if (typeof view.tracker.getExtremeSelection === 'function') {
-      const selection = view.tracker.getExtremeSelection(-1);
-      if (selection && selection.selector && Number.isFinite(Number(selection.selector.measure))) {
-        return Math.max(0, Number(selection.selector.measure));
-      }
-    }
-    const selection = view.tracker.selections && view.tracker.selections[0];
-    if (selection && selection.selector && Number.isFinite(Number(selection.selector.measure))) {
-      return Math.max(0, Number(selection.selector.measure));
-    }
-  } catch (error) {
-    console.warn('Başlangıç ölçüsü okunamadı', error);
+  if (!view || !view.tracker || !view.score) {
+    return { staff: 0, measure: 0, voice: 0, noteIndex: 0, tickOffset: 0 };
   }
-  return 0;
+
+  try {
+    const selection = typeof view.tracker.getExtremeSelection === 'function'
+      ? view.tracker.getExtremeSelection(-1)
+      : (view.tracker.selections && view.tracker.selections[0]);
+    const selector = selection && selection.selector ? selection.selector : {};
+    const staff = Math.max(0, Number(selector.staff || 0));
+    const measure = Math.max(0, Number(selector.measure || 0));
+    const voice = Math.max(0, Number(selector.voice || 0));
+    const noteIndex = Math.max(0, Number(selector.tick || 0));
+    const scoreMeasure = view.score.staves[staff] && view.score.staves[staff].measures[measure];
+    const notes = scoreMeasure && scoreMeasure.voices[voice] && Array.isArray(scoreMeasure.voices[voice].notes)
+      ? scoreMeasure.voices[voice].notes
+      : [];
+    let tickOffset = 0;
+    for (let i = 0; i < Math.min(noteIndex, notes.length); i += 1) {
+      tickOffset += Math.max(0, Number(notes[i].tickCount || 0));
+    }
+    return { staff, measure, voice, noteIndex, tickOffset };
+  } catch (error) {
+    console.warn('Playback başlangıç noktası okunamadı', error);
+    return { staff: 0, measure: 0, voice: 0, noteIndex: 0, tickOffset: 0 };
+  }
+}
+
+function getSelectedStartMeasure() {
+  return getSelectedStartPoint().measure;
+}
+
+function installExactStartBridge() {
+  if (nativeCueWrapped) return true;
+  if (!SuiAudioPlayer || !SuiAudioPlayer.prototype || typeof SuiAudioPlayer.prototype.createCuedSound !== 'function') {
+    return false;
+  }
+
+  const originalCreateCuedSound = SuiAudioPlayer.prototype.createCuedSound;
+  SuiAudioPlayer.prototype.createCuedSound = function mobileExactStartCreateCuedSound(measureIndex, ...args) {
+    const start = activePlaybackStartPoint;
+    const node = this.cuedSounds && this.cuedSounds.paramLinkHead;
+    if (start && !start.applied && node && Number(node.measureIndex) === Number(start.measure)) {
+      if (start.tickOffset > 0 && node.soundParams) {
+        const trimmed = {};
+        Object.keys(node.soundParams).forEach((key) => {
+          if (Number(key) >= start.tickOffset) trimmed[key] = node.soundParams[key];
+        });
+        node.soundParams = trimmed;
+      }
+      start.applied = true;
+    }
+    return originalCreateCuedSound.call(this, measureIndex, ...args);
+  };
+
+  nativeCueWrapped = true;
+  return true;
 }
 
 function getMeasureTicks(measure) {
@@ -252,13 +296,14 @@ function getMeasureTicks(measure) {
   return maxTicks;
 }
 
-function buildMetronomeEvents(score, startMeasure) {
+function buildMetronomeEvents(score, startMeasure, startTickOffset = 0) {
   if (!score || !Array.isArray(score.staves) || !score.staves.length) return [];
   const events = [];
   const roadMap = new ScoreRoadMapBuilder(score);
   roadMap.populate(startMeasure);
   let elapsedSeconds = 0;
   let guard = 0;
+  let firstMeasurePending = true;
 
   while (!roadMap.isDone && guard < 20000) {
     const measureIx = roadMap.getAndAdvance();
@@ -270,24 +315,28 @@ function buildMetronomeEvents(score, startMeasure) {
     const tempo = typeof measure.getTempo === 'function' ? measure.getTempo() : null;
     const bpm = Math.max(20, Number((tempo && tempo.bpm) || 120));
     const tempoBeatTicks = Math.max(1, Number((tempo && tempo.beatDuration) || 4096));
-
-    // Match Smoosic player.ts exactly: msPerTick = 60000 / (bpm * beatDuration).
     const secondsPerTick = 60 / (bpm * tempoBeatTicks);
     const measureTicks = getMeasureTicks(measure);
+    const localStartTick = firstMeasurePending && measureIx === startMeasure
+      ? Math.max(0, Math.min(measureTicks, Number(startTickOffset || 0)))
+      : 0;
 
-    // A metronome click is the beat unit of the tempo marking, not the time-signature denominator.
     const clickTicks = tempoBeatTicks;
-    for (let tick = 0, beat = 0; tick < measureTicks - 0.5; tick += clickTicks, beat += 1) {
+    const firstClickTick = localStartTick > 0
+      ? Math.ceil(localStartTick / clickTicks) * clickTicks
+      : 0;
+    for (let tick = firstClickTick; tick < measureTicks - 0.5; tick += clickTicks) {
       events.push({
-        at: elapsedSeconds + (tick * secondsPerTick),
-        accent: beat === 0,
+        at: elapsedSeconds + ((tick - localStartTick) * secondsPerTick),
+        accent: localStartTick === 0 && tick === 0,
         bpm,
         beatDuration: tempoBeatTicks,
         measure: measureIx
       });
       if (events.length > 12000) throw new Error('Metronom için skor çok uzun');
     }
-    elapsedSeconds += measureTicks * secondsPerTick;
+    elapsedSeconds += Math.max(0, measureTicks - localStartTick) * secondsPerTick;
+    if (firstMeasurePending && measureIx === startMeasure) firstMeasurePending = false;
   }
 
   return events;
@@ -320,7 +369,7 @@ function scheduleMetronomeClick(accent, when) {
   }
 }
 
-function startMetronomeTimeline(startMeasure) {
+function startMetronomeTimeline(startMeasure, startTickOffset = 0) {
   stopMetronomeTimeline();
   if (!metronomeEnabled || !applicationInstance || !applicationInstance.view) return;
 
@@ -330,7 +379,7 @@ function startMetronomeTimeline(startMeasure) {
 
   let events = [];
   try {
-    events = buildMetronomeEvents(applicationInstance.view.score, startMeasure);
+    events = buildMetronomeEvents(applicationInstance.view.score, startMeasure, startTickOffset);
   } catch (error) {
     console.error(error);
     setStatus(`Metronom hatası: ${String(error)}`);
@@ -342,7 +391,6 @@ function startMetronomeTimeline(startMeasure) {
   const origin = audio.currentTime;
   let index = 0;
 
-  // setTimeout only fills a future WebAudio queue. The click itself is timed by AudioContext.
   const fillAudioQueue = () => {
     if (token !== metronomeRunToken) return;
     const horizon = audio.currentTime + 5.0;
@@ -370,9 +418,10 @@ function wrapNativePlay() {
   const originalPlay = view.playFromSelection.bind(view);
   view.playFromSelection = async function mobileAwarePlayFromSelection(...args) {
     stopMetronomeTimeline();
+    const start = getSelectedStartPoint();
+    activePlaybackStartPoint = { ...start, applied: false };
     metronomeAwaitingStart = metronomeEnabled;
-    const measureIx = getSelectedStartMeasure();
-    setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label} · ölçü ${measureIx + 1}`);
+    setStatus(`Oynatılıyor: ${MOBILE_SOUNDS[activePlaybackInstrument].label} · ölçü ${start.measure + 1} · nota ${start.noteIndex + 1}`);
     return originalPlay(...args);
   };
   nativePlayWrapped = true;
@@ -387,10 +436,12 @@ function wrapNativeAudioAnimation() {
   audioAnimation.audioAnimationHandler = function mobileAwareAudioAnimation(view, selector, offsetPct, durationPct) {
     if (metronomeAwaitingStart && metronomeEnabled) {
       metronomeAwaitingStart = false;
+      const start = activePlaybackStartPoint || getSelectedStartPoint();
       const startMeasure = selector && Number.isFinite(Number(selector.measure))
         ? Number(selector.measure)
-        : getSelectedStartMeasure();
-      startMetronomeTimeline(startMeasure);
+        : start.measure;
+      const tickOffset = startMeasure === start.measure ? start.tickOffset : 0;
+      startMetronomeTimeline(startMeasure, tickOffset);
     }
     return originalAnimation(view, selector, offsetPct, durationPct);
   };
@@ -410,6 +461,7 @@ function wrapNativeStop() {
   const originalStopPlayer = SuiAudioPlayer.stopPlayer.bind(SuiAudioPlayer);
   SuiAudioPlayer.stopPlayer = function mobileAwareStopPlayer() {
     stopMetronomeTimeline();
+    activePlaybackStartPoint = null;
     const result = originalStopPlayer();
     stopActiveSoundfont();
     return result;
@@ -455,6 +507,52 @@ function sameScoreShape(a, b) {
   return a.staves === b.staves && a.measures === b.measures && a.voices === b.voices && a.notes === b.notes;
 }
 
+function normalizePitch(pitch) {
+  if (!pitch) return null;
+  return {
+    letter: String(pitch.letter || ''),
+    octave: Number(pitch.octave || 0),
+    accidental: String(pitch.accidental || ''),
+    cents: Number(pitch.cents || 0)
+  };
+}
+
+function semanticScoreSignature(score) {
+  const staves = Array.isArray(score && score.staves) ? score.staves : [];
+  return staves.map((staff, staffIx) => ({
+    staff: staffIx,
+    measures: (Array.isArray(staff.measures) ? staff.measures : []).map((measure, measureIx) => {
+      const tempo = typeof measure.getTempo === 'function' ? measure.getTempo() : null;
+      const time = measure.timeSignature || {};
+      return {
+        measure: measureIx,
+        keySignature: String(measure.keySignature || ''),
+        tempo: {
+          bpm: Number((tempo && tempo.bpm) || 0),
+          beatDuration: Number((tempo && tempo.beatDuration) || 0)
+        },
+        time: {
+          actualBeats: Number(time.actualBeats || 0),
+          beatDuration: Number(time.beatDuration || 0)
+        },
+        voices: (Array.isArray(measure.voices) ? measure.voices : []).map((voice, voiceIx) => ({
+          voice: voiceIx,
+          notes: (voice && Array.isArray(voice.notes) ? voice.notes : []).map((note) => ({
+            noteType: String(note.noteType || ''),
+            tickCount: Number(note.tickCount || 0),
+            pitches: (Array.isArray(note.pitches) ? note.pitches : []).map(normalizePitch),
+            graceCount: Array.isArray(note.graceNotes) ? note.graceNotes.length : 0
+          }))
+        }))
+      };
+    })
+  }));
+}
+
+function sameSemanticScore(a, b) {
+  return JSON.stringify(semanticScoreSignature(a)) === JSON.stringify(semanticScoreSignature(b));
+}
+
 async function exportMusicXml() {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
@@ -470,13 +568,15 @@ async function exportMusicXml() {
   const parsed = new DOMParser().parseFromString(xmlText, 'text/xml');
   if (parsed.querySelector('parsererror')) throw new Error('Üretilen MusicXML yeniden ayrıştırılamadı');
   const roundTripScore = XmlToSmo.convert(parsed);
-  const shapeBefore = scoreShape(sourceScore);
-  const shapeAfter = scoreShape(roundTripScore);
-  const roundTripOk = sameScoreShape(shapeBefore, shapeAfter);
+  const shapeOk = sameScoreShape(scoreShape(sourceScore), scoreShape(roundTripScore));
+  const semanticOk = sameSemanticScore(sourceScore, roundTripScore);
+  const roundTripOk = shapeOk && semanticOk;
 
   const fileName = `${currentScoreBaseName}-edited.musicxml`;
   const file = new File([xmlText], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
-  setStatus(roundTripOk ? 'MusicXML round-trip doğrulandı' : 'MusicXML üretildi · yapı farkı tespit edildi');
+  setStatus(roundTripOk
+    ? 'MusicXML semantic round-trip doğrulandı'
+    : `MusicXML üretildi · ${shapeOk ? 'semantic fark' : 'yapı farkı'} tespit edildi`);
 
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
@@ -528,6 +628,7 @@ function wireNativeTransportGuard() {
     if (!(target instanceof Element)) return;
     if (target.closest('#stopButton2')) {
       stopMetronomeTimeline();
+      activePlaybackStartPoint = null;
       stopActiveSoundfont();
       setStatus('Playback durdu');
     }
@@ -606,6 +707,7 @@ async function boot() {
     };
 
     const bridgeReady = installNativeAudioBridge();
+    const exactStartReady = installExactStartBridge();
     wrapNativeStop();
 
     const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
@@ -620,7 +722,8 @@ async function boot() {
 
     if (!rendered) setStatus('Renderer oluşmadı');
     else if (!bridgeReady) setStatus('Editör hazır · native ses köprüsü bulunamadı');
-    else setStatus('Editör hazır · Piyano/Gitar seçin, Smoosic ▶ kullanın');
+    else if (!exactStartReady) setStatus('Editör hazır · nota başlangıç köprüsü bulunamadı');
+    else setStatus('Editör hazır · seçili notadan Smoosic ▶ kullanın');
   } catch (error) {
     console.error(error);
     editorReady = false;
