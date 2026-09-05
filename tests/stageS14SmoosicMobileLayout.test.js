@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 
 const hostCss = readFileSync(new URL('../src/smoosicEditorTab.css', import.meta.url), 'utf8')
 const innerMobileCss = readFileSync(new URL('../experiments/smoosic-mobile/public/mobile.css', import.meta.url), 'utf8')
-const innerMobileJs = readFileSync(new URL('../experiments/smoosic-mobile/src/index.js', import.meta.url), 'utf8')
+const innerMobileLayoutJs = readFileSync(new URL('../experiments/smoosic-mobile/src/mobile-layout.js', import.meta.url), 'utf8')
+const webpackConfig = readFileSync(new URL('../experiments/smoosic-mobile/webpack.config.js', import.meta.url), 'utf8')
 
 test('S14 mobile Smoosic workspace widens the host by reducing only active main padding', () => {
   assert.match(hostCss, /@media \(max-width: 820px\)/)
@@ -25,7 +26,8 @@ test('S14 inner mobile layout targets the real Smoosic DOM ids so hidden control
   assert.match(innerMobileCss, /body\.mobile-menu-open #controls-left \{[\s\S]*?transform: translateX\(0\);/)
   assert.match(innerMobileCss, /\[id\$='-top-bar'\] \{[\s\S]*?flex-flow: row nowrap !important;[\s\S]*?height: var\(--seslitab-mobile-topbar-height\) !important;/)
   assert.match(innerMobileCss, /#controls-top,[\s\S]*?#controls-top \.control-bar,[\s\S]*?#controls-top \.row \{[\s\S]*?flex-flow: row nowrap !important;/)
-  assert.match(innerMobileJs, /target\.closest\('#controls-left button, \.controls-left button'\)/)
+  assert.match(innerMobileLayoutJs, /target\.closest\('#controls-left button'\)/)
+  assert.match(webpackConfig, /mobile:[\s\S]*?src\/mobile-layout\.js[\s\S]*?src\/index\.js/)
 })
 
 test('S14 inner mobile score viewport and toolbar favor notation space without shrinking touch targets', () => {
