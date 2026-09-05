@@ -14,7 +14,7 @@ if (!existsSync(resolve(buildSource, 'mobile.js'))) {
 rmSync(target, { recursive: true, force: true })
 mkdirSync(buildTarget, { recursive: true })
 
-for (const file of ['mobile.css', 'musicxml-compat.js']) {
+for (const file of ['mobile.css', 'musicxml-compat.js', 'status-visibility.js']) {
   const from = resolve(source, file)
   if (!existsSync(from)) throw new Error(`Missing Smoosic asset: ${file}`)
   cpSync(from, resolve(target, file))
@@ -45,6 +45,7 @@ const html = `<!doctype html>
   <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"></script>
   <script defer src="/smoosic-editor/musicxml-compat.js"></script>
   <script defer src="/smoosic-editor/build/mobile.js"></script>
+  <script defer src="/smoosic-editor/status-visibility.js"></script>
 </head>
 <body>
   <div id="poc-status">Yükleniyor…</div>

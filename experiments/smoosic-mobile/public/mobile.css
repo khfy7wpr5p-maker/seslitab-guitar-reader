@@ -10,11 +10,16 @@ html, body {
   top: env(safe-area-inset-top, 0px);
   right: 8px;
   z-index: 10020;
+  display: none;
   padding: 5px 8px;
   border-radius: 8px;
   background: rgba(255,255,255,.9);
   font: 12px/1.2 system-ui, sans-serif;
   pointer-events: none;
+}
+
+#poc-status.is-visible {
+  display: block;
 }
 
 #mobile-toolbar {
