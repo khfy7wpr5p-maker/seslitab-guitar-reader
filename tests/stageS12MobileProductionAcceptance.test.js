@@ -143,10 +143,12 @@ test('S12 CSS compacts routine score text while preserving accessible hidden cop
   assert.doesNotMatch(css, /transform:\s*scale\(/)
 })
 
-test('main wires S12 after exact selection/quality workspace and before instrument output presentation', () => {
+test('S12 legacy mobile implementation remains tested while S14 removes it from production wiring', () => {
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
-  assert.match(main, /stageS12MobileProductionAcceptance\.css/)
-  assert.match(main, /initStageS12MobileProductionAcceptanceUi/)
-  assert.ok(main.indexOf('initStageS12MobileProductionAcceptanceUi(document)') > main.indexOf('initStageS08ScoreQualityOverlay(document)'))
-  assert.ok(main.indexOf('initStageS12MobileProductionAcceptanceUi(document)') < main.indexOf('initStageIInstrumentProductUi(document)'))
+  assert.doesNotMatch(main, /stageS12MobileProductionAcceptance\.css/)
+  assert.doesNotMatch(main, /stageS12MobileProductionAcceptanceUi\.js/)
+  assert.doesNotMatch(main, /initStageS12MobileProductionAcceptanceUi/)
+  assert.doesNotMatch(main, /initStageS08ScoreQualityOverlay\(document\)/)
+  assert.doesNotMatch(main, /initStageIInstrumentProductUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
