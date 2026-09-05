@@ -39,6 +39,16 @@ test('S14 tracks the active source lifecycle and refreshes an already-created ed
   assert.match(host, /Yeni eser hazırlanıyor…/)
 })
 
+test('S14 binds the accepted filename to the input transition that produced the new XML', () => {
+  assert.match(host, /function pendingSourceName\(root\)/)
+  assert.match(host, /pdfProgress[\s\S]*?'file-name'/)
+  assert.match(host, /musicXmlProgress[\s\S]*?'musicxml-file-name'/)
+  assert.match(host, /state\.pendingSourceName = transitionName/)
+  assert.match(host, /const transitionSourceName = state\.pendingSourceName/)
+  assert.match(host, /\(wasPending && transitionSourceName\) \|\| currentSourceName\(root\)/)
+  assert.match(host, /state\.pendingSourceName = null/)
+})
+
 test('S14 promotes only accepted XML changes and retains the last accepted source after replacement failure', () => {
   assert.match(host, /function acceptedSource\(root\)/)
   assert.match(host, /sourceObservationInitialized/)
