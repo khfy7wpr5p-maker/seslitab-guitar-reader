@@ -149,7 +149,7 @@ test('Stage L fails closed when exact Package 12 source quality evidence is unav
   assert.equal(result.qualityEvidenceId, null)
 })
 
-test('Stage L source remains metadata/readiness-only and main wires UI without delivery APIs', () => {
+test('Stage L remains metadata/readiness-only while S14 retires the legacy share UI from production', () => {
   const service = readFileSync(
     new URL('../src/services/stageLShareReadiness.js', import.meta.url),
     'utf8',
@@ -167,6 +167,8 @@ test('Stage L source remains metadata/readiness-only and main wires UI without d
   assert.doesNotMatch(ui, /\.href\s*=|createObjectURL|window\.open/)
   assert.match(ui, /eser gönderilmez; link, token veya öğrenci erişimi oluşturulmaz/)
   assert.match(css, /min-height:\s*44px/)
-  assert.match(main, /stageLShareUi\.css/)
-  assert.match(main, /initStageLShareUi/)
+  assert.doesNotMatch(main, /stageLShareUi\.css/)
+  assert.doesNotMatch(main, /stageLShareUi\.js/)
+  assert.doesNotMatch(main, /initStageLShareUi/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
