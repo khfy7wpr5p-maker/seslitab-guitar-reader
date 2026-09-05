@@ -4,9 +4,11 @@ import { readFileSync } from 'node:fs'
 
 const css = readFileSync(new URL('../src/smoosicEditorTab.css', import.meta.url), 'utf8')
 
-test('S14 mobile Smoosic workspace uses a near-full-width host shell without changing editor internals', () => {
+test('S14 mobile Smoosic workspace widens the host by reducing only active main padding', () => {
   assert.match(css, /@media \(max-width: 820px\)/)
-  assert.match(css, /#input-section\.smoosic-editor-active \{[\s\S]*?width: calc\(100vw - 0\.5rem\);[\s\S]*?align-self: center;/)
+  assert.match(css, /\.app-main:has\(#input-section\.smoosic-editor-active\) \{[\s\S]*?padding-left: max\(0\.25rem, env\(safe-area-inset-left\)\);[\s\S]*?padding-right: max\(0\.25rem, env\(safe-area-inset-right\)\);/)
+  assert.match(css, /#input-section\.smoosic-editor-active \{[\s\S]*?width: 100%;[\s\S]*?max-width: none;/)
+  assert.doesNotMatch(css, /@media \(max-width: 820px\)[\s\S]*?#input-section\.smoosic-editor-active \{[\s\S]*?width: calc\(100vw/)
   assert.match(css, /#input-section\.smoosic-editor-active > \.card-header \{[\s\S]*?display: none;/)
   assert.match(css, /#input-section\.smoosic-editor-active > \.card-body \{[\s\S]*?padding: 0 !important;[\s\S]*?overflow: hidden;/)
   assert.match(css, /#input-section\.smoosic-editor-active \.input-tab-btn \{[\s\S]*?font-size: 0\.8125rem;[\s\S]*?white-space: nowrap;/)
