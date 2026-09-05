@@ -37,8 +37,11 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-      - name: Verify score runtime in real browser
-        run: node scripts/verifyScoreRuntimeBrowser.js
+      - name: Verify S14 core score runtime in real browser
+        run: node scripts/verifyS14CoreRuntimeBrowser.js
+
+      - name: Verify S14 Smoosic production integration in real browser
+        run: node scripts/verifyS14SmoosicProductionBrowser.js
 
       - name: Verify STI-17 cross-realm iframe renderer in real browser
         run: node scripts/verifySti17CrossRealmBrowser.js
