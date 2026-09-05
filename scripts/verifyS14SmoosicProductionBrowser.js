@@ -56,6 +56,24 @@ const fixtureXml = `<?xml version="1.0" encoding="UTF-8"?>
   </part>
 </score-partwise>`
 
+const fixtureXmlTwo = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>1</fifths></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>`
+
 const proofHtml = `<!doctype html>
 <html lang="tr">
 <head>
@@ -68,6 +86,7 @@ const proofHtml = `<!doctype html>
   <pre id="proof-status">pending</pre>
   <script>
     const fixtureXml = ${JSON.stringify(fixtureXml)};
+    const fixtureXmlTwo = ${JSON.stringify(fixtureXmlTwo)};
     const proofBody = document.body;
     const proofStatus = document.getElementById('proof-status');
     const appFrame = document.getElementById('app-frame');
@@ -95,6 +114,17 @@ const proofHtml = `<!doctype html>
         await sleep(100);
       }
       fail('timeout: ' + label);
+    }
+
+    function assignMusicXml(win, doc, xml, fileName) {
+      const fileInput = doc.getElementById('musicxml-file-input');
+      const file = new win.File([xml], fileName, {
+        type: 'application/vnd.recordare.musicxml+xml',
+      });
+      const transfer = new win.DataTransfer();
+      transfer.items.add(file);
+      fileInput.files = transfer.files;
+      fileInput.dispatchEvent(new win.Event('change', { bubbles: true }));
     }
 
     async function run() {
@@ -142,17 +172,10 @@ const proofHtml = `<!doctype html>
       mark('data-s14-products-pass');
 
       doc.getElementById('musicxml-tab-btn').click();
-      const fileInput = doc.getElementById('musicxml-file-input');
-      const file = new win.File([fixtureXml], 's14-browser-fixture.musicxml', {
-        type: 'application/vnd.recordare.musicxml+xml',
-      });
-      const transfer = new win.DataTransfer();
-      transfer.items.add(file);
-      fileInput.files = transfer.files;
-      fileInput.dispatchEvent(new win.Event('change', { bubbles: true }));
+      assignMusicXml(win, doc, fixtureXml, 's14-browser-fixture.musicxml');
       await waitFor(() => doc.getElementById('musicxml-open-btn')?.disabled === false, 'MusicXML selection');
       doc.getElementById('musicxml-open-btn').click();
-      await waitFor(() => String(doc.getElementById('xml-output')?.textContent || '').includes('<score-partwise'), 'main MusicXML parse');
+      await waitFor(() => String(doc.getElementById('xml-output')?.textContent || '').includes('<step>C</step>'), 'main MusicXML parse');
       if (!String(doc.getElementById('musicxml-file-name')?.textContent || '').includes('s14-browser-fixture.musicxml')) {
         fail('MusicXML source filename was not preserved');
       }
@@ -170,11 +193,11 @@ const proofHtml = `<!doctype html>
       await waitFor(() => {
         const text = String(editorDoc.getElementById('poc-status')?.textContent || '');
         if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) fail(text);
-        return text.startsWith('Yüklendi:');
-      }, 'MusicXML handoff to Smoosic', 120000);
+        return text.startsWith('Yüklendi:') && text.includes('s14-browser-fixture.musicxml');
+      }, 'first MusicXML handoff to Smoosic', 120000);
 
-      const editorStatus = String(editorDoc.getElementById('poc-status')?.textContent || '');
-      if (!editorStatus.includes('s14-browser-fixture.musicxml')) fail('Smoosic did not load the exact MusicXML source');
+      const firstEditorStatus = String(editorDoc.getElementById('poc-status')?.textContent || '');
+      if (!firstEditorStatus.includes('s14-browser-fixture.musicxml')) fail('Smoosic did not load the first MusicXML source');
       if (!editorDoc.getElementById('mobile-xml-input') || !editorDoc.getElementById('mobile-xml-export')) {
         fail('Smoosic editor controls missing');
       }
@@ -183,13 +206,40 @@ const proofHtml = `<!doctype html>
       }
       mark('data-s14-handoff-pass');
 
+      // Reproduce the production bug: leave the already-created Smoosic iframe,
+      // load a second source, then return to Nota Düzenle. The same iframe must
+      // refresh to the second source instead of keeping the first score.
+      doc.getElementById('musicxml-tab-btn').click();
+      assignMusicXml(win, doc, fixtureXmlTwo, 's14-browser-fixture-2.musicxml');
+      await waitFor(() => doc.getElementById('musicxml-open-btn')?.disabled === false, 'second MusicXML selection');
+      doc.getElementById('musicxml-open-btn').click();
+      await waitFor(() => {
+        const xml = String(doc.getElementById('xml-output')?.textContent || '');
+        const name = String(doc.getElementById('musicxml-file-name')?.textContent || '');
+        return xml.includes('<step>G</step>') && name.includes('s14-browser-fixture-2.musicxml');
+      }, 'second main MusicXML parse');
+
+      await waitFor(() => {
+        const text = String(editorDoc.getElementById('poc-status')?.textContent || '');
+        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) fail(text);
+        return text.startsWith('Yüklendi:') && text.includes('s14-browser-fixture-2.musicxml');
+      }, 'automatic second-source refresh in Smoosic', 120000);
+
+      doc.getElementById('smoosic-tab-btn').click();
+      await waitFor(() => editorFrame.hidden === false, 'second source editor visibility');
+      const secondEditorStatus = String(editorDoc.getElementById('poc-status')?.textContent || '');
+      if (!secondEditorStatus.includes('s14-browser-fixture-2.musicxml')) {
+        fail('Smoosic kept the stale first source after the second upload');
+      }
+      mark('data-s14-second-source-pass');
+
       const frameRect = editorFrame.getBoundingClientRect();
       if (frameRect.width > doc.documentElement.clientWidth + 2) {
         fail('Smoosic host iframe overflows mobile viewport');
       }
       mark('data-s14-mobile-pass');
 
-      proofBody.setAttribute('data-s14-editor-status', editorStatus.replace(/["<>]/g, ''));
+      proofBody.setAttribute('data-s14-editor-status', secondEditorStatus.replace(/["<>]/g, ''));
       proofBody.setAttribute('data-s14-proof', 'true');
       proofStatus.textContent = 'PASS';
     }
@@ -266,7 +316,7 @@ const chromeArgs = [
   '--disable-dev-shm-usage',
   '--autoplay-policy=no-user-gesture-required',
   '--window-size=390,844',
-  '--virtual-time-budget=150000',
+  '--virtual-time-budget=180000',
   '--dump-dom',
   targetUrl,
 ]
@@ -280,7 +330,7 @@ try {
     const timeout = setTimeout(() => {
       child.kill('SIGKILL')
       rejectExit(new Error('S14 production Chrome proof timed out.'))
-    }, 180000)
+    }, 210000)
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (chunk) => { stdout += chunk })
@@ -312,6 +362,7 @@ const requiredMarkers = [
   'data-s14-main-musicxml-pass="true"',
   'data-s14-same-origin-pass="true"',
   'data-s14-handoff-pass="true"',
+  'data-s14-second-source-pass="true"',
   'data-s14-mobile-pass="true"',
   'data-s14-proof="true"',
 ]
@@ -325,10 +376,10 @@ for (const marker of requiredMarkers) {
   }
 }
 
-if (!/data-s14-editor-status="Yüklendi:[^"]*s14-browser-fixture\.musicxml/.test(stdout)) {
-  console.error('S14 production browser proof failed: exact MusicXML load status missing.')
+if (!/data-s14-editor-status="Yüklendi:[^"]*s14-browser-fixture-2\.musicxml/.test(stdout)) {
+  console.error('S14 production browser proof failed: second MusicXML load status missing.')
   console.error(stdout.slice(-10000))
   process.exit(1)
 }
 
-console.log(`S14 production browser proof PASS using ${chrome}: top search + clean shell + lazy same-origin Smoosic + exact MusicXML handoff.`)
+console.log(`S14 production browser proof PASS using ${chrome}: top search + clean shell + lazy same-origin Smoosic + sequential MusicXML source refresh.`)

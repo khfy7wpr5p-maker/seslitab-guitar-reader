@@ -16,6 +16,13 @@ function stateFor(root) {
       frameReadyPromise: null,
       lastSourceXml: null,
       lastSourceName: 'seslitab-current.musicxml',
+      observedSourceXml: null,
+      observedSourceName: null,
+      observedSourcePending: false,
+      sourceObservationInitialized: false,
+      sourceObserver: null,
+      sourceRevision: 0,
+      syncPromise: Promise.resolve(false),
     }
     states.set(root, state)
   }
@@ -36,7 +43,17 @@ function setHostStatus(root, text, kind = 'info') {
   status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite')
 }
 
+function sourceTransitionPending(root) {
+  for (const id of ['progress-container', 'musicxml-progress']) {
+    const element = root.getElementById?.(id)
+    if (element && element.hidden === false) return true
+  }
+  return false
+}
+
 function currentMusicXml(root) {
+  if (sourceTransitionPending(root)) return ''
+
   const results = root.getElementById?.('results-section')
   if (!results || results.hidden === true || results.hasAttribute?.('hidden')) return ''
 
@@ -53,6 +70,21 @@ function currentSourceName(root) {
   ).trim()
   if (/\.(musicxml|mxml|xml)$/i.test(fileName)) return fileName
   return `${fileName || 'seslitab-current'}.musicxml`
+}
+
+function acceptedSource(root) {
+  const state = stateFor(root)
+  if (state.sourceObservationInitialized) {
+    if (!state.observedSourceXml) return null
+    return {
+      xml: state.observedSourceXml,
+      fileName: state.observedSourceName || 'seslitab-current.musicxml',
+    }
+  }
+
+  const xml = currentMusicXml(root)
+  if (!xml) return null
+  return { xml, fileName: currentSourceName(root) }
 }
 
 function setTabActive(root, active) {
@@ -153,30 +185,55 @@ function resetIframeStatusForTransfer(frame, fileName) {
 
 async function loadSourceIntoEditor(root, frame) {
   const state = stateFor(root)
-  const xml = currentMusicXml(root)
-  if (!xml) {
-    state.lastSourceXml = null
-    state.lastSourceName = 'seslitab-current.musicxml'
-    setHostStatus(root, 'Önce PDF veya MusicXML açın. Editör şu an boş eserle hazır.', 'info')
+
+  if (sourceTransitionPending(root)) {
+    frame.hidden = true
+    setHostStatus(root, 'Yeni eser hazırlanıyor…', 'loading')
     return false
   }
-  if (state.lastSourceXml === xml) {
+
+  const source = acceptedSource(root)
+  if (!source) {
+    state.lastSourceXml = null
+    state.lastSourceName = 'seslitab-current.musicxml'
+    frame.hidden = true
+    setHostStatus(root, 'Önce PDF veya MusicXML açın.', 'info')
+    return false
+  }
+
+  const { xml, fileName } = source
+  if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
+    frame.hidden = false
     setHostStatus(root, '', 'ready')
     return true
   }
 
+  frame.hidden = false
   await waitForEditorReady(frame)
   const doc = frame.contentDocument
   const input = doc?.getElementById('mobile-xml-input')
   if (!input) throw new Error('Nota editörünün MusicXML giriş alanı bulunamadı.')
 
-  const fileName = currentSourceName(root)
+  const targetRevision = state.sourceRevision
   const file = makeIframeFile(frame, xml, fileName)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
   setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
   input.dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }))
   await waitForMusicXmlLoad(frame, fileName)
+
+  // A newer PDF/MusicXML may have completed while this import was running.
+  // Never mark the older transfer as current in that case; the queued sync
+  // will immediately apply the latest accepted source revision.
+  const latestSource = acceptedSource(root)
+  if (
+    targetRevision !== state.sourceRevision ||
+    !latestSource ||
+    latestSource.xml !== xml ||
+    latestSource.fileName !== fileName
+  ) {
+    return false
+  }
 
   state.lastSourceXml = xml
   state.lastSourceName = fileName
@@ -199,6 +256,132 @@ function ensureFrame(root, panel) {
   return frame
 }
 
+function enqueueEditorSync(root) {
+  const state = stateFor(root)
+  state.syncPromise = state.syncPromise
+    .catch(() => false)
+    .then(async () => {
+      const frame = state.frame
+      if (!frame?.isConnected || !frame.getAttribute('src')) return false
+      try {
+        if (state.frameReadyPromise) await state.frameReadyPromise
+        await waitForEditorReady(frame)
+        return await loadSourceIntoEditor(root, frame)
+      } catch (error) {
+        console.error(error)
+        setHostStatus(root, error?.message || 'Nota editörü güncellenemedi.', 'error')
+        return false
+      }
+    })
+  return state.syncPromise
+}
+
+function refreshObservedSource(root, { xmlChanged = false, allowInitial = false } = {}) {
+  const state = stateFor(root)
+  const pending = sourceTransitionPending(root)
+
+  if (pending) {
+    const changed = state.observedSourcePending === false
+    state.observedSourcePending = true
+    state.sourceObservationInitialized = true
+    if (changed) {
+      // Invalidate any in-flight transfer, but keep the last accepted source.
+      // If the replacement fails, that accepted source remains authoritative.
+      state.sourceRevision += 1
+      if (state.frame?.isConnected && state.frame.getAttribute('src')) {
+        void enqueueEditorSync(root)
+      }
+    }
+    return changed
+  }
+
+  const wasPending = state.observedSourcePending
+  state.observedSourcePending = false
+  const xml = currentMusicXml(root)
+  const fileName = xml ? currentSourceName(root) : ''
+  state.sourceObservationInitialized = true
+
+  if (!xml) {
+    const hadAcceptedSource = Boolean(state.observedSourceXml)
+    if (!hadAcceptedSource) {
+      if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
+        void enqueueEditorSync(root)
+      }
+      return wasPending
+    }
+
+    // A reset, TAB conversion, or other explicit non-MusicXML result clears
+    // the accepted source. This cannot be confused with a failed replacement,
+    // because failed replacement leaves the old valid XML in the result DOM.
+    state.observedSourceXml = null
+    state.observedSourceName = null
+    state.sourceRevision += 1
+    state.lastSourceXml = null
+    state.lastSourceName = 'seslitab-current.musicxml'
+    if (state.frame?.isConnected && state.frame.getAttribute('src')) {
+      void enqueueEditorSync(root)
+    }
+    return true
+  }
+
+  // Leaving a pending replacement without an xml-output mutation means the
+  // replacement failed or was cancelled. Keep the previously accepted XML and
+  // filename; never combine stale XML with the newly selected filename.
+  if (!allowInitial && !xmlChanged) {
+    if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
+      void enqueueEditorSync(root)
+    }
+    return false
+  }
+
+  if (xml === state.observedSourceXml && fileName === state.observedSourceName) {
+    if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
+      void enqueueEditorSync(root)
+    }
+    return false
+  }
+
+  state.observedSourceXml = xml
+  state.observedSourceName = fileName
+  state.sourceRevision += 1
+  state.lastSourceXml = null
+  state.lastSourceName = 'seslitab-current.musicxml'
+
+  if (state.frame?.isConnected && state.frame.getAttribute('src')) {
+    void enqueueEditorSync(root)
+  }
+  return true
+}
+
+function bindSourceLifecycle(root) {
+  const state = stateFor(root)
+  if (state.sourceObserver) return true
+
+  const Observer = root.defaultView?.MutationObserver ?? globalThis.MutationObserver
+  if (typeof Observer !== 'function') return false
+
+  const xmlOutput = root.getElementById?.('xml-output')
+  const targets = [
+    [xmlOutput, { childList: true, characterData: true, subtree: true }],
+    [root.getElementById?.('results-section'), { attributes: true, attributeFilter: ['hidden'] }],
+    [root.getElementById?.('progress-container'), { attributes: true, attributeFilter: ['hidden'] }],
+    [root.getElementById?.('musicxml-progress'), { attributes: true, attributeFilter: ['hidden'] }],
+  ].filter(([node]) => Boolean(node))
+
+  if (!targets.length) return false
+
+  const observer = new Observer((records) => {
+    const xmlChanged = records.some((record) => (
+      record.target === xmlOutput || xmlOutput?.contains?.(record.target)
+    ))
+    refreshObservedSource(root, { xmlChanged })
+  })
+  for (const [node, options] of targets) observer.observe(node, options)
+  state.sourceObserver = observer
+  refreshObservedSource(root, { allowInitial: true })
+  return true
+}
+
 async function activateEditor(root) {
   setTabActive(root, true)
   const panel = root.getElementById?.(PANEL_ID)
@@ -218,9 +401,7 @@ async function activateEditor(root) {
       })
       frame.src = EDITOR_URL
     }
-    if (state.frameReadyPromise) await state.frameReadyPromise
-    await waitForEditorReady(frame)
-    await loadSourceIntoEditor(root, frame)
+    await enqueueEditorSync(root)
     return true
   } catch (error) {
     console.error(error)
@@ -232,7 +413,10 @@ async function activateEditor(root) {
 export function ensureSmoosicEditorTab(root = document) {
   if (!root?.getElementById || !root?.createElement) return null
   const existing = root.getElementById(TAB_ID)
-  if (existing) return root.getElementById(PANEL_ID)
+  if (existing) {
+    bindSourceLifecycle(root)
+    return root.getElementById(PANEL_ID)
+  }
 
   const tabList = root.querySelector?.('.input-tabs')
   const tabPanel = root.getElementById('tab-panel')
@@ -266,6 +450,7 @@ export function ensureSmoosicEditorTab(root = document) {
   panelParent.appendChild(panel)
   button.addEventListener('click', () => { void activateEditor(root) })
   bindOtherTabs(root)
+  bindSourceLifecycle(root)
   return panel
 }
 

@@ -25,6 +25,31 @@ test('S14 ignores reset-hidden stale XML and requires the newly dispatched filen
   assert.match(host, /status\.startsWith\('Yüklendi:'\) && status\.includes\(expectedFileName\)/)
 })
 
+test('S14 tracks the active source lifecycle and refreshes an already-created editor', () => {
+  assert.match(host, /function sourceTransitionPending\(root\)/)
+  assert.match(host, /'progress-container', 'musicxml-progress'/)
+  assert.match(host, /function refreshObservedSource\(root, \{ xmlChanged = false, allowInitial = false \} = \{\}\)/)
+  assert.match(host, /state\.sourceRevision \+= 1/)
+  assert.match(host, /function bindSourceLifecycle\(root\)/)
+  assert.match(host, /MutationObserver/)
+  assert.match(host, /root\.getElementById\?\.\('xml-output'\)/)
+  assert.match(host, /void enqueueEditorSync\(root\)/)
+  assert.match(host, /targetRevision !== state\.sourceRevision/)
+  assert.match(host, /frame\.hidden = true/)
+  assert.match(host, /Yeni eser hazırlanıyor…/)
+})
+
+test('S14 promotes only accepted XML changes and retains the last accepted source after replacement failure', () => {
+  assert.match(host, /function acceptedSource\(root\)/)
+  assert.match(host, /sourceObservationInitialized/)
+  assert.match(host, /if \(!allowInitial && !xmlChanged\)/)
+  assert.match(host, /replacement failed or was cancelled/)
+  assert.match(host, /keep the last accepted source/i)
+  assert.match(host, /const xmlChanged = records\.some/)
+  assert.match(host, /refreshObservedSource\(root, \{ xmlChanged \}\)/)
+  assert.match(host, /refreshObservedSource\(root, \{ allowInitial: true \}\)/)
+})
+
 test('S14 does not start the retired teacher score workspace or keypad presentation', () => {
   for (const retired of [
     'reviewInspectorUi.js',
