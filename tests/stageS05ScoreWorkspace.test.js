@@ -32,7 +32,7 @@ function runBrowser(chrome, viewport) {
   return result.stdout || ''
 }
 
-test('S05 stays presentation-only and reuses the existing score-view authority', () => {
+test('S05 stays presentation-only and reusable, while S14 retires the old score workspace from production', () => {
   const source = readFileSync(new URL('../src/stageS05ScoreWorkspaceUi.js', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
 
@@ -45,8 +45,10 @@ test('S05 stays presentation-only and reuses the existing score-view authority',
   assert.doesNotMatch(source, /parseMusicXml|DOMParser|hitTestScoreNote|resolveCanonicalNoteFromScoreRef|renderScoreView\s*\(|getUserMedia|AudioContext/)
   assert.doesNotMatch(source, /qualityGate|stageGProductRouting|stageIInstrumentProduct|teacherWorkspaceModel|Audiveris|OmrProvider|gatewayProvider|fetch\s*\(|XMLHttpRequest|WebSocket/)
   assert.doesNotMatch(source, /\.textContent\s*=\s*musicxml|xmlOutput\.textContent\s*=/)
-  assert.match(main, /stageS05ScoreWorkspace\.css/)
-  assert.match(main, /initStageS05ScoreWorkspaceUi/)
+  assert.doesNotMatch(main, /stageS05ScoreWorkspace\.css/)
+  assert.doesNotMatch(main, /stageS05ScoreWorkspaceUi\.js/)
+  assert.doesNotMatch(main, /initStageS05ScoreWorkspaceUi/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })
 
 test('S05 workspace is responsive and has no separate Nota Görünümü result tab', () => {

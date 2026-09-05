@@ -360,7 +360,7 @@ test('Package 8-T6 publishing a new exact NoteObject array invalidates the old s
   }
 })
 
-test('Package 8-T6 source is text/native-control only, has visible focus rules, imports no OMR boundary, and Vite entry loads it', () => {
+test('Package 8-T6 source remains text/native-control only, while S14 retires its production teacher UI wiring', () => {
   const ui = readFileSync(new URL('../src/package8TeacherUi.js', import.meta.url), 'utf8')
   const css = readFileSync(new URL('../src/package8TeacherUi.css', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
@@ -371,6 +371,8 @@ test('Package 8-T6 source is text/native-control only, has visible focus rules, 
   assert.doesNotMatch(ui, /fetch\(|localStorage|indexedDB/i)
   assert.match(css, /:focus-visible/)
   assert.match(css, /role='alert'/)
-  assert.match(main, /package8TeacherUi\.css/)
-  assert.match(main, /package8TeacherUi\.js/)
+  assert.doesNotMatch(main, /package8TeacherUi\.css/)
+  assert.doesNotMatch(main, /package8TeacherUi\.js/)
+  assert.doesNotMatch(main, /initPackage8TeacherUi/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })

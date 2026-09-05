@@ -248,14 +248,16 @@ test('S10 is idempotent and keeps one fixed six-chord education library', () => 
   assert.equal(root.getElementById('stage-s10-education-list').children.length, 6)
 })
 
-test('S10 remains presentation-only and main wires it after the S05 workspace', () => {
+test('S10 remains presentation-only as a reusable module, while S14 retires the chord workspace from production', () => {
   const source = readFileSync(new URL('../src/stageS10EducationalChordsUi.js', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
 
   assert.match(source, /ensureChordPanel/)
   assert.match(source, /initPackage7Ui/)
   assert.doesNotMatch(source, /buildChordSourceConsumer|parseMusicXmlHarmony|Audiveris|omrService|package12|fetch\s*\(/i)
-  assert.match(main, /stageS10EducationalChords\.css/)
-  assert.match(main, /initStageS10EducationalChordsUi\(document\)/)
-  assert.ok(main.indexOf('initStageS05ScoreWorkspaceUi(document)') < main.indexOf('initStageS10EducationalChordsUi(document)'))
+  assert.doesNotMatch(main, /stageS10EducationalChords\.css/)
+  assert.doesNotMatch(main, /stageS10EducationalChordsUi\.js/)
+  assert.doesNotMatch(main, /initStageS10EducationalChordsUi\(document\)/)
+  assert.doesNotMatch(main, /initStageS05ScoreWorkspaceUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })

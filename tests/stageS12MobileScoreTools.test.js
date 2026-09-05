@@ -38,13 +38,14 @@ test('S12 mobile presentation keeps a 44px right palette and bounded correction 
   assert.match(css, /env\(safe-area-inset-bottom\)/)
 })
 
-test('S12 palette is presentation-only and composes after mobile acceptance and S11', () => {
+test('S12 palette remains a tested presentation module, while S14 retires the legacy mobile edit stack from production', () => {
   assert.doesNotMatch(source, /package12|shareAuthorization|Audiveris|OMR_PROVIDER|render\.yaml|Dockerfile|fetch\(|XMLHttpRequest|localStorage|sessionStorage/i)
   assert.doesNotMatch(source, /applyTeacherUiCorrection|undoTeacherUiRevision|approveTeacherUiCurrentRevision|verifyAndRerenderStageF/)
-  assert.match(main, /stageS12MobileProductionAcceptance\.css/)
-  assert.match(main, /stageS12MobileScoreTools\.css/)
-  assert.match(main, /initStageS12MobileProductionAcceptanceUi/)
-  assert.match(main, /initStageS12MobileScoreToolsUi/)
-  assert.ok(main.indexOf('initStageS12MobileScoreToolsUi(document)') > main.indexOf('initStageS11TeacherWorkflowUi(document)'))
-  assert.ok(main.indexOf('initStageS12MobileScoreToolsUi(document)') < main.indexOf('initStageLShareUi(document)'))
+  assert.doesNotMatch(main, /stageS12MobileProductionAcceptance\.css/)
+  assert.doesNotMatch(main, /stageS12MobileScoreTools\.css/)
+  assert.doesNotMatch(main, /initStageS12MobileProductionAcceptanceUi/)
+  assert.doesNotMatch(main, /initStageS12MobileScoreToolsUi/)
+  assert.doesNotMatch(main, /initStageS11TeacherWorkflowUi\(document\)/)
+  assert.doesNotMatch(main, /initStageLShareUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })

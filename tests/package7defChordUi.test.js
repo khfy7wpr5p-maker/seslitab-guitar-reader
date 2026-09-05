@@ -291,7 +291,7 @@ test('Package 7E stop/reset/source replacement never cancels shared speech when 
   }
 })
 
-test('Package 7D-F source is text-only, reuses source consumer/voice lifecycle, imports no OMR boundary, and main loads it', () => {
+test('Package 7D-F source stays text-only and reusable, while S14 retires its production UI wiring', () => {
   const ui = readFileSync(new URL('../src/package7Ui.js', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
   assert.match(ui, /buildRegisteredChordSourceConsumer/)
@@ -299,5 +299,6 @@ test('Package 7D-F source is text-only, reuses source consumer/voice lifecycle, 
   assert.match(ui, /textContent/)
   assert.doesNotMatch(ui, /innerHTML\s*=/)
   assert.doesNotMatch(ui, /Audiveris|omrService|gateway|worker/i)
-  assert.match(main, /package7Ui\.js/)
+  assert.doesNotMatch(main, /package7Ui\.js/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })

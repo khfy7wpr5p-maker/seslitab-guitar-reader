@@ -132,16 +132,18 @@ test('S11 reuses the existing S07 safe audit adapter and direct score-side corre
   assert.doesNotMatch(s07, /activateTeacherResultTab\(/)
 })
 
-test('S11 remains presentation-only and main wires it after the established S10 workspace surface', () => {
+test('S11 remains presentation-only as a reusable module, while S14 removes it from production wiring', () => {
   const source = readFileSync(new URL('../src/stageS11TeacherWorkflowUi.js', import.meta.url), 'utf8')
   const css = readFileSync(new URL('../src/stageS11TeacherWorkflow.css', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
 
   assert.doesNotMatch(source, /package12|shareAuthorization|OMR_PROVIDER|Audiveris|gatewayProvider|fetch\(|XMLHttpRequest|localStorage|sessionStorage/i)
   assert.doesNotMatch(source, /login|authentication|authorization/i)
-  assert.match(main, /stageS11TeacherWorkflow\.css/)
-  assert.match(main, /initStageS11TeacherWorkflowUi/)
-  assert.ok(main.indexOf('initStageS11TeacherWorkflowUi(document)') > main.indexOf('initStageS10EducationalChordsUi(document)'))
+  assert.doesNotMatch(main, /stageS11TeacherWorkflow\.css/)
+  assert.doesNotMatch(main, /stageS11TeacherWorkflowUi\.js/)
+  assert.doesNotMatch(main, /initStageS11TeacherWorkflowUi/)
+  assert.doesNotMatch(main, /initStageS10EducationalChordsUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
   assert.match(css, /min-height:\s*44px/)
   assert.match(css, /max-width:\s*100%/)
 })

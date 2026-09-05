@@ -158,11 +158,10 @@ test('Stage E UI does not expose unrelated teacher correction fields', async () 
   assert.doesNotMatch(source, /Gitar teli|MIDI değeri|Frekans|Porte|Uzatma bağı başlangıcı/)
 })
 
-test('Stage E is wired after Package 8 teacher UI', async () => {
+test('Stage E implementation remains tested but S14 removes it from the production entry', async () => {
   const source = await readFile(new URL('../main.js', import.meta.url), 'utf8')
-  const teacher = source.indexOf("import './src/package8TeacherUi.js'")
-  const stageE = source.indexOf("import './src/stageEVisualNoteEditorUi.js'")
-  assert.ok(teacher >= 0)
-  assert.ok(stageE > teacher)
-  assert.match(source, /stageEVisualNoteEditor\.css/)
+  assert.doesNotMatch(source, /package8TeacherUi\.js/)
+  assert.doesNotMatch(source, /stageEVisualNoteEditorUi\.js/)
+  assert.doesNotMatch(source, /stageEVisualNoteEditor\.css/)
+  assert.match(source, /initSmoosicEditorTab\(document\)/)
 })

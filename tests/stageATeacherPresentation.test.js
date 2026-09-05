@@ -47,7 +47,7 @@ test('Stage A maps technical runtime wording to bounded user language without ch
   )
 })
 
-test('Stage A presentation layer is UI-only and retains accessible mobile targets', () => {
+test('Stage A presentation layer remains reusable but is retired from the S14 production entry', () => {
   const ui = readFileSync(new URL('../src/stageATeacherPresentation.js', import.meta.url), 'utf8')
   const css = readFileSync(new URL('../src/stageATeacherPresentation.css', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
@@ -59,6 +59,7 @@ test('Stage A presentation layer is UI-only and retains accessible mobile target
   assert.match(css, /min-height:\s*44px/)
   assert.match(css, /:focus-visible/)
   assert.match(css, /@media\s*\(max-width:\s*640px\)/)
-  assert.match(main, /stageATeacherPresentation\.css/)
-  assert.match(main, /stageATeacherPresentation\.js/)
+  assert.doesNotMatch(main, /stageATeacherPresentation\.css/)
+  assert.doesNotMatch(main, /stageATeacherPresentation\.js/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })

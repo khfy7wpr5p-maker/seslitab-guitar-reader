@@ -54,10 +54,9 @@ test('STI-17 exact selection context prefers current PR-D product MusicXML and f
   assert.match(source, /return null/)
 })
 
-test('main initializes the PR-B capture gate before legacy S12 mobile delivery', () => {
+test('S14 removes the PR-B capture gate and legacy S12 delivery from the production entry', () => {
   const main = readFileSync(new URL('../main.js', import.meta.url), 'utf8')
-  const prb = main.indexOf('initStagePrBEditorSelectionUi(document)')
-  const s12 = main.indexOf('initStageS12MobileProductionAcceptanceUi(document)')
-  assert.ok(prb >= 0)
-  assert.ok(s12 > prb)
+  assert.doesNotMatch(main, /initStagePrBEditorSelectionUi\(document\)/)
+  assert.doesNotMatch(main, /initStageS12MobileProductionAcceptanceUi\(document\)/)
+  assert.match(main, /initSmoosicEditorTab\(document\)/)
 })

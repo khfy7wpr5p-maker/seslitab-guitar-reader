@@ -239,14 +239,13 @@ test('S08 source/UI remain exact-identity, coalesced, non-color-only and inferen
   assert.doesNotMatch(combined, /registerQualityReportForNotes|buildQualityErrorReport|teacher.*approv|share.*eligib|fetch\(|getUserMedia/i)
 })
 
-test('S08 is wired after S07 verified selection projection without changing Stage D authority', async () => {
+test('S08 implementation remains tested while S14 retires its production rail without changing Stage D authority', async () => {
   const source = await readFile(new URL('../main.js', import.meta.url), 'utf8')
-  const s07 = source.indexOf('initStageS07VerifiedSelectionProjection(document)')
-  const s08 = source.indexOf('initStageS08ScoreQualityOverlay(document)')
-  assert.ok(s07 >= 0)
-  assert.ok(s08 > s07)
-  assert.match(source, /stageS08ScoreQualityOverlay\.css/)
+  assert.doesNotMatch(source, /initStageS07VerifiedSelectionProjection\(document\)/)
+  assert.doesNotMatch(source, /initStageS08ScoreQualityOverlay\(document\)/)
+  assert.doesNotMatch(source, /stageS08ScoreQualityOverlay\.css/)
   assert.match(source, /stageDQualityOverlayUi\.js/)
+  assert.match(source, /initSmoosicEditorTab\(document\)/)
 })
 
 test('S08 real Chrome proof covers exact marker -> inspector flow, accessibility, stale clearing and 390px layout', (t) => {
