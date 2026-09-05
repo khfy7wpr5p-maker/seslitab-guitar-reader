@@ -1,6 +1,18 @@
-const { SuiApplication, SuiSampleMedia, SmoScore, XmlToSmo } = require('smoosic');
+const {
+  SuiApplication,
+  SuiSampleMedia,
+  SmoScore,
+  XmlToSmo,
+  SuiOscillator,
+  SmoInstrument,
+  SmoSelection,
+  instrumentSampleMap
+} = require('smoosic');
 
 let applicationInstance = null;
+let soundsReady = false;
+let soundsLoadingPromise = null;
+const realSamplePromise = SuiSampleMedia.samplePromise.bind(SuiSampleMedia);
 
 function sendKey(key, options = {}) {
   const event = new KeyboardEvent('keydown', {
@@ -60,6 +72,66 @@ async function loadMusicXmlFile(file) {
   setStatus(`Yüklendi: ${name}`);
 }
 
+async function loadMobileSounds() {
+  if (soundsReady) return;
+  if (soundsLoadingPromise) return soundsLoadingPromise;
+
+  soundsLoadingPromise = (async () => {
+    if (!instrumentSampleMap || typeof instrumentSampleMap !== 'object') {
+      throw new Error('Smoosic ses haritası bulunamadı');
+    }
+
+    const originalMap = { ...instrumentSampleMap };
+    const wanted = new Set(['piano', 'eGuitar']);
+    Object.keys(instrumentSampleMap).forEach((key) => {
+      if (!wanted.has(key)) delete instrumentSampleMap[key];
+    });
+
+    try {
+      setStatus('Piyano/Gitar sesleri yükleniyor…');
+      if (SuiOscillator.audio && SuiOscillator.audio.state === 'suspended') {
+        await SuiOscillator.audio.resume();
+      }
+      await realSamplePromise(SuiOscillator.audio, (percent) => {
+        setStatus(`Ses yükleniyor %${percent}`);
+      });
+      soundsReady = true;
+      setStatus('Ses hazır');
+    } finally {
+      Object.keys(instrumentSampleMap).forEach((key) => delete instrumentSampleMap[key]);
+      Object.assign(instrumentSampleMap, originalMap);
+      soundsLoadingPromise = null;
+    }
+  })();
+
+  return soundsLoadingPromise;
+}
+
+async function setMobileInstrument(instrumentKey) {
+  if (!applicationInstance || !applicationInstance.view) {
+    throw new Error('Editör henüz hazır değil');
+  }
+
+  await loadMobileSounds();
+  const view = applicationInstance.view;
+  const currentSelection = view.tracker && view.tracker.selections && view.tracker.selections[0];
+  const staffIndex = currentSelection && currentSelection.selector ? currentSelection.selector.staff : 0;
+  const staff = view.score.staves[staffIndex];
+  if (!staff) throw new Error('Staff bulunamadı');
+
+  const baseInstrument = staff.measureInstrumentMap[0] || SmoInstrument.defaults;
+  const instrument = new SmoInstrument(baseInstrument);
+  instrument.instrument = instrumentKey;
+  instrument.instrumentName = instrumentKey === 'eGuitar' ? 'Electric Guitar' : 'Grand Piano';
+  instrument.family = instrumentKey === 'eGuitar' ? 'strings' : 'keyboard';
+  instrument.keyOffset = SmoInstrument.instrumentKeyOffset[instrumentKey] || 0;
+  instrument.midiInstrument = (SmoInstrument.instrumentMidiMap[instrumentKey] || 1) - 1;
+
+  const selections = SmoSelection.selectionsToEnd(view.score, staffIndex, 0);
+  await view.changeInstrument(instrument, selections);
+  setStatus(instrumentKey === 'eGuitar' ? 'Gitar seçildi' : 'Piyano seçildi');
+}
+
 function wireMobileControls() {
   document.querySelectorAll('[data-key]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -97,6 +169,42 @@ function wireMobileControls() {
     });
   }
 
+  const soundButton = document.getElementById('mobile-sound-load');
+  if (soundButton) {
+    soundButton.addEventListener('click', async () => {
+      try {
+        await loadMobileSounds();
+      } catch (error) {
+        console.error(error);
+        setStatus(`Ses hatası: ${String(error)}`);
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-instrument]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        await setMobileInstrument(button.dataset.instrument);
+      } catch (error) {
+        console.error(error);
+        setStatus(`Enstrüman hatası: ${String(error)}`);
+      }
+    });
+  });
+
+  const playButton = document.getElementById('mobile-play');
+  if (playButton) {
+    playButton.addEventListener('click', async () => {
+      try {
+        await loadMobileSounds();
+        sendKey(' ');
+      } catch (error) {
+        console.error(error);
+        setStatus(`Playback hatası: ${String(error)}`);
+      }
+    });
+  }
+
   document.addEventListener('click', (event) => {
     if (window.innerWidth > 820) return;
     const target = event.target;
@@ -121,8 +229,8 @@ async function boot() {
   try {
     setStatus('Editör başlatılıyor…');
 
-    // Editing does not require eager soundfont loading. Keep startup light on iOS;
-    // playback can be enabled lazily after the editing proof is complete.
+    // Keep startup light on iOS. The real loader is kept above and is called
+    // only after a user taps Ses / Piyano / Gitar / Play.
     SuiSampleMedia.samplePromise = async (_audio, setProgress) => {
       if (typeof setProgress === 'function') setProgress(100);
     };
