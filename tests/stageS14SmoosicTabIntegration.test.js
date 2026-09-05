@@ -16,6 +16,15 @@ test('S14 makes Nota Düzenle the lazy same-origin Smoosic entry point', () => {
   assert.match(host, /DataTransfer/)
 })
 
+test('S14 ignores reset-hidden stale XML and requires the newly dispatched filename', () => {
+  assert.match(host, /root\.getElementById\?\.\('results-section'\)/)
+  assert.match(host, /results\.hidden === true/)
+  assert.match(host, /results\.hasAttribute\?\.\('hidden'\)/)
+  assert.match(host, /resetIframeStatusForTransfer\(frame, fileName\)/)
+  assert.match(host, /waitForMusicXmlLoad\(frame, fileName\)/)
+  assert.match(host, /status\.startsWith\('Yüklendi:'\) && status\.includes\(expectedFileName\)/)
+})
+
 test('S14 does not start the retired teacher score workspace or keypad presentation', () => {
   for (const retired of [
     'reviewInspectorUi.js',
