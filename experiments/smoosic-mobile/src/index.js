@@ -7,6 +7,7 @@ const {
   SuiOscillator,
   SuiSampler,
   SuiAudioPlayer,
+  SmoMusic,
   ScoreRoadMapBuilder
 } = require('smoosic');
 
@@ -18,6 +19,8 @@ let nativeStopWrapped = false;
 let nativePlayWrapped = false;
 let nativeAnimationWrapped = false;
 let nativeCueWrapped = false;
+let selectionPreviewBridgeInstalled = false;
+let selectionPreviewToken = 0;
 let metronomeEnabled = false;
 let metronomeAwaitingStart = false;
 let metronomeTimer = null;
@@ -106,6 +109,7 @@ function stopMetronomeTimeline() {
 
 function stopNativePlayback() {
   stopMetronomeTimeline();
+  selectionPreviewToken += 1;
   activePlaybackStartPoint = null;
   if (applicationInstance && applicationInstance.view && typeof applicationInstance.view.stopPlayer === 'function') {
     applicationInstance.view.stopPlayer();
@@ -216,6 +220,77 @@ function installNativeAudioBridge() {
   };
 
   nativeAudioBridgeInstalled = true;
+  return true;
+}
+
+async function playSelectionPreviewWithPiano(selection, score, token) {
+  if (!selection || !selection.note || !selection.measure) return;
+  if (SuiAudioPlayer && SuiAudioPlayer.playing) return;
+
+  const note = selection.note;
+  if ((typeof note.isRest === 'function' && note.isRest())
+      || (typeof note.isSlash === 'function' && note.isSlash())
+      || (typeof note.isHidden === 'function' && note.isHidden())) {
+    return;
+  }
+  if (!Array.isArray(note.pitches) || !note.pitches.length) return;
+
+  const sampler = await loadInstrumentSound('piano');
+  if (token !== selectionPreviewToken || (SuiAudioPlayer && SuiAudioPlayer.playing)) return;
+  if (!sampler || !SuiOscillator.audio) return;
+
+  if (SuiOscillator.audio.state === 'suspended') {
+    await SuiOscillator.audio.resume();
+  }
+  if (token !== selectionPreviewToken) return;
+
+  try {
+    if (typeof sampler.stop === 'function') sampler.stop();
+  } catch (error) {
+    console.warn('Piyano ön dinleme stop hatası', error);
+  }
+
+  const selectedPitchIndexes = selection.selector
+    && Array.isArray(selection.selector.pitches)
+    && selection.selector.pitches.length
+    ? selection.selector.pitches
+    : note.pitches.map((_pitch, index) => index);
+  const transpose = -1 * Number(selection.measure.transposeIndex || 0);
+  const startTime = SuiOscillator.audio.currentTime + 0.01;
+
+  selectedPitchIndexes.forEach((pitchIndex) => {
+    const pitch = note.pitches[pitchIndex];
+    if (!pitch || !SmoMusic || typeof SmoMusic.midiNumberAndDetuneFromPitch !== 'function') return;
+    const microtone = typeof note.getMicrotone === 'function' ? note.getMicrotone(pitchIndex) : undefined;
+    const midi = SmoMusic.midiNumberAndDetuneFromPitch(pitch, transpose, microtone);
+    if (!midi || !Number.isFinite(Number(midi.midinumber))) return;
+    try {
+      sampler.start({
+        note: Number(midi.midinumber),
+        time: startTime,
+        duration: 0.34,
+        velocity: 92,
+        detune: Number(midi.detune || 0)
+      });
+    } catch (error) {
+      console.warn('Piyano nota ön dinleme hatası', error);
+    }
+  });
+}
+
+function installSelectionPreviewBridge() {
+  if (selectionPreviewBridgeInstalled) return true;
+  if (!SuiOscillator || typeof SuiOscillator.playSelectionNow !== 'function') return false;
+
+  SuiOscillator.playSelectionNow = function mobilePianoSelectionPreview(selection, score) {
+    if (!editorReady || (SuiAudioPlayer && SuiAudioPlayer.playing)) return;
+    const token = ++selectionPreviewToken;
+    playSelectionPreviewWithPiano(selection, score, token).catch((error) => {
+      console.warn('Piyano seçim ön dinleme hatası', error);
+    });
+  };
+
+  selectionPreviewBridgeInstalled = true;
   return true;
 }
 
@@ -418,6 +493,7 @@ function wrapNativePlay() {
   const originalPlay = view.playFromSelection.bind(view);
   view.playFromSelection = async function mobileAwarePlayFromSelection(...args) {
     stopMetronomeTimeline();
+    selectionPreviewToken += 1;
     const start = getSelectedStartPoint();
     activePlaybackStartPoint = { ...start, applied: false };
     metronomeAwaitingStart = metronomeEnabled;
@@ -461,6 +537,7 @@ function wrapNativeStop() {
   const originalStopPlayer = SuiAudioPlayer.stopPlayer.bind(SuiAudioPlayer);
   SuiAudioPlayer.stopPlayer = function mobileAwareStopPlayer() {
     stopMetronomeTimeline();
+    selectionPreviewToken += 1;
     activePlaybackStartPoint = null;
     const result = originalStopPlayer();
     stopActiveSoundfont();
@@ -628,6 +705,7 @@ function wireNativeTransportGuard() {
     if (!(target instanceof Element)) return;
     if (target.closest('#stopButton2')) {
       stopMetronomeTimeline();
+      selectionPreviewToken += 1;
       activePlaybackStartPoint = null;
       stopActiveSoundfont();
       setStatus('Playback durdu');
@@ -708,6 +786,7 @@ async function boot() {
 
     const bridgeReady = installNativeAudioBridge();
     const exactStartReady = installExactStartBridge();
+    const previewReady = installSelectionPreviewBridge();
     wrapNativeStop();
 
     const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
@@ -723,7 +802,8 @@ async function boot() {
     if (!rendered) setStatus('Renderer oluşmadı');
     else if (!bridgeReady) setStatus('Editör hazır · native ses köprüsü bulunamadı');
     else if (!exactStartReady) setStatus('Editör hazır · nota başlangıç köprüsü bulunamadı');
-    else setStatus('Editör hazır · seçili notadan Smoosic ▶ kullanın');
+    else if (!previewReady) setStatus('Editör hazır · nota ön dinleme köprüsü bulunamadı');
+    else setStatus('Editör hazır · notaya dokununca piyano ön dinleme aktif');
   } catch (error) {
     console.error(error);
     editorReady = false;
