@@ -43,6 +43,9 @@ jobs:
       - name: Verify S14 Smoosic production integration in real browser
         run: node scripts/verifyS14SmoosicProductionCdpBrowser.js
 
+      - name: Verify S14 mobile menu stays below sticky host header
+        run: node scripts/verifyS14MobileMenuHostOcclusionBrowser.js
+
       - name: Verify S14 failed replacement stays on last accepted score
         run: node scripts/verifyS14FailedReplacementBrowser.js
 
