@@ -33,7 +33,7 @@ test('S14 bottom Menu button opens the unchanged Smoosic menu as an upper panel'
 test('S14 inner mobile layout keeps the real nested Smoosic menu in normal flow on iOS', () => {
   assert.match(innerMobileCss, /\[id\$='-top-bar'\] \{[\s\S]*?flex-flow: row nowrap !important;[\s\S]*?height: var\(--seslitab-mobile-topbar-height\) !important;/)
   assert.match(innerMobileCss, /#controls-top,[\s\S]*?#controls-top \.control-bar,[\s\S]*?#controls-top \.row \{[\s\S]*?flex-flow: row nowrap !important;/)
-  assert.match(innerMobileCss, /body > #controls-left > #controls-left\.controls-left \{[\s\S]*?position: static !important;[\s\S]*?top: auto !important;[\s\S]*?display: flex !important;[\s\S]*?flex-flow: column nowrap !important;[\s\S]*?transform: none !important;/)
+  assert.match(innerMobileCss, /body > #controls-left > #controls-left\.controls-left \{[\s\S]*?position: static !important;[\s\S]*?inset: auto !important;[\s\S]*?display: flex !important;[\s\S]*?flex-flow: column nowrap !important;[\s\S]*?transform: none !important;/)
   assert.match(innerMobileCss, /body > #controls-left > #controls-left\.controls-left > button \{[\s\S]*?width: 100% !important;[\s\S]*?min-height: 44px;/)
   assert.match(innerMobileLayoutJs, /target\.closest\('#mobile-menu-toggle'\)/)
   assert.match(innerMobileLayoutJs, /document\.body\.appendChild\(menu\)/)
