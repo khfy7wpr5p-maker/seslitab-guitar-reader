@@ -130,11 +130,12 @@ const proofHtml = `<!doctype html>
       doc.getElementById('smoosic-tab-btn').click();
       await waitFor(() => editorFrame.hidden === false, 'accepted editor restored after failure');
       const editorStatus = await waitFor(() => {
-        const text = String(editorDoc.getElementById('poc-status')?.textContent || '');
-        if (text.includes('accepted-source.musicxml')) return text;
+        const activeEditorDoc = editorFrame.contentDocument;
+        const text = String(activeEditorDoc?.getElementById('poc-status')?.textContent || '');
+        if (text.startsWith('Yüklendi:') && text.includes('accepted-source.musicxml')) return text;
         if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) return text;
         return '';
-      }, 'accepted source loaded after failed replacement');
+      }, 'accepted source terminal load after failed replacement');
       if (!editorStatus.includes('accepted-source.musicxml')) {
         fail('Smoosic did not retain the last accepted source after replacement failure: ' + editorStatus);
       }
