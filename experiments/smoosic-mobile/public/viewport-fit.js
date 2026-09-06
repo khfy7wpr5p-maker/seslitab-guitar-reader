@@ -2,7 +2,10 @@
   const MOBILE_MAX_WIDTH = 820;
   const BOTTOM_GAP_PX = 4;
   const MENU_GAP_PX = 4;
+  const SCROLL_SETTLE_MS = 140;
   let scheduledFrame = 0;
+  let scheduledMenuFrame = 0;
+  let scrollSettleTimer = 0;
 
   function parentWindow() {
     try {
@@ -21,6 +24,24 @@
     }
   }
 
+  function frameHostVisible(frame) {
+    return frame.hidden !== true && frame.parentElement?.hidden !== true;
+  }
+
+  function clearMobileFrameState(parent, frame) {
+    if (scrollSettleTimer) {
+      parent.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = 0;
+    }
+    frame.style.removeProperty('height');
+    frame.style.removeProperty('min-height');
+    document.documentElement.style.removeProperty('--seslitab-mobile-menu-top');
+    delete frame.dataset.seslitabViewportFit;
+    delete frame.dataset.seslitabViewportHeight;
+    delete frame.dataset.seslitabMenuTop;
+    delete frame.dataset.seslitabHostOccludedTop;
+  }
+
   function fitMenuToVisibleHostViewport(parent, frame, viewportTop) {
     const menu = document.getElementById('controls-left');
     if (!menu) return;
@@ -32,9 +53,13 @@
     const topBarHeight = Math.max(0, Math.ceil(Number(topBar?.getBoundingClientRect?.().height || 46)));
     const menuTop = Math.max(topBarHeight, occludedTop + MENU_GAP_PX);
 
-    document.documentElement.style.setProperty('--seslitab-mobile-menu-top', `${menuTop}px`);
-    frame.dataset.seslitabMenuTop = String(menuTop);
-    frame.dataset.seslitabHostOccludedTop = String(occludedTop);
+    if (frame.dataset.seslitabMenuTop !== String(menuTop)) {
+      document.documentElement.style.setProperty('--seslitab-mobile-menu-top', `${menuTop}px`);
+      frame.dataset.seslitabMenuTop = String(menuTop);
+    }
+    if (frame.dataset.seslitabHostOccludedTop !== String(occludedTop)) {
+      frame.dataset.seslitabHostOccludedTop = String(occludedTop);
+    }
   }
 
   function fitEditorFrame() {
@@ -44,15 +69,10 @@
     if (!parent || !frame) return;
 
     if (parent.innerWidth > MOBILE_MAX_WIDTH) {
-      frame.style.removeProperty('height');
-      frame.style.removeProperty('min-height');
-      document.documentElement.style.removeProperty('--seslitab-mobile-menu-top');
-      delete frame.dataset.seslitabViewportFit;
-      delete frame.dataset.seslitabViewportHeight;
-      delete frame.dataset.seslitabMenuTop;
-      delete frame.dataset.seslitabHostOccludedTop;
+      clearMobileFrameState(parent, frame);
       return;
     }
+    if (!frameHostVisible(frame)) return;
 
     const viewport = parent.visualViewport;
     const viewportTop = Number(viewport?.offsetTop || 0);
@@ -62,11 +82,29 @@
     const availableHeight = Math.floor(viewportBottom - frameTop - BOTTOM_GAP_PX);
     if (availableHeight <= 0) return;
 
-    frame.style.height = `${availableHeight}px`;
-    frame.style.minHeight = '0px';
+    const heightText = `${availableHeight}px`;
+    if (frame.dataset.seslitabViewportHeight !== String(availableHeight) || frame.style.height !== heightText) {
+      frame.style.height = heightText;
+      frame.dataset.seslitabViewportHeight = String(availableHeight);
+    }
+    if (frame.style.minHeight !== '0px') frame.style.minHeight = '0px';
     frame.dataset.seslitabViewportFit = 'mobile';
-    frame.dataset.seslitabViewportHeight = String(availableHeight);
     fitMenuToVisibleHostViewport(parent, frame, viewportTop);
+  }
+
+  function fitMenuOnly() {
+    scheduledMenuFrame = 0;
+    const parent = parentWindow();
+    const frame = window.frameElement;
+    if (!parent || !frame) return;
+    if (parent.innerWidth > MOBILE_MAX_WIDTH) {
+      document.documentElement.style.removeProperty('--seslitab-mobile-menu-top');
+      delete frame.dataset.seslitabMenuTop;
+      delete frame.dataset.seslitabHostOccludedTop;
+      return;
+    }
+    if (!frameHostVisible(frame)) return;
+    fitMenuToVisibleHostViewport(parent, frame, Number(parent.visualViewport?.offsetTop || 0));
   }
 
   function scheduleFit() {
@@ -76,30 +114,121 @@
     scheduledFrame = parent.requestAnimationFrame(fitEditorFrame);
   }
 
+  function scheduleMenuFit() {
+    if (scheduledMenuFrame) return;
+    const parent = parentWindow();
+    if (!parent) return;
+    scheduledMenuFrame = parent.requestAnimationFrame(fitMenuOnly);
+  }
+
+  function applySettledFrameFit() {
+    const parent = parentWindow();
+    if (!parent) return;
+    if (scheduledFrame && typeof parent.cancelAnimationFrame === 'function') {
+      parent.cancelAnimationFrame(scheduledFrame);
+      scheduledFrame = 0;
+    }
+    fitEditorFrame();
+  }
+
+  function scheduleSettledFrameFit() {
+    const parent = parentWindow();
+    if (!parent) return;
+    if (scrollSettleTimer) parent.clearTimeout(scrollSettleTimer);
+    scrollSettleTimer = parent.setTimeout(() => {
+      scrollSettleTimer = 0;
+      applySettledFrameFit();
+    }, SCROLL_SETTLE_MS);
+  }
+
+  function scheduleViewportMotionFit() {
+    scheduleMenuFit();
+    scheduleSettledFrameFit();
+  }
+
+  function scheduleParentResizeFit() {
+    if (scrollSettleTimer) {
+      scheduleViewportMotionFit();
+      return;
+    }
+    scheduleFit();
+    scheduleMenuFit();
+  }
+
+  function scheduleOrientationFit() {
+    const parent = parentWindow();
+    if (parent && scrollSettleTimer) {
+      parent.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = 0;
+    }
+    scheduleFit();
+    scheduleMenuFit();
+  }
+
+  function fitForMenuInteraction() {
+    const parent = parentWindow();
+    if (!parent) return;
+    if (scrollSettleTimer) {
+      parent.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = 0;
+    }
+    applySettledFrameFit();
+    scheduleMenuFit();
+  }
+
+  function bindHostGeometry(parent) {
+    const frame = window.frameElement;
+    const HostObserver = parent.MutationObserver ?? globalThis.MutationObserver;
+    if (!frame || typeof HostObserver !== 'function') return;
+
+    const observer = new HostObserver(() => {
+      if (!frameHostVisible(frame)) return;
+      scheduleParentResizeFit();
+    });
+
+    observer.observe(frame, { attributes: true, attributeFilter: ['hidden'] });
+    if (frame.parentElement) {
+      observer.observe(frame.parentElement, { attributes: true, attributeFilter: ['hidden'] });
+    }
+    const hostStatus = parent.document?.getElementById?.('smoosic-editor-host-status');
+    if (hostStatus) {
+      observer.observe(hostStatus, { attributes: true, attributeFilter: ['hidden'] });
+    }
+  }
+
   function bindViewport() {
     const parent = parentWindow();
     if (!parent) return;
 
-    parent.addEventListener('resize', scheduleFit, { passive: true });
-    parent.addEventListener('orientationchange', scheduleFit, { passive: true });
-    parent.addEventListener('scroll', scheduleFit, { passive: true });
-    parent.visualViewport?.addEventListener('resize', scheduleFit, { passive: true });
-    parent.visualViewport?.addEventListener('scroll', scheduleFit, { passive: true });
+    parent.addEventListener('resize', scheduleParentResizeFit, { passive: true });
+    parent.addEventListener('orientationchange', scheduleOrientationFit, { passive: true });
+    parent.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
+    parent.visualViewport?.addEventListener('resize', scheduleViewportMotionFit, { passive: true });
+    parent.visualViewport?.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
+    bindHostGeometry(parent);
+
     document.addEventListener('click', (event) => {
       const target = event.target;
-      if (target instanceof Element && target.closest('#mobile-menu-toggle')) scheduleFit();
+      if (!(target instanceof Element) || !target.closest('#mobile-menu-toggle')) return;
+      fitForMenuInteraction();
     }, { passive: true });
-    window.addEventListener('load', scheduleFit, { once: true });
+
+    window.addEventListener('load', () => {
+      scheduleFit();
+      scheduleMenuFit();
+    }, { once: true });
 
     const observer = new MutationObserver(() => {
       if (!document.getElementById('controls-left')) return;
       observer.disconnect();
       scheduleFit();
+      scheduleMenuFit();
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
     scheduleFit();
-    setTimeout(scheduleFit, 0);
+    scheduleMenuFit();
+    parent.setTimeout(scheduleFit, 0);
   }
 
   bindViewport();

@@ -11,10 +11,41 @@ test('S14 mobile viewport fit keeps the embedded editor inside the parent visual
   assert.match(viewportFit, /window\.frameElement/)
   assert.match(viewportFit, /parent\.visualViewport/)
   assert.match(viewportFit, /viewportBottom - frameTop - BOTTOM_GAP_PX/)
-  assert.match(viewportFit, /frame\.style\.height = `\$\{availableHeight\}px`/)
-  assert.match(viewportFit, /frame\.style\.minHeight = '0px'/)
-  assert.match(viewportFit, /visualViewport\?\.addEventListener\('resize'/)
-  assert.match(viewportFit, /visualViewport\?\.addEventListener\('scroll'/)
+  assert.match(viewportFit, /const heightText = `\$\{availableHeight\}px`/)
+  assert.match(viewportFit, /frame\.style\.height = heightText/)
+  assert.match(viewportFit, /frame\.dataset\.seslitabViewportHeight !== String\(availableHeight\)/)
+  assert.match(viewportFit, /frame\.style\.minHeight !== '0px'/)
+  assert.match(viewportFit, /visualViewport\?\.addEventListener\('resize', scheduleViewportMotionFit/)
+  assert.match(viewportFit, /visualViewport\?\.addEventListener\('scroll', scheduleViewportMotionFit/)
+})
+
+test('S14 mobile scroll settles frame geometry while menu positioning remains live', () => {
+  assert.match(viewportFit, /SCROLL_SETTLE_MS = 140/)
+  assert.match(viewportFit, /parent\.addEventListener\('scroll', scheduleViewportMotionFit/)
+  assert.match(viewportFit, /scheduleMenuFit\(\);\s*scheduleSettledFrameFit\(\);/)
+  assert.match(viewportFit, /scrollSettleTimer = parent\.setTimeout/)
+  assert.match(viewportFit, /applySettledFrameFit\(\)/)
+  assert.match(viewportFit, /parent\.addEventListener\('resize', scheduleParentResizeFit/)
+  assert.match(viewportFit, /parent\.addEventListener\('orientationchange', scheduleOrientationFit/)
+})
+
+test('S14 explicit mobile menu interaction may fit once immediately without restoring scroll-time churn', () => {
+  assert.match(viewportFit, /function fitForMenuInteraction\(\)/)
+  assert.match(viewportFit, /if \(scrollSettleTimer\) \{[\s\S]*?parent\.clearTimeout\(scrollSettleTimer\);[\s\S]*?scrollSettleTimer = 0;/)
+  assert.match(viewportFit, /function fitForMenuInteraction\(\) \{[\s\S]*?applySettledFrameFit\(\);[\s\S]*?scheduleMenuFit\(\);/)
+  assert.match(viewportFit, /target\.closest\('#mobile-menu-toggle'\)[\s\S]*?fitForMenuInteraction\(\)/)
+  assert.match(viewportFit, /parent\.addEventListener\('scroll', scheduleViewportMotionFit/)
+})
+
+test('S14 host lifecycle geometry changes resync the iframe before scrolling', () => {
+  assert.match(viewportFit, /function frameHostVisible\(frame\)/)
+  assert.match(viewportFit, /frame\.hidden !== true && frame\.parentElement\?\.hidden !== true/)
+  assert.match(viewportFit, /function bindHostGeometry\(parent\)/)
+  assert.match(viewportFit, /parent\.MutationObserver \?\? globalThis\.MutationObserver/)
+  assert.match(viewportFit, /observer\.observe\(frame, \{ attributes: true, attributeFilter: \['hidden'\] \}\)/)
+  assert.match(viewportFit, /observer\.observe\(frame\.parentElement, \{ attributes: true, attributeFilter: \['hidden'\] \}\)/)
+  assert.match(viewportFit, /getElementById\?\.\('smoosic-editor-host-status'\)/)
+  assert.match(viewportFit, /scheduleParentResizeFit\(\)/)
 })
 
 test('S14 mobile menu is positioned below the visible sticky host header after parent scrolling', () => {
@@ -22,7 +53,6 @@ test('S14 mobile menu is positioned below the visible sticky host header after p
   assert.match(viewportFit, /visibleHostTop - frameTop/)
   assert.match(viewportFit, /--seslitab-mobile-menu-top/)
   assert.match(viewportFit, /frame\.dataset\.seslitabHostOccludedTop/)
-  assert.match(viewportFit, /parent\.addEventListener\('scroll', scheduleFit/)
   assert.match(viewportFit, /target\.closest\('#mobile-menu-toggle'\)/)
   assert.match(mobileCss, /body > #controls-left \{[\s\S]*?top: var\(--seslitab-mobile-menu-top, calc\(var\(--seslitab-mobile-topbar-height\)/)
 })
