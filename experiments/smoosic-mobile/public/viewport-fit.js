@@ -24,6 +24,10 @@
     }
   }
 
+  function frameHostVisible(frame) {
+    return frame.hidden !== true && frame.parentElement?.hidden !== true;
+  }
+
   function clearMobileFrameState(parent, frame) {
     if (scrollSettleTimer) {
       parent.clearTimeout(scrollSettleTimer);
@@ -68,6 +72,7 @@
       clearMobileFrameState(parent, frame);
       return;
     }
+    if (!frameHostVisible(frame)) return;
 
     const viewport = parent.visualViewport;
     const viewportTop = Number(viewport?.offsetTop || 0);
@@ -98,6 +103,7 @@
       delete frame.dataset.seslitabHostOccludedTop;
       return;
     }
+    if (!frameHostVisible(frame)) return;
     fitMenuToVisibleHostViewport(parent, frame, Number(parent.visualViewport?.offsetTop || 0));
   }
 
@@ -159,6 +165,26 @@
     scheduleMenuFit();
   }
 
+  function bindHostGeometry(parent) {
+    const frame = window.frameElement;
+    const HostObserver = parent.MutationObserver ?? globalThis.MutationObserver;
+    if (!frame || typeof HostObserver !== 'function') return;
+
+    const observer = new HostObserver(() => {
+      if (!frameHostVisible(frame)) return;
+      scheduleParentResizeFit();
+    });
+
+    observer.observe(frame, { attributes: true, attributeFilter: ['hidden'] });
+    if (frame.parentElement) {
+      observer.observe(frame.parentElement, { attributes: true, attributeFilter: ['hidden'] });
+    }
+    const hostStatus = parent.document?.getElementById?.('smoosic-editor-host-status');
+    if (hostStatus) {
+      observer.observe(hostStatus, { attributes: true, attributeFilter: ['hidden'] });
+    }
+  }
+
   function bindViewport() {
     const parent = parentWindow();
     if (!parent) return;
@@ -168,6 +194,7 @@
     parent.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
     parent.visualViewport?.addEventListener('resize', scheduleViewportMotionFit, { passive: true });
     parent.visualViewport?.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
+    bindHostGeometry(parent);
 
     document.addEventListener('click', (event) => {
       const target = event.target;
