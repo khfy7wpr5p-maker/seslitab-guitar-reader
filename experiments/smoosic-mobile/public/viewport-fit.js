@@ -143,13 +143,16 @@
     scheduledMenuFrame = parent.requestAnimationFrame(fitMenuOnly);
   }
 
+  function cancelScheduledFrameFit(parent) {
+    if (!scheduledFrame || typeof parent.cancelAnimationFrame !== 'function') return;
+    parent.cancelAnimationFrame(scheduledFrame);
+    scheduledFrame = 0;
+  }
+
   function applySettledFrameFit() {
     const parent = parentWindow();
     if (!parent) return;
-    if (scheduledFrame && typeof parent.cancelAnimationFrame === 'function') {
-      parent.cancelAnimationFrame(scheduledFrame);
-      scheduledFrame = 0;
-    }
+    cancelScheduledFrameFit(parent);
     fitEditorFrame();
   }
 
@@ -164,6 +167,8 @@
   }
 
   function scheduleViewportMotionFit() {
+    const parent = parentWindow();
+    if (parent) cancelScheduledFrameFit(parent);
     scheduleMenuFit();
     scheduleSettledFrameFit();
   }
