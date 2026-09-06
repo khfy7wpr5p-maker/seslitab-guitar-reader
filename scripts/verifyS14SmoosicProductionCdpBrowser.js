@@ -376,32 +376,55 @@ try {
     const win = frame.contentWindow;
     const toggle = doc.getElementById('mobile-menu-toggle');
     const menu = doc.getElementById('controls-left');
-    const firstButton = menu.querySelector('button');
-    const firstLabel = String(firstButton?.textContent || '').trim();
+    const firstLabel = String(menu.querySelector('button')?.textContent || '').trim();
     if (!firstLabel.includes('Help')) return { pass: false, reason: 'first-label', firstLabel, scrollTop: menu.scrollTop };
 
     if (doc.body.classList.contains('mobile-menu-open')) toggle.click();
-    menu.style.setProperty('height', '120px', 'important');
+    const originalStyle = menu.getAttribute('style');
+    const spacer = doc.createElement('div');
+    spacer.setAttribute('aria-hidden', 'true');
+    spacer.style.height = '900px';
+    spacer.style.minHeight = '900px';
+    spacer.style.flex = '0 0 900px';
+    spacer.style.pointerEvents = 'none';
+
+    menu.style.setProperty('top', '0', 'important');
     menu.style.setProperty('bottom', 'auto', 'important');
+    menu.style.setProperty('height', '120px', 'important');
+    menu.style.setProperty('min-height', '0', 'important');
+    menu.style.setProperty('max-height', '120px', 'important');
+    menu.style.setProperty('overflow-y', 'scroll', 'important');
+    menu.appendChild(spacer);
+
     toggle.click();
+    await new Promise((resolveFrame) => win.requestAnimationFrame(() => resolveFrame()));
     await new Promise((resolveFrame) => win.requestAnimationFrame(() => resolveFrame()));
     menu.scrollTop = menu.scrollHeight;
     const forcedScroll = menu.scrollTop;
+    const geometry = {
+      clientHeight: menu.clientHeight,
+      scrollHeight: menu.scrollHeight,
+    };
+
     toggle.click();
     toggle.click();
     await new Promise((resolveFrame) => win.requestAnimationFrame(() => resolveFrame()));
     await new Promise((resolveFrame) => win.requestAnimationFrame(() => resolveFrame()));
     const reopenedScrollTop = menu.scrollTop;
     const reopenedLabel = String(menu.querySelector('button')?.textContent || '').trim();
+
     toggle.click();
-    menu.style.removeProperty('height');
-    menu.style.removeProperty('bottom');
+    spacer.remove();
+    if (originalStyle === null) menu.removeAttribute('style');
+    else menu.setAttribute('style', originalStyle);
+
     return {
       pass: forcedScroll > 0 && reopenedScrollTop === 0 && reopenedLabel.includes('Help'),
       forcedScroll,
       reopenedScrollTop,
       firstLabel,
       reopenedLabel,
+      geometry,
     };
   })()`)
   if (!menuProof?.pass) throw new Error(`Mobile menu top-reset proof failed: ${JSON.stringify(menuProof)}`)
@@ -437,7 +460,7 @@ try {
   if (finalState.frameWidth > finalState.viewportWidth + 2) throw new Error(`Smoosic host iframe overflows mobile viewport: ${finalState.frameWidth}/${finalState.viewportWidth}`)
   if (finalState.pageScrollWidth > finalState.viewportWidth + 2) throw new Error(`SesliTab page has horizontal mobile overflow: ${finalState.pageScrollWidth}/${finalState.viewportWidth}`)
 
-  console.log(`S14 deterministic CDP production browser proof PASS using ${chrome}: clean shell + lazy same-origin Smoosic + mobile menu top reset + sequential MusicXML refresh.`)
+  console.log(`S14 deterministic CDP production browser proof PASS using ${chrome}: clean shell + lazy same-origin Smoosic + forced stale mobile-menu reset + sequential MusicXML refresh.`)
 } catch (error) {
   console.error(`S14 deterministic CDP production browser proof failed closed: ${error?.message ?? error}`)
   process.exitCode = 1
