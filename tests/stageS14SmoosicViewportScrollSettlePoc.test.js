@@ -90,6 +90,10 @@ function createHarness() {
       rafQueue.push({ id, callback })
       return id
     },
+    cancelAnimationFrame(id) {
+      const index = rafQueue.findIndex((entry) => entry.id === id)
+      if (index >= 0) rafQueue.splice(index, 1)
+    },
     setTimeout(callback, delay) {
       const id = nextTimerId++
       timers.set(id, { callback, at: now + Number(delay || 0) })
@@ -162,7 +166,7 @@ function createHarness() {
     }
   }
 
-  function advance(ms) {
+  function advanceTimers(ms, flushAnimationFrames) {
     const target = now + ms
     while (true) {
       let next = null
@@ -174,9 +178,17 @@ function createHarness() {
       now = next.timer.at
       timers.delete(next.id)
       next.timer.callback()
-      flushRaf()
+      if (flushAnimationFrames) flushRaf()
     }
     now = target
+  }
+
+  function advance(ms) {
+    advanceTimers(ms, true)
+  }
+
+  function advanceTimersOnly(ms) {
+    advanceTimers(ms, false)
   }
 
   vm.runInNewContext(source, { window, document, Element, MutationObserver, console })
@@ -192,6 +204,7 @@ function createHarness() {
     cssVariables,
     flushRaf,
     advance,
+    advanceTimersOnly,
     setFrameTop(value) {
       frameTop = value
     },
@@ -212,6 +225,7 @@ function createHarness() {
         menuTop: dataset.seslitabMenuTop,
         hostOccludedTop: dataset.seslitabHostOccludedTop,
         pendingTimers: timers.size,
+        pendingRaf: rafQueue.length,
       }
     },
   }
@@ -228,13 +242,14 @@ test('P2 POC preserves production lifecycle hooks while isolating scroll-settle 
   assert.match(source, /new MutationObserver/)
   assert.match(source, /frame\.style\.removeProperty\('height'\)/)
   assert.match(source, /document\.documentElement\.style\.removeProperty\('--seslitab-mobile-menu-top'\)/)
+  assert.match(source, /applySettledFrameFit/)
 })
 
 test('P2 viewport-fit POC keeps iframe height stable during a host scroll burst and resizes once after settle', () => {
   const harness = createHarness()
   assert.equal(harness.metrics().height, '620px')
   assert.equal(harness.metrics().heightWrites, 1)
-  assert.equal(harness.metrics().pocMode, 'scroll-settle-v1')
+  assert.equal(harness.metrics().pocMode, 'scroll-settle-v2')
 
   const scrollTops = [180, 120, 60, 20]
   for (const [index, top] of scrollTops.entries()) {
@@ -253,6 +268,24 @@ test('P2 viewport-fit POC keeps iframe height stable during a host scroll burst 
   assert.equal(harness.metrics().heightWrites, 1)
 
   harness.advance(1)
+  assert.equal(harness.metrics().height, '820px')
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().viewportHeight, '820')
+})
+
+test('P2 viewport-fit POC applies the final settled geometry even when post-timer animation frames are not serviced', () => {
+  const harness = createHarness()
+  harness.setFrameTop(20)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+
+  assert.equal(harness.metrics().height, '620px')
+  assert.equal(harness.metrics().heightWrites, 1)
+
+  harness.advanceTimersOnly(139)
+  assert.equal(harness.metrics().heightWrites, 1)
+
+  harness.advanceTimersOnly(1)
   assert.equal(harness.metrics().height, '820px')
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().viewportHeight, '820')
