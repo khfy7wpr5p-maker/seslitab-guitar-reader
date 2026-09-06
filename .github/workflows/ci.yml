@@ -72,3 +72,14 @@ jobs:
 
       - name: Verify PR-F accessibility mobile regression in real browser
         run: node scripts/verifyPrFAccessibilityBrowser.js
+
+      - name: Verify S14 production mobile scroll-settle in real browser
+        run: node scripts/verifyS14MobileScrollSettleProductionBrowser.js
+
+      - name: Upload S14 production mobile scroll-settle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoosic-mobile-scroll-settle-production
+          path: artifacts/smoosic-mobile-scroll-settle-production.json
+          if-no-files-found: warn
