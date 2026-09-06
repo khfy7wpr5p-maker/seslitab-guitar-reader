@@ -24,6 +24,21 @@
     }
   }
 
+  function clearMobileFrameState(parent, frame) {
+    if (scrollSettleTimer) {
+      parent.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = 0;
+    }
+    frame.style.removeProperty('height');
+    frame.style.removeProperty('min-height');
+    document.documentElement.style.removeProperty('--seslitab-mobile-menu-top');
+    delete frame.dataset.seslitabViewportFit;
+    delete frame.dataset.seslitabViewportHeight;
+    delete frame.dataset.seslitabMenuTop;
+    delete frame.dataset.seslitabHostOccludedTop;
+    delete frame.dataset.seslitabPocMode;
+  }
+
   function fitMenuToVisibleHostViewport(parent, frame, viewportTop) {
     const menu = document.getElementById('controls-left');
     if (!menu) return;
@@ -50,7 +65,10 @@
     const frame = window.frameElement;
     if (!parent || !frame) return;
 
-    if (parent.innerWidth > MOBILE_MAX_WIDTH) return;
+    if (parent.innerWidth > MOBILE_MAX_WIDTH) {
+      clearMobileFrameState(parent, frame);
+      return;
+    }
 
     const viewport = parent.visualViewport;
     const viewportTop = Number(viewport?.offsetTop || 0);
@@ -67,6 +85,7 @@
     }
     if (frame.style.minHeight !== '0px') frame.style.minHeight = '0px';
     frame.dataset.seslitabViewportFit = 'mobile';
+    frame.dataset.seslitabPocMode = 'scroll-settle-v1';
     fitMenuToVisibleHostViewport(parent, frame, viewportTop);
   }
 
@@ -74,7 +93,13 @@
     scheduledMenuFrame = 0;
     const parent = parentWindow();
     const frame = window.frameElement;
-    if (!parent || !frame || parent.innerWidth > MOBILE_MAX_WIDTH) return;
+    if (!parent || !frame) return;
+    if (parent.innerWidth > MOBILE_MAX_WIDTH) {
+      document.documentElement.style.removeProperty('--seslitab-mobile-menu-top');
+      delete frame.dataset.seslitabMenuTop;
+      delete frame.dataset.seslitabHostOccludedTop;
+      return;
+    }
     fitMenuToVisibleHostViewport(parent, frame, Number(parent.visualViewport?.offsetTop || 0));
   }
 
@@ -102,23 +127,63 @@
     }, SCROLL_SETTLE_MS);
   }
 
-  function scheduleScrollFit() {
+  function scheduleViewportMotionFit() {
     scheduleMenuFit();
     scheduleSettledFrameFit();
+  }
+
+  function scheduleParentResizeFit() {
+    if (scrollSettleTimer) {
+      scheduleViewportMotionFit();
+      return;
+    }
+    scheduleFit();
+    scheduleMenuFit();
+  }
+
+  function scheduleOrientationFit() {
+    const parent = parentWindow();
+    if (parent && scrollSettleTimer) {
+      parent.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = 0;
+    }
+    scheduleFit();
+    scheduleMenuFit();
   }
 
   function bindViewport() {
     const parent = parentWindow();
     if (!parent) return;
 
-    parent.addEventListener('resize', scheduleFit, { passive: true });
-    parent.addEventListener('orientationchange', scheduleFit, { passive: true });
-    parent.addEventListener('scroll', scheduleScrollFit, { passive: true });
-    parent.visualViewport?.addEventListener('resize', scheduleFit, { passive: true });
-    parent.visualViewport?.addEventListener('scroll', scheduleScrollFit, { passive: true });
-    window.addEventListener('load', scheduleFit, { once: true });
+    parent.addEventListener('resize', scheduleParentResizeFit, { passive: true });
+    parent.addEventListener('orientationchange', scheduleOrientationFit, { passive: true });
+    parent.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
+    parent.visualViewport?.addEventListener('resize', scheduleViewportMotionFit, { passive: true });
+    parent.visualViewport?.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
+
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('#mobile-menu-toggle')) return;
+      scheduleMenuFit();
+      if (!scrollSettleTimer) scheduleFit();
+    }, { passive: true });
+
+    window.addEventListener('load', () => {
+      scheduleFit();
+      scheduleMenuFit();
+    }, { once: true });
+
+    const observer = new MutationObserver(() => {
+      if (!document.getElementById('controls-left')) return;
+      observer.disconnect();
+      scheduleFit();
+      scheduleMenuFit();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
 
     scheduleFit();
+    scheduleMenuFit();
+    setTimeout(scheduleFit, 0);
   }
 
   bindViewport();
