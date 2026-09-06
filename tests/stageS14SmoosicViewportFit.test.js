@@ -29,6 +29,17 @@ test('S14 mobile scroll settles frame geometry while menu positioning remains li
   assert.match(viewportFit, /parent\.addEventListener\('orientationchange', scheduleOrientationFit/)
 })
 
+test('S14 host lifecycle geometry changes resync the iframe before scrolling', () => {
+  assert.match(viewportFit, /function frameHostVisible\(frame\)/)
+  assert.match(viewportFit, /frame\.hidden !== true && frame\.parentElement\?\.hidden !== true/)
+  assert.match(viewportFit, /function bindHostGeometry\(parent\)/)
+  assert.match(viewportFit, /parent\.MutationObserver \?\? globalThis\.MutationObserver/)
+  assert.match(viewportFit, /observer\.observe\(frame, \{ attributes: true, attributeFilter: \['hidden'\] \}\)/)
+  assert.match(viewportFit, /observer\.observe\(frame\.parentElement, \{ attributes: true, attributeFilter: \['hidden'\] \}\)/)
+  assert.match(viewportFit, /getElementById\?\.\('smoosic-editor-host-status'\)/)
+  assert.match(viewportFit, /scheduleParentResizeFit\(\)/)
+})
+
 test('S14 mobile menu is positioned below the visible sticky host header after parent scrolling', () => {
   assert.match(viewportFit, /querySelector\?\.\('\.app-header'\)/)
   assert.match(viewportFit, /visibleHostTop - frameTop/)
