@@ -73,8 +73,8 @@ jobs:
       - name: Verify PR-F accessibility mobile regression in real browser
         run: node scripts/verifyPrFAccessibilityBrowser.js
 
-      - name: Verify P2 mobile scroll-settle A/B in real browser
-        run: node scripts/verifyS14MobileScrollSettlePocBrowserV2.js
+      - name: Verify P2 mobile scroll-settle deterministic browser acceptance
+        run: node scripts/verifyS14MobileScrollSettlePocBrowserV3.js
 
       - name: Upload P2 mobile scroll-settle A/B evidence
         if: always()
