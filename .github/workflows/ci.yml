@@ -83,3 +83,14 @@ jobs:
           name: smoosic-mobile-viewport-diagnostics
           path: artifacts/smoosic-mobile-viewport-diagnostics.json
           if-no-files-found: warn
+
+      - name: Collect S14 mobile geometry baseline evidence
+        run: node scripts/diagnoseS14MobileGeometryBaselineBrowser.js
+
+      - name: Upload S14 mobile geometry baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoosic-mobile-geometry-baseline
+          path: artifacts/smoosic-mobile-geometry-baseline.json
+          if-no-files-found: warn
