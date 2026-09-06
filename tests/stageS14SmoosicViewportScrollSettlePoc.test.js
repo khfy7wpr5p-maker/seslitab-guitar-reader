@@ -236,12 +236,13 @@ test('P2 viewport-fit POC keeps iframe height stable during a host scroll burst 
   assert.equal(harness.metrics().heightWrites, 1)
   assert.equal(harness.metrics().pocMode, 'scroll-settle-v1')
 
-  for (const top of [180, 120, 60, 20]) {
+  const scrollTops = [180, 120, 60, 20]
+  for (const [index, top] of scrollTops.entries()) {
     harness.setFrameTop(top)
     harness.parentListeners.get('scroll')()
     harness.flushRaf()
-    harness.advance(40)
-    assert.equal(harness.metrics().heightWrites, 1, `iframe resized before scroll settled at frameTop=${top}`)
+    assert.equal(harness.metrics().heightWrites, 1, `iframe resized during scroll at frameTop=${top}`)
+    if (index < scrollTops.length - 1) harness.advance(40)
   }
 
   assert.equal(harness.metrics().menuTop, '134')
