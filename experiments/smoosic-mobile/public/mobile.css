@@ -118,12 +118,13 @@ html, body {
   }
 
   /* mainDom.vue uses id="controls-left", not class="controls-left".
-     Fixed positioning removes the hidden menu from the media flex flow so it
-     no longer steals score width. */
+     The dynamic top variable is updated from the same-origin host geometry so
+     the first menu items stay below SesliTab's sticky header even after the
+     parent page has scrolled the iframe partly behind it. */
   #controls-left {
     box-sizing: border-box;
     position: fixed !important;
-    top: calc(var(--seslitab-mobile-topbar-height) + env(safe-area-inset-top, 0px));
+    top: var(--seslitab-mobile-menu-top, calc(var(--seslitab-mobile-topbar-height) + env(safe-area-inset-top, 0px)));
     left: 0;
     bottom: calc(var(--seslitab-mobile-toolbar-height) + env(safe-area-inset-bottom, 0px));
     width: min(230px, 72vw) !important;
