@@ -183,7 +183,7 @@
 
     scheduleFit();
     scheduleMenuFit();
-    setTimeout(scheduleFit, 0);
+    parent.setTimeout(scheduleFit, 0);
   }
 
   bindViewport();
