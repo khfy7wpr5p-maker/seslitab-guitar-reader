@@ -203,6 +203,19 @@
     scheduleMenuFit();
   }
 
+  function bindMenuStateGeometry() {
+    const body = document.body;
+    if (!body || typeof MutationObserver !== 'function') return;
+    let wasOpen = body.classList.contains('mobile-menu-open');
+
+    const observer = new MutationObserver(() => {
+      const isOpen = body.classList.contains('mobile-menu-open');
+      if (isOpen && !wasOpen) fitForMenuInteraction();
+      wasOpen = isOpen;
+    });
+    observer.observe(body, { attributes: true, attributeFilter: ['class'] });
+  }
+
   function bindHostGeometry(parent) {
     const frame = window.frameElement;
     const HostObserver = parent.MutationObserver ?? globalThis.MutationObserver;
@@ -233,6 +246,7 @@
     parent.visualViewport?.addEventListener('resize', scheduleViewportMotionFit, { passive: true });
     parent.visualViewport?.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
     bindHostGeometry(parent);
+    bindMenuStateGeometry();
 
     document.addEventListener('click', (event) => {
       const target = event.target;
