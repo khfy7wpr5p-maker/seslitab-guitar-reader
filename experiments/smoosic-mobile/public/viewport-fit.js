@@ -28,6 +28,24 @@
     return frame.hidden !== true && frame.parentElement?.hidden !== true;
   }
 
+  function parentScrollPosition(parent) {
+    return {
+      x: Number(parent.scrollX ?? parent.pageXOffset ?? 0),
+      y: Number(parent.scrollY ?? parent.pageYOffset ?? 0),
+    };
+  }
+
+  function restoreParentScrollAfterFrameWrite(parent, frame, before) {
+    if (typeof parent.scrollTo !== 'function') return;
+
+    // Force outer layout so a Chromium scroll-anchor adjustment caused by the
+    // iframe height write is observable before we restore the user's position.
+    frame.getBoundingClientRect();
+    const after = parentScrollPosition(parent);
+    if (Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5) return;
+    parent.scrollTo(before.x, before.y);
+  }
+
   function clearMobileFrameState(parent, frame) {
     if (scrollSettleTimer) {
       parent.clearTimeout(scrollSettleTimer);
@@ -83,12 +101,16 @@
     if (availableHeight <= 0) return;
 
     const heightText = `${availableHeight}px`;
+    const scrollBeforeWrite = parentScrollPosition(parent);
+    let frameHeightChanged = false;
     if (frame.dataset.seslitabViewportHeight !== String(availableHeight) || frame.style.height !== heightText) {
       frame.style.height = heightText;
       frame.dataset.seslitabViewportHeight = String(availableHeight);
+      frameHeightChanged = true;
     }
     if (frame.style.minHeight !== '0px') frame.style.minHeight = '0px';
     frame.dataset.seslitabViewportFit = 'mobile';
+    if (frameHeightChanged) restoreParentScrollAfterFrameWrite(parent, frame, scrollBeforeWrite);
     fitMenuToVisibleHostViewport(parent, frame, viewportTop);
   }
 
