@@ -165,6 +165,17 @@
     scheduleMenuFit();
   }
 
+  function fitForMenuInteraction() {
+    const parent = parentWindow();
+    if (!parent) return;
+    if (scrollSettleTimer) {
+      parent.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = 0;
+    }
+    applySettledFrameFit();
+    scheduleMenuFit();
+  }
+
   function bindHostGeometry(parent) {
     const frame = window.frameElement;
     const HostObserver = parent.MutationObserver ?? globalThis.MutationObserver;
@@ -199,8 +210,7 @@
     document.addEventListener('click', (event) => {
       const target = event.target;
       if (!(target instanceof Element) || !target.closest('#mobile-menu-toggle')) return;
-      scheduleMenuFit();
-      if (!scrollSettleTimer) scheduleFit();
+      fitForMenuInteraction();
     }, { passive: true });
 
     window.addEventListener('load', () => {
