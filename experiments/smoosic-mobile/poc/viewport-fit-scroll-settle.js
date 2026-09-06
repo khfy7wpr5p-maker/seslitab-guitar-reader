@@ -85,7 +85,7 @@
     }
     if (frame.style.minHeight !== '0px') frame.style.minHeight = '0px';
     frame.dataset.seslitabViewportFit = 'mobile';
-    frame.dataset.seslitabPocMode = 'scroll-settle-v1';
+    frame.dataset.seslitabPocMode = 'scroll-settle-v2';
     fitMenuToVisibleHostViewport(parent, frame, viewportTop);
   }
 
@@ -117,13 +117,23 @@
     scheduledMenuFrame = parent.requestAnimationFrame(fitMenuOnly);
   }
 
+  function applySettledFrameFit() {
+    const parent = parentWindow();
+    if (!parent) return;
+    if (scheduledFrame && typeof parent.cancelAnimationFrame === 'function') {
+      parent.cancelAnimationFrame(scheduledFrame);
+      scheduledFrame = 0;
+    }
+    fitEditorFrame();
+  }
+
   function scheduleSettledFrameFit() {
     const parent = parentWindow();
     if (!parent) return;
     if (scrollSettleTimer) parent.clearTimeout(scrollSettleTimer);
     scrollSettleTimer = parent.setTimeout(() => {
       scrollSettleTimer = 0;
-      scheduleFit();
+      applySettledFrameFit();
     }, SCROLL_SETTLE_MS);
   }
 
