@@ -9,6 +9,7 @@ class FakeElement {
   constructor(selectors = []) {
     this.selectors = new Set(selectors)
     this.blurred = false
+    this.clicked = false
   }
 
   closest(selector) {
@@ -18,12 +19,24 @@ class FakeElement {
   blur() {
     this.blurred = true
   }
+
+  click() {
+    this.clicked = true
+  }
 }
 
-function createHarness({ menuOpen = true, activeElement = null } = {}) {
+class FakeKeyboardEvent {
+  constructor(type, options = {}) {
+    this.type = type
+    Object.assign(this, options)
+  }
+}
+
+function createHarness({ menuOpen = true, activeElement = null, openOverlay = null } = {}) {
   const listeners = new Map()
   const rafCallbacks = []
   const timerCallbacks = []
+  const dispatchedEvents = []
   const classes = new Set(menuOpen ? ['mobile-menu-open'] : [])
   const menuHome = {
     children: [],
@@ -54,12 +67,19 @@ function createHarness({ menuOpen = true, activeElement = null } = {}) {
       if (!this.children.includes(child)) this.children.push(child)
       return child
     },
+    dispatchEvent(event) {
+      dispatchedEvents.push(event)
+      return true
+    },
   }
   const document = {
     body,
     activeElement,
     addEventListener(type, handler) { listeners.set(type, handler) },
     getElementById(id) { return id === 'controls-left' ? menu : null },
+    querySelector(selector) {
+      return selector === '.modal.show, .menuContainer .menuElement.show' ? openOverlay : null
+    },
   }
   const window = {
     innerWidth: 390,
@@ -74,8 +94,24 @@ function createHarness({ menuOpen = true, activeElement = null } = {}) {
     addEventListener(type, handler) { listeners.set(`window:${type}`, handler) },
   }
 
-  vm.runInNewContext(source, { document, window, Element: FakeElement })
-  return { listeners, rafCallbacks, timerCallbacks, classes, menu, menuHome, body, window, document }
+  vm.runInNewContext(source, {
+    document,
+    window,
+    Element: FakeElement,
+    KeyboardEvent: FakeKeyboardEvent,
+  })
+  return {
+    listeners,
+    rafCallbacks,
+    timerCallbacks,
+    dispatchedEvents,
+    classes,
+    menu,
+    menuHome,
+    body,
+    window,
+    document,
+  }
 }
 
 test('S14 mobile menu is portaled to body before opening so Safari ancestors cannot clip it', () => {
@@ -86,6 +122,31 @@ test('S14 mobile menu is portaled to body before opening so Safari ancestors can
 
   click({ target: new FakeElement(['#mobile-menu-toggle']) })
   assert.equal(harness.menu.parentElement, harness.body)
+})
+
+test('S14 bottom Menu trigger dismisses an open Smoosic overlay through its cancel action', () => {
+  const cancel = new FakeElement()
+  const overlay = {
+    querySelector(selector) {
+      return selector.includes('[data-value="cancel"]') ? cancel : null
+    },
+  }
+  const harness = createHarness({ menuOpen: true, openOverlay: overlay })
+
+  harness.listeners.get('click')({ target: new FakeElement(['#mobile-menu-toggle']) })
+  assert.equal(cancel.clicked, true)
+  assert.equal(harness.dispatchedEvents.length, 0)
+  assert.equal(harness.menu.parentElement, harness.body)
+})
+
+test('S14 bottom Menu trigger falls back to Escape when an open overlay has no cancel control', () => {
+  const overlay = { querySelector() { return null } }
+  const harness = createHarness({ menuOpen: true, openOverlay: overlay })
+
+  harness.listeners.get('click')({ target: new FakeElement(['#mobile-menu-toggle']) })
+  assert.equal(harness.dispatchedEvents.length, 1)
+  assert.equal(harness.dispatchedEvents[0].type, 'keydown')
+  assert.equal(harness.dispatchedEvents[0].key, 'Escape')
 })
 
 test('S14 mobile menu clears retained iOS focus and wins late Safari scroll restoration', () => {
@@ -126,7 +187,7 @@ test('S14 closing a menu action blurs the retained item and resets hidden scroll
   assert.equal(harness.menu.scrollLeft, 0)
 })
 
-test('S14 selecting a left-menu action still closes the off-canvas menu', () => {
+test('S14 selecting a left-menu action still closes the existing mobile menu', () => {
   const harness = createHarness({ menuOpen: true })
   harness.listeners.get('click')({ target: new FakeElement(['#controls-left button']) })
   assert.equal(harness.classes.has('mobile-menu-open'), false)

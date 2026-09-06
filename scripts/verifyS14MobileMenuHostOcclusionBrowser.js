@@ -280,17 +280,44 @@ try {
     const doc = frame.contentDocument;
     const menu = doc.getElementById('controls-left');
     const firstButton = menu.querySelector('button');
+    const firstItem = firstButton?.closest?.('li') || firstButton?.parentElement;
     const grayShell = doc.querySelector('.media > .d-flex.flex-column.flex-shrink-0.p-3.bg-body-tertiary');
     const frameRect = frame.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     const firstRect = firstButton.getBoundingClientRect();
+    const firstItemRect = firstItem?.getBoundingClientRect?.();
     const x = Math.max(firstRect.left + 1, Math.min(firstRect.right - 1, firstRect.left + firstRect.width / 2));
     const y = Math.max(firstRect.top + 1, Math.min(firstRect.bottom - 1, firstRect.top + firstRect.height / 2));
     const hit = doc.elementFromPoint(x, y);
     const visibleFirstHeight = Math.max(0, Math.min(firstRect.bottom, menuRect.bottom) - Math.max(firstRect.top, menuRect.top));
     const grayRect = grayShell?.getBoundingClientRect?.();
     const grayStyle = grayShell ? getComputedStyle(grayShell) : null;
+    const menuStyle = getComputedStyle(menu);
+    const firstItemStyle = firstItem ? getComputedStyle(firstItem) : null;
+    const firstButtonStyle = getComputedStyle(firstButton);
+    const summarizeNode = (node) => {
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return {
+        tag: node.tagName,
+        id: node.id || '',
+        className: typeof node.className === 'string' ? node.className : String(node.className || ''),
+        text: String(node.textContent || '').trim().slice(0, 40),
+        top: rect.top,
+        bottom: rect.bottom,
+        height: rect.height,
+        offsetTop: node.offsetTop,
+        offsetParent: node.offsetParent?.id || node.offsetParent?.className || node.offsetParent?.tagName || '',
+        display: style.display,
+        position: style.position,
+        marginTop: style.marginTop,
+        marginBottom: style.marginBottom,
+        paddingTop: style.paddingTop,
+        paddingBottom: style.paddingBottom,
+        transform: style.transform,
+      };
+    };
     return {
       firstLabel: String(firstButton?.textContent || '').trim(),
       scrollTop: menu.scrollTop,
@@ -298,7 +325,7 @@ try {
       headerBottom: headerRect.bottom,
       menuTopInParent: frameRect.top + menuRect.top,
       firstTopInParent: frameRect.top + firstRect.top,
-      menuTopCss: getComputedStyle(menu).top,
+      menuTopCss: menuStyle.top,
       recordedMenuTop: Number(frame.dataset.seslitabMenuTop || 0),
       recordedOccludedTop: Number(frame.dataset.seslitabHostOccludedTop || 0),
       viewportHeight: window.visualViewport?.height || window.innerHeight,
@@ -310,6 +337,43 @@ try {
       grayShellWidth: Number(grayRect?.width || 0),
       grayShellPaddingLeft: grayStyle?.paddingLeft || '',
       grayShellBackground: grayStyle?.backgroundColor || '',
+      menuComputed: {
+        display: menuStyle.display,
+        position: menuStyle.position,
+        height: menuStyle.height,
+        minHeight: menuStyle.minHeight,
+        maxHeight: menuStyle.maxHeight,
+        paddingTop: menuStyle.paddingTop,
+        paddingBottom: menuStyle.paddingBottom,
+        flexDirection: menuStyle.flexDirection,
+        justifyContent: menuStyle.justifyContent,
+        alignContent: menuStyle.alignContent,
+      },
+      firstItemComputed: firstItem ? {
+        top: firstItemRect?.top,
+        height: firstItemRect?.height,
+        offsetTop: firstItem.offsetTop,
+        display: firstItemStyle?.display,
+        position: firstItemStyle?.position,
+        marginTop: firstItemStyle?.marginTop,
+        marginBottom: firstItemStyle?.marginBottom,
+        paddingTop: firstItemStyle?.paddingTop,
+        paddingBottom: firstItemStyle?.paddingBottom,
+        transform: firstItemStyle?.transform,
+      } : null,
+      firstButtonComputed: {
+        top: firstRect.top,
+        height: firstRect.height,
+        offsetTop: firstButton.offsetTop,
+        display: firstButtonStyle.display,
+        position: firstButtonStyle.position,
+        marginTop: firstButtonStyle.marginTop,
+        marginBottom: firstButtonStyle.marginBottom,
+        paddingTop: firstButtonStyle.paddingTop,
+        paddingBottom: firstButtonStyle.paddingBottom,
+        transform: firstButtonStyle.transform,
+      },
+      menuChildren: Array.from(menu.children).slice(0, 8).map(summarizeNode),
     };
   })()`)
 

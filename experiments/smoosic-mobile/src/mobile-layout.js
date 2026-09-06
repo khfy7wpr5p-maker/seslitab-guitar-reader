@@ -30,6 +30,30 @@ function blurRetainedMenuFocus(menu, preferredTarget = null) {
   active.blur();
 }
 
+function dismissOpenSmoosicOverlay() {
+  const overlay = document.querySelector('.modal.show, .menuContainer .menuElement.show');
+  if (!overlay) return false;
+
+  const cancel = typeof overlay.querySelector === 'function'
+    ? overlay.querySelector('[data-value="cancel"], .cancel-button, [data-bs-dismiss="modal"], .btn-close')
+    : null;
+  if (cancel && typeof cancel.click === 'function') {
+    cancel.click();
+    return true;
+  }
+
+  if (typeof KeyboardEvent === 'function' && document.body && typeof document.body.dispatchEvent === 'function') {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape',
+      code: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    }));
+    return true;
+  }
+  return false;
+}
+
 function stabilizeOpenMenuAtTop(menu) {
   if (!menu) return;
   const generation = ++menuResetGeneration;
@@ -80,6 +104,7 @@ document.addEventListener('click', (event) => {
   if (target.closest('#mobile-menu-toggle')) {
     const menu = portalMobileMenu();
     if (document.body.classList.contains('mobile-menu-open')) {
+      dismissOpenSmoosicOverlay();
       stabilizeOpenMenuAtTop(menu);
     } else {
       settleClosedMenu(menu);
