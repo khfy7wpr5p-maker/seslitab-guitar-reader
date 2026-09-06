@@ -117,31 +117,49 @@ html, body {
     box-shadow: none !important;
   }
 
-  /* mainDom.vue uses id="controls-left", not class="controls-left".
-     The dynamic top variable is updated from the same-origin host geometry so
-     the first menu items stay below SesliTab's sticky header even after the
-     parent page has scrolled the iframe partly behind it. */
+  /* The bottom-left mobile Menu button toggles this existing Smoosic menu.
+     Keep the menu content/order unchanged, but present it as a compact panel
+     in the upper score area instead of a full-height side drawer. */
   #controls-left {
     box-sizing: border-box;
     position: fixed !important;
     top: var(--seslitab-mobile-menu-top, calc(var(--seslitab-mobile-topbar-height) + env(safe-area-inset-top, 0px)));
-    left: 0;
-    bottom: calc(var(--seslitab-mobile-toolbar-height) + env(safe-area-inset-bottom, 0px));
-    width: min(230px, 72vw) !important;
-    max-width: 72vw !important;
+    left: 8px;
+    right: auto;
+    bottom: auto !important;
+    width: min(230px, calc(100vw - 16px)) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: min(
+      48dvh,
+      calc(
+        100dvh - var(--seslitab-mobile-menu-top, var(--seslitab-mobile-topbar-height))
+        - var(--seslitab-mobile-toolbar-height)
+        - env(safe-area-inset-bottom, 0px)
+        - 12px
+      )
+    ) !important;
     height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 8px !important;
     z-index: 10010 !important;
-    transform: translateX(-110%);
-    transition: transform .16s ease-out;
+    transform: translateY(-8px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform .14s ease-out, opacity .14s ease-out;
     overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     background: #f2f2f2;
-    box-shadow: 4px 0 16px rgba(0,0,0,.22);
+    box-shadow: 0 4px 16px rgba(0,0,0,.22);
   }
 
   body.mobile-menu-open #controls-left {
-    transform: translateX(0);
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
   }
 
   #controls-left button {
