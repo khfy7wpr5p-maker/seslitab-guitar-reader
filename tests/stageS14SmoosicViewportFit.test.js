@@ -27,10 +27,11 @@ test('S14 mobile menu is positioned below the visible sticky host header after p
   assert.match(mobileCss, /top: var\(--seslitab-mobile-menu-top, calc\(var\(--seslitab-mobile-topbar-height\)/)
 })
 
-test('S14 viewport fitting ships without removing the proven left off-canvas menu', () => {
+test('S14 viewport fitting preserves the bottom-triggered upper Smoosic menu panel', () => {
   assert.match(prepare, /'viewport-fit\.js'/)
   assert.match(prepare, /\/smoosic-editor\/viewport-fit\.js/)
-  assert.match(mobileCss, /#controls-left \{[\s\S]*?position: fixed !important;[\s\S]*?transform: translateX\(-110%\);/)
-  assert.match(mobileCss, /body\.mobile-menu-open #controls-left \{[\s\S]*?transform: translateX\(0\);/)
+  assert.match(mobileCss, /#controls-left \{[\s\S]*?position: fixed !important;[\s\S]*?bottom: auto !important;[\s\S]*?transform: translateY\(-8px\);[\s\S]*?visibility: hidden;/)
+  assert.match(mobileCss, /body\.mobile-menu-open #controls-left \{[\s\S]*?transform: translateY\(0\);[\s\S]*?visibility: visible;[\s\S]*?pointer-events: auto;/)
+  assert.match(mobileLayout, /target\.closest\('#mobile-menu-toggle'\)/)
   assert.match(mobileLayout, /target\.closest\('#controls-left button'\)/)
 })
