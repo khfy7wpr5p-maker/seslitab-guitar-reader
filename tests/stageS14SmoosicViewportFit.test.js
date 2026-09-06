@@ -24,14 +24,15 @@ test('S14 mobile menu is positioned below the visible sticky host header after p
   assert.match(viewportFit, /frame\.dataset\.seslitabHostOccludedTop/)
   assert.match(viewportFit, /parent\.addEventListener\('scroll', scheduleFit/)
   assert.match(viewportFit, /target\.closest\('#mobile-menu-toggle'\)/)
-  assert.match(mobileCss, /top: var\(--seslitab-mobile-menu-top, calc\(var\(--seslitab-mobile-topbar-height\)/)
+  assert.match(mobileCss, /body > #controls-left \{[\s\S]*?top: var\(--seslitab-mobile-menu-top, calc\(var\(--seslitab-mobile-topbar-height\)/)
 })
 
 test('S14 viewport fitting preserves the bottom-triggered upper Smoosic menu panel', () => {
   assert.match(prepare, /'viewport-fit\.js'/)
   assert.match(prepare, /\/smoosic-editor\/viewport-fit\.js/)
-  assert.match(mobileCss, /#controls-left \{[\s\S]*?position: fixed !important;[\s\S]*?bottom: auto !important;[\s\S]*?transform: translateY\(-8px\);[\s\S]*?visibility: hidden;/)
-  assert.match(mobileCss, /body\.mobile-menu-open #controls-left \{[\s\S]*?transform: translateY\(0\);[\s\S]*?visibility: visible;[\s\S]*?pointer-events: auto;/)
+  assert.match(mobileCss, /body > #controls-left \{[\s\S]*?position: fixed !important;[\s\S]*?bottom: auto !important;[\s\S]*?transform: translateY\(-8px\);[\s\S]*?visibility: hidden;/)
+  assert.match(mobileCss, /body\.mobile-menu-open > #controls-left \{[\s\S]*?transform: translateY\(0\);[\s\S]*?visibility: visible;[\s\S]*?pointer-events: auto;/)
+  assert.match(mobileCss, /body > #controls-left > #controls-left\.controls-left \{[\s\S]*?position: static !important;[\s\S]*?transform: none !important;/)
   assert.match(mobileLayout, /target\.closest\('#mobile-menu-toggle'\)/)
   assert.match(mobileLayout, /target\.closest\('#controls-left button'\)/)
 })
