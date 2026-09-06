@@ -72,3 +72,14 @@ jobs:
 
       - name: Verify PR-F accessibility mobile regression in real browser
         run: node scripts/verifyPrFAccessibilityBrowser.js
+
+      - name: Collect S14 mobile viewport diagnostic evidence
+        run: node scripts/diagnoseS14MobileViewportJitterBrowser.js
+
+      - name: Upload S14 mobile viewport diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoosic-mobile-viewport-diagnostics
+          path: artifacts/smoosic-mobile-viewport-diagnostics.json
+          if-no-files-found: warn
