@@ -72,3 +72,14 @@ jobs:
 
       - name: Verify PR-F accessibility mobile regression in real browser
         run: node scripts/verifyPrFAccessibilityBrowser.js
+
+      - name: Collect S14 race-safe mobile hardening evidence
+        run: node scripts/diagnoseS14MobileHardeningEvidenceBrowser.js
+
+      - name: Upload S14 race-safe mobile hardening evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoosic-mobile-hardening-evidence
+          path: artifacts/smoosic-mobile-hardening-evidence.json
+          if-no-files-found: warn
