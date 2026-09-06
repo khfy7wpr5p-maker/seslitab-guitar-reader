@@ -29,6 +29,14 @@ test('S14 mobile scroll settles frame geometry while menu positioning remains li
   assert.match(viewportFit, /parent\.addEventListener\('orientationchange', scheduleOrientationFit/)
 })
 
+test('S14 explicit mobile menu interaction may fit once immediately without restoring scroll-time churn', () => {
+  assert.match(viewportFit, /function fitForMenuInteraction\(\)/)
+  assert.match(viewportFit, /if \(scrollSettleTimer\) \{[\s\S]*?parent\.clearTimeout\(scrollSettleTimer\);[\s\S]*?scrollSettleTimer = 0;/)
+  assert.match(viewportFit, /function fitForMenuInteraction\(\) \{[\s\S]*?applySettledFrameFit\(\);[\s\S]*?scheduleMenuFit\(\);/)
+  assert.match(viewportFit, /target\.closest\('#mobile-menu-toggle'\)[\s\S]*?fitForMenuInteraction\(\)/)
+  assert.match(viewportFit, /parent\.addEventListener\('scroll', scheduleViewportMotionFit/)
+})
+
 test('S14 host lifecycle geometry changes resync the iframe before scrolling', () => {
   assert.match(viewportFit, /function frameHostVisible\(frame\)/)
   assert.match(viewportFit, /frame\.hidden !== true && frame\.parentElement\?\.hidden !== true/)
