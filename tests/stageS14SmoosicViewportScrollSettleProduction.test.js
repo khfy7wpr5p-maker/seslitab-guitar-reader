@@ -15,6 +15,7 @@ function createHarness() {
   const rafQueue = []
   const timers = new Map()
   const cssVariables = new Map()
+  const mutationObservers = []
   let nextRafId = 1
   let nextTimerId = 1
   let now = 0
@@ -54,9 +55,13 @@ function createHarness() {
     },
   })
 
+  const panel = { hidden: false }
+  const hostStatus = { hidden: true }
   const frame = {
     dataset,
     style,
+    hidden: false,
+    parentElement: panel,
     getBoundingClientRect() {
       const height = Number.parseFloat(inlineHeight || '0') || 0
       return { top: frameTop, bottom: frameTop + height, height }
@@ -66,9 +71,28 @@ function createHarness() {
   const topBar = { getBoundingClientRect: () => ({ height: 46 }) }
   const header = { getBoundingClientRect: () => ({ bottom: 150 }) }
 
+  class MutationObserver {
+    constructor(callback) {
+      this.callback = callback
+      this.targets = []
+      this.connected = true
+      mutationObservers.push(this)
+    }
+
+    observe(target, options = {}) {
+      this.targets.push({ target, options })
+      this.connected = true
+    }
+
+    disconnect() {
+      this.connected = false
+    }
+  }
+
   const parent = {
     innerWidth: 390,
     innerHeight: 844,
+    MutationObserver,
     visualViewport: {
       offsetTop: 0,
       height: 844,
@@ -79,6 +103,9 @@ function createHarness() {
     document: {
       querySelector(selector) {
         return selector === '.app-header' ? header : null
+      },
+      getElementById(id) {
+        return id === 'smoosic-editor-host-status' ? hostStatus : null
       },
     },
     addEventListener(type, listener) {
@@ -135,11 +162,6 @@ function createHarness() {
     }
   }
 
-  class MutationObserver {
-    observe() {}
-    disconnect() {}
-  }
-
   const window = {
     parent,
     frameElement: frame,
@@ -178,6 +200,16 @@ function createHarness() {
     advanceTimers(ms, false)
   }
 
+  function notifyHidden(target) {
+    for (const observer of mutationObservers) {
+      if (!observer.connected) continue
+      const watched = observer.targets.some(({ target: observed, options }) => (
+        observed === target && (!options.attributeFilter || options.attributeFilter.includes('hidden'))
+      ))
+      if (watched) observer.callback([{ target, attributeName: 'hidden' }])
+    }
+  }
+
   vm.runInNewContext(source, { window, document, Element, MutationObserver, console })
   flushRaf()
   advance(0)
@@ -193,6 +225,21 @@ function createHarness() {
     advanceTimersOnly,
     setFrameTop(value) {
       frameTop = value
+    },
+    setHostStatusHidden(value, nextFrameTop = frameTop) {
+      hostStatus.hidden = value
+      frameTop = nextFrameTop
+      notifyHidden(hostStatus)
+    },
+    setPanelHidden(value, nextFrameTop = frameTop) {
+      panel.hidden = value
+      frameTop = nextFrameTop
+      notifyHidden(panel)
+    },
+    setFrameHidden(value, nextFrameTop = frameTop) {
+      frame.hidden = value
+      frameTop = nextFrameTop
+      notifyHidden(frame)
     },
     clickMenu() {
       documentListeners.get('click')?.({ target: new Element('#mobile-menu-toggle') })
@@ -215,6 +262,45 @@ function createHarness() {
     },
   }
 }
+
+test('S14 production viewport fit resyncs when bounded host status geometry changes before scrolling', () => {
+  const harness = createHarness()
+  assert.equal(harness.metrics().height, '620px')
+  assert.equal(harness.metrics().heightWrites, 1)
+
+  harness.setHostStatusHidden(false, 263)
+  harness.flushRaf()
+  assert.equal(harness.metrics().height, '577px')
+  assert.equal(harness.metrics().heightWrites, 2)
+
+  harness.setHostStatusHidden(true, 220)
+  harness.flushRaf()
+  assert.equal(harness.metrics().height, '620px')
+  assert.equal(harness.metrics().heightWrites, 3)
+})
+
+test('S14 production viewport fit does not write while host panel/frame is hidden and resyncs when visible', () => {
+  const harness = createHarness()
+  assert.equal(harness.metrics().heightWrites, 1)
+
+  harness.setPanelHidden(true, 0)
+  harness.flushRaf()
+  assert.equal(harness.metrics().heightWrites, 1)
+
+  harness.setPanelHidden(false, 180)
+  harness.flushRaf()
+  assert.equal(harness.metrics().height, '660px')
+  assert.equal(harness.metrics().heightWrites, 2)
+
+  harness.setFrameHidden(true, 0)
+  harness.flushRaf()
+  assert.equal(harness.metrics().heightWrites, 2)
+
+  harness.setFrameHidden(false, 220)
+  harness.flushRaf()
+  assert.equal(harness.metrics().height, '620px')
+  assert.equal(harness.metrics().heightWrites, 3)
+})
 
 test('S14 production viewport fit keeps iframe height stable during scroll and writes once after settle', () => {
   const harness = createHarness()
