@@ -127,6 +127,12 @@ html, body {
     left: 8px;
     right: auto;
     bottom: auto !important;
+    display: flex !important;
+    flex: none !important;
+    flex-flow: column nowrap !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    align-content: stretch !important;
     width: min(230px, calc(100vw - 16px)) !important;
     max-width: calc(100vw - 16px) !important;
     max-height: min(
@@ -141,7 +147,9 @@ html, body {
     height: auto !important;
     min-height: 0 !important;
     margin: 0 !important;
+    margin-bottom: 0 !important;
     padding: 8px !important;
+    list-style: none !important;
     z-index: 10010 !important;
     transform: translateY(-8px);
     opacity: 0;
@@ -162,8 +170,25 @@ html, body {
     pointer-events: auto;
   }
 
-  #controls-left button {
+  #controls-left > .nav-item {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+  }
+
+  #controls-left > .nav-item > button {
+    position: static !important;
+    display: flex !important;
+    width: 100% !important;
+    max-width: none !important;
     min-height: 44px;
+    margin: 0 !important;
     font-size: 16px !important;
   }
 
