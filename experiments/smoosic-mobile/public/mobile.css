@@ -114,10 +114,12 @@ html, body {
     box-shadow: none !important;
   }
 
-  /* Bottom-left Menü toggles the original Smoosic list.  On mobile the list
-     uses ordinary block flow in DOM order so Help is physically the first
-     visible row; Bootstrap flex ordering/auto margins cannot move it. */
-  #controls-left {
+  /* Smoosic renders an outer #controls-left shell containing another
+     #controls-left.controls-left ribbon group.  The bottom-left Menü button
+     portals only the outer shell to body.  Scope fixed positioning to that
+     direct body child so the inner real menu cannot receive the same `top`
+     offset a second time. */
+  body > #controls-left {
     box-sizing: border-box;
     position: fixed !important;
     top: var(--seslitab-mobile-menu-top, calc(var(--seslitab-mobile-topbar-height) + env(safe-area-inset-top, 0px)));
@@ -155,28 +157,40 @@ html, body {
     box-shadow: 0 4px 16px rgba(0,0,0,.22);
   }
 
-  body.mobile-menu-open #controls-left {
+  body.mobile-menu-open > #controls-left {
     transform: translateY(0);
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
   }
 
-  #controls-left > .nav-item {
+  /* The nested duplicate id is the actual Smoosic button group.  It must
+     remain in normal flow inside the positioned outer shell. */
+  body > #controls-left > #controls-left.controls-left {
+    box-sizing: border-box;
     position: static !important;
     inset: auto !important;
-    display: block !important;
+    display: flex !important;
+    flex-flow: column nowrap !important;
+    align-items: stretch !important;
     float: none !important;
-    order: 0 !important;
     width: 100% !important;
-    min-width: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
     height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
 
-  #controls-left > .nav-item > button {
+  body > #controls-left > #controls-left.controls-left > button {
     position: static !important;
     display: flex !important;
     float: none !important;
