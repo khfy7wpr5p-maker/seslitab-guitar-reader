@@ -74,7 +74,7 @@ jobs:
         run: node scripts/verifyPrFAccessibilityBrowser.js
 
       - name: Verify P2 mobile scroll-settle A/B in real browser
-        run: node scripts/verifyS14MobileScrollSettlePocBrowser.js
+        run: node scripts/verifyS14MobileScrollSettlePocBrowserV2.js
 
       - name: Upload P2 mobile scroll-settle A/B evidence
         if: always()
