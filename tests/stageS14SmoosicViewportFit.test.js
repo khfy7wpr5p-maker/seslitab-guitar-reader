@@ -17,6 +17,16 @@ test('S14 mobile viewport fit keeps the embedded editor inside the parent visual
   assert.match(viewportFit, /visualViewport\?\.addEventListener\('scroll'/)
 })
 
+test('S14 mobile menu is positioned below the visible sticky host header after parent scrolling', () => {
+  assert.match(viewportFit, /querySelector\?\.\('\.app-header'\)/)
+  assert.match(viewportFit, /visibleHostTop - frameTop/)
+  assert.match(viewportFit, /--seslitab-mobile-menu-top/)
+  assert.match(viewportFit, /frame\.dataset\.seslitabHostOccludedTop/)
+  assert.match(viewportFit, /parent\.addEventListener\('scroll', scheduleFit/)
+  assert.match(viewportFit, /target\.closest\('#mobile-menu-toggle'\)/)
+  assert.match(mobileCss, /top: var\(--seslitab-mobile-menu-top, calc\(var\(--seslitab-mobile-topbar-height\)/)
+})
+
 test('S14 viewport fitting ships without removing the proven left off-canvas menu', () => {
   assert.match(prepare, /'viewport-fit\.js'/)
   assert.match(prepare, /\/smoosic-editor\/viewport-fit\.js/)
