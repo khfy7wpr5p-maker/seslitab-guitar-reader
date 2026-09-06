@@ -24,6 +24,10 @@ function createHarness() {
   let minHeightWrites = 0
   let heightRemovals = 0
   let minHeightRemovals = 0
+  let scrollX = 0
+  let scrollY = 0
+  let scrollToCalls = 0
+  let anchorShiftOnHeightWrite = 0
 
   const dataset = {}
   let inlineHeight = ''
@@ -43,8 +47,14 @@ function createHarness() {
   Object.defineProperty(style, 'height', {
     get: () => inlineHeight,
     set(value) {
+      const previous = inlineHeight
       inlineHeight = String(value)
       heightWrites += 1
+      if (anchorShiftOnHeightWrite && previous !== inlineHeight) {
+        scrollY += anchorShiftOnHeightWrite
+        frameTop -= anchorShiftOnHeightWrite
+        anchorShiftOnHeightWrite = 0
+      }
     },
   })
   Object.defineProperty(style, 'minHeight', {
@@ -93,6 +103,19 @@ function createHarness() {
     innerWidth: 390,
     innerHeight: 844,
     MutationObserver,
+    get scrollX() { return scrollX },
+    get scrollY() { return scrollY },
+    get pageXOffset() { return scrollX },
+    get pageYOffset() { return scrollY },
+    scrollTo(x, y) {
+      const nextX = Number(x || 0)
+      const nextY = Number(y || 0)
+      const deltaY = scrollY - nextY
+      scrollX = nextX
+      scrollY = nextY
+      frameTop += deltaY
+      scrollToCalls += 1
+    },
     visualViewport: {
       offsetTop: 0,
       height: 844,
@@ -226,6 +249,13 @@ function createHarness() {
     setFrameTop(value) {
       frameTop = value
     },
+    setScrollState(value, nextFrameTop = frameTop) {
+      scrollY = Number(value)
+      frameTop = nextFrameTop
+    },
+    armScrollAnchorShift(value) {
+      anchorShiftOnHeightWrite = Number(value)
+    },
     setHostStatusHidden(value, nextFrameTop = frameTop) {
       hostStatus.hidden = value
       frameTop = nextFrameTop
@@ -258,6 +288,9 @@ function createHarness() {
         hostOccludedTop: dataset.seslitabHostOccludedTop,
         pendingTimers: timers.size,
         pendingRaf: rafQueue.length,
+        frameTop,
+        scrollY,
+        scrollToCalls,
       }
     },
   }
@@ -325,6 +358,25 @@ test('S14 production viewport fit keeps iframe height stable during scroll and w
   assert.equal(harness.metrics().height, '820px')
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().viewportHeight, '820')
+})
+
+test('S14 production viewport fit preserves parent scroll when browser anchoring reacts to settled height write', () => {
+  const harness = createHarness()
+  harness.setScrollState(240, 20)
+  harness.armScrollAnchorShift(202)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+
+  harness.advance(140)
+  assert.equal(harness.metrics().height, '820px')
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().scrollY, 240)
+  assert.equal(harness.metrics().frameTop, 20)
+  assert.equal(harness.metrics().scrollToCalls, 1)
+
+  harness.advance(220)
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().scrollY, 240)
 })
 
 test('S14 production viewport fit applies final geometry even if post-timer animation frames are not serviced', () => {
