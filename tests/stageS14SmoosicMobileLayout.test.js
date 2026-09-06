@@ -27,10 +27,16 @@ test('S14 inner mobile layout targets the real Smoosic DOM ids so hidden control
   assert.match(innerMobileCss, /\[id\$='-top-bar'\] \{[\s\S]*?flex-flow: row nowrap !important;[\s\S]*?height: var\(--seslitab-mobile-topbar-height\) !important;/)
   assert.match(innerMobileCss, /#controls-top,[\s\S]*?#controls-top \.control-bar,[\s\S]*?#controls-top \.row \{[\s\S]*?flex-flow: row nowrap !important;/)
   assert.match(innerMobileLayoutJs, /target\.closest\('#mobile-menu-toggle'\)/)
+  assert.match(innerMobileLayoutJs, /document\.body\.appendChild\(menu\)/)
   assert.match(innerMobileLayoutJs, /menu\.scrollTop = 0;/)
   assert.match(innerMobileLayoutJs, /window\.requestAnimationFrame\(resetMenuScroll\);/)
   assert.match(innerMobileLayoutJs, /target\.closest\('#controls-left button'\)/)
   assert.match(webpackConfig, /mobile:[\s\S]*?src\/mobile-layout\.js[\s\S]*?src\/index\.js/)
+})
+
+test('S14 mobile menu escapes the gray Bootstrap shell while preserving the score clipping boundary', () => {
+  assert.match(innerMobileCss, /\.media > \.d-flex\.flex-column\.flex-shrink-0\.p-3\.bg-body-tertiary \{[\s\S]*?width: 0 !important;[\s\S]*?padding: 0 !important;[\s\S]*?background: transparent !important;/)
+  assert.match(innerMobileCss, /\.media \{[\s\S]*?overflow: hidden !important;/)
 })
 
 test('S14 inner mobile score viewport and toolbar favor notation space without shrinking touch targets', () => {

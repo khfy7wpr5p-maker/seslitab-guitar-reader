@@ -19,11 +19,30 @@ function createHarness({ menuOpen = true } = {}) {
   const listeners = new Map()
   const rafCallbacks = []
   const classes = new Set(menuOpen ? ['mobile-menu-open'] : [])
-  const menu = { scrollTop: 321, scrollLeft: 19 }
+  const menuHome = {
+    children: [],
+    appendChild(child) {
+      child.parentElement = this
+      if (!this.children.includes(child)) this.children.push(child)
+      return child
+    },
+  }
+  const menu = {
+    scrollTop: 321,
+    scrollLeft: 19,
+    parentElement: menuHome,
+  }
+  menuHome.children.push(menu)
   const body = {
+    children: [],
     classList: {
       contains(name) { return classes.has(name) },
       remove(name) { classes.delete(name) },
+    },
+    appendChild(child) {
+      child.parentElement = this
+      if (!this.children.includes(child)) this.children.push(child)
+      return child
     },
   }
   const document = {
@@ -37,11 +56,22 @@ function createHarness({ menuOpen = true } = {}) {
       rafCallbacks.push(callback)
       return rafCallbacks.length
     },
+    addEventListener(type, handler) { listeners.set(`window:${type}`, handler) },
   }
 
   vm.runInNewContext(source, { document, window, Element: FakeElement })
-  return { listeners, rafCallbacks, classes, menu }
+  return { listeners, rafCallbacks, classes, menu, menuHome, body, window }
 }
+
+test('S14 mobile menu is portaled to body before opening so Safari ancestors cannot clip it', () => {
+  const harness = createHarness({ menuOpen: true })
+  const click = harness.listeners.get('click')
+  assert.equal(typeof click, 'function')
+  assert.equal(harness.menu.parentElement, harness.menuHome)
+
+  click({ target: new FakeElement(['#mobile-menu-toggle']) })
+  assert.equal(harness.menu.parentElement, harness.body)
+})
 
 test('S14 mobile menu opens at the top and wins a post-layout Safari scroll restoration', () => {
   const harness = createHarness({ menuOpen: true })

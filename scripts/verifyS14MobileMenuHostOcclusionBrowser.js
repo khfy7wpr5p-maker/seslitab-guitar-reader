@@ -280,10 +280,17 @@ try {
     const doc = frame.contentDocument;
     const menu = doc.getElementById('controls-left');
     const firstButton = menu.querySelector('button');
+    const grayShell = doc.querySelector('.media > .d-flex.flex-column.flex-shrink-0.p-3.bg-body-tertiary');
     const frameRect = frame.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     const firstRect = firstButton.getBoundingClientRect();
+    const x = Math.max(firstRect.left + 1, Math.min(firstRect.right - 1, firstRect.left + firstRect.width / 2));
+    const y = Math.max(firstRect.top + 1, Math.min(firstRect.bottom - 1, firstRect.top + firstRect.height / 2));
+    const hit = doc.elementFromPoint(x, y);
+    const visibleFirstHeight = Math.max(0, Math.min(firstRect.bottom, menuRect.bottom) - Math.max(firstRect.top, menuRect.top));
+    const grayRect = grayShell?.getBoundingClientRect?.();
+    const grayStyle = grayShell ? getComputedStyle(grayShell) : null;
     return {
       firstLabel: String(firstButton?.textContent || '').trim(),
       scrollTop: menu.scrollTop,
@@ -295,6 +302,14 @@ try {
       recordedMenuTop: Number(frame.dataset.seslitabMenuTop || 0),
       recordedOccludedTop: Number(frame.dataset.seslitabHostOccludedTop || 0),
       viewportHeight: window.visualViewport?.height || window.innerHeight,
+      menuParentIsBody: menu.parentElement === doc.body,
+      firstHitInsideMenu: !!hit?.closest?.('#controls-left'),
+      firstHitTag: hit?.tagName || '',
+      firstHitClass: String(hit?.className || ''),
+      visibleFirstHeight,
+      grayShellWidth: Number(grayRect?.width || 0),
+      grayShellPaddingLeft: grayStyle?.paddingLeft || '',
+      grayShellBackground: grayStyle?.backgroundColor || '',
     };
   })()`)
 
@@ -303,6 +318,10 @@ try {
   if (!(proof.recordedOccludedTop > 100)) throw new Error(`Host occlusion was not reproduced: ${JSON.stringify(proof)}`)
   if (proof.menuTopInParent < proof.headerBottom - 2) throw new Error(`Mobile menu is still hidden behind sticky host header: ${JSON.stringify(proof)}`)
   if (proof.firstTopInParent < proof.headerBottom - 2) throw new Error(`Help item is still hidden behind sticky host header: ${JSON.stringify(proof)}`)
+  if (!proof.menuParentIsBody) throw new Error(`Mobile menu is still trapped inside Smoosic media layers: ${JSON.stringify(proof)}`)
+  if (!proof.firstHitInsideMenu) throw new Error(`Help item is painted behind another Smoosic layer: ${JSON.stringify(proof)}`)
+  if (proof.visibleFirstHeight < 40) throw new Error(`Help item is clipped to a narrow strip: ${JSON.stringify(proof)}`)
+  if (proof.grayShellWidth > 1) throw new Error(`Empty Bootstrap menu shell still occupies score width: ${JSON.stringify(proof)}`)
 
   console.log(`S14 mobile menu host-occlusion browser proof PASS using ${chrome}: ${JSON.stringify(proof)}`)
 } catch (error) {
