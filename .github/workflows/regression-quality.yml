@@ -1,0 +1,102 @@
+name: Regression Quality
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regression-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright-baseline:
+    name: Playwright protected baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install isolated Playwright test dependency
+        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run protected SesliTab browser baseline
+        run: npx playwright test --project=chromium
+
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-baseline-evidence
+          path: |
+            artifacts/playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  sonarqube-analysis:
+    name: SonarQube analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect SonarQube configuration
+        id: sonar-config
+        shell: bash
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "mode=disabled" >> "$GITHUB_OUTPUT"
+          elif [ -n "$SONAR_HOST_URL" ]; then
+            echo "mode=server" >> "$GITHUB_OUTPUT"
+          elif [ -n "$SONAR_ORGANIZATION" ]; then
+            echo "mode=cloud" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=disabled" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SonarQube Server scan
+        if: steps.sonar-config.outputs.mode == 'server'
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: SonarQube Cloud scan
+        if: steps.sonar-config.outputs.mode == 'cloud'
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Explain disabled SonarQube scan
+        if: steps.sonar-config.outputs.mode == 'disabled'
+        run: |
+          echo "SonarQube scan is intentionally disabled until configuration exists."
+          echo "Server: add SONAR_TOKEN and SONAR_HOST_URL as repository secrets."
+          echo "Cloud: add SONAR_TOKEN as a secret and SONAR_ORGANIZATION as a repository variable."
