@@ -72,6 +72,7 @@ let selectedPdfFile = null
 let selectedMusicXmlFile = null
 let qualityGateActive = false
 let stageHPlaybackRoute = null
+let suppressResultScroll = false
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -480,12 +481,7 @@ function clearTab() {
 
 // ── Shared result handling ──────────────────────────────────
 
-function handleAnalysisResult(
-  notes,
-  xmlString,
-  hasRhythm,
-  { scrollToResults = true } = {},
-) {
+function handleAnalysisResult(notes, xmlString, hasRhythm) {
   parsedNotes = notes
   hasRhythmInfo = hasRhythm
   qualityGateActive = Boolean(xmlString)
@@ -542,7 +538,7 @@ function handleAnalysisResult(
   syncStageHPlaybackPresentation()
 
   // Scroll to results
-  if (scrollToResults) {
+  if (!suppressResultScroll) {
     setTimeout(() => {
       $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 300)
@@ -557,13 +553,13 @@ export function applyRevalidatedMusicXmlRevision(notes, musicXml) {
     throw new TypeError('Revalidated revision requires MusicXML.')
   }
 
-  handleAnalysisResult(
-    notes,
-    musicXml,
-    musicXmlHasRhythm(notes),
-    { scrollToResults: false },
-  )
-  return true
+  suppressResultScroll = true
+  try {
+    handleAnalysisResult(notes, musicXml, musicXmlHasRhythm(notes))
+    return true
+  } finally {
+    suppressResultScroll = false
+  }
 }
 
 // ── Result tab switching ────────────────────────────────────
