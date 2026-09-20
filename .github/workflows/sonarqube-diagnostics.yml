@@ -1,0 +1,302 @@
+name: SonarQube Diagnostics Export
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Regression Quality
+    types:
+      - completed
+  pull_request:
+    paths:
+      - .github/workflows/sonarqube-diagnostics.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonarqube-diagnostics-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export SonarQube issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+
+    env:
+      SONAR_HOST_URL: https://sonarcloud.io
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Resolve SonarQube project and target revision
+        id: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::SONAR_TOKEN is not configured."
+            exit 1
+          fi
+
+          project_key="$(sed -n 's/^sonar\.projectKey=//p' sonar-project.properties | head -n 1 | xargs)"
+          if [ -z "$project_key" ]; then
+            echo "::error::sonar.projectKey is missing from sonar-project.properties."
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            target_revision="${{ github.event.workflow_run.head_sha }}"
+          else
+            target_revision="$(git rev-parse HEAD)"
+          fi
+
+          if ! [[ "$target_revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to resolve a valid main revision."
+            exit 1
+          fi
+
+          echo "project_key=$project_key" >> "$GITHUB_OUTPUT"
+          echo "target_revision=$target_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for corresponding main analysis
+        shell: bash
+        env:
+          PROJECT_KEY: ${{ steps.project.outputs.project_key }}
+          TARGET_REVISION: ${{ steps.project.outputs.target_revision }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 30); do
+            response="$(
+              curl --fail-with-body --silent --show-error \
+                --user "$SONAR_TOKEN:" \
+                --get "$SONAR_HOST_URL/api/project_analyses/search" \
+                --data-urlencode "project=$PROJECT_KEY" \
+                --data-urlencode "branch=main" \
+                --data-urlencode "ps=1"
+            )"
+
+            latest_revision="$(jq -r '.analyses[0].revision // empty' <<<"$response")"
+            if [ "$latest_revision" = "$TARGET_REVISION" ]; then
+              echo "SonarQube processed main revision $TARGET_REVISION."
+              exit 0
+            fi
+
+            echo "Waiting for SonarQube main analysis ($attempt/30). Latest revision: ${latest_revision:-none}"
+            sleep 5
+          done
+
+          echo "::error::SonarQube did not expose analysis for main revision $TARGET_REVISION within 150 seconds."
+          exit 1
+
+      - name: Export Security and Reliability issues
+        shell: bash
+        env:
+          PROJECT_KEY: ${{ steps.project.outputs.project_key }}
+        run: |
+          set -euo pipefail
+          out="artifacts/sonarqube-diagnostics"
+          mkdir -p "$out"
+
+          fetch_page() {
+            local quality="$1"
+            local page="$2"
+            local destination="$3"
+
+            curl --fail-with-body --silent --show-error \
+              --user "$SONAR_TOKEN:" \
+              --get "$SONAR_HOST_URL/api/issues/search" \
+              --data-urlencode "componentKeys=$PROJECT_KEY" \
+              --data-urlencode "branch=main" \
+              --data-urlencode "impactSoftwareQualities=$quality" \
+              --data-urlencode "issueStatuses=OPEN,CONFIRMED,ACCEPTED,FALSE_POSITIVE" \
+              --data-urlencode "s=IMPACT_RANK" \
+              --data-urlencode "ps=500" \
+              --data-urlencode "p=$page" \
+              > "$destination"
+          }
+
+          fetch_all_issues() {
+            local quality="$1"
+            local destination="$2"
+            local first_page="$out/.${quality,,}-page-1.json"
+
+            fetch_page "$quality" 1 "$first_page"
+
+            local total
+            local page_size
+            local pages
+            total="$(jq -r '.paging.total // (.issues | length)' "$first_page")"
+            page_size="$(jq -r '.paging.pageSize // 500' "$first_page")"
+            pages=$(( (total + page_size - 1) / page_size ))
+
+            cp "$first_page" "$destination"
+
+            if [ "$pages" -gt 1 ]; then
+              for page in $(seq 2 "$pages"); do
+                local page_file="$out/.${quality,,}-page-$page.json"
+                local merged="$out/.${quality,,}-merged.json"
+
+                fetch_page "$quality" "$page" "$page_file"
+                jq -s '{
+                  paging: .[0].paging,
+                  issues: (.[0].issues + .[1].issues),
+                  components: ((.[0].components // []) + (.[1].components // []) | unique_by(.key)),
+                  rules: ((.[0].rules // []) + (.[1].rules // []) | unique_by(.key))
+                }' "$destination" "$page_file" > "$merged"
+                mv "$merged" "$destination"
+              done
+            fi
+
+            local collected
+            collected="$(jq -r '.issues | length' "$destination")"
+            if [ "$collected" -ne "$total" ]; then
+              echo "::error::$quality export incomplete: collected $collected of $total issues."
+              exit 1
+            fi
+
+            rm -f "$out"/".${quality,,}-page-"*.json
+          }
+
+          fetch_all_issues "SECURITY" "$out/security-issues.raw.json"
+          fetch_all_issues "RELIABILITY" "$out/reliability-issues.raw.json"
+
+          curl --fail-with-body --silent --show-error \
+            --user "$SONAR_TOKEN:" \
+            --get "$SONAR_HOST_URL/api/qualitygates/project_status" \
+            --data-urlencode "projectKey=$PROJECT_KEY" \
+            --data-urlencode "branch=main" \
+            > "$out/quality-gate.json"
+
+          jq '{
+            total: (.paging.total // (.issues | length)),
+            issues: [
+              .issues[] | {
+                key,
+                rule,
+                severity,
+                status,
+                component,
+                line,
+                message,
+                impacts,
+                creationDate,
+                updateDate
+              }
+            ]
+          }' "$out/security-issues.raw.json" > "$out/security-issues.json"
+
+          jq '{
+            total: (.paging.total // (.issues | length)),
+            issues: [
+              .issues[] | {
+                key,
+                rule,
+                severity,
+                status,
+                component,
+                line,
+                message,
+                impacts,
+                creationDate,
+                updateDate
+              }
+            ]
+          }' "$out/reliability-issues.raw.json" > "$out/reliability-issues.json"
+
+          jq -s '{
+            generatedFrom: "SonarQube Cloud Web API",
+            branch: "main",
+            security: .[0],
+            reliability: .[1]
+          }' "$out/security-issues.json" "$out/reliability-issues.json" > "$out/issues.json"
+
+      - name: Build diagnostic summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="artifacts/sonarqube-diagnostics"
+
+          print_quality() {
+            local label="$1"
+            local quality="$2"
+            local file="$3"
+            local total
+            total="$(jq -r '.total' "$file")"
+
+            echo "## $label — $total issue(s)"
+            echo
+            echo "### Impact severity"
+            jq -r --arg quality "$quality" '
+              [
+                .issues[]
+                | .impacts[]?
+                | select(.softwareQuality == $quality)
+                | .severity
+              ]
+              | group_by(.)
+              | map({severity: .[0], count: length})
+              | sort_by(-.count)
+              | if length == 0 then ["- No impact severity data"] else map("- \(.severity): \(.count)") end
+              | .[]
+            ' "$file"
+            echo
+            echo "### Top rules"
+            jq -r '
+              .issues
+              | group_by(.rule)
+              | map({
+                  rule: .[0].rule,
+                  count: length,
+                  example: .[0].message
+                })
+              | sort_by(-.count, .rule)
+              | .[:20]
+              | if length == 0 then ["- No issues"] else map("- \(.rule): \(.count) — \(.example)") end
+              | .[]
+            ' "$file"
+            echo
+          }
+
+          {
+            echo "# SonarQube diagnostics"
+            echo
+            print_quality "Security" "SECURITY" "$out/security-issues.json"
+            print_quality "Reliability" "RELIABILITY" "$out/reliability-issues.json"
+            echo "## Quality Gate"
+            echo
+            jq -r '"- Status: " + (.projectStatus.status // "UNKNOWN")' "$out/quality-gate.json"
+          } | tee "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+          echo
+          echo "Compact issue inventory:"
+          jq -r '
+            .security.issues[]
+            | "SECURITY\t\(.rule // "-")\t\(.component // "-"):\(.line // 0)\t\(.message // "-")"
+          ' "$out/issues.json" | head -n 50 || true
+          jq -r '
+            .reliability.issues[]
+            | "RELIABILITY\t\(.rule // "-")\t\(.component // "-"):\(.line // 0)\t\(.message // "-")"
+          ' "$out/issues.json" | head -n 50 || true
+
+      - name: Upload SonarQube diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-diagnostics
+          path: artifacts/sonarqube-diagnostics
+          if-no-files-found: error
+          retention-days: 14
