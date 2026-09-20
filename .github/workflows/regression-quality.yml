@@ -53,11 +53,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
-
     steps:
       - name: Checkout repository with full history
         uses: actions/checkout@v4
@@ -67,13 +62,20 @@ jobs:
       - name: Detect SonarQube configuration
         id: sonar-config
         shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
         run: |
+          clean_organization="$(printf '%s' "$SONAR_ORGANIZATION" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
           if [ -z "$SONAR_TOKEN" ]; then
             echo "mode=disabled" >> "$GITHUB_OUTPUT"
           elif [ -n "$SONAR_HOST_URL" ]; then
             echo "mode=server" >> "$GITHUB_OUTPUT"
-          elif [ -n "$SONAR_ORGANIZATION" ]; then
+          elif [ -n "$clean_organization" ]; then
             echo "mode=cloud" >> "$GITHUB_OUTPUT"
+            echo "organization=$clean_organization" >> "$GITHUB_OUTPUT"
           else
             echo "mode=disabled" >> "$GITHUB_OUTPUT"
           fi
@@ -90,9 +92,10 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v8.2.1
         with:
           args: >
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.organization=${{ steps.sonar-config.outputs.organization }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
 
       - name: Explain disabled SonarQube scan
         if: steps.sonar-config.outputs.mode == 'disabled'
