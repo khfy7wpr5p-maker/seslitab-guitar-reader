@@ -34,15 +34,13 @@ test('S15 keeps local XML Kaydet separate from host write-back', () => {
 
 const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8')
 
-test('S15 republishes a committed revision through the existing result path', () => {
+test('S15 republishes a committed revision through the existing result path without changing the Package 2D handler signature', () => {
   assert.match(app, /export function applyRevalidatedMusicXmlRevision\(notes, musicXml\)/)
+  assert.match(app, /function handleAnalysisResult\(notes, xmlString, hasRhythm\)/)
+  assert.match(app, /let suppressResultScroll = false/)
+  assert.match(app, /if \(!suppressResultScroll\) \{[\s\S]*scrollIntoView/)
   assert.match(
     app,
-    /handleAnalysisResult\([\s\S]*notes,[\s\S]*musicXml,[\s\S]*musicXmlHasRhythm\(notes\),[\s\S]*scrollToResults: false[\s\S]*\)/,
+    /suppressResultScroll = true[\s\S]*handleAnalysisResult\(notes, musicXml, musicXmlHasRhythm\(notes\)\)[\s\S]*finally[\s\S]*suppressResultScroll = false/,
   )
-  assert.match(
-    app,
-    /function handleAnalysisResult\([\s\S]*\{ scrollToResults = true \} = \{\}[\s\S]*\)/,
-  )
-  assert.match(app, /if \(scrollToResults\) \{[\s\S]*scrollIntoView/)
 })
