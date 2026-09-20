@@ -44,3 +44,48 @@ test('S15 republishes a committed revision through the existing result path with
     /suppressResultScroll = true[\s\S]*handleAnalysisResult\(notes, musicXml, musicXmlHasRhythm\(notes\)\)[\s\S]*finally[\s\S]*suppressResultScroll = false/,
   )
 })
+
+
+const host = readFileSync(new URL('../src/smoosicEditorTabUi.js', import.meta.url), 'utf8')
+const css = readFileSync(new URL('../src/smoosicEditorTab.css', import.meta.url), 'utf8')
+
+test('S15 host exposes one explicit apply control and secure request identity', () => {
+  assert.match(host, /const APPLY_ID = 'smoosic-apply-btn'/)
+  assert.match(host, /Düzenlemeyi SesliTab'a Uygula/)
+  assert.match(host, /randomUUID/)
+  assert.match(host, /pendingWriteback/)
+  assert.match(host, /pendingPublication/)
+  assert.match(css, /#smoosic-apply-btn/)
+  assert.match(css, /min-height:\s*44px/)
+})
+
+test('S15 host validates origin, source, request id and source revision', () => {
+  assert.match(host, /event\.origin !== win\.location\.origin/)
+  assert.match(host, /event\.source !== state\.frame\?\.contentWindow/)
+  assert.match(host, /message\.requestId !== pending\.requestId/)
+  assert.match(host, /message\.sourceRevision !== pending\.sourceRevision/)
+  assert.match(host, /state\.sourceRevision !== pending\.sourceRevision/)
+  assert.match(host, /sourceTransitionPending\(root\)/)
+})
+
+test('S15 successful writeback republishes exact committed revision and retains authority', () => {
+  assert.match(host, /applySmoosicProductWriteback/)
+  assert.match(host, /applyRevalidatedMusicXmlRevision\(committed\.revision\.content, committed\.musicXml\)/)
+  assert.match(host, /state\.authority = result\.authority/)
+  assert.match(host, /state\.observedSourceXml = committed\.musicXml/)
+  assert.match(host, /state\.authoritySourceXml === state\.observedSourceXml/)
+  assert.match(host, /state\.authoritySourceName === state\.observedSourceName/)
+})
+
+test('S15 publish failure is retried without creating another immutable revision', () => {
+  assert.match(host, /state\.pendingPublication = Object\.freeze/)
+  assert.match(host, /state\.publishingWritebackXml/)
+  assert.match(host, /if \(state\.pendingPublication\)/)
+  assert.match(host, /retryPendingPublication\(root\)/)
+})
+
+test('S15 unsupported structural edit remains exportable instead of becoming canonical', () => {
+  assert.match(host, /UNSUPPORTED_STRUCTURE/)
+  assert.match(host, /MusicXML olarak kaydedebilirsiniz/)
+  assert.doesNotMatch(host, /initStagePrDKeypadIntegrationUi/)
+})
