@@ -778,23 +778,7 @@ test('a second supported edit extends the first corrected revision', () => {
 
 - [ ] **Step 7: Add the structurally valid duration/timeline regression**
 
-Use a second fixture whose measure remains exactly 4 beats after changing duration distribution:
-
-```js
-const DURATION_SOURCE_XML = SOURCE_XML
-
-const DURATION_EDIT_XML = SOURCE_XML
-  .replace(
-    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>',
-    '<note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type></note>',
-  )
-  .replace(
-    '<note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>',
-    '',
-  )
-```
-
-Do **not** use that fixture: it changes cardinality and must remain unsupported. Instead add a dedicated divisions=2 three-note fixture:
+Add a dedicated divisions=2 three-note fixture whose total measure duration remains exactly 4 beats while the first and last note durations trade places:
 
 ```js
 const RHYTHM_SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1053,9 +1037,11 @@ Extend state:
 ```js
 authority: null,
 authoritySourceXml: null,
+authoritySourceName: null,
 authoritySourceRevision: null,
 pendingWriteback: null,
 pendingPublication: null,
+publishingWritebackXml: null,
 writebackPromise: Promise.resolve(false),
 writebackMessageHandler: null,
 ```
@@ -1081,7 +1067,11 @@ function createAuthorityForAcceptedSource(root) {
     throw new Error('SesliTab current nota verisi düzenleme için hazır değil.')
   }
 
-  if (state.authority && state.authoritySourceXml === source.xml) {
+  if (
+    state.authority
+    && state.authoritySourceXml === source.xml
+    && state.authoritySourceName === source.fileName
+  ) {
     state.authoritySourceRevision = state.sourceRevision
     return state.authority
   }
@@ -1097,6 +1087,7 @@ function createAuthorityForAcceptedSource(root) {
   })
   state.authority = authority
   state.authoritySourceXml = source.xml
+  state.authoritySourceName = source.fileName
   state.authoritySourceRevision = state.sourceRevision
   state.pendingPublication = null
   return authority
@@ -1118,9 +1109,16 @@ if (
 When `refreshObservedSource()` accepts a genuinely different XML source, clear:
 
 ```js
-if (state.authoritySourceXml && state.authoritySourceXml !== xml) {
+if (
+  state.authority
+  && (
+    state.authoritySourceXml !== xml
+    || state.authoritySourceName !== fileName
+  )
+) {
   state.authority = null
   state.authoritySourceXml = null
+  state.authoritySourceName = null
   state.authoritySourceRevision = null
   state.pendingPublication = null
   state.publishingWritebackXml = null
@@ -1130,7 +1128,11 @@ if (state.authoritySourceXml && state.authoritySourceXml !== xml) {
 Do not clear authority merely because a replacement entered the pending state. In the existing failed/cancelled replacement branch, if accepted XML is unchanged, update only:
 
 ```js
-if (state.authority && state.authoritySourceXml === state.observedSourceXml) {
+if (
+  state.authority
+  && state.authoritySourceXml === state.observedSourceXml
+  && state.authoritySourceName === state.observedSourceName
+) {
   state.authoritySourceRevision = state.sourceRevision
 }
 ```
@@ -1188,6 +1190,7 @@ function publishCommittedRevision(root, committed) {
     state.lastSourceXml = committed.musicXml
     state.sourceRevision += 1
     state.authoritySourceXml = committed.musicXml
+    state.authoritySourceName = state.observedSourceName || state.authoritySourceName
     state.authoritySourceRevision = state.sourceRevision
     state.lastSourceName = state.observedSourceName || state.lastSourceName
     state.pendingPublication = null
@@ -1361,6 +1364,7 @@ assert.match(host, /state\.publishingWritebackXml/)
 assert.match(host, /if \(state\.pendingPublication\)/)
 assert.match(host, /retryPendingPublication\(root\)/)
 assert.match(host, /state\.authoritySourceXml === state\.observedSourceXml/)
+assert.match(host, /state\.authoritySourceName === state\.observedSourceName/)
 ```
 
 Also retain the existing S14 failed-replacement assertions unchanged.
