@@ -3,6 +3,7 @@
 // Implements the same IOmrProvider interface as MockProvider/AudiverisProvider.
 // The provider is server-side only; API keys never reach the frontend.
 
+import { randomBytes } from 'node:crypto'
 import { assertProvider } from './IOmrProvider.js'
 import { sanitizePdfFilename } from '../security/inputValidation.js'
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
@@ -99,7 +100,7 @@ function createHttpOmrProvider(config = parseConfig(), deps = {}) {
       const timeoutHandle = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
 
       try {
-        const boundary = `----SesliTab${Date.now()}${Math.random().toString(36).slice(2)}`
+        const boundary = `----SesliTab${Date.now()}${randomBytes(12).toString('hex')}`
         const body = buildMultipart(j.pdfBuffer, j.fileName, boundary)
         const headers = { 'Content-Type': `multipart/form-data; boundary=${boundary}` }
         if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
