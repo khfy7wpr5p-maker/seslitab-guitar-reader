@@ -42,6 +42,15 @@ describe('beatsToTurkishText', () => {
   test('4 → dört vuruş', () => {
     assert.equal(beatsToTurkishText(4), 'dört vuruş')
   })
+  test('sub-beat fractions keep the correct denominator labels', () => {
+    assert.equal(beatsToTurkishText(0.0625), 'onaltıda bir vuruş')
+    assert.equal(beatsToTurkishText(0.03125), 'otuzikide bir vuruş')
+    assert.equal(beatsToTurkishText(0.015625), 'altmışdörtte bir vuruş')
+    assert.equal(beatsToTurkishText(0.0078125), 'yüzyirmisekizde bir vuruş')
+    assert.equal(beatsToTurkishText(0.00390625), 'ikiyüzellialtıda bir vuruş')
+    assert.equal(beatsToTurkishText(0.001953125), 'beşyüzonikide bir vuruş')
+    assert.equal(beatsToTurkishText(0.0009765625), 'biniyirmidörtte bir vuruş')
+  })
   test('other valid value preserves numeric duration', () => {
     assert.equal(beatsToTurkishText(2.5), '2.5 vuruş')
   })
