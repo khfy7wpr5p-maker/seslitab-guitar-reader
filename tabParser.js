@@ -73,6 +73,52 @@ export function fretToText(fret) {
 // position 0 = high e (1st string), position 5 = low E (6th string).
 const STRING_LETTER_RE = /^[ \t]*([eEbBgGdDaA])/
 
+function isHorizontalWhitespace(char) {
+  return char === ' ' || char === '\t'
+}
+
+function isLineWhitespace(char) {
+  return typeof char === 'string' && char.length > 0 && char.trim() === ''
+}
+
+function stripTrailingHorizontalWhitespace(value) {
+  let end = value.length
+  while (end > 0 && isHorizontalWhitespace(value[end - 1])) end -= 1
+  return value.slice(0, end)
+}
+
+function stripTrailingRepeatAnnotation(value) {
+  let cursor = value.length - 1
+
+  while (cursor >= 0 && (isLineWhitespace(value[cursor]) || value[cursor] === ')')) cursor -= 1
+
+  const digitEnd = cursor
+  while (cursor >= 0 && value[cursor] >= '0' && value[cursor] <= '9') cursor -= 1
+  if (cursor === digitEnd) return value
+
+  while (cursor >= 0 && isLineWhitespace(value[cursor])) cursor -= 1
+  if (cursor < 0 || (value[cursor] !== 'x' && value[cursor] !== 'X')) return value
+
+  cursor -= 1
+  while (cursor >= 0 && isLineWhitespace(value[cursor])) cursor -= 1
+  if (cursor >= 0 && value[cursor] === '(') cursor -= 1
+
+  while (cursor >= 0 && (isLineWhitespace(value[cursor]) || value[cursor] === ')')) cursor -= 1
+  return value.slice(0, cursor + 1)
+}
+
+function stripTrailingClosingParenRun(value) {
+  let end = value.length
+  while (end > 0 && isHorizontalWhitespace(value[end - 1])) end -= 1
+
+  let cursor = end
+  while (cursor > 0 && value[cursor - 1] === ')') cursor -= 1
+  if (cursor === end) return value.slice(0, end)
+
+  while (cursor > 0 && isHorizontalWhitespace(value[cursor - 1])) cursor -= 1
+  return value.slice(0, cursor)
+}
+
 /**
  * Normalize raw TAB input. Returns { normalized, blocks, error }.
  * @param {string} raw
@@ -87,7 +133,7 @@ export function normalizeTabInput(raw) {
   let text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
   // 2. Split into lines, trim trailing whitespace, drop empty lines
-  const allLines = text.split('\n').map((l) => l.replace(/[ \t]+$/g, ''))
+  const allLines = text.split('\n').map(stripTrailingHorizontalWhitespace)
 
   // 3. Detect tab lines (start with a string letter, optionally after whitespace)
   // Non-tab lines (lyrics, [Intro], blank) are separators between blocks.
@@ -186,30 +232,12 @@ export function normalizeTabInput(raw) {
 // Strip line-end annotations: ")", "x2", "x3", "(x2)" etc.
 // Preserves the TAB body including real "x" muted notes inside the line.
 function stripLineEndAnnotations(line) {
-  // Remove trailing ")" characters and repeat marks like "x2", "x3", "(x2)"
-  // We only strip from the end of the line, after the TAB content.
-  // Pattern: optional spaces, then any combination of ) and xN marks at the very end.
-  // We must NOT strip "x" that appears inside the TAB body (e.g., "e|--x--|").
-  // Strategy: find the last "|" or the end of the dashes/digits body.
-  // Simpler: strip trailing ")" and trailing "xN" only if preceded by space or ")".
-  let result = line
-
-  // Remove trailing whitespace
-  result = result.replace(/[ \t]+$/g, '')
-
-  // Remove trailing repeat marks: "x2", "x3", "(x2)", "x2)" etc.
-  // Only at the very end, and only if preceded by a non-digit, non-"|" character
-  // (so we don't strip "12" from a fret or "x" from inside the tab body).
-  result = result.replace(/[\s)]*(\(?\s*x\s*\d+\s*\)?\s*\)*\s*)$/i, '')
-
-  // Remove trailing ")" characters that remain (line-end markers like "  )")
-  // Only strip if they are preceded by whitespace or are at the end after content
-  result = result.replace(/[ \t]*\)+[ \t]*$/g, '')
-
-  // Final trim
-  result = result.replace(/[ \t]+$/g, '')
-
-  return result
+  // Keep this suffix parser linear: TAB text is user-supplied and may contain
+  // very long annotation/whitespace tails.
+  let result = stripTrailingHorizontalWhitespace(line)
+  result = stripTrailingRepeatAnnotation(result)
+  result = stripTrailingClosingParenRun(result)
+  return stripTrailingHorizontalWhitespace(result)
 }
 
 // Parse a single tab line.
