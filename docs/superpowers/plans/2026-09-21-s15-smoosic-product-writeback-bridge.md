@@ -269,9 +269,11 @@ import {
   createSmoosicProductAuthority,
 } from '../src/services/smoosicProductWriteback.js'
 import {
+  approveTeacherWorkspace,
   getTeacherWorkspaceApplicableApproval,
   getTeacherWorkspaceCurrentRevision,
 } from '../src/services/teacherWorkspaceModel.js'
+import { MAX_MUSIC_XML_FILE_SIZE } from '../src/services/musicXmlFile.js'
 import { resolvePrDProductMusicXml } from '../src/services/editorPrDRevisionMusicXmlRegistry.js'
 
 const SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -292,7 +294,7 @@ const SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 
 function sourceNotes() {
   const parsed = parseMusicXmlToNotes(SOURCE_XML)
-  assert.equal(parsed.error, null)
+  assert.equal(Boolean(parsed.error), false)
   assert.equal(parsed.notes.length, 4)
   return parsed.notes
 }
@@ -452,9 +454,17 @@ Append tests:
 ```js
 test('applies one pitch edit as one new immutable revision', () => {
   const root = authority()
+  const approvedWorkspace = approveTeacherWorkspace({
+    workspace: root.workspace,
+    approvalId: 'root-approval-1',
+    createdAt: '2026-09-21T10:00:30Z',
+  })
+  assert.ok(getTeacherWorkspaceApplicableApproval(approvedWorkspace))
+
+  const approvedAuthority = Object.freeze({ workspace: approvedWorkspace })
   const candidate = SOURCE_XML.replace('<step>C</step>', '<step>G</step>')
   const result = applySmoosicProductWriteback({
-    authority: root,
+    authority: approvedAuthority,
     musicXml: candidate,
     revisionId: 's15-edit-1',
     eventId: 's15-event-1',
@@ -518,9 +528,21 @@ test('rejects a voice relocation as unsupported structure', () => {
   assert.equal(root.workspace.history.revisions.length, 1)
 })
 
-test('rejects one byte over the MusicXML limit before revalidation', () => {
+test('accepts the exact byte limit and rejects one byte over it before revalidation', () => {
   const root = authority()
-  const oversized = SOURCE_XML + ' '.repeat((10 * 1024 * 1024) + 1)
+  const sourceBytes = new TextEncoder().encode(SOURCE_XML).byteLength
+  const exactLimit = SOURCE_XML + ' '.repeat(MAX_MUSIC_XML_FILE_SIZE - sourceBytes)
+  const exact = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: exactLimit,
+    revisionId: 'exact-limit',
+    eventId: 'exact-limit-event',
+    operationIdPrefix: 'exact-limit-op',
+    DOMParserCtor: DOMParser,
+  })
+  assert.equal(exact.status, SMOOSIC_WRITEBACK_STATUS.NO_CHANGE)
+
+  const oversized = exactLimit + ' '
   const result = applySmoosicProductWriteback({
     authority: root,
     musicXml: oversized,
@@ -1081,6 +1103,18 @@ function createAuthorityForAcceptedSource(root) {
 }
 ```
 
+Before ordinary accepted-source promotion in `refreshObservedSource()`, ignore a partially published write-back while retry state is retained:
+
+```js
+if (
+  state.pendingPublication
+  && state.publishingWritebackXml
+  && xml === state.publishingWritebackXml
+) {
+  return false
+}
+```
+
 When `refreshObservedSource()` accepts a genuinely different XML source, clear:
 
 ```js
@@ -1089,6 +1123,7 @@ if (state.authoritySourceXml && state.authoritySourceXml !== xml) {
   state.authoritySourceXml = null
   state.authoritySourceRevision = null
   state.pendingPublication = null
+  state.publishingWritebackXml = null
 }
 ```
 
@@ -1145,16 +1180,24 @@ Add:
 ```js
 function publishCommittedRevision(root, committed) {
   const state = stateFor(root)
-  applyRevalidatedMusicXmlRevision(committed.revision.content, committed.musicXml)
+  state.publishingWritebackXml = committed.musicXml
 
-  state.observedSourceXml = committed.musicXml
-  state.lastSourceXml = committed.musicXml
-  state.sourceRevision += 1
-  state.authoritySourceXml = committed.musicXml
-  state.authoritySourceRevision = state.sourceRevision
-  state.lastSourceName = state.observedSourceName || state.lastSourceName
-  state.pendingPublication = null
-  return true
+  try {
+    applyRevalidatedMusicXmlRevision(committed.revision.content, committed.musicXml)
+    state.observedSourceXml = committed.musicXml
+    state.lastSourceXml = committed.musicXml
+    state.sourceRevision += 1
+    state.authoritySourceXml = committed.musicXml
+    state.authoritySourceRevision = state.sourceRevision
+    state.lastSourceName = state.observedSourceName || state.lastSourceName
+    state.pendingPublication = null
+    state.publishingWritebackXml = null
+    return true
+  } catch (error) {
+    // Keep the marker while publication is pending so the source observer does
+    // not reinterpret a partially-written result DOM as a new external source.
+    throw error
+  }
 }
 
 function retryPendingPublication(root) {
@@ -1314,6 +1357,7 @@ Extend the source-contract tests so they require:
 assert.match(host, /state\.sourceRevision !== pending\.sourceRevision/)
 assert.match(host, /sourceTransitionPending\(root\)/)
 assert.match(host, /state\.pendingPublication = Object\.freeze/)
+assert.match(host, /state\.publishingWritebackXml/)
 assert.match(host, /if \(state\.pendingPublication\)/)
 assert.match(host, /retryPendingPublication\(root\)/)
 assert.match(host, /state\.authoritySourceXml === state\.observedSourceXml/)
