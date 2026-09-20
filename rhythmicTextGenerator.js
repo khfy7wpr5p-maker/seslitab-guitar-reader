@@ -50,14 +50,13 @@ export function beatsToTurkishText(beats) {
     0.375: 'yarım çeyrek vuruş',
     0.25: 'çeyrek vuruş',
     0.125: 'sekizde bir vuruş',
-  0.0625: 'onaltıda bir vuruş',
-  0.0625: 'otuzikide bir vuruş',
-  0.03125: 'atmışdörtte bir vuruş',
-  0.015625: 'yüzyirmisekizde bir vuruş',
-    0.0078125: 'ikiyüzellialtıda bir vuruş',
-    0.00390625: 'beşyüzonikide bir vuruş',
-    0.001953125: 'biniyirmidörtte bir vuruş',
-    0.0009765625: 'ikibinkırksekizde bir vuruş',
+    0.0625: 'onaltıda bir vuruş',
+    0.03125: 'otuzikide bir vuruş',
+    0.015625: 'altmışdörtte bir vuruş',
+    0.0078125: 'yüzyirmisekizde bir vuruş',
+    0.00390625: 'ikiyüzellialtıda bir vuruş',
+    0.001953125: 'beşyüzonikide bir vuruş',
+    0.0009765625: 'biniyirmidörtte bir vuruş',
   }
   return fractionMap[beats] || `${beats} vuruş`
 }

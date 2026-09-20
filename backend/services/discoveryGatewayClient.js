@@ -215,7 +215,7 @@ function sanitizeSourceLocator(raw) {
     sourcePageUrl,
     capabilities: Object.freeze(capabilities),
     queryApplied: raw.queryApplied === true,
-    availability: raw.availability === 'search-unverified' ? 'search-unverified' : 'search-unverified',
+    availability: 'search-unverified',
     note: normalizeText(raw.note, 300),
   })
 }
