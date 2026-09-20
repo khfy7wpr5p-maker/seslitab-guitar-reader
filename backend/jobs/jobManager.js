@@ -1,5 +1,6 @@
 // Job Manager — durable single source of truth for OMR job lifecycle.
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { GATEWAY_CONFIG } from '../config/gatewayConfig.js'
 import { JobNotFoundError, InternalError } from '../utils/errors.js'
 import * as storage from '../storage/musicXmlStorage.js'
@@ -19,7 +20,7 @@ function metadataFor(r) {
 async function persist(r, storageApi = storage) { if (persistenceEnabled) await storageApi.writeMetadata(r.jobId, metadataFor(r)) }
 function fromMetadata(m, storageApi) { return { ...m, pdfPath: path.join(storageApi.root || GATEWAY_CONFIG.storagePath, m.jobId, m.inputPath || 'input.pdf'), musicXmlPath: m.musicXmlPath ? path.join(storageApi.root || GATEWAY_CONFIG.storagePath, m.jobId, m.musicXmlPath) : null } }
 
-export function generateJobId() { const ts = Math.floor(Date.now() / 1000); return `job_${ts}_${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}` }
+export function generateJobId() { const ts = Math.floor(Date.now() / 1000); return `job_${ts}_${randomBytes(3).toString('hex')}` }
 export async function createJob({ jobId, fileName, provider, pdfPath }) {
   const now = new Date().toISOString()
   const r = { jobId, status: 'uploaded', fileName, provider, pdfPath, musicXmlPath: null, progress: 0, workerId: null, retryCount: 0, maxRetries: GATEWAY_CONFIG.maxRetries, timeoutSeconds: GATEWAY_CONFIG.jobTimeoutSeconds, createdAt: now, updatedAt: now, queuedAt: null, processingAt: null, musicxmlCreatedAt: null, completedAt: null, expiredAt: null, error: null, cancellationResult: null, retentionClass: 'runtime', retentionUntil: null, cleanupEligible: false, teacherApproved: false, protected: false }
