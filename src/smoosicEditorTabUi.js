@@ -783,7 +783,7 @@ export function ensureSmoosicEditorTab(root = document) {
   applyButton.id = APPLY_ID
   applyButton.type = 'button'
   applyButton.className = 'smoosic-apply-button'
-  applyButton.textContent = "Düzenlemeyi SesliTab\'a Uygula"
+  applyButton.textContent = "Düzenlemeyi SesliTab'a Uygula"
   applyButton.setAttribute('aria-describedby', STATUS_ID)
   applyButton.addEventListener('click', () => {
     const state = stateFor(root)
