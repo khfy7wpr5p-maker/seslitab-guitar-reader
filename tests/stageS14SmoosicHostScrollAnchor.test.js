@@ -13,3 +13,10 @@ test('S14 host iframe is excluded from browser scroll anchoring', () => {
     /\.smoosic-editor-frame\s*\{[\s\S]*?overflow-anchor:\s*none;/,
   )
 })
+
+test('S14 active editor host disables root browser scroll anchoring without rewriting scroll position', () => {
+  assert.match(
+    css,
+    /html:has\(#input-section\.smoosic-editor-active\),\s*body:has\(#input-section\.smoosic-editor-active\)\s*\{[\s\S]*?overflow-anchor:\s*none;/,
+  )
+})
