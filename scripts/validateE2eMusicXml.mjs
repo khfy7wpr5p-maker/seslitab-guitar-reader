@@ -11,6 +11,7 @@
 
 import { readFileSync } from 'node:fs'
 import { parseMusicXml } from '../musicXmlParser.js'
+import { parseDoubleQuotedXmlAttributes } from './simpleXmlAttributes.js'
 
 // ── DOMParser polyfill (mirrors tests/frontendGateway.test.js) ──────
 
@@ -58,10 +59,7 @@ class MiniDOMParser {
       const attrStr = m[2] || ''
       const selfClose = m[3] === '/'
       if (isClose) { stack.pop(); continue }
-      const attrs = {}
-      const attrRe = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g
-      let am
-      while ((am = attrRe.exec(attrStr)) !== null) attrs[am[1]] = am[2]
+      const attrs = parseDoubleQuotedXmlAttributes(attrStr)
       const el = new MiniElement(tag, attrs, stack[stack.length - 1])
       stack[stack.length - 1].children.push(el)
       if (!selfClose) stack.push(el)
