@@ -630,13 +630,12 @@ function sameSemanticScore(a, b) {
   return JSON.stringify(semanticScoreSignature(a)) === JSON.stringify(semanticScoreSignature(b));
 }
 
-async function exportMusicXml() {
+function serializeCurrentMusicXml() {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
   }
-  stopNativePlayback();
-  setStatus('MusicXML hazırlanıyor…');
 
+  stopNativePlayback();
   const sourceScore = applicationInstance.view.storeScore || applicationInstance.view.score;
   const xmlDom = SmoToXml.convert(sourceScore);
   const xmlText = new XMLSerializer().serializeToString(xmlDom);
@@ -648,9 +647,22 @@ async function exportMusicXml() {
   const shapeOk = sameScoreShape(scoreShape(sourceScore), scoreShape(roundTripScore));
   const semanticOk = sameSemanticScore(sourceScore, roundTripScore);
   const roundTripOk = shapeOk && semanticOk;
-
   const fileName = `${currentScoreBaseName}-edited.musicxml`;
-  const file = new File([xmlText], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
+
+  return {
+    musicXml: xmlText,
+    fileName,
+    roundTripOk,
+    shapeOk,
+    semanticOk
+  };
+}
+
+async function exportMusicXml() {
+  setStatus('MusicXML hazırlanıyor…');
+  const serialized = serializeCurrentMusicXml();
+  const { musicXml, fileName, roundTripOk, shapeOk } = serialized;
+  const file = new File([musicXml], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
   setStatus(roundTripOk
     ? 'MusicXML semantic round-trip doğrulandı'
     : `MusicXML üretildi · ${shapeOk ? 'semantic fark' : 'yapı farkı'} tespit edildi`);
@@ -677,6 +689,47 @@ async function exportMusicXml() {
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+const SESLITAB_EXPORT_REQUEST = 'seslitab:smoosic-export-request';
+const SESLITAB_EXPORT_RESULT = 'seslitab:smoosic-export-result';
+const SESLITAB_EXPORT_VERSION = 1;
+
+function handleSesliTabExportRequest(event) {
+  if (event.source !== parent) return;
+  if (event.origin !== window.location.origin) return;
+
+  const message = event.data;
+  if (!message || typeof message !== 'object') return;
+  if (message.type !== SESLITAB_EXPORT_REQUEST) return;
+  if (message.version !== 1) return;
+  if (typeof message.requestId !== 'string' || !message.requestId) return;
+  if (!Number.isSafeInteger(message.sourceRevision) || message.sourceRevision < 0) return;
+
+  try {
+    const serialized = serializeCurrentMusicXml();
+    event.source.postMessage({
+      type: SESLITAB_EXPORT_RESULT,
+      version: SESLITAB_EXPORT_VERSION,
+      requestId: message.requestId,
+      sourceRevision: message.sourceRevision,
+      fileName: serialized.fileName,
+      musicXml: serialized.musicXml,
+      roundTripOk: serialized.roundTripOk,
+      shapeOk: serialized.shapeOk,
+      semanticOk: serialized.semanticOk
+    }, event.origin);
+  } catch (error) {
+    event.source.postMessage({
+      type: SESLITAB_EXPORT_RESULT,
+      version: SESLITAB_EXPORT_VERSION,
+      requestId: message.requestId,
+      sourceRevision: message.sourceRevision,
+      fileName: `${currentScoreBaseName}-edited.musicxml`,
+      musicXml: '',
+      error: String(error && error.message ? error.message : 'MusicXML üretilemedi')
+    }, event.origin);
+  }
 }
 
 function wireNativeTransportGuard() {
@@ -772,6 +825,7 @@ async function boot() {
   const domContainer = document.getElementById('smoo');
   wireMobileControls();
   wireNativeTransportGuard();
+  window.addEventListener('message', handleSesliTabExportRequest);
   updateMetronomeButton();
   setEditorControlsEnabled(false);
   window.addEventListener('error', (event) => setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`));
