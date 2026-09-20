@@ -30,16 +30,16 @@ jobs:
           node-version: 24
 
       - name: Install application dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install isolated Playwright test dependency
-        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+        run: npm install --ignore-scripts --no-save --package-lock=false @playwright/test@1.63.0
 
       - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Run protected SesliTab browser baseline
-        run: npx playwright test --project=chromium
+        run: ./node_modules/.bin/playwright test --project=chromium
 
       - name: Upload Playwright evidence
         if: always()
