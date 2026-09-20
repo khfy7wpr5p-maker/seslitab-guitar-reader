@@ -11,6 +11,15 @@ import {
 import { MAX_MUSIC_XML_FILE_SIZE } from '../src/services/musicXmlFile.js'
 import { resolvePrDProductMusicXml } from '../src/services/editorPrDRevisionMusicXmlRegistry.js'
 
+const BaseDOMParser = globalThis.DOMParser
+class ProductDOMParser extends BaseDOMParser {
+  parseFromString(xml, type) {
+    const doc = super.parseFromString(xml, type)
+    doc.documentElement = doc.children?.[0] ?? null
+    return doc
+  }
+}
+
 async function loadWriteback() {
   try {
     return await import('../src/services/smoosicProductWriteback.js')
@@ -116,7 +125,7 @@ test('applies one pitch edit as one new immutable revision without inheriting ap
     eventId: 's15-event-1',
     operationIdPrefix: 's15-op-1',
     createdAt: '2026-09-21T10:01:00Z',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
@@ -139,7 +148,7 @@ test('returns NO_CHANGE without creating a revision for exact current MusicXML',
     revisionId: 'unused-revision',
     eventId: 'unused-event',
     operationIdPrefix: 'unused-op',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.NO_CHANGE)
@@ -162,7 +171,7 @@ test('rejects note removal as unsupported structure without partial history', as
     revisionId: 's15-structural-1',
     eventId: 's15-structural-event-1',
     operationIdPrefix: 's15-structural-op-1',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE)
@@ -182,7 +191,7 @@ test('rejects a voice relocation as unsupported structure', async () => {
     revisionId: 's15-voice-1',
     eventId: 's15-voice-event-1',
     operationIdPrefix: 's15-voice-op-1',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE)
@@ -203,7 +212,7 @@ test('accepts exact MusicXML byte limit and rejects one byte over before revalid
     revisionId: 'exact-limit',
     eventId: 'exact-limit-event',
     operationIdPrefix: 'exact-limit-op',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
   assert.equal(exact.status, SMOOSIC_WRITEBACK_STATUS.NO_CHANGE)
 
@@ -214,7 +223,7 @@ test('accepts exact MusicXML byte limit and rejects one byte over before revalid
     revisionId: 'oversized',
     eventId: 'oversized-event',
     operationIdPrefix: 'oversized-op',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.INVALID_XML)
   assert.equal(root.workspace.history.revisions.length, 1)
@@ -233,7 +242,7 @@ test('a second supported edit extends the first corrected revision', async () =>
     eventId: 's15-event-1',
     operationIdPrefix: 's15-op-1',
     createdAt: '2026-09-21T10:01:00Z',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
   assert.equal(first.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
 
@@ -245,7 +254,7 @@ test('a second supported edit extends the first corrected revision', async () =>
     eventId: 's15-event-2',
     operationIdPrefix: 's15-op-2',
     createdAt: '2026-09-21T10:02:00Z',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
 
   assert.equal(second.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
@@ -280,7 +289,7 @@ test('duration redistribution commits every note whose semantic timeline changes
     eventId: 's15-rhythm-event',
     operationIdPrefix: 's15-rhythm-op',
     createdAt: '2026-09-21T11:01:00Z',
-    DOMParserCtor: DOMParser,
+    DOMParserCtor: ProductDOMParser,
   })
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
