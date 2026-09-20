@@ -107,8 +107,11 @@ const proofHtml = `<!doctype html>
 
       doc.getElementById('smoosic-tab-btn').click();
       const editorFrame = await waitFor(() => doc.getElementById('smoosic-editor-frame'), 'editor iframe');
-      const editorDoc = await waitFor(() => editorFrame.contentDocument?.getElementById('poc-status') ? editorFrame.contentDocument : null, 'editor document');
-      await waitFor(() => String(editorDoc.getElementById('poc-status')?.textContent || '').includes('accepted-source.musicxml'), 'accepted source handoff');
+      await waitFor(() => editorFrame.contentDocument?.getElementById('poc-status'), 'editor document');
+      await waitFor(() => {
+        const activeEditorDoc = editorFrame.contentDocument;
+        return String(activeEditorDoc?.getElementById('poc-status')?.textContent || '').includes('accepted-source.musicxml');
+      }, 'accepted source handoff');
 
       doc.getElementById('musicxml-tab-btn').click();
       assignMusicXml(win, doc, invalidReplacementXml, 'failed-replacement.musicxml');
