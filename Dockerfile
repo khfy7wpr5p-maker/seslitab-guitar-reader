@@ -23,7 +23,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 
 # Install production dependencies only (no devDependencies).
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 # ── Stage 2: Final runtime image ─────────────────────────────────────
 FROM ubuntu:24.04
@@ -56,6 +56,7 @@ RUN set -eux; \
 # runtime are needed.
 RUN set -eux; \
     curl -fL --retry 3 --retry-all-errors \
+      --proto '=https' --proto-redir '=https' \
       -o /tmp/audiveris.deb \
       "https://github.com/Audiveris/audiveris/releases/download/${AUDIVERIS_VERSION}/${AUDIVERIS_DEB}"; \
     test -s /tmp/audiveris.deb; \
