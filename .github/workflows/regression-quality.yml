@@ -62,6 +62,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Node.js 24 for coverage
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies for coverage
+        run: npm ci --ignore-scripts
+
+      - name: Generate native Node LCOV coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p coverage
+          node --test --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
+            tests/*.test.js
+          test -s coverage/lcov.info
+
       - name: Detect SonarQube configuration
         id: sonar-config
         shell: bash
