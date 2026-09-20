@@ -12,6 +12,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import JSZip from 'jszip'
 import { assertProvider } from './IOmrProvider.js'
 import { validateMusicXml } from './HttpOmrProvider.js'
@@ -59,7 +60,7 @@ function safeFileName(fileName) {
 
 async function makeTempDir(prefix) {
   const base = GATEWAY_CONFIG.tempDir || os.tmpdir()
-  const dir = path.join(base, `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+  const dir = path.join(base, `${prefix}_${Date.now()}_${randomBytes(3).toString('hex')}`)
   await fs.mkdir(dir, { recursive: true })
   return dir
 }
