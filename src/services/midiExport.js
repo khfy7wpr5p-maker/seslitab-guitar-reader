@@ -25,6 +25,16 @@ export const MIDI_MIME_TYPE = 'audio/midi'
 const MAX_VLQ = 0x0fffffff
 const MAX_TEMPO_US_PER_QUARTER = 0xffffff
 
+function stripTrailingDotsAndSpaces(value) {
+  let end = value.length
+  while (end > 0) {
+    const char = value[end - 1]
+    if (char !== '.' && char !== ' ') break
+    end -= 1
+  }
+  return value.slice(0, end)
+}
+
 function assertCanonicalNotes(notes) {
   if (!Array.isArray(notes) || notes.length === 0) {
     throw new TypeError('MIDI export requires a non-empty canonical NoteObject array.')
@@ -341,10 +351,10 @@ export function encodeMidiFile(notes, options = {}) {
 
 export function midiFileName(sourceName = 'seslitab') {
   const raw = String(sourceName || '').split(/[\\/]/).pop()?.trim() || 'seslitab'
-  const base = raw
+  const safeName = raw
     .replace(/\.(?:musicxml|xml|pdf|mid|midi)$/i, '')
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
-    .replace(/[. ]+$/g, '')
+  const base = stripTrailingDotsAndSpaces(safeName)
     .slice(0, 120)
     .trim()
   return `${base || 'seslitab'}.mid`

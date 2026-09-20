@@ -84,6 +84,14 @@ describe('MusicXML download', () => {
     )
   })
 
+  test('trailing dots and whitespace are removed without changing the base name', () => {
+    assert.equal(buildMusicXmlDownloadName('lesson...   '), 'lesson.musicxml')
+    assert.equal(
+      buildMusicXmlDownloadName(`lesson${'. '.repeat(20000)}`),
+      'lesson.musicxml'
+    )
+  })
+
   test('missing source name uses a stable fallback', () => {
     assert.equal(buildMusicXmlDownloadName(''), 'seslitab.musicxml')
   })

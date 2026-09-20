@@ -4,6 +4,16 @@ export const MAX_MUSIC_XML_FILE_SIZE = 10 * 1024 * 1024
 
 const MUSIC_XML_EXTENSIONS = ['.xml', '.musicxml']
 
+function stripTrailingDotsAndWhitespace(value) {
+  let end = value.length
+  while (end > 0) {
+    const char = value[end - 1]
+    if (char !== '.' && char.trim() !== '') break
+    end -= 1
+  }
+  return value.slice(0, end)
+}
+
 export function validateMusicXmlFile(file) {
   if (!file) return 'Lütfen bir MusicXML dosyası seçin.'
 
@@ -38,10 +48,9 @@ export function buildMusicXmlDownloadName(sourceName) {
     .pop()
     .trim()
   const baseName = fileName.replace(/\.(?:musicxml|xml|pdf)$/i, '')
-  const windowsSafeName = baseName
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
-    .replace(/[.\s]+$/g, '')
-    .trim()
+  const windowsSafeName = stripTrailingDotsAndWhitespace(
+    baseName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+  ).trim()
 
   return `${windowsSafeName || 'seslitab'}.musicxml`
 }

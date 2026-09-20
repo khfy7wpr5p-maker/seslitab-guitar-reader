@@ -239,6 +239,8 @@ test('Package 3G artifact naming is deterministic and path-safe', () => {
   assert.equal(midiFileName('parça.musicxml'), 'parça.mid')
   assert.equal(midiFileName('C:\\scores\\parça.pdf'), 'parça.mid')
   assert.equal(midiFileName('../bad:name?.xml'), 'bad_name_.mid')
+  assert.equal(midiFileName('lesson...   '), 'lesson.mid')
+  assert.equal(midiFileName(`lesson${'. '.repeat(20000)}`), 'lesson.mid')
   assert.equal(midiFileName(''), 'seslitab.mid')
 
   const artifact = createMidiArtifact([note({ beats: 4, duration: 'whole' })], {

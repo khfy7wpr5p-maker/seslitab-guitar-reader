@@ -74,8 +74,17 @@ function labelFor(key) {
   return LABELS_TR[key] ?? key
 }
 
+function trimHyphenEdges(value) {
+  let start = 0
+  let end = value.length
+  while (start < end && value[start] === '-') start += 1
+  while (end > start && value[end - 1] === '-') end -= 1
+  return value.slice(start, end)
+}
+
 function domToken(value) {
-  return String(value).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()
+  const token = String(value).replace(/[^a-z0-9]+/gi, '-')
+  return trimHyphenEdges(token).toLowerCase()
 }
 
 function belongsToShell(element, shell) {
