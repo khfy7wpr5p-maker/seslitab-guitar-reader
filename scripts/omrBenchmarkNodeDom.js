@@ -1,6 +1,8 @@
 // Package 2E Node-only DOM compatibility for benchmark scripts.
 // Browser/production parser code is intentionally unchanged.
 
+import { parseDoubleQuotedXmlAttributes } from './simpleXmlAttributes.js'
+
 class BenchmarkElement {
   constructor(tag, attrs, parent) {
     this.tag = tag
@@ -72,12 +74,7 @@ export class BenchmarkDOMParser {
         continue
       }
 
-      const attrs = {}
-      const attrRe = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/gu
-      let attrMatch
-      while ((attrMatch = attrRe.exec(attrText)) !== null) {
-        attrs[attrMatch[1]] = attrMatch[2]
-      }
+      const attrs = parseDoubleQuotedXmlAttributes(attrText)
 
       const element = new BenchmarkElement(tag, attrs, stack[stack.length - 1])
       stack[stack.length - 1].children.push(element)
