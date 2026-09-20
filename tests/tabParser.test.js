@@ -294,6 +294,43 @@ describe('12. Mevcut basit testler aynı şekilde geçmeli', () => {
   })
 })
 
+describe('13. Uzun TAB satır sonları lineer ve davranış-korumalı işlenir', () => {
+  test('uzun boşluk + parantez + x2 son eki temizlenir ve tekrar korunur', () => {
+    const gap = ' '.repeat(20000)
+    const input = [
+      `e|---0---|${' '.repeat(20000)}`,
+      `B|-------|${'\t'.repeat(20000)}`,
+      `G|---2---|  )${gap}x2${gap}`,
+      'D|-------|  )',
+      'A|-------|  )',
+      'E|-------|  )',
+    ].join('\n')
+
+    const { normalized, blocks, error } = normalizeTabInput(input)
+    assert.ifError(error)
+    assert.equal(blocks.length, 1)
+    assert.equal(blocks[0].repeat, 2)
+    assert.ok(!normalized.includes('x2'), 'repeat açıklaması normalized TAB içinde kalmamalı')
+    assert.ok(!normalized.includes(')'), 'satır sonu parantezleri temizlenmeli')
+    assert.ok(!normalized.includes('\t'), 'uzun trailing tab dizisi temizlenmeli')
+  })
+
+  test('TAB gövdesindeki muted x korunur ve tekrar son ekiyle karışmaz', () => {
+    const input = [
+      'e|---x---0---|',
+      'B|-----------|',
+      'G|-----------|  x2',
+      'D|-----------|',
+      'A|-----------|',
+      'E|-----------|',
+    ].join('\n')
+    const { normalized, blocks, error } = normalizeTabInput(input)
+    assert.ifError(error)
+    assert.equal(blocks[0].repeat, 2)
+    assert.match(normalized, /e\|---x---0---\|/)
+    assert.ok(!normalized.includes('x2'))
+  })
+})
 describe('Ek: normalizeTabInput güvenlik', () => {
   test('CRLF normalize edilir', () => {
     const crlf = 'e|---0---|\r\nB|-------|\r\nG|-------|\r\nD|-------|\r\nA|-------|\r\nE|-------|\r\n'
