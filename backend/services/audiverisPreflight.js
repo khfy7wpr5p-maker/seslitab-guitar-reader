@@ -7,6 +7,7 @@
 
 import { promises as fs } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { parseConfig } from '../providers/AudiverisProvider.js'
@@ -33,7 +34,7 @@ function resolveTempDir() {
 
 async function probeTempWritable() {
   const base = resolveTempDir()
-  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const stamp = `${Date.now()}_${randomBytes(3).toString('hex')}`
   const dir = path.join(base, `seslitab_preflight_${stamp}`)
   let created = false
   const testFile = path.join(dir, 'probe.tmp')
@@ -80,7 +81,7 @@ async function probeStorageWritable() {
   if (!base) {
     return { ok: false, storageDir: '', testedPath: '', syscall: 'ENOCONFIG', message: 'Storage dizini yapılandırılmamış.' }
   }
-  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const stamp = `${Date.now()}_${randomBytes(3).toString('hex')}`
   const dir = path.join(base, `seslitab_storage_probe_${stamp}`)
   let created = false
   const testFile = path.join(dir, 'probe.tmp')
