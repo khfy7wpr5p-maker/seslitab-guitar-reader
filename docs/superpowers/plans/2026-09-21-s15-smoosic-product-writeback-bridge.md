@@ -806,7 +806,42 @@ const RHYTHM_EDIT_XML = RHYTHM_SOURCE_XML
   )
 ```
 
-Test that the result is `APPLIED` and that the exact changed index set includes the onset-shifted downstream note(s) reported by semantic comparison. Assert against the actual expected array after running the parser once; for this fixture the expected semantic set is `[0, 1, 2]` because changing the first duration shifts later `startBeat` values.
+Add the explicit regression:
+
+```js
+test('duration redistribution commits every note whose semantic timeline changes', () => {
+  const parsed = parseMusicXmlToNotes(RHYTHM_SOURCE_XML)
+  assert.equal(Boolean(parsed.error), false)
+
+  const root = createSmoosicProductAuthority({
+    notes: parsed.notes,
+    musicXml: RHYTHM_SOURCE_XML,
+    sourceId: 's15-rhythm-source',
+    automaticRevisionId: 's15-rhythm-auto',
+    historyId: 's15-rhythm-history',
+    actorId: 'smoosic-local-editor',
+    createdAt: '2026-09-21T11:00:00Z',
+  })
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: RHYTHM_EDIT_XML,
+    revisionId: 's15-rhythm-edit',
+    eventId: 's15-rhythm-event',
+    operationIdPrefix: 's15-rhythm-op',
+    createdAt: '2026-09-21T11:01:00Z',
+    DOMParserCtor: DOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0, 1, 2])
+  assert.equal(result.revision.content[0].beats, 2)
+  assert.equal(result.revision.content[1].startBeat, 2)
+  assert.equal(result.revision.content[2].startBeat, 3)
+})
+```
+
+The expected `[0, 1, 2]` is intentional: changing the first duration shifts the later `startBeat` values, so all three semantic note records change even though only the first and last XML duration/type elements were edited.
 
 - [ ] **Step 8: Run domain tests and existing PR-D regression tests**
 
