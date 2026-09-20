@@ -480,7 +480,12 @@ function clearTab() {
 
 // ── Shared result handling ──────────────────────────────────
 
-function handleAnalysisResult(notes, xmlString, hasRhythm) {
+function handleAnalysisResult(
+  notes,
+  xmlString,
+  hasRhythm,
+  { scrollToResults = true } = {},
+) {
   parsedNotes = notes
   hasRhythmInfo = hasRhythm
   qualityGateActive = Boolean(xmlString)
@@ -537,9 +542,28 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
   syncStageHPlaybackPresentation()
 
   // Scroll to results
-  setTimeout(() => {
-    $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, 300)
+  if (scrollToResults) {
+    setTimeout(() => {
+      $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 300)
+  }
+}
+
+export function applyRevalidatedMusicXmlRevision(notes, musicXml) {
+  if (!Array.isArray(notes) || notes.length === 0) {
+    throw new TypeError('Revalidated revision requires non-empty notes.')
+  }
+  if (typeof musicXml !== 'string' || !musicXml.trim().includes('<score-')) {
+    throw new TypeError('Revalidated revision requires MusicXML.')
+  }
+
+  handleAnalysisResult(
+    notes,
+    musicXml,
+    musicXmlHasRhythm(notes),
+    { scrollToResults: false },
+  )
+  return true
 }
 
 // ── Result tab switching ────────────────────────────────────
