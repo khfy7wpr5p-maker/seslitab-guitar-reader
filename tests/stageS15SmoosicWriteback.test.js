@@ -30,3 +30,19 @@ test('S15 keeps local XML Kaydet separate from host write-back', () => {
   assert.match(editor, /URL\.createObjectURL/)
   assert.match(editor, /serializeCurrentMusicXml\(\)/)
 })
+
+
+const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8')
+
+test('S15 republishes a committed revision through the existing result path', () => {
+  assert.match(app, /export function applyRevalidatedMusicXmlRevision\(notes, musicXml\)/)
+  assert.match(
+    app,
+    /handleAnalysisResult\([\s\S]*notes,[\s\S]*musicXml,[\s\S]*musicXmlHasRhythm\(notes\),[\s\S]*scrollToResults: false[\s\S]*\)/,
+  )
+  assert.match(
+    app,
+    /function handleAnalysisResult\([\s\S]*\{ scrollToResults = true \} = \{\}[\s\S]*\)/,
+  )
+  assert.match(app, /if \(scrollToResults\) \{[\s\S]*scrollIntoView/)
+})
