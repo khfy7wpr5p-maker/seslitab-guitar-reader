@@ -576,8 +576,10 @@ try {
         const parsed = new DOMParser().parseFromString(xml, 'text/xml');
         return String(parsed.querySelector('part > measure > note pitch > step')?.textContent || '');
       };
+      const frame = document.getElementById('smoosic-editor-frame');
       return {
         hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        editorStatus: String(frame?.contentDocument?.getElementById('poc-status')?.textContent || ''),
         candidateStep: readStep(candidateXml),
         candidateLength: candidateXml.length,
         candidateError: String(exportResult?.error || ''),
