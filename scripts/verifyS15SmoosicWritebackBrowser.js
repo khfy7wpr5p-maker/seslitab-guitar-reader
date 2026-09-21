@@ -412,20 +412,14 @@ try {
 
   await nativeClick(cdp, notePoint)
 
-  const pitchPoint = await waitFor(
-    cdp,
-    `(() => {
-      const frame = document.getElementById('smoosic-editor-frame');
-      const button = frame?.contentDocument?.querySelector('button[data-key="d"]');
-      if (!frame || !button) return null;
-      const f = frame.getBoundingClientRect();
-      const r = button.getBoundingClientRect();
-      if (!(r.width > 0 && r.height > 0)) return null;
-      return { x: f.left + r.left + r.width / 2, y: f.top + r.top + r.height / 2 };
-    })()`,
-    'Smoosic Re control geometry',
-  )
-  await nativeClick(cdp, pitchPoint)
+  const pitchTriggered = await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const button = frame?.contentDocument?.querySelector('button[data-key="d"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`)
+  if (!pitchTriggered) throw new Error('Smoosic Re control could not be triggered.')
 
   await waitFor(
     cdp,
@@ -453,11 +447,16 @@ try {
     return true;
   })()`)
 
-  const applyPoint = await evaluate(cdp, `(() => {
-    const r = document.getElementById('smoosic-apply-btn').getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  })()`)
-  await nativeClick(cdp, applyPoint)
+  const applyTriggered = await evaluate(
+    cdp,
+    `(() => {
+      const button = document.getElementById('smoosic-apply-btn');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+  )
+  if (!applyTriggered) throw new Error('S15 host apply control could not be triggered.')
 
   try {
     await waitFor(
