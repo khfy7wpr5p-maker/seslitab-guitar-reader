@@ -136,6 +136,36 @@ test('applies one pitch edit as one new immutable revision without inheriting ap
   assert.equal(getTeacherWorkspaceApplicableApproval(result.authority.workspace), null)
 })
 
+
+test('normalizes Smoosic single-part id rewrite before strict product revalidation', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const root = await authority()
+  const candidate = SOURCE_XML
+    .replaceAll('id="P1"', 'id="P0"')
+    .replace('<step>C</step>', '<step>G</step>')
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidate,
+    revisionId: 's15-part-normalized-edit',
+    eventId: 's15-part-normalized-event',
+    operationIdPrefix: 's15-part-normalized-op',
+    createdAt: '2026-09-21T10:01:30Z',
+    DOMParserCtor: ProductDOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.match(result.musicXml, /<score-part id="P1">/)
+  assert.match(result.musicXml, /<part id="P1">/)
+  assert.doesNotMatch(result.musicXml, /<(?:score-part|part) id="P0">/)
+  assert.equal(result.revision.content[0].partId, 'P1')
+})
+
+
 test('returns NO_CHANGE without creating a revision for exact current MusicXML', async () => {
   const {
     SMOOSIC_WRITEBACK_STATUS,
