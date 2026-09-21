@@ -113,6 +113,33 @@
       };
     }
 
+    function selectFirstRenderedNote(editorFrame) {
+      const editorDoc = editorFrame.contentDocument;
+      const editorWin = editorFrame.contentWindow;
+      const notehead = [...(editorDoc?.querySelectorAll('.vf-notehead') || [])]
+        .find((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+      if (!notehead) fail('Smoosic rendered notehead not found for selection');
+
+      const rect = notehead.getBoundingClientRect();
+      const options = {
+        bubbles: true,
+        cancelable: true,
+        view: editorWin,
+        clientX: rect.left + (rect.width / 2),
+        clientY: rect.top + (rect.height / 2),
+        button: 0,
+        buttons: 1,
+      };
+      notehead.dispatchEvent(new editorWin.MouseEvent('mousedown', options));
+      notehead.dispatchEvent(new editorWin.MouseEvent('mouseup', { ...options, buttons: 0 }));
+      notehead.dispatchEvent(new editorWin.MouseEvent('click', { ...options, buttons: 0 }));
+      body.setAttribute('data-s15-note-selected', 'true');
+      return true;
+    }
+
     function consumerSnapshot(doc) {
       return {
         guitarState: String(doc.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || ''),
@@ -229,11 +256,15 @@
         await sleep(30);
       }
 
+      selectFirstRenderedNote(editorFrame);
+      await sleep(250);
+
       const pitchButton = await waitFor(
         () => editorFrame.contentDocument?.querySelector('button[data-key="d"]'),
         'Smoosic Re control',
       );
       pitchButton.click();
+      await sleep(250);
 
       const applyButton = await waitFor(
         () => doc.getElementById('smoosic-apply-btn'),
