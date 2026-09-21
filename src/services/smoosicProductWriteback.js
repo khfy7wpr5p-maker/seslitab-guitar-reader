@@ -87,6 +87,70 @@ function sameValue(left, right) {
   return Object.is(left ?? null, right ?? null)
 }
 
+function uniqueValues(items, field) {
+  return [...new Set(
+    items
+      .map((item) => item?.[field])
+      .filter((value) => value !== null && value !== undefined && value !== ''),
+  )]
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[|\\{}()[\]^$+*?.-]/g, '\\function parseCandidate(musicXml, DOMParserCtor) {
+  const parsed = parseMusicXmlToNotes(musicXml)
+')
+}
+
+function replaceElementId(musicXml, tagName, fromId, toId) {
+  const pattern = new RegExp(
+    `(<${tagName}\\b[^>]*\\bid\\s*=\\s*["'])${escapeRegExp(fromId)}(["'])`,
+    'g',
+  )
+  return musicXml.replace(pattern, (_match, prefix, suffix) => `${prefix}${toId}${suffix}`)
+}
+
+function normalizeSinglePartIdentity(musicXml, currentRevision) {
+  const parsed = parseMusicXmlToNotes(musicXml)
+  if (parsed?.error || !Array.isArray(parsed?.notes)) return musicXml
+  if (parsed.notes.length !== currentRevision.content.length) return musicXml
+
+  const currentPartIds = uniqueValues(currentRevision.content, 'partId')
+  const candidatePartIds = uniqueValues(parsed.notes, 'partId')
+  const currentPartIndexes = uniqueValues(currentRevision.content, 'partIndex')
+  const candidatePartIndexes = uniqueValues(parsed.notes, 'partIndex')
+
+  if (
+    currentPartIds.length !== 1
+    || candidatePartIds.length !== 1
+    || currentPartIndexes.length !== 1
+    || candidatePartIndexes.length !== 1
+    || !sameValue(currentPartIndexes[0], candidatePartIndexes[0])
+  ) {
+    return musicXml
+  }
+
+  const currentPartId = currentPartIds[0]
+  const candidatePartId = candidatePartIds[0]
+  if (currentPartId === candidatePartId) return musicXml
+
+  const normalizedScorePart = replaceElementId(
+    musicXml,
+    'score-part',
+    candidatePartId,
+    currentPartId,
+  )
+  const normalizedPart = replaceElementId(
+    normalizedScorePart,
+    'part',
+    candidatePartId,
+    currentPartId,
+  )
+
+  return normalizedScorePart !== musicXml && normalizedPart !== normalizedScorePart
+    ? normalizedPart
+    : musicXml
+}
+
 function parseCandidate(musicXml, DOMParserCtor) {
   const parsed = parseMusicXmlToNotes(musicXml)
   if (parsed?.error || !Array.isArray(parsed?.notes) || parsed.notes.length === 0) {
@@ -209,12 +273,14 @@ export function applySmoosicProductWriteback({
     })
   }
 
+  const normalizedMusicXml = normalizeSinglePartIdentity(musicXml, currentRevision)
+
   let changeSet
   try {
     changeSet = changedIndexesFor({
       currentRevision,
       currentMusicXml: currentRecord.musicXml,
-      candidateMusicXml: musicXml,
+      candidateMusicXml: normalizedMusicXml,
       DOMParserCtor,
     })
   } catch {
@@ -241,7 +307,7 @@ export function applySmoosicProductWriteback({
   let revalidated
   try {
     revalidated = revalidatePrDEditorMusicXml({
-      musicXml,
+      musicXml: normalizedMusicXml,
       currentRevision,
       changedIndexes: changeSet.changedIndexes,
       DOMParserCtor,
