@@ -94,6 +94,21 @@
       }, label);
     }
 
+    function musicXmlStructureSummary(xmlText) {
+      const parsed = new DOMParser().parseFromString(String(xmlText || ''), 'text/xml');
+      const note = parsed.querySelector('part > measure > note');
+      return {
+        scorePartId: parsed.querySelector('score-part')?.getAttribute('id') || '',
+        partId: parsed.querySelector('part')?.getAttribute('id') || '',
+        measureNumber: parsed.querySelector('part > measure')?.getAttribute('number') || '',
+        voice: note?.querySelector('voice')?.textContent || '',
+        staff: note?.querySelector('staff')?.textContent || '',
+        grace: Boolean(note?.querySelector('grace')),
+        chord: Boolean(note?.querySelector('chord')),
+        noteCount: parsed.querySelectorAll('part > measure > note').length,
+      };
+    }
+
     function consumerSnapshot(doc) {
       return {
         guitarState: String(doc.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || ''),
@@ -168,6 +183,19 @@
         () => doc.getElementById('smoosic-apply-btn'),
         'SesliTab apply button',
       );
+
+      let observedEditorExport = null;
+      win.addEventListener('message', (event) => {
+        if (
+          event.source === editorFrame.contentWindow
+          && event.data?.type === 'seslitab:smoosic-export-result'
+          && typeof event.data.musicXml === 'string'
+          && event.data.musicXml
+        ) {
+          observedEditorExport = event.data.musicXml;
+        }
+      }, true);
+
       applyButton.click();
 
       const writebackStatus = await waitFor(() => {
@@ -187,7 +215,14 @@
         return '';
       }, 'supported write-back terminal state');
       if (writebackStatus.startsWith('__ERROR__')) {
-        fail('supported write-back rejected: ' + writebackStatus.slice('__ERROR__'.length));
+        const sourceSummary = musicXmlStructureSummary(sourceXml);
+        const candidateSummary = musicXmlStructureSummary(observedEditorExport);
+        fail(
+          'supported write-back rejected: '
+          + writebackStatus.slice('__ERROR__'.length)
+          + ' | source=' + JSON.stringify(sourceSummary)
+          + ' | candidate=' + JSON.stringify(candidateSummary)
+        );
       }
 
       await waitFor(() => {
