@@ -105,6 +105,8 @@
         octave: note?.querySelector('pitch > octave')?.textContent || '',
         voice: note?.querySelector('voice')?.textContent || '',
         staff: note?.querySelector('staff')?.textContent || '',
+        step: note?.querySelector('pitch > step')?.textContent || '',
+        octave: note?.querySelector('pitch > octave')?.textContent || '',
         grace: Boolean(note?.querySelector('grace')),
         chord: Boolean(note?.querySelector('chord')),
         noteCount: parsed.querySelectorAll('part > measure > note').length,
