@@ -103,11 +103,17 @@ test('S15 real-browser proof is part of protected CI after source lifecycle acce
 })
 
 
-test('S15 waits for mobile pitch edits before exporting to SesliTab', () => {
+test('S15 waits for native Smoosic pitch edits before exporting to SesliTab', () => {
   assert.match(editor, /let mobileEditPromise = Promise\.resolve\(\)/)
   assert.match(editor, /async function awaitEditorStable\(\)/)
   assert.match(editor, /await mobileEditPromise/)
-  assert.match(editor, /await applicationInstance\.view\.setPitch\(key\)/)
+  assert.match(editor, /function currentEditorMusicXmlText\(\)/)
+  assert.match(editor, /async function waitForEditorMusicXmlMutation\(previousXml/)
+  assert.match(
+    editor,
+    /const previousXml = currentEditorMusicXmlText\(\)[\s\S]*sendKey\(key,[\s\S]*await waitForEditorMusicXmlMutation\(previousXml\)/,
+  )
+  assert.doesNotMatch(editor, /await applicationInstance\.view\.setPitch\(key\)/)
   assert.match(
     editor,
     /async function handleSesliTabExportRequest\(event\)[\s\S]*await awaitEditorStable\(\)[\s\S]*serializeCurrentMusicXml\(\)/,
