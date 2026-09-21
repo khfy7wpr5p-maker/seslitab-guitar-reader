@@ -117,3 +117,11 @@ test('S15 waits for mobile pitch edits before exporting to SesliTab', () => {
     /async function exportMusicXml\(\)[\s\S]*await awaitEditorStable\(\)[\s\S]*serializeCurrentMusicXml\(\)/,
   )
 })
+
+
+test('S15 primes the Smoosic cursor after every accepted MusicXML load', () => {
+  assert.match(
+    editor,
+    /await applicationInstance\.view\.changeScore\(score\)[\s\S]*await applicationInstance\.view\.moveHome\(\{\}\)/,
+  )
+})
