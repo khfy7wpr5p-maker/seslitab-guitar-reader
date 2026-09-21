@@ -183,6 +183,7 @@ async function loadMusicXmlFile(file) {
     score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
   }
   await applicationInstance.view.changeScore(score);
+  await applicationInstance.view.moveHome({});
   currentScoreBaseName = stripMusicXmlExtension(name);
   window.dispatchEvent(new Event('resize'));
   setStatus(`Yüklendi: ${name}`);
