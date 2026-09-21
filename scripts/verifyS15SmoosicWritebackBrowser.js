@@ -387,6 +387,21 @@ try {
     'Smoosic initial handoff',
   )
 
+  await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    if (!frame) return false;
+    frame.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const head = [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])]
+      .find((element) => {
+        const r = element.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      });
+    if (!head) return false;
+    head.scrollIntoView({ block: 'center', inline: 'center' });
+    return true;
+  })()`)
+  await delay(250)
+
   const notePoint = await waitFor(
     cdp,
     `(() => {
@@ -400,14 +415,23 @@ try {
       });
       if (!head) return null;
       const r = head.getBoundingClientRect();
-      return {
+      const point = {
         x: f.left + r.left + (r.width / 2),
         y: f.top + r.top + (r.height / 2),
         width: r.width,
         height: r.height,
       };
+      if (
+        point.x < 0
+        || point.x >= window.innerWidth
+        || point.y < 0
+        || point.y >= window.innerHeight
+      ) {
+        return null;
+      }
+      return point;
     })()`,
-    'rendered Smoosic notehead geometry',
+    'visible rendered Smoosic notehead geometry',
   )
 
   await nativeClick(cdp, notePoint)
