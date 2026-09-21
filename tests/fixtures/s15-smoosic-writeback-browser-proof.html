@@ -177,6 +177,37 @@
       await waitFor(() => editorFrame.contentDocument?.getElementById('poc-status'), 'Smoosic document');
       await waitEditorLoaded(editorFrame, 's15-writeback.musicxml', 'initial Smoosic handoff');
 
+      const editorRoot = editorFrame.contentDocument?.getElementById('smoo');
+      const domSample = editorRoot
+        ? [...editorRoot.querySelectorAll('*')]
+            .filter((element) => {
+              const tag = String(element.tagName || '').toLowerCase();
+              const cls = String(element.getAttribute?.('class') || '');
+              const id = String(element.id || '');
+              return tag === 'svg'
+                || tag === 'g'
+                || tag === 'path'
+                || tag === 'ellipse'
+                || tag === 'circle'
+                || /note|stave|voice|measure|vf|smo/i.test(cls + ' ' + id);
+            })
+            .slice(0, 80)
+            .map((element) => {
+              const rect = element.getBoundingClientRect?.();
+              return {
+                tag: String(element.tagName || '').toLowerCase(),
+                id: String(element.id || ''),
+                cls: String(element.getAttribute?.('class') || '').slice(0, 120),
+                w: Number(rect?.width || 0).toFixed(1),
+                h: Number(rect?.height || 0).toFixed(1),
+              };
+            })
+        : [];
+      body.setAttribute(
+        'data-s15-editor-dom-sample',
+        JSON.stringify(domSample).replace(/["<>]/g, (char) => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;' }[char])),
+      );
+
       const pitchButton = await waitFor(
         () => editorFrame.contentDocument?.querySelector('button[data-key="d"]'),
         'Smoosic Re control',
