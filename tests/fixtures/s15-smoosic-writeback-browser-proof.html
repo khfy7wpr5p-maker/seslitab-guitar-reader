@@ -193,6 +193,11 @@
           && event.data.musicXml
         ) {
           observedEditorExport = event.data.musicXml;
+          const summary = musicXmlStructureSummary(observedEditorExport);
+          body.setAttribute(
+            'data-s15-candidate-summary',
+            JSON.stringify(summary).replace(/["<>]/g, (char) => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;' }[char])),
+          );
         }
       }, true);
 
@@ -200,6 +205,7 @@
 
       const writebackStatus = await waitFor(() => {
         const hostStatus = String(doc.getElementById('smoosic-editor-host-status')?.textContent || '');
+        body.setAttribute('data-s15-last-host-status', hostStatus.replace(/["<>]/g, ''));
         if (hostStatus.includes('Yeni sürüm doğrulandı')) return hostStatus;
         if (
           hostStatus.includes('uygulanamadı')
