@@ -96,9 +96,7 @@ function uniqueValues(items, field) {
 }
 
 function escapeRegExp(value) {
-  return String(value).replace(/[|\\{}()[\]^$+*?.-]/g, '\\function parseCandidate(musicXml, DOMParserCtor) {
-  const parsed = parseMusicXmlToNotes(musicXml)
-')
+  return String(value).replace(/[|\\{}()[\]^$+*?.-]/g, (match) => `\\${match}`)
 }
 
 function replaceElementId(musicXml, tagName, fromId, toId) {
