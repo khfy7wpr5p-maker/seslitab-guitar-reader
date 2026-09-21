@@ -208,6 +208,27 @@
         JSON.stringify(domSample).replace(/["<>]/g, (char) => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;' }[char])),
       );
 
+      const notehead = await waitFor(
+        () => editorFrame.contentDocument?.querySelector('#smoo .vf-notehead'),
+        'rendered Smoosic notehead',
+      );
+      const rect = notehead.getBoundingClientRect();
+      if (!(rect.width > 0 && rect.height > 0)) {
+        fail('rendered Smoosic notehead has no clickable geometry');
+      }
+      const clientX = rect.left + (rect.width / 2);
+      const clientY = rect.top + (rect.height / 2);
+      for (const type of ['mousemove', 'mousedown', 'mouseup', 'click']) {
+        notehead.dispatchEvent(new editorFrame.contentWindow.MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0,
+        }));
+        await sleep(30);
+      }
+
       const pitchButton = await waitFor(
         () => editorFrame.contentDocument?.querySelector('button[data-key="d"]'),
         'Smoosic Re control',
@@ -229,6 +250,7 @@
         ) {
           observedEditorExport = event.data.musicXml;
           const summary = musicXmlStructureSummary(observedEditorExport);
+          body.setAttribute('data-s15-candidate-step', summary.step || '');
           body.setAttribute(
             'data-s15-candidate-summary',
             JSON.stringify(summary).replace(/["<>]/g, (char) => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;' }[char])),
