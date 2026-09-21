@@ -556,14 +556,37 @@ try {
     })()`)
     throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
   }
-  await waitFor(
-    cdp,
-    `(() => {
-      const xml = String(document.getElementById('xml-output')?.textContent || '');
-      return xml.includes('<step>D</step>') && !xml.includes('<step>C</step>');
-    })()`,
-    'published D revision',
-  )
+  try {
+    await waitFor(
+      cdp,
+      `(() => {
+        const xml = String(document.getElementById('xml-output')?.textContent || '');
+        return xml.includes('<step>D</step>') && !xml.includes('<step>C</step>');
+      })()`,
+      'published D revision',
+      15000,
+    )
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `(() => {
+      const exportResult = window.__S15_FIRST_EXPORT__;
+      const candidateXml = String(exportResult?.musicXml || '');
+      const visibleXml = String(document.getElementById('xml-output')?.textContent || '');
+      const readStep = (xml) => {
+        if (!xml) return '';
+        const parsed = new DOMParser().parseFromString(xml, 'text/xml');
+        return String(parsed.querySelector('part > measure > note pitch > step')?.textContent || '');
+      };
+      return {
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        candidateStep: readStep(candidateXml),
+        candidateLength: candidateXml.length,
+        candidateError: String(exportResult?.error || ''),
+        visibleStep: readStep(visibleXml),
+        visibleLength: visibleXml.length,
+      };
+    })()`)
+    throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
+  }
 
   const afterConsumers = await waitFor(
     cdp,
