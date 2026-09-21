@@ -101,3 +101,19 @@ test('S15 real-browser proof is part of protected CI after source lifecycle acce
   assert.match(ci, /node scripts\/verifyS15SmoosicWritebackBrowser\.js/)
   assert.match(ci, /s15-smoosic-writeback/)
 })
+
+
+test('S15 waits for mobile pitch edits before exporting to SesliTab', () => {
+  assert.match(editor, /let mobileEditPromise = Promise\.resolve\(\)/)
+  assert.match(editor, /async function awaitEditorStable\(\)/)
+  assert.match(editor, /await mobileEditPromise/)
+  assert.match(editor, /await applicationInstance\.view\.setPitch\(key\)/)
+  assert.match(
+    editor,
+    /async function handleSesliTabExportRequest\(event\)[\s\S]*await awaitEditorStable\(\)[\s\S]*serializeCurrentMusicXml\(\)/,
+  )
+  assert.match(
+    editor,
+    /async function exportMusicXml\(\)[\s\S]*await awaitEditorStable\(\)[\s\S]*serializeCurrentMusicXml\(\)/,
+  )
+})
