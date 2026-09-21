@@ -101,6 +101,8 @@
         scorePartId: parsed.querySelector('score-part')?.getAttribute('id') || '',
         partId: parsed.querySelector('part')?.getAttribute('id') || '',
         measureNumber: parsed.querySelector('part > measure')?.getAttribute('number') || '',
+        step: note?.querySelector('pitch > step')?.textContent || '',
+        octave: note?.querySelector('pitch > octave')?.textContent || '',
         voice: note?.querySelector('voice')?.textContent || '',
         staff: note?.querySelector('staff')?.textContent || '',
         grace: Boolean(note?.querySelector('grace')),
@@ -230,6 +232,13 @@
           + ' | candidate=' + JSON.stringify(candidateSummary)
         );
       }
+
+      const candidateAfterCommit = musicXmlStructureSummary(observedEditorExport);
+      const visibleAfterCommit = musicXmlStructureSummary(
+        String(doc.getElementById('xml-output')?.textContent || ''),
+      );
+      body.setAttribute('data-s15-candidate-step', candidateAfterCommit.step || 'none');
+      body.setAttribute('data-s15-visible-step-after-commit', visibleAfterCommit.step || 'none');
 
       await waitFor(() => {
         const xml = String(doc.getElementById('xml-output')?.textContent || '');
