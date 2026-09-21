@@ -437,17 +437,57 @@ try {
     'S15 host apply control',
   )
 
+  await evaluate(cdp, `(() => {
+    window.__S15_FIRST_EXPORT__ = null;
+    if (!window.__S15_EXPORT_PROBE_BOUND__) {
+      window.addEventListener('message', (event) => {
+        if (
+          event.source === document.getElementById('smoosic-editor-frame')?.contentWindow
+          && event.data?.type === 'seslitab:smoosic-export-result'
+        ) {
+          window.__S15_FIRST_EXPORT__ = event.data;
+        }
+      }, true);
+      window.__S15_EXPORT_PROBE_BOUND__ = true;
+    }
+    return true;
+  })()`)
+
   const applyPoint = await evaluate(cdp, `(() => {
     const r = document.getElementById('smoosic-apply-btn').getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`)
   await nativeClick(cdp, applyPoint)
 
-  await waitFor(
-    cdp,
-    `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
-    'supported S15 write-back',
-  )
+  try {
+    await waitFor(
+      cdp,
+      `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
+      'supported S15 write-back',
+    )
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const exportResult = window.__S15_FIRST_EXPORT__;
+      const candidateXml = String(exportResult?.musicXml || '');
+      const visibleXml = String(document.getElementById('xml-output')?.textContent || '');
+      const readStep = (xml) => {
+        if (!xml) return '';
+        const parsed = new DOMParser().parseFromString(xml, 'text/xml');
+        return String(parsed.querySelector('part > measure > note pitch > step')?.textContent || '');
+      };
+      return {
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        editorStatus: String(frame?.contentDocument?.getElementById('poc-status')?.textContent || ''),
+        candidateStep: readStep(candidateXml),
+        candidateLength: candidateXml.length,
+        candidateError: String(exportResult?.error || ''),
+        visibleStep: readStep(visibleXml),
+        applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+      };
+    })()`)
+    throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
+  }
   await waitFor(
     cdp,
     `(() => {
