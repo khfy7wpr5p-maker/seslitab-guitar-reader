@@ -170,10 +170,24 @@
       );
       applyButton.click();
 
-      await waitFor(() => {
+      const writebackStatus = await waitFor(() => {
         const hostStatus = String(doc.getElementById('smoosic-editor-host-status')?.textContent || '');
-        return hostStatus.includes('Yeni sürüm doğrulandı') ? hostStatus : '';
-      }, 'supported write-back success');
+        if (hostStatus.includes('Yeni sürüm doğrulandı')) return hostStatus;
+        if (
+          hostStatus.includes('uygulanamadı')
+          || hostStatus.includes('doğrulanamadı')
+          || hostStatus.includes('MusicXML alınamadı')
+          || hostStatus.includes('hazır değil')
+          || hostStatus.includes('yapısal düzenleme')
+          || hostStatus.includes('zamanında alınamadı')
+        ) {
+          return '__ERROR__' + hostStatus;
+        }
+        return '';
+      }, 'supported write-back terminal state');
+      if (writebackStatus.startsWith('__ERROR__')) {
+        fail('supported write-back rejected: ' + writebackStatus.slice('__ERROR__'.length));
+      }
 
       await waitFor(() => {
         const xml = String(doc.getElementById('xml-output')?.textContent || '');
