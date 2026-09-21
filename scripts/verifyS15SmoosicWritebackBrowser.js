@@ -402,37 +402,76 @@ try {
   })()`)
   await delay(250)
 
-  const notePoint = await waitFor(
-    cdp,
-    `(() => {
+  let notePoint
+  try {
+    notePoint = await waitFor(
+      cdp,
+      `(() => {
+        const frame = document.getElementById('smoosic-editor-frame');
+        if (!frame || frame.hidden) return null;
+        const f = frame.getBoundingClientRect();
+        const heads = [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])];
+        const head = heads.find((element) => {
+          const r = element.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        });
+        if (!head) return null;
+        const r = head.getBoundingClientRect();
+        const point = {
+          x: f.left + r.left + (r.width / 2),
+          y: f.top + r.top + (r.height / 2),
+          width: r.width,
+          height: r.height,
+        };
+        if (
+          point.x < 0
+          || point.x >= window.innerWidth
+          || point.y < 0
+          || point.y >= window.innerHeight
+        ) {
+          return null;
+        }
+        return point;
+      })()`,
+      'visible rendered Smoosic notehead geometry',
+      10000,
+    )
+  } catch (error) {
+    const geometry = await evaluate(cdp, `(() => {
       const frame = document.getElementById('smoosic-editor-frame');
-      if (!frame || frame.hidden) return null;
-      const f = frame.getBoundingClientRect();
-      const heads = [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])];
+      const f = frame?.getBoundingClientRect();
+      const heads = [...(frame?.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])];
       const head = heads.find((element) => {
         const r = element.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
       });
-      if (!head) return null;
-      const r = head.getBoundingClientRect();
-      const point = {
-        x: f.left + r.left + (r.width / 2),
-        y: f.top + r.top + (r.height / 2),
-        width: r.width,
-        height: r.height,
+      const r = head?.getBoundingClientRect();
+      const scrollers = frame?.contentDocument
+        ? [...frame.contentDocument.querySelectorAll('*')]
+            .filter((element) => {
+              const style = frame.contentWindow.getComputedStyle(element);
+              return /(auto|scroll)/.test(style.overflowY)
+                && element.scrollHeight > element.clientHeight;
+            })
+            .slice(0, 8)
+            .map((element) => ({
+              id: String(element.id || ''),
+              cls: String(element.className?.baseVal || element.className || '').slice(0, 120),
+              top: element.scrollTop,
+              clientHeight: element.clientHeight,
+              scrollHeight: element.scrollHeight,
+            }))
+        : [];
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight, scrollY: window.scrollY },
+        frame: f ? { left: f.left, top: f.top, width: f.width, height: f.height } : null,
+        note: r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null,
+        innerScrollY: frame?.contentWindow?.scrollY ?? null,
+        scrollers,
       };
-      if (
-        point.x < 0
-        || point.x >= window.innerWidth
-        || point.y < 0
-        || point.y >= window.innerHeight
-      ) {
-        return null;
-      }
-      return point;
-    })()`,
-    'visible rendered Smoosic notehead geometry',
-  )
+    })()`)
+    throw new Error(`${error.message} | geometry=${JSON.stringify(geometry)}`)
+  }
 
   await nativeClick(cdp, notePoint)
 
