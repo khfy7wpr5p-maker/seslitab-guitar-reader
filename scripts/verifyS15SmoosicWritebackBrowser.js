@@ -390,14 +390,20 @@ try {
   await evaluate(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
     if (!frame) return false;
-    frame.scrollIntoView({ block: 'center', inline: 'nearest' });
     const head = [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])]
       .find((element) => {
         const r = element.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
       });
     if (!head) return false;
+
     head.scrollIntoView({ block: 'center', inline: 'center' });
+
+    const frameRect = frame.getBoundingClientRect();
+    const noteRect = head.getBoundingClientRect();
+    const noteOuterY = frameRect.top + noteRect.top + (noteRect.height / 2);
+    const targetY = window.innerHeight * 0.42;
+    window.scrollBy(0, noteOuterY - targetY);
     return true;
   })()`)
   await delay(250)
