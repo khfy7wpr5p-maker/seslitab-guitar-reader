@@ -59,6 +59,32 @@ async function awaitEditorStable() {
   }
 }
 
+function currentEditorMusicXmlText() {
+  if (!applicationInstance || !applicationInstance.view) return '';
+  const sourceScore = applicationInstance.view.storeScore || applicationInstance.view.score;
+  if (!sourceScore) return '';
+  const xmlDom = SmoToXml.convert(sourceScore);
+  return new XMLSerializer().serializeToString(xmlDom);
+}
+
+async function waitForEditorMusicXmlMutation(previousXml, timeoutMs = 1800) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const currentXml = currentEditorMusicXmlText();
+    if (currentXml && currentXml !== previousXml) {
+      const renderer = applicationInstance && applicationInstance.view
+        ? applicationInstance.view.renderer
+        : null;
+      if (renderer && typeof renderer.updatePromise === 'function') {
+        await renderer.updatePromise();
+      }
+      return currentXml;
+    }
+  }
+  throw new Error('Nota değişikliği uygulanmadı. Önce notayı seçin veya farklı bir perde seçin.');
+}
+
 async function runMobileKeyAction(button) {
   const key = String(button.dataset.key || '');
   const ctrlKey = button.dataset.ctrl === 'true';
@@ -72,9 +98,10 @@ async function runMobileKeyAction(button) {
     && !shiftKey
     && applicationInstance
     && applicationInstance.view
-    && typeof applicationInstance.view.setPitch === 'function'
   ) {
-    await applicationInstance.view.setPitch(key);
+    const previousXml = currentEditorMusicXmlText();
+    sendKey(key, { ctrlKey, altKey, shiftKey });
+    await waitForEditorMusicXmlMutation(previousXml);
     return;
   }
 
