@@ -89,3 +89,15 @@ test('S15 unsupported structural edit remains exportable instead of becoming can
   assert.match(host, /MusicXML olarak kaydedebilirsiniz/)
   assert.doesNotMatch(host, /initStagePrDKeypadIntegrationUi/)
 })
+
+
+const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+
+test('S15 real-browser proof is part of protected CI after source lifecycle acceptance', () => {
+  const sourceLifecycleIndex = ci.indexOf('Verify S14 complete source lifecycle acceptance')
+  const s15Index = ci.indexOf('Verify S15 Smoosic write-back in real browser')
+  assert.ok(sourceLifecycleIndex >= 0)
+  assert.ok(s15Index > sourceLifecycleIndex)
+  assert.match(ci, /node scripts\/verifyS15SmoosicWritebackBrowser\.js/)
+  assert.match(ci, /s15-smoosic-writeback/)
+})
