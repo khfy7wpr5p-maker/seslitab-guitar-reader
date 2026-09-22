@@ -3027,7 +3027,6 @@ tests/teacherScoreAssignmentRepository.test.js
 tests/teacherScoreAssignmentService.test.js
 tests/teacherScoreAssignmentController.test.js
 tests/teacherScoreAssignmentUi.test.js
-tests/support/fakeTeacherScoreAssignmentDom.js
 tests/teacherScoreAssignmentSecurity.test.js
 ```
 
