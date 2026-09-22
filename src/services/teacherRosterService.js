@@ -9,7 +9,7 @@ import {
 function assertRosterEntry(value, label) {
   if (!isStudentRosterEntry(value)) {
     throw new TypeError(
-      `${label} must be a valid immutable StudentRosterEntry.`,
+      `invalid StudentRosterEntry from ${label}.`,
     )
   }
 
