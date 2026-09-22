@@ -112,6 +112,13 @@ const proofHtml = `<!doctype html>
         const activeEditorDoc = editorFrame.contentDocument;
         return String(activeEditorDoc?.getElementById('poc-status')?.textContent || '').includes('accepted-source.musicxml');
       }, 'accepted source handoff');
+      await waitFor(() => {
+        const hostStatus = doc.getElementById('smoosic-editor-host-status');
+        return hostStatus
+          && hostStatus.hidden === true
+          && String(hostStatus.textContent || '').trim() === ''
+          && hostStatus.dataset.kind === 'ready';
+      }, 'accepted source host sync settled');
 
       doc.getElementById('musicxml-tab-btn').click();
       assignMusicXml(win, doc, invalidReplacementXml, 'failed-replacement.musicxml');
