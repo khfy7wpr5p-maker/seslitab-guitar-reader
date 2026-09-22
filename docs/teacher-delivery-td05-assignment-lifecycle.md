@@ -182,4 +182,26 @@ TD-07 owns:
 
 ## Verification
 
-Exact-head implementation verification evidence is intentionally recorded only after the final TD-05 branch checks complete.
+Exact-head implementation verification evidence follows.
+
+
+## Exact-head verification record
+
+Implementation head verified before this documentation-only record:
+
+`4aef103db8be17a2789e0da3a5ab9d832527dc9c`
+
+Evidence on that implementation head:
+
+- full Node test suite: 1875 tests, 1875 passed, 0 failed;
+- production build: PASS;
+- S14 protected real-browser checks: PASS;
+- STI-17 protected real-browser checks: PASS;
+- PR-C / PR-D / PR-E / PR-F protected browser checks: PASS;
+- Playwright protected baseline: PASS;
+- SonarQube Cloud analysis: PASS;
+- base SHA: `33a6df9424c917e18fda8f67a77acca3d80accb1`;
+- base drift at verification: 0 commits behind main;
+- no changes to TD-04 `PrivateAssignment v1`, SCORE source binding, Stage L, Package 12, production entry points, Student App, or provider configuration.
+
+A final documentation-only commit records this evidence. Its own CI must also pass before merge readiness is claimed.
