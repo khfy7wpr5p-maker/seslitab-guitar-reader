@@ -1020,19 +1020,189 @@ function assertPublicationAcknowledgement(
 }
 ```
 
-Then implement `createTeacherPoolPublishingService` so:
+Implement the service with this exact control flow after the helper functions above:
 
-- repository is asserted once;
-- `rosterService.preflightActiveStudentIds` is required;
-- generators are required functions;
-- ALL rejects non-empty `selectedStudentIds`;
-- SELECTED calls preflight once and maps returned entries to `studentId`;
-- `createPoolItemId()` is called once per publish and normalized;
-- `now()` is called once per publish or revoke and normalized;
-- repository publish/revoke return values are validated;
-- list validates every row, rejects duplicate `poolItemId`, and returns frozen array.
+```js
+export function createTeacherPoolPublishingService({
+  repository,
+  rosterService,
+  createPoolItemId,
+  now,
+} = {}) {
+  const trustedRepository =
+    assertTeacherPoolRepository(repository)
 
-Use exact producer output as the expected record; do not reconstruct expected acknowledgement from adapter output.
+  if (
+    !rosterService ||
+    typeof rosterService.preflightActiveStudentIds !== 'function'
+  ) {
+    throw new TypeError(
+      'rosterService must provide preflightActiveStudentIds().',
+    )
+  }
+  if (typeof createPoolItemId !== 'function') {
+    throw new TypeError(
+      'createPoolItemId must be a function.',
+    )
+  }
+  if (typeof now !== 'function') {
+    throw new TypeError('now must be a function.')
+  }
+
+  function listPoolPublications() {
+    const rows = trustedRepository.list()
+    if (!Array.isArray(rows)) {
+      throw new TypeError(
+        'teacher Pool repository list() must return an array.',
+      )
+    }
+
+    const seen = new Set()
+    const validated = rows.map((row) => {
+      if (!isPoolPublicationRecord(row)) {
+        throw new TypeError(
+          'teacher Pool repository row must be a valid immutable PoolPublicationRecord.',
+        )
+      }
+
+      const id = row.item.poolItemId
+      if (seen.has(id)) {
+        throw new Error(
+          `duplicate poolItemId returned by teacher Pool repository: ${id}`,
+        )
+      }
+      seen.add(id)
+      return row
+    })
+
+    return Object.freeze(validated)
+  }
+
+  function publishPoolItem(input = {}) {
+    assertStrictPublishInput(input)
+
+    if (!Array.isArray(input.selectedStudentIds)) {
+      throw new TypeError(
+        'selectedStudentIds must be an array.',
+      )
+    }
+
+    let recipients = []
+
+    if (input.audienceMode === POOL_AUDIENCE_MODE.ALL) {
+      if (input.selectedStudentIds.length !== 0) {
+        throw new Error(
+          'ALL Pool publication must not contain selected students.',
+        )
+      }
+    } else if (
+      input.audienceMode === POOL_AUDIENCE_MODE.SELECTED
+    ) {
+      if (input.selectedStudentIds.length === 0) {
+        throw new Error(
+          'SELECTED Pool publication requires at least one selected student.',
+        )
+      }
+
+      const activeStudents =
+        rosterService.preflightActiveStudentIds(
+          input.selectedStudentIds,
+        )
+      recipients = activeStudents.map(
+        (student) => student.studentId,
+      )
+    } else {
+      throw new TypeError(
+        'audienceMode must be ALL or SELECTED.',
+      )
+    }
+
+    const poolItemId = normalizeRequiredId(
+      createPoolItemId(),
+      'poolItemId',
+    )
+    const publishedAt = normalizeRequiredTimestamp(
+      now(),
+      'publishedAt',
+    )
+
+    const item = createPoolItem({
+      poolItemId,
+      title: input.title,
+      shortDescription: input.shortDescription,
+      detailText: input.detailText,
+      publishedAt,
+      audienceMode: input.audienceMode,
+      recipientStudentIds: recipients,
+    })
+    const expected =
+      createActivePoolPublicationRecord(item)
+
+    const acknowledgement =
+      trustedRepository.publish(expected)
+
+    return assertPublicationAcknowledgement(
+      acknowledgement,
+      expected,
+      null,
+    )
+  }
+
+  function revokePoolPublication(poolItemId) {
+    const id = normalizeRequiredId(
+      poolItemId,
+      'poolItemId',
+    )
+    const current =
+      trustedRepository.getByPoolItemId(id)
+
+    if (current === null || current === undefined) {
+      throw new Error(
+        `teacher-pool-publication-not-found:${id}`,
+      )
+    }
+    if (!isPoolPublicationRecord(current)) {
+      throw new TypeError(
+        'teacher Pool repository lookup result must be a valid immutable PoolPublicationRecord.',
+      )
+    }
+    if (current.item.poolItemId !== id) {
+      throw new Error(
+        `teacher-pool-identity-mismatch:${id}`,
+      )
+    }
+    if (current.revokedAt !== null) {
+      throw new Error(
+        `teacher-pool-publication-already-revoked:${id}`,
+      )
+    }
+
+    const revokedAt = normalizeRequiredTimestamp(
+      now(),
+      'revokedAt',
+    )
+    const acknowledgement =
+      trustedRepository.revoke({
+        poolItemId: id,
+        revokedAt,
+      })
+
+    return assertPublicationAcknowledgement(
+      acknowledgement,
+      current,
+      revokedAt,
+    )
+  }
+
+  return Object.freeze({
+    publishPoolItem,
+    listPoolPublications,
+    revokePoolPublication,
+  })
+}
+```
+
+Use the producer-created record as acknowledgement truth. Never reconstruct expected publication identity from adapter output.
 
 - [ ] **Step 4: Run service/repository/roster tests and verify GREEN**
 
@@ -1128,9 +1298,7 @@ Expected: FAIL because controller module does not exist.
 
 - [ ] **Step 3: Implement the controller**
 
-Create `src/services/teacherPoolPublishingController.js` with a pure dependency-injected controller.
-
-Error mapping must be bounded:
+Create `src/services/teacherPoolPublishingController.js` with this pure dependency-injected shape:
 
 ```js
 function teacherMessage(error) {
@@ -1149,9 +1317,98 @@ function teacherMessage(error) {
   }
   return 'Havuz işlemi tamamlanamadı.'
 }
+
+export function createTeacherPoolPublishingController({
+  publishingService,
+  rosterService,
+} = {}) {
+  if (
+    !publishingService ||
+    typeof publishingService.publishPoolItem !== 'function' ||
+    typeof publishingService.listPoolPublications !== 'function' ||
+    typeof publishingService.revokePoolPublication !== 'function'
+  ) {
+    throw new TypeError(
+      'publishingService must provide Pool publish/list/revoke operations.',
+    )
+  }
+  if (
+    !rosterService ||
+    typeof rosterService.listStudents !== 'function'
+  ) {
+    throw new TypeError(
+      'rosterService must provide listStudents().',
+    )
+  }
+
+  function getViewModel() {
+    const students = rosterService.listStudents({
+      includeInactive: false,
+    })
+    const publications =
+      publishingService.listPoolPublications()
+
+    return Object.freeze({
+      students: Object.freeze(
+        students.map((student) =>
+          Object.freeze({
+            studentId: student.studentId,
+            displayNameOrNickname:
+              student.displayNameOrNickname,
+          }),
+        ),
+      ),
+      publications,
+    })
+  }
+
+  function publish(input) {
+    try {
+      const record =
+        publishingService.publishPoolItem(input)
+      return Object.freeze({
+        ok: true,
+        record,
+        message: 'Havuza gönderildi.',
+      })
+    } catch (error) {
+      return Object.freeze({
+        ok: false,
+        record: null,
+        message: teacherMessage(error),
+      })
+    }
+  }
+
+  function revoke(poolItemId) {
+    try {
+      const record =
+        publishingService.revokePoolPublication(
+          poolItemId,
+        )
+      return Object.freeze({
+        ok: true,
+        record,
+        message: 'Havuz yayını geri çekildi.',
+      })
+    } catch (error) {
+      return Object.freeze({
+        ok: false,
+        record: null,
+        message: teacherMessage(error),
+      })
+    }
+  }
+
+  return Object.freeze({
+    getViewModel,
+    publish,
+    revoke,
+  })
+}
 ```
 
-Do not return raw error objects/stacks.
+The controller returns only bounded teacher messages and never returns raw errors, stacks or provider diagnostics.
 
 - [ ] **Step 4: Run controller tests and verify GREEN**
 
@@ -1193,11 +1450,43 @@ Expected: FAIL because UI module does not exist.
 
 - [ ] **Step 7: Implement scoped UI module and CSS**
 
-Create `src/teacherPoolPublishingUi.js` as an explicit mount function only.
+Create `src/teacherPoolPublishingUi.js` as an explicit mount function only. Use DOM nodes and `textContent` for teacher/student text; do not inject roster names through `innerHTML`.
 
-Required behavior:
+The module structure must follow this exact mount/refresh/destroy pattern:
 
 ```js
+function element(root, tag, className = '') {
+  const node = root.createElement(tag)
+  if (className) node.className = className
+  return node
+}
+
+function labeledField(root, {
+  labelText,
+  name,
+  required = false,
+  multiline = false,
+}) {
+  const wrap = element(
+    root,
+    'label',
+    'teacher-pool-publishing__field',
+  )
+  const label = element(root, 'span')
+  label.textContent = labelText
+
+  const control = element(
+    root,
+    multiline ? 'textarea' : 'input',
+  )
+  control.name = name
+  if (required) control.required = true
+
+  wrap.appendChild(label)
+  wrap.appendChild(control)
+  return { wrap, control }
+}
+
 export function mountTeacherPoolPublishingUi({
   root = document,
   host,
@@ -1219,23 +1508,248 @@ export function mountTeacherPoolPublishingUi({
     )
   }
 
-  // create a uniquely-scoped section, bind form/list actions,
-  // refresh from controller view-model after acknowledged actions,
-  // return frozen { refresh, destroy }.
+  const section = element(
+    root,
+    'section',
+    'teacher-pool-publishing',
+  )
+  section.setAttribute(
+    'aria-labelledby',
+    'teacher-pool-publishing-heading',
+  )
+
+  const heading = element(root, 'h2')
+  heading.id = 'teacher-pool-publishing-heading'
+  heading.textContent = 'Havuza Gönder'
+
+  const form = element(
+    root,
+    'form',
+    'teacher-pool-publishing__form',
+  )
+  const title = labeledField(root, {
+    labelText: 'Başlık',
+    name: 'title',
+    required: true,
+  })
+  const shortDescription = labeledField(root, {
+    labelText: 'Kısa açıklama',
+    name: 'shortDescription',
+    required: true,
+  })
+  const detail = labeledField(root, {
+    labelText: 'Ayrıntı',
+    name: 'detailText',
+    multiline: true,
+  })
+
+  const audience = element(
+    root,
+    'fieldset',
+    'teacher-pool-publishing__audience',
+  )
+  const legend = element(root, 'legend')
+  legend.textContent = 'Hedef'
+  audience.appendChild(legend)
+
+  const all = element(root, 'input')
+  all.type = 'radio'
+  all.name = 'audienceMode'
+  all.value = 'ALL'
+  all.checked = true
+
+  const allLabel = element(root, 'label')
+  allLabel.appendChild(all)
+  allLabel.appendChild(
+    root.createTextNode('Tüm öğrenciler'),
+  )
+
+  const selected = element(root, 'input')
+  selected.type = 'radio'
+  selected.name = 'audienceMode'
+  selected.value = 'SELECTED'
+
+  const selectedLabel = element(root, 'label')
+  selectedLabel.appendChild(selected)
+  selectedLabel.appendChild(
+    root.createTextNode('Seçili öğrenciler'),
+  )
+
+  audience.appendChild(allLabel)
+  audience.appendChild(selectedLabel)
+
+  const students = element(
+    root,
+    'div',
+    'teacher-pool-publishing__students',
+  )
+  students.hidden = true
+
+  const submit = element(root, 'button')
+  submit.type = 'submit'
+  submit.textContent = 'Havuza Gönder'
+
+  const status = element(
+    root,
+    'div',
+    'teacher-pool-publishing__status',
+  )
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+
+  const history = element(
+    root,
+    'div',
+    'teacher-pool-publishing__history',
+  )
+
+  form.appendChild(title.wrap)
+  form.appendChild(shortDescription.wrap)
+  form.appendChild(detail.wrap)
+  form.appendChild(audience)
+  form.appendChild(students)
+  form.appendChild(submit)
+
+  section.appendChild(heading)
+  section.appendChild(form)
+  section.appendChild(status)
+  section.appendChild(history)
+  host.appendChild(section)
+
+  function checkedStudentIds() {
+    return [
+      ...students.querySelectorAll(
+        'input[type="checkbox"]:checked',
+      ),
+    ].map((input) => input.value)
+  }
+
+  function renderStudents(rows) {
+    students.replaceChildren()
+    for (const row of rows) {
+      const label = element(root, 'label')
+      const checkbox = element(root, 'input')
+      checkbox.type = 'checkbox'
+      checkbox.value = row.studentId
+      checkbox.name = 'selectedStudentIds'
+      checkbox.id =
+        `teacher-pool-student-${row.studentId}`
+
+      const name = element(root, 'span')
+      name.textContent = row.displayNameOrNickname
+
+      label.appendChild(checkbox)
+      label.appendChild(name)
+      students.appendChild(label)
+    }
+  }
+
+  function renderHistory(records) {
+    history.replaceChildren()
+
+    for (const record of records) {
+      const article = element(root, 'article')
+      article.dataset.poolItemId =
+        record.item.poolItemId
+
+      const titleNode = element(root, 'h3')
+      titleNode.textContent = record.item.title
+      article.appendChild(titleNode)
+
+      const state = element(root, 'span')
+      state.textContent =
+        record.revokedAt === null ? 'Aktif' : 'Geri çekildi'
+      article.appendChild(state)
+
+      if (record.revokedAt === null) {
+        const revoke = element(root, 'button')
+        revoke.type = 'button'
+        revoke.textContent = 'Geri Çek'
+        revoke.addEventListener('click', () => {
+          const result = controller.revoke(
+            record.item.poolItemId,
+          )
+          status.textContent = result.message
+          refresh()
+        })
+        article.appendChild(revoke)
+      }
+
+      history.appendChild(article)
+    }
+  }
+
+  function refresh() {
+    const view = controller.getViewModel()
+    renderStudents(view.students)
+    renderHistory(view.publications)
+    students.hidden = !selected.checked
+    return view
+  }
+
+  function syncAudience() {
+    students.hidden = !selected.checked
+  }
+
+  all.addEventListener('change', syncAudience)
+  selected.addEventListener('change', syncAudience)
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+
+    const result = controller.publish({
+      title: title.control.value,
+      shortDescription:
+        shortDescription.control.value,
+      detailText: detail.control.value,
+      audienceMode:
+        selected.checked ? 'SELECTED' : 'ALL',
+      selectedStudentIds:
+        selected.checked ? checkedStudentIds() : [],
+    })
+
+    status.textContent = result.message
+    if (result.ok) refresh()
+  })
+
+  refresh()
+
+  return Object.freeze({
+    refresh,
+    destroy() {
+      section.remove()
+    },
+  })
 }
 ```
 
-Do not include:
+Do not include any module-level `DOMContentLoaded`, implicit `document` initialization or automatic call to `mountTeacherPoolPublishingUi`.
 
-```js
-if (typeof document !== 'undefined') ...
-DOMContentLoaded
-initTeacherPoolPublishingUi(document)
+Create `src/teacherPoolPublishingUi.css` with only `.teacher-pool-publishing...` selectors. The minimum styles are:
+
+```css
+.teacher-pool-publishing {
+  display: grid;
+  gap: 1rem;
+}
+
+.teacher-pool-publishing__form,
+.teacher-pool-publishing__history {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.teacher-pool-publishing__field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.teacher-pool-publishing__students[hidden] {
+  display: none;
+}
 ```
 
-Those auto-mount patterns are forbidden in TD-03.
-
-Create `src/teacherPoolPublishingUi.css` with selectors scoped under `.teacher-pool-publishing`; do not change global shell/layout selectors.
+Do not change global shell/layout selectors.
 
 - [ ] **Step 8: Run controller/UI tests and verify GREEN**
 
