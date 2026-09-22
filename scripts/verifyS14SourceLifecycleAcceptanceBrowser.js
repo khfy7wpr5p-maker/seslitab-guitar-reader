@@ -289,7 +289,6 @@ const chromeArgs = [
   '--disable-dev-shm-usage',
   '--autoplay-policy=no-user-gesture-required',
   '--window-size=390,844',
-  '--virtual-time-budget=210000',
   '--dump-dom',
   targetUrl,
 ]
