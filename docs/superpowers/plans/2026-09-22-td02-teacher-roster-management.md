@@ -1121,7 +1121,7 @@ No spec requirement is assigned to product code outside TD-02.
 
 ### Placeholder scan
 
-The implementation tasks contain no unresolved `TBD`, `TODO`, implementation placeholder or unnamed API. Future verification values are not hard-coded; the PR step requires copying fresh evidence captured by the immediately preceding verification steps.
+The implementation tasks contain no unresolved implementation marker, placeholder or unnamed API. Future verification values are not hard-coded; the PR step requires copying fresh evidence captured by the immediately preceding verification steps.
 
 ### Type consistency
 
