@@ -1793,6 +1793,49 @@ test('TD-03 UI does not refresh success state for failed publish', () => {
   )
 })
 
+test('TD-03 UI does not refresh history after failed revoke acknowledgement', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  let viewCalls = 0
+  const fake = controller()
+  const originalGetViewModel =
+    fake.api.getViewModel
+
+  fake.api.getViewModel = () => {
+    viewCalls += 1
+    return originalGetViewModel()
+  }
+  fake.api.revoke = (id) => {
+    fake.calls.revoke.push(id)
+    return Object.freeze({
+      ok: false,
+      record: null,
+      message: 'Havuz işlemi doğrulanamadı.',
+    })
+  }
+
+  mountTeacherPoolPublishingUi({
+    root,
+    host,
+    controller: fake.api,
+  })
+  assert.equal(viewCalls, 1)
+
+  const revokeButton =
+    host.querySelectorAll('button')
+      .find((node) => node.textContent === 'Geri Çek')
+  revokeButton.dispatchEvent({ type: 'click' })
+
+  assert.equal(viewCalls, 1)
+  assert.deepEqual(fake.calls.revoke, ['pool-a'])
+  assert.equal(
+    host.querySelector(
+      '.teacher-pool-publishing__status',
+    ).textContent,
+    'Havuz işlemi doğrulanamadı.',
+  )
+})
+
 test('TD-03 UI renders Geri Çek only for active history and destroy removes only its section', () => {
   const root = createFakeDocument()
   const host = root.createElement('div')
@@ -2201,7 +2244,7 @@ export function mountTeacherPoolPublishingUi({
             record.item.poolItemId,
           )
           status.textContent = result.message
-          refresh()
+          if (result.ok) refresh()
         })
         article.appendChild(revoke)
       }
