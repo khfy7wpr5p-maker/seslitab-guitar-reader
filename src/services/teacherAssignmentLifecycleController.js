@@ -11,7 +11,7 @@ function teacherMessage(error) {
     return 'Bu işlem mevcut ödev durumunda yapılamaz.'
   }
   if (
-    /acknowledgement|lookup mismatch|identity-mismatch|identity mismatch/i.test(
+    /acknowledgement|lookup[- ]mismatch|identity[- ]mismatch|lifecycle assignment mismatch/i.test(
       text,
     )
   ) {
