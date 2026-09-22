@@ -330,7 +330,7 @@ export function createTeacherScoreAssignmentService({
         'assignedAt',
       )
 
-    const planned = studentIds.map(
+    const bindings = studentIds.map(
       (studentId, index) => {
         const readinessIds =
           normalizeReadinessIds(
@@ -340,45 +340,61 @@ export function createTeacherScoreAssignmentService({
             }),
           )
 
-        const sourceRef =
-          createScoreAssignmentSourceBinding({
-            workspace: input.workspace,
-            sourceNotes: input.sourceNotes,
-            studentId,
-            authorizationId:
-              readinessIds.authorizationId,
-            rootQualityEvidenceId:
-              readinessIds.rootQualityEvidenceId,
-            revalidationEvidenceId:
-              readinessIds.revalidationEvidenceId,
-            createdAt: assignedAt,
-          })
-
-        const lookup = Object.freeze({
+        return Object.freeze({
           studentId,
-          sourceId: sourceRef.sourceId,
-          revisionId:
-            sourceRef.revisionId,
+          index,
+          sourceRef:
+            createScoreAssignmentSourceBinding({
+              workspace: input.workspace,
+              sourceNotes:
+                input.sourceNotes,
+              studentId,
+              authorizationId:
+                readinessIds.authorizationId,
+              rootQualityEvidenceId:
+                readinessIds.rootQualityEvidenceId,
+              revalidationEvidenceId:
+                readinessIds.revalidationEvidenceId,
+              createdAt: assignedAt,
+            }),
         })
-        const existing =
-          trustedRepository
-            .findExactScoreAssignment(
-              lookup,
-            )
+      },
+    )
 
-        if (
-          existing !== null &&
-          existing !== undefined
-        ) {
-          assertExactLookup(
-            existing,
+    for (const binding of bindings) {
+      const lookup = Object.freeze({
+        studentId: binding.studentId,
+        sourceId:
+          binding.sourceRef.sourceId,
+        revisionId:
+          binding.sourceRef.revisionId,
+      })
+      const existing =
+        trustedRepository
+          .findExactScoreAssignment(
             lookup,
           )
-          throw new Error(
-            `teacher-score-assignment-already-prepared:${studentId}`,
-          )
-        }
 
+      if (
+        existing !== null &&
+        existing !== undefined
+      ) {
+        assertExactLookup(
+          existing,
+          lookup,
+        )
+        throw new Error(
+          `teacher-score-assignment-already-prepared:${binding.studentId}`,
+        )
+      }
+    }
+
+    const planned = bindings.map(
+      ({
+        studentId,
+        index,
+        sourceRef,
+      }) => {
         const assignmentId =
           normalizeRequiredId(
             createAssignmentId({
