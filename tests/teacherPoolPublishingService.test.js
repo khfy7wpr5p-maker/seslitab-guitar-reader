@@ -402,3 +402,45 @@ test('TD-03 malformed injected ID/time fails without retrying generators', () =>
   )
   assert.equal(timeCalls, 1)
 })
+
+
+test('TD-03 publish input rejects non-plain, accessor and symbol-backed fields', () => {
+  const publishing = service()
+  const base = {
+    title: 'Duyuru',
+    shortDescription: 'Kısa',
+    detailText: '',
+    audienceMode: 'ALL',
+    selectedStudentIds: [],
+  }
+
+  const inherited = Object.assign(
+    Object.create({ inheritedAuthority: true }),
+    base,
+  )
+  assert.throws(
+    () => publishing.publishPoolItem(inherited),
+    /input|plain|unsupported/i,
+  )
+
+  const accessor = { ...base }
+  Object.defineProperty(accessor, 'title', {
+    enumerable: true,
+    get() {
+      return 'Duyuru'
+    },
+  })
+  assert.throws(
+    () => publishing.publishPoolItem(accessor),
+    /input|plain|unsupported|enumerable/i,
+  )
+
+  const symbolBacked = {
+    ...base,
+    [Symbol('hidden-authority')]: 'forged',
+  }
+  assert.throws(
+    () => publishing.publishPoolItem(symbolBacked),
+    /input|unsupported/i,
+  )
+})
