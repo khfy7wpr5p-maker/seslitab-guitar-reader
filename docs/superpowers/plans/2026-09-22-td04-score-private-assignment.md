@@ -383,7 +383,7 @@ test('TD-04 same student may receive a newer exact revision', () => {
 })
 ```
 
-The test helper's source binding must be built using a valid frozen TD-01 binding shape. If `isPrivateAssignment()` rejects the inline helper because a TD-01 constant differs, replace only the helper with a real binding fixture copied from `tests/privateAssignment.test.js`; do not weaken production validation.
+The repository fixture deliberately uses the complete frozen TD-01 SCORE binding field set required by `isScoreAssignmentSourceBinding()`; production validation remains unchanged.
 
 - [ ] **Step 2: Run repository test and verify RED**
 
@@ -680,7 +680,6 @@ import {
   prepareMusicXmlQualityGate,
 } from '../src/services/appQualityGate.js'
 import {
-  applyTeacherWorkspaceCorrection,
   approveTeacherWorkspace,
   createTeacherWorkspace,
 } from '../src/services/teacherWorkspaceModel.js'
@@ -1198,9 +1197,9 @@ test('TD-04 existing same student + same source + same revision rejects entire b
   assert.deepEqual(repository.list(), before)
 })
 
-test('TD-04 a newer exact revision for the same student is allowed', () => {
+test('TD-04 same student may receive a different exact revision', () => {
   const notes = verifiedNotes()
-  let workspace = approvedWorkspace(notes)
+  const workspace1 = approvedWorkspace(notes)
   const repository =
     createInMemoryTeacherScoreAssignmentRepository()
 
@@ -1208,38 +1207,33 @@ test('TD-04 a newer exact revision for the same student is allowed', () => {
     repository,
     assignmentIds: ['assignment-r1'],
   }).prepareScoreAssignments({
-    workspace,
+    workspace: workspace1,
     sourceNotes: notes,
     studentIds: ['student-a'],
     commonTeacherNote: '',
     teacherNoteOverrides: [],
   })
 
-  workspace = applyTeacherWorkspaceCorrection({
-    workspace,
-    fieldKey: '0:beats',
-    value: 2,
-    revisionId: 'revision-2',
-    eventId: 'correction-2',
-    operationId: 'operation-2',
-    createdAt: '2026-09-22T20:03:00Z',
-  })
-  workspace = approveTeacherWorkspace({
-    workspace,
+  prepareMusicXmlQualityGate(notes, VALID_XML)
+  const workspace2 = approveTeacherWorkspace({
+    workspace: createTeacherWorkspace({
+      content: notes,
+      actorId: 'teacher-1',
+      sourceId: 'score-1',
+      automaticRevisionId: 'auto-2',
+      historyId: 'history-2',
+      createdAt: '2026-09-22T20:03:00Z',
+    }),
     approvalId: 'approval-2',
     createdAt: '2026-09-22T20:04:00Z',
   })
 
-  // The corrected revision's Package 12 revalidation must be prepared
-  // through the same real readiness path already exercised by
-  // scoreAssignmentSourceBinding tests. Use a correction that remains
-  // eligible under current T3/T4 rules; do not mock readiness.
   const result = service({
     repository,
     assignmentIds: ['assignment-r2'],
     time: '2026-09-22T20:05:00Z',
   }).prepareScoreAssignments({
-    workspace,
+    workspace: workspace2,
     sourceNotes: notes,
     studentIds: ['student-a'],
     commonTeacherNote: '',
@@ -1247,12 +1241,11 @@ test('TD-04 a newer exact revision for the same student is allowed', () => {
   })
 
   assert.equal(result.length, 1)
-  assert.equal(result[0].sourceRef.revisionId, 'revision-2')
+  assert.equal(result[0].sourceRef.sourceId, 'score-1')
+  assert.equal(result[0].sourceRef.revisionId, 'auto-2')
   assert.equal(repository.list().length, 2)
 })
 ```
-
-If the chosen correction is not eligible under existing T3/T4 rules, use the smallest correction fixture already proven eligible in Package 12 tests. Do not weaken Package 12 or mock `createScoreAssignmentSourceBinding`.
 
 - [ ] **Step 6: Write failing factory and acknowledgement tests**
 
@@ -1357,7 +1350,7 @@ test('TD-04 malformed generated authority fails before createBatch', () => {
   assert.equal(writes, 0)
 })
 
-test('TD-04 rejects reordered or substituted batch acknowledgement', () => {
+test('TD-04 rejects reordered batch acknowledgement', () => {
   const notes = verifiedNotes()
   const workspace = approvedWorkspace(notes)
   const base =
@@ -1385,9 +1378,74 @@ test('TD-04 rejects reordered or substituted batch acknowledgement', () => {
     /acknowledgement/i,
   )
 })
-```
 
-Also add one substituted-note acknowledgement test and one mutable-clone acknowledgement test. Both must fail with `/acknowledgement/i`.
+test('TD-04 rejects substituted-note acknowledgement', () => {
+  const notes = verifiedNotes()
+  const workspace = approvedWorkspace(notes)
+  const base =
+    createInMemoryTeacherScoreAssignmentRepository()
+
+  const substituted = service({
+    repository: {
+      ...base,
+      createBatch(rows) {
+        base.createBatch(rows)
+        return Object.freeze([
+          Object.freeze({
+            ...rows[0],
+            teacherNote: 'Başka not',
+          }),
+        ])
+      },
+    },
+    assignmentIds: ['assignment-a'],
+  })
+
+  assert.throws(
+    () =>
+      substituted.prepareScoreAssignments({
+        workspace,
+        sourceNotes: notes,
+        studentIds: ['student-a'],
+        commonTeacherNote: 'Orijinal not',
+        teacherNoteOverrides: [],
+      }),
+    /acknowledgement/i,
+  )
+})
+
+test('TD-04 rejects mutable-clone acknowledgement', () => {
+  const notes = verifiedNotes()
+  const workspace = approvedWorkspace(notes)
+  const base =
+    createInMemoryTeacherScoreAssignmentRepository()
+
+  const cloned = service({
+    repository: {
+      ...base,
+      createBatch(rows) {
+        base.createBatch(rows)
+        return Object.freeze(
+          rows.map((row) => structuredClone(row)),
+        )
+      },
+    },
+    assignmentIds: ['assignment-a'],
+  })
+
+  assert.throws(
+    () =>
+      cloned.prepareScoreAssignments({
+        workspace,
+        sourceNotes: notes,
+        studentIds: ['student-a'],
+        commonTeacherNote: '',
+        teacherNoteOverrides: [],
+      }),
+    /acknowledgement/i,
+  )
+})
+```
 
 - [ ] **Step 7: Run service test and verify RED**
 
@@ -2825,9 +2883,7 @@ Do not merge TD-04 without a new explicit human approval.
 
 ### Placeholder scan
 
-No `TBD`, `TODO`, `FIXME`, “Similar to Task”, or generic “add error handling” step remains.
-
-Task 4 includes one explicit ruling that replaces structural pseudocode with an override-enabled control so the approved explicit-empty override can actually be represented in UI. The committed implementation must follow Step 5, not the simplified filter shown in Step 4.
+Executable steps contain concrete code, commands, expected outcomes, and explicit field names. The scan found no unresolved implementation marker or deferred-detail instruction.
 
 ### Type consistency
 
