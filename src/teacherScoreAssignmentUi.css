@@ -1,0 +1,16 @@
+.teacher-score-assignment {
+  display: grid;
+  gap: 1rem;
+}
+
+.teacher-score-assignment__form,
+.teacher-score-assignment__students,
+.teacher-score-assignment__student,
+.teacher-score-assignment__common-note {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.teacher-score-assignment [hidden] {
+  display: none;
+}
