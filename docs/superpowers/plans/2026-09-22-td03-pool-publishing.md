@@ -61,6 +61,7 @@
 - `tests/teacherPoolPublishingService.test.js`
 - `tests/teacherPoolPublishingController.test.js`
 - `tests/teacherPoolPublishingUi.test.js`
+- `tests/support/fakeTeacherPoolDom.js`
 - `tests/teacherPoolPublishingSecurity.test.js`
 - `docs/teacher-delivery-td03-pool-publishing.md`
 
@@ -1231,6 +1232,7 @@ git commit -m "feat: add TD-03 Pool publishing service"
 - Create: `src/teacherPoolPublishingUi.css`
 - Create: `tests/teacherPoolPublishingController.test.js`
 - Create: `tests/teacherPoolPublishingUi.test.js`
+- Create: `tests/support/fakeTeacherPoolDom.js`
 - Do not modify: `main.js`, `src/appShell.js`, `index.html`
 
 **Interfaces:**
@@ -1252,39 +1254,171 @@ git commit -m "feat: add TD-03 Pool publishing service"
 
 - [ ] **Step 1: Write failing controller tests**
 
-Create `tests/teacherPoolPublishingController.test.js` covering:
+Create `tests/teacherPoolPublishingController.test.js`:
 
 ```js
-test('TD-03 controller view model lists active roster presentation rows and Pool history', () => {
-  const controller = createTeacherPoolPublishingController({
-    publishingService,
-    rosterService,
-  })
+import assert from 'node:assert/strict'
+import test from 'node:test'
 
-  const view = controller.getViewModel()
+import {
+  createTeacherPoolPublishingController,
+} from '../src/services/teacherPoolPublishingController.js'
+
+function student(studentId, displayNameOrNickname) {
+  return Object.freeze({
+    schemaVersion: 1,
+    studentId,
+    displayNameOrNickname,
+    active: true,
+  })
+}
+
+function record(id, revokedAt = null) {
+  return Object.freeze({
+    schemaVersion: 1,
+    item: Object.freeze({
+      schemaVersion: 1,
+      poolItemId: id,
+      title: `Duyuru ${id}`,
+      shortDescription: 'Kısa',
+      detailText: '',
+      publishedAt: '2026-09-22T18:00:00Z',
+      audienceMode: 'ALL',
+      recipientStudentIds: Object.freeze([]),
+      revokedAt: null,
+    }),
+    revokedAt,
+  })
+}
+
+function controller({
+  students = [
+    student('student-a', 'Deniz'),
+    student('student-c', 'Ada'),
+  ],
+  publications = [record('pool-a')],
+  publishResult = record('pool-new'),
+  publishError = null,
+  revokeResult = record(
+    'pool-a',
+    '2026-09-22T19:00:00Z',
+  ),
+  revokeError = null,
+} = {}) {
+  return createTeacherPoolPublishingController({
+    rosterService: {
+      listStudents({ includeInactive }) {
+        assert.equal(includeInactive, false)
+        return Object.freeze(students)
+      },
+    },
+    publishingService: {
+      listPoolPublications() {
+        return Object.freeze(publications)
+      },
+      publishPoolItem() {
+        if (publishError) throw publishError
+        return publishResult
+      },
+      revokePoolPublication() {
+        if (revokeError) throw revokeError
+        return revokeResult
+      },
+    },
+  })
+}
+
+test('TD-03 controller view model lists active roster presentation rows and Pool history', () => {
+  const value = controller().getViewModel()
 
   assert.deepEqual(
-    view.students.map((student) => [
-      student.studentId,
-      student.displayNameOrNickname,
+    value.students.map((row) => [
+      row.studentId,
+      row.displayNameOrNickname,
     ]),
     [
       ['student-a', 'Deniz'],
       ['student-c', 'Ada'],
     ],
   )
-  assert.equal(Object.isFrozen(view.students), true)
-  assert.equal(Object.isFrozen(view.publications), true)
+  assert.equal(Object.isFrozen(value), true)
+  assert.equal(Object.isFrozen(value.students), true)
+  assert.equal(Object.isFrozen(value.publications), true)
+})
+
+test('TD-03 duplicate display names remain separate stable identities', () => {
+  const value = controller({
+    students: [
+      student('student-a', 'Aynı Ad'),
+      student('student-b', 'Aynı Ad'),
+    ],
+  }).getViewModel()
+
+  assert.deepEqual(
+    value.students.map((row) => row.studentId),
+    ['student-a', 'student-b'],
+  )
+})
+
+test('TD-03 controller reports publish success only after service success', () => {
+  const result = controller().publish({
+    title: 'Duyuru',
+    shortDescription: 'Kısa',
+    detailText: '',
+    audienceMode: 'ALL',
+    selectedStudentIds: [],
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.message, 'Havuza gönderildi.')
+  assert.equal(result.record.item.poolItemId, 'pool-new')
+})
+
+test('TD-03 controller maps service failure to bounded teacher message', () => {
+  const result = controller({
+    publishError: new Error(
+      'teacher Pool repository acknowledgement mismatch token=secret',
+    ),
+  }).publish({
+    title: 'Duyuru',
+    shortDescription: 'Kısa',
+    detailText: '',
+    audienceMode: 'ALL',
+    selectedStudentIds: [],
+  })
+
+  assert.deepEqual(result, {
+    ok: false,
+    record: null,
+    message: 'Havuz işlemi doğrulanamadı.',
+  })
+  assert.equal(
+    JSON.stringify(result).includes('secret'),
+    false,
+  )
+})
+
+test('TD-03 controller maps revoke success and already-revoked failure', () => {
+  const success = controller().revoke('pool-a')
+  assert.equal(success.ok, true)
+  assert.equal(
+    success.message,
+    'Havuz yayını geri çekildi.',
+  )
+
+  const failure = controller({
+    revokeError: new Error(
+      'teacher-pool-publication-already-revoked:pool-a',
+    ),
+  }).revoke('pool-a')
+
+  assert.deepEqual(failure, {
+    ok: false,
+    record: null,
+    message: 'Bu Havuz yayını zaten geri çekilmiş.',
+  })
 })
 ```
-
-Also pin:
-
-- duplicate display names remain separate by stable ID;
-- `publish(input)` returns `{ ok: true, record, message: 'Havuza gönderildi.' }` only after service success;
-- service exception returns `{ ok: false, record: null, message: <bounded teacher message> }`;
-- revoke success returns `'Havuz yayını geri çekildi.'`;
-- controller never exposes provider/error stack/token fields.
 
 - [ ] **Step 2: Verify controller RED**
 
@@ -1422,21 +1556,287 @@ Expected: PASS.
 
 - [ ] **Step 5: Write failing explicitly-mounted UI tests**
 
-Create `tests/teacherPoolPublishingUi.test.js` using the repository's existing lightweight fake-DOM conventions rather than adding jsdom.
+Create `tests/teacherPoolPublishingUi.test.js` with a small fake DOM that implements only the methods used by TD-03: `createElement`, `createTextNode`, `appendChild`, `replaceChildren`, `remove`, `setAttribute`, `addEventListener`, `querySelectorAll`, `dataset`, `hidden`, `textContent`, `value`, `checked`, `name`, `type`, and `id`.
 
-Pin:
+The behavioral tests must be:
 
-- mount creates one section titled `Havuza Gönder`;
-- form has title, short description, optional detail;
-- audience controls expose `Tüm öğrenciler` and `Seçili öğrenciler`;
-- SELECTED reveals stable-ID checkboxes rendered from controller students;
-- duplicate display names have distinct checkbox values/IDs;
-- submit calls controller with exact selected stable IDs;
-- UI shows success only from `result.ok === true`;
-- active record has `Geri Çek`;
-- revoked record has no active revoke action;
-- destroy removes only the mounted TD-03 surface;
-- no auto-init side effect occurs merely by importing the module.
+```js
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import {
+  mountTeacherPoolPublishingUi,
+} from '../src/teacherPoolPublishingUi.js'
+import {
+  createFakeDocument,
+} from './support/fakeTeacherPoolDom.js'
+
+function activeRecord(id = 'pool-a') {
+  return Object.freeze({
+    schemaVersion: 1,
+    item: Object.freeze({
+      schemaVersion: 1,
+      poolItemId: id,
+      title: 'Etüt duyurusu',
+      shortDescription: 'Kısa',
+      detailText: '',
+      publishedAt: '2026-09-22T18:00:00Z',
+      audienceMode: 'ALL',
+      recipientStudentIds: Object.freeze([]),
+      revokedAt: null,
+    }),
+    revokedAt: null,
+  })
+}
+
+function controller({
+  students = Object.freeze([
+    Object.freeze({
+      studentId: 'student-a',
+      displayNameOrNickname: 'Aynı Ad',
+    }),
+    Object.freeze({
+      studentId: 'student-b',
+      displayNameOrNickname: 'Aynı Ad',
+    }),
+  ]),
+  publications = Object.freeze([
+    activeRecord(),
+  ]),
+  publishResult = Object.freeze({
+    ok: true,
+    record: activeRecord('pool-new'),
+    message: 'Havuza gönderildi.',
+  }),
+} = {}) {
+  const calls = {
+    publish: [],
+    revoke: [],
+  }
+
+  return {
+    calls,
+    api: {
+      getViewModel() {
+        return Object.freeze({
+          students,
+          publications,
+        })
+      },
+      publish(input) {
+        calls.publish.push(input)
+        return publishResult
+      },
+      revoke(id) {
+        calls.revoke.push(id)
+        return Object.freeze({
+          ok: true,
+          record: Object.freeze({
+            ...activeRecord(id),
+            revokedAt: '2026-09-22T19:00:00Z',
+          }),
+          message: 'Havuz yayını geri çekildi.',
+        })
+      },
+    },
+  }
+}
+
+test('TD-03 UI mounts Havuza Gönder without auto-mounting elsewhere', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const fake = controller()
+
+  const handle = mountTeacherPoolPublishingUi({
+    root,
+    host,
+    controller: fake.api,
+  })
+
+  assert.equal(host.children.length, 1)
+  assert.equal(
+    host.children[0].querySelector('h2').textContent,
+    'Havuza Gönder',
+  )
+  assert.equal(typeof handle.refresh, 'function')
+  assert.equal(typeof handle.destroy, 'function')
+})
+
+test('TD-03 UI keeps duplicate names distinct by stable checkbox ID/value', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const fake = controller()
+
+  mountTeacherPoolPublishingUi({
+    root,
+    host,
+    controller: fake.api,
+  })
+
+  const checkboxes =
+    host.querySelectorAll(
+      'input[name="selectedStudentIds"]',
+    )
+
+  assert.deepEqual(
+    checkboxes.map((node) => [node.id, node.value]),
+    [
+      [
+        'teacher-pool-student-student-a',
+        'student-a',
+      ],
+      [
+        'teacher-pool-student-student-b',
+        'student-b',
+      ],
+    ],
+  )
+})
+
+test('TD-03 UI submits SELECTED stable IDs and shows acknowledged success', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const fake = controller()
+
+  mountTeacherPoolPublishingUi({
+    root,
+    host,
+    controller: fake.api,
+  })
+
+  const title =
+    host.querySelector('input[name="title"]')
+  const shortDescription =
+    host.querySelector(
+      'input[name="shortDescription"]',
+    )
+  const detail =
+    host.querySelector('textarea[name="detailText"]')
+  const selected =
+    host.querySelector(
+      'input[value="SELECTED"]',
+    )
+  const checkboxes =
+    host.querySelectorAll(
+      'input[name="selectedStudentIds"]',
+    )
+
+  title.value = 'Yeni çalışma'
+  shortDescription.value = 'Bu hafta'
+  detail.value = 'Detay'
+  selected.checked = true
+  selected.dispatchEvent({ type: 'change' })
+  checkboxes[1].checked = true
+
+  host
+    .querySelector('form')
+    .dispatchEvent({
+      type: 'submit',
+      preventDefault() {},
+    })
+
+  assert.deepEqual(fake.calls.publish, [{
+    title: 'Yeni çalışma',
+    shortDescription: 'Bu hafta',
+    detailText: 'Detay',
+    audienceMode: 'SELECTED',
+    selectedStudentIds: ['student-b'],
+  }])
+
+  assert.equal(
+    host.querySelector(
+      '.teacher-pool-publishing__status',
+    ).textContent,
+    'Havuza gönderildi.',
+  )
+})
+
+test('TD-03 UI does not refresh success state for failed publish', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  let viewCalls = 0
+  const fake = controller({
+    publishResult: Object.freeze({
+      ok: false,
+      record: null,
+      message: 'Havuz işlemi doğrulanamadı.',
+    }),
+  })
+  const originalGetViewModel =
+    fake.api.getViewModel
+
+  fake.api.getViewModel = () => {
+    viewCalls += 1
+    return originalGetViewModel()
+  }
+
+  mountTeacherPoolPublishingUi({
+    root,
+    host,
+    controller: fake.api,
+  })
+  assert.equal(viewCalls, 1)
+
+  host
+    .querySelector('form')
+    .dispatchEvent({
+      type: 'submit',
+      preventDefault() {},
+    })
+
+  assert.equal(viewCalls, 1)
+  assert.equal(
+    host.querySelector(
+      '.teacher-pool-publishing__status',
+    ).textContent,
+    'Havuz işlemi doğrulanamadı.',
+  )
+})
+
+test('TD-03 UI renders Geri Çek only for active history and destroy removes only its section', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const sentinel = root.createElement('p')
+  sentinel.textContent = 'koru'
+  host.appendChild(sentinel)
+
+  const revoked = Object.freeze({
+    ...activeRecord('pool-old'),
+    revokedAt: '2026-09-22T17:00:00Z',
+  })
+  const fake = controller({
+    publications: Object.freeze([
+      activeRecord('pool-a'),
+      revoked,
+    ]),
+  })
+
+  const handle = mountTeacherPoolPublishingUi({
+    root,
+    host,
+    controller: fake.api,
+  })
+
+  assert.equal(
+    host.querySelectorAll('button')
+      .filter((node) => node.textContent === 'Geri Çek')
+      .length,
+    1,
+  )
+
+  handle.destroy()
+
+  assert.equal(host.children.includes(sentinel), true)
+  assert.equal(
+    host.querySelector(
+      '.teacher-pool-publishing',
+    ),
+    null,
+  )
+})
+```
+
+Create `tests/support/fakeTeacherPoolDom.js` in the same RED commit. Its selector support is deliberately bounded to the selectors shown above; do not add a DOM library dependency.
 
 - [ ] **Step 6: Verify UI RED**
 
@@ -1921,6 +2321,7 @@ tests/teacherPoolRepository.test.js
 tests/teacherPoolPublishingService.test.js
 tests/teacherPoolPublishingController.test.js
 tests/teacherPoolPublishingUi.test.js
+tests/support/fakeTeacherPoolDom.js
 tests/teacherPoolPublishingSecurity.test.js
 ```
 
