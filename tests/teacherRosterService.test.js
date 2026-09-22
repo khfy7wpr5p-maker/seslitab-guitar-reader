@@ -200,3 +200,30 @@ test('TD-02 service rejects duplicate stable IDs returned by a custom adapter', 
     /duplicate.*studentId/i,
   )
 })
+
+
+test('TD-02 target preflight rejects duplicate authority returned by a custom adapter', () => {
+  const active = entry('student-a', 'Deniz', true)
+  const inactive = entry('student-a', 'Deniz Eski', false)
+
+  const roster = createTeacherRosterService({
+    repository: {
+      list() {
+        return [active, inactive]
+      },
+      getByStudentId() {
+        return active
+      },
+    },
+  })
+
+  assert.throws(
+    () => roster.requireActiveStudent('student-a'),
+    /duplicate.*studentId/i,
+  )
+
+  assert.throws(
+    () => roster.preflightActiveStudentIds(['student-a']),
+    /duplicate.*studentId/i,
+  )
+})
