@@ -960,3 +960,71 @@ test('TD-04 rejects mutable-clone acknowledgement', () => {
     /acknowledgement/i,
   )
 })
+
+
+test('TD-04 completes exact binding and duplicate preflight before generating any assignment IDs', () => {
+  const notes = verifiedNotes()
+  const workspace = approvedWorkspace(notes)
+  const repository =
+    createInMemoryTeacherScoreAssignmentRepository()
+
+  prepare(
+    service({
+      repository,
+      assignmentIds: ['assignment-existing'],
+    }),
+    workspace,
+    notes,
+    {
+      studentIds: ['student-a'],
+    },
+  )
+
+  const assignmentCalls = []
+  const readinessCalls = []
+  const producer =
+    createTeacherScoreAssignmentService({
+      repository,
+      rosterService: roster(),
+      createAssignmentId(input) {
+        assignmentCalls.push(input.studentId)
+        return `assignment-${input.studentId}`
+      },
+      createReadinessIds(input) {
+        readinessCalls.push(input.studentId)
+        return {
+          authorizationId:
+            `auth-second-${input.studentId}`,
+          rootQualityEvidenceId:
+            `quality-second-${input.studentId}`,
+          revalidationEvidenceId:
+            `revalidation-second-${input.studentId}`,
+        }
+      },
+      now() {
+        return '2026-09-22T20:10:00Z'
+      },
+    })
+
+  assert.throws(
+    () =>
+      prepare(
+        producer,
+        workspace,
+        notes,
+        {
+          studentIds: [
+            'student-b',
+            'student-a',
+          ],
+        },
+      ),
+    /already-prepared/i,
+  )
+
+  assert.deepEqual(
+    readinessCalls,
+    ['student-b', 'student-a'],
+  )
+  assert.deepEqual(assignmentCalls, [])
+})
