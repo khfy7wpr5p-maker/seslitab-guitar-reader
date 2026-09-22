@@ -1056,15 +1056,18 @@ Create a draft PR to `main` with body:
 - no cross-repository write.
 
 ### Verification
-- focused TD-02 tests: <insert exact current result>
-- full npm test: <insert exact current total/pass/fail>
-- npm run build: <insert exact current result>
-- git diff --check: <insert exact current result>
+
+Before creating the PR, copy the exact fresh evidence already captured in Steps 2–6 into this section:
+
+- the focused TD-02 test command and its exact pass/fail count;
+- the full `npm test` total/pass/fail count;
+- the exact `npm run build` result;
+- the exact `git diff --check` result.
+
+Do not create the PR with missing, estimated or historical verification evidence.
 
 Human stop point: do not merge and do not start TD-03 without explicit approval.
 ```
-
-Replace every evidence placeholder with the exact fresh result before PR creation.
 
 - [ ] **Step 9: Verify exact PR-head CI**
 
@@ -1118,7 +1121,7 @@ No spec requirement is assigned to product code outside TD-02.
 
 ### Placeholder scan
 
-The implementation tasks contain no unresolved `TBD`, `TODO`, implementation placeholder or unnamed API. The angle-bracket evidence markers appear only in the PR-body template and are explicitly required to be replaced with fresh verification output before PR creation.
+The implementation tasks contain no unresolved `TBD`, `TODO`, implementation placeholder or unnamed API. Future verification values are not hard-coded; the PR step requires copying fresh evidence captured by the immediately preceding verification steps.
 
 ### Type consistency
 
