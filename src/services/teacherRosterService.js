@@ -79,7 +79,12 @@ export function createTeacherRosterService({ repository } = {}) {
       studentId,
       'studentId',
     )
-    const row = getStudent(normalizedStudentId)
+    const entries = validatedRosterList(trustedRepository)
+    const row =
+      entries.find(
+        (candidate) =>
+          candidate.studentId === normalizedStudentId,
+      ) ?? null
 
     if (row === null) {
       throw new Error(
