@@ -53,6 +53,11 @@ export function createTeacherRosterService({ repository } = {}) {
       studentId,
       'studentId',
     )
+
+    // Validate the complete authority snapshot before accepting any
+    // point lookup so a custom adapter cannot hide duplicate identities.
+    validatedRosterList(trustedRepository)
+
     const candidate =
       trustedRepository.getByStudentId(normalizedStudentId)
 
@@ -147,9 +152,30 @@ export function createTeacherRosterService({ repository } = {}) {
         )
       }
 
-      const entries = normalizedIds.map((studentId) =>
-        requireActiveStudent(studentId),
+      const rosterSnapshot = validatedRosterList(
+        trustedRepository,
       )
+      const byStudentId = new Map(
+        rosterSnapshot.map((row) => [row.studentId, row]),
+      )
+
+      const entries = normalizedIds.map((studentId) => {
+        const row = byStudentId.get(studentId) ?? null
+
+        if (row === null) {
+          throw new Error(
+            `teacher-roster-student-not-found:${studentId}`,
+          )
+        }
+
+        if (row.active !== true) {
+          throw new Error(
+            `teacher-roster-student-inactive:${studentId}`,
+          )
+        }
+
+        return row
+      })
 
       return Object.freeze(entries)
     },
