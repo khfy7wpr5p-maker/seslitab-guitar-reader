@@ -176,6 +176,20 @@ const proofHtml = `<!doctype html>
 
       doc.getElementById('smoosic-tab-btn').click();
       await waitFor(() => editorFrame.hidden === false, 'A restored after B failure');
+      const liveEditorDocAfterFailure = editorFrame.contentDocument;
+      body.setAttribute('data-s14-editor-doc-same-after-b', String(liveEditorDocAfterFailure === editorDoc));
+      body.setAttribute(
+        'data-s14-cached-status-after-b',
+        String(editorDoc?.getElementById('poc-status')?.textContent || '').replace(/["<>]/g, ''),
+      );
+      body.setAttribute(
+        'data-s14-live-status-after-b',
+        String(liveEditorDocAfterFailure?.getElementById('poc-status')?.textContent || '').replace(/["<>]/g, ''),
+      );
+      body.setAttribute(
+        'data-s14-host-status-after-b',
+        String(doc.getElementById('smoosic-editor-host-status')?.textContent || '').replace(/["<>]/g, ''),
+      );
       const afterFailure = await waitEditorLoaded(editorDoc, 'source-a.musicxml', 'MusicXML A restored after B failure');
       if (afterFailure.includes('source-b-invalid.musicxml')) fail('MusicXML B failure was promoted as a successful source');
 
