@@ -163,6 +163,13 @@ const proofHtml = `<!doctype html>
       const editorFrame = await waitFor(() => doc.getElementById('smoosic-editor-frame'), 'editor iframe');
       const editorDoc = await waitFor(() => editorFrame.contentDocument?.getElementById('poc-status') ? editorFrame.contentDocument : null, 'editor document');
       await waitEditorLoaded(editorDoc, 'source-a.musicxml', 'MusicXML A handoff');
+      await waitFor(() => {
+        const hostStatus = doc.getElementById('smoosic-editor-host-status');
+        return hostStatus
+          && hostStatus.hidden === true
+          && String(hostStatus.textContent || '').trim() === ''
+          && hostStatus.dataset.kind === 'ready';
+      }, 'MusicXML A host sync settled');
 
       doc.getElementById('musicxml-tab-btn').click();
       assignMusicXml(win, doc, invalidMusicXmlB, 'source-b-invalid.musicxml');
