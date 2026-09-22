@@ -1783,10 +1783,10 @@ PR body must state:
 - CHORD_BOARD creation remains fail-closed until TD-07.
 
 ### Verification
-- focused TD-01 tests: <record exact current result>
-- full npm test: <record exact current result>
-- npm run build: <record exact current result>
-- git diff --check: PASS
+- focused TD-01 tests: insert the exact pass/fail count captured from Step 4 immediately before PR creation
+- full npm test: insert the exact pass/fail count captured from Step 2 immediately before PR creation
+- npm run build: state the exact exit/result captured from Step 3 immediately before PR creation
+- git diff --check: state the exact result captured from Step 1 immediately before PR creation
 
 Human stop point: do not merge without explicit approval.
 ```
@@ -1847,7 +1847,7 @@ Requirements intentionally outside TD-01 remain assigned to their already-approv
 
 ### Placeholder scan
 
-The executable TD-01 tasks contain no TBD/TODO implementation steps. The only future-stage references are explicit scope boundaries with fixed stage ownership.
+The executable TD-01 tasks contain no unresolved implementation markers. The only future-stage references are explicit scope boundaries with fixed stage ownership.
 
 ### Type consistency
 
