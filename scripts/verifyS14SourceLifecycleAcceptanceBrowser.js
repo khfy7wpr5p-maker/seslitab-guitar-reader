@@ -1,40 +1,8 @@
-import { spawn, spawnSync } from 'node:child_process'
-import { createServer } from 'node:http'
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { extname, resolve, sep } from 'node:path'
-
-const repoRoot = resolve('.')
-const distRoot = resolve(repoRoot, 'dist')
-const candidates = [
-  process.env.CHROME_BIN,
-  'google-chrome',
-  'google-chrome-stable',
-  'chromium',
-  'chromium-browser',
-].filter(Boolean)
-
-let chrome = null
-for (const candidate of candidates) {
-  if (spawnSync(candidate, ['--version'], { encoding: 'utf8' }).status === 0) {
-    chrome = candidate
-    break
-  }
-}
-
-if (!chrome) {
-  console.error('S14 source lifecycle proof failed closed: Chrome/Chromium not found.')
-  process.exit(1)
-}
-
-for (const required of [
-  resolve(distRoot, 'index.html'),
-  resolve(distRoot, 'smoosic-editor', 'index.html'),
-]) {
-  if (!existsSync(required)) {
-    console.error(`S14 source lifecycle proof failed closed: missing build artifact ${required}`)
-    process.exit(1)
-  }
-}
+import {
+  createS14CdpProofSession,
+  musicXmlUploadExpression,
+  pdfUploadExpression,
+} from './s14CdpProofHarness.js'
 
 function scoreXml(step, title) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -59,292 +27,175 @@ const invalidMusicXmlB = `<?xml version="1.0" encoding="UTF-8"?>
   <part id="P1"><measure number="1"></measure></part>
 </score-partwise>`
 
-const proofHtml = `<!doctype html>
-<html lang="tr">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>S14 source lifecycle acceptance</title></head>
-<body data-s14-source-lifecycle="pending">
-  <iframe id="app-frame" src="/index.html" style="width:390px;height:844px;border:0"></iframe>
-  <pre id="status">pending</pre>
-  <script>
-    const musicXmlA = ${JSON.stringify(musicXmlA)};
-    const musicXmlC = ${JSON.stringify(musicXmlC)};
-    const pdfXmlA = ${JSON.stringify(pdfXmlA)};
-    const pdfXmlB = ${JSON.stringify(pdfXmlB)};
-    const pdfXmlD = ${JSON.stringify(pdfXmlD)};
-    const invalidMusicXmlB = ${JSON.stringify(invalidMusicXmlB)};
-    const body = document.body;
-    const status = document.getElementById('status');
-    const appFrame = document.getElementById('app-frame');
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    function fail(message) {
-      const text = String(message || 'unknown failure');
-      body.setAttribute('data-s14-source-lifecycle', 'failed');
-      body.setAttribute('data-s14-source-lifecycle-error', text.replace(/["<>]/g, ''));
-      status.textContent = text;
-      throw new Error(text);
-    }
-
-    async function waitFor(check, label, timeout = 120000) {
-      const deadline = Date.now() + timeout;
-      while (Date.now() < deadline) {
-        try {
-          const value = check();
-          if (value) return value;
-        } catch {}
-        await sleep(100);
-      }
-      fail('timeout: ' + label);
-    }
-
-    function assignMusicXml(win, doc, xml, fileName) {
-      const input = doc.getElementById('musicxml-file-input');
-      const file = new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
-      const transfer = new win.DataTransfer();
-      transfer.items.add(file);
-      input.files = transfer.files;
-      input.dispatchEvent(new win.Event('change', { bubbles: true }));
-    }
-
-    function assignPdf(win, doc, fileName) {
-      const input = doc.getElementById('file-input');
-      const file = new win.File(['%PDF-1.4\\n%%EOF'], fileName, { type: 'application/pdf' });
-      const transfer = new win.DataTransfer();
-      transfer.items.add(file);
-      input.files = transfer.files;
-      input.dispatchEvent(new win.Event('change', { bubbles: true }));
-    }
-
-    async function openMusicXml(win, doc, xml, fileName, expectedStep) {
-      doc.getElementById('musicxml-tab-btn').click();
-      assignMusicXml(win, doc, xml, fileName);
-      await waitFor(() => doc.getElementById('musicxml-open-btn')?.disabled === false, fileName + ' selection');
-      doc.getElementById('musicxml-open-btn').click();
-      await waitFor(() => {
-        const output = String(doc.getElementById('xml-output')?.textContent || '');
-        const name = String(doc.getElementById('musicxml-file-name')?.textContent || '');
-        return output.includes('<step>' + expectedStep + '</step>') && name.includes(fileName);
-      }, fileName + ' parse');
-    }
-
-    async function waitEditorLoaded(editorDoc, fileName, label) {
-      const result = await waitFor(() => {
-        const text = String(editorDoc.getElementById('poc-status')?.textContent || '');
-        if (text.startsWith('Yüklendi:') && text.includes(fileName)) return text;
-        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) return '__ERROR__' + text;
-        return '';
-      }, label, 120000);
-      if (result.startsWith('__ERROR__')) fail(result.slice('__ERROR__'.length));
-      return result;
-    }
-
-    async function beginPdfTransition(win, doc, editorFrame, pdfName) {
-      doc.getElementById('pdf-tab-btn').click();
-      assignPdf(win, doc, pdfName);
-      await waitFor(() => String(doc.getElementById('file-name')?.textContent || '') === pdfName, pdfName + ' real selection');
-      doc.getElementById('progress-container').hidden = false;
-      await waitFor(() => editorFrame.hidden === true, pdfName + ' pending hides stale editor');
-    }
-
-    function completePdfSuccess(doc, xml) {
-      doc.getElementById('results-section').hidden = false;
-      doc.getElementById('xml-output').textContent = xml;
-      doc.getElementById('progress-container').hidden = true;
-    }
-
-    async function run() {
-      await waitFor(() => appFrame.contentDocument?.getElementById('smoosic-tab-btn'), 'app init');
-      const win = appFrame.contentWindow;
-      const doc = appFrame.contentDocument;
-
-      // MusicXML: A success -> B failure -> C success.
-      await openMusicXml(win, doc, musicXmlA, 'source-a.musicxml', 'C');
-      doc.getElementById('smoosic-tab-btn').click();
-      const editorFrame = await waitFor(() => doc.getElementById('smoosic-editor-frame'), 'editor iframe');
-      const editorDoc = await waitFor(() => editorFrame.contentDocument?.getElementById('poc-status') ? editorFrame.contentDocument : null, 'editor document');
-      await waitEditorLoaded(editorDoc, 'source-a.musicxml', 'MusicXML A handoff');
-      await waitFor(() => {
-        const hostStatus = doc.getElementById('smoosic-editor-host-status');
-        return hostStatus
-          && hostStatus.hidden === true
-          && String(hostStatus.textContent || '').trim() === ''
-          && hostStatus.dataset.kind === 'ready';
-      }, 'MusicXML A host sync settled');
-
-      doc.getElementById('musicxml-tab-btn').click();
-      assignMusicXml(win, doc, invalidMusicXmlB, 'source-b-invalid.musicxml');
-      await waitFor(() => doc.getElementById('musicxml-open-btn')?.disabled === false, 'MusicXML B selection');
-      doc.getElementById('musicxml-open-btn').click();
-      await waitFor(() => {
-        const error = doc.getElementById('musicxml-error');
-        return error && error.hidden === false && String(error.textContent || '').trim().length > 0;
-      }, 'MusicXML B parse failure');
-      await waitFor(() => doc.getElementById('musicxml-progress')?.hidden === true, 'MusicXML B failure completion');
-
-      doc.getElementById('smoosic-tab-btn').click();
-      await waitFor(() => editorFrame.hidden === false, 'A restored after B failure');
-      const afterFailure = await waitEditorLoaded(editorDoc, 'source-a.musicxml', 'MusicXML A restored after B failure');
-      if (afterFailure.includes('source-b-invalid.musicxml')) fail('MusicXML B failure was promoted as a successful source');
-
-      await openMusicXml(win, doc, musicXmlC, 'source-c.musicxml', 'E');
-      await waitEditorLoaded(editorDoc, 'source-c.musicxml', 'MusicXML C automatic refresh');
-      body.setAttribute('data-s14-musicxml-abc-pass', 'true');
-
-      // PDF host lifecycle proof without touching or mocking the OMR provider.
-      // The real PDF file-input selection path is used so stale MusicXML filename
-      // state remains present exactly as it does in production; only the OMR
-      // completion DOM contract is driven locally.
-      await beginPdfTransition(win, doc, editorFrame, 'pdf-a.pdf');
-      completePdfSuccess(doc, pdfXmlA);
-      await waitEditorLoaded(editorDoc, 'pdf-a.pdf.musicxml', 'PDF A success refresh');
-
-      await beginPdfTransition(win, doc, editorFrame, 'pdf-b.pdf');
-      completePdfSuccess(doc, pdfXmlB);
-      await waitEditorLoaded(editorDoc, 'pdf-b.pdf.musicxml', 'PDF B success refresh');
-      body.setAttribute('data-s14-pdf-sequential-pass', 'true');
-
-      await beginPdfTransition(win, doc, editorFrame, 'pdf-c-failed.pdf');
-      doc.getElementById('progress-container').hidden = true;
-      await waitFor(() => editorFrame.hidden === false, 'PDF C failure restores last accepted editor');
-      const afterPdfFailure = await waitEditorLoaded(editorDoc, 'pdf-b.pdf.musicxml', 'PDF B retained after PDF C failure');
-      if (afterPdfFailure.includes('pdf-c-failed.pdf')) fail('Failed PDF was promoted as a successful source');
-      body.setAttribute('data-s14-pdf-failure-pass', 'true');
-
-      await beginPdfTransition(win, doc, editorFrame, 'pdf-d.pdf');
-      completePdfSuccess(doc, pdfXmlD);
-      const finalStatus = await waitEditorLoaded(editorDoc, 'pdf-d.pdf.musicxml', 'PDF D recovery refresh');
-      body.setAttribute('data-s14-pdf-recovery-pass', 'true');
-      body.setAttribute('data-s14-final-editor-status', finalStatus.replace(/["<>]/g, ''));
-
-      body.setAttribute('data-s14-source-lifecycle', 'true');
-      status.textContent = 'PASS';
-    }
-
-    appFrame.addEventListener('load', () => {
-      run().catch((error) => {
-        if (body.getAttribute('data-s14-source-lifecycle') !== 'failed') fail(error?.message || error);
-      });
-    }, { once: true });
-  </script>
-</body>
-</html>`
-
-const mimeTypes = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.mp3': 'audio/mpeg',
-}
-
-function safeDistPath(pathname) {
-  let relative = decodeURIComponent(pathname).replace(/^\/+/, '')
-  if (!relative || relative.endsWith('/')) relative += 'index.html'
-  const target = resolve(distRoot, relative)
-  if (target !== distRoot && !target.startsWith(distRoot + sep)) return null
-  return target
-}
-
-const server = createServer((request, response) => {
-  const url = new URL(request.url || '/', 'http://127.0.0.1')
-  if (url.pathname === '/__s14-source-lifecycle.html') {
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
-    response.end(proofHtml)
-    return
-  }
-
-  const target = safeDistPath(url.pathname)
-  if (!target || !existsSync(target) || !statSync(target).isFile()) {
-    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
-    response.end('not found')
-    return
-  }
-  response.writeHead(200, {
-    'content-type': mimeTypes[extname(target).toLowerCase()] || 'application/octet-stream',
-    'cache-control': 'no-store',
-  })
-  response.end(readFileSync(target))
-})
-
-await new Promise((resolveListen, rejectListen) => {
-  server.once('error', rejectListen)
-  server.listen(0, '127.0.0.1', resolveListen)
-})
-
-const address = server.address()
-const port = typeof address === 'object' && address ? address.port : null
-if (!port) {
-  server.close()
-  throw new Error('S14 source lifecycle proof could not acquire a local port.')
-}
-
-const targetUrl = `http://127.0.0.1:${port}/__s14-source-lifecycle.html`
-const chromeArgs = [
-  '--headless=new',
-  '--no-sandbox',
-  '--disable-gpu',
-  '--disable-dev-shm-usage',
-  '--autoplay-policy=no-user-gesture-required',
-  '--window-size=390,844',
-  '--dump-dom',
-  targetUrl,
-]
-
-let stdout = ''
-let stderr = ''
-let exitCode = null
+let session = null
 try {
-  exitCode = await new Promise((resolveExit, rejectExit) => {
-    const child = spawn(chrome, chromeArgs, { cwd: repoRoot })
-    const timeout = setTimeout(() => {
-      child.kill('SIGKILL')
-      rejectExit(new Error('S14 source lifecycle Chrome proof timed out.'))
-    }, 240000)
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk) => { stdout += chunk })
-    child.stderr.on('data', (chunk) => { stderr += chunk })
-    child.once('error', (error) => {
-      clearTimeout(timeout)
-      rejectExit(error)
-    })
-    child.once('close', (code) => {
-      clearTimeout(timeout)
-      resolveExit(code)
-    })
-  })
+  session = await createS14CdpProofSession()
+  const { chrome, evaluate, waitFor } = session
+
+  const waitHostReady = (label) => waitFor(
+    `(() => {
+      const host = document.getElementById('smoosic-editor-host-status');
+      return !!host && host.hidden === true && String(host.textContent || '').trim() === '' && host.dataset.kind === 'ready';
+    })()`,
+    label,
+  )
+
+  const waitEditorLoaded = async (fileName, label) => {
+    const status = await waitFor(
+      `(() => {
+        const text = String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '');
+        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) return 'ERROR:' + text;
+        if (text.startsWith('Yüklendi:') && text.includes(${JSON.stringify(fileName)})) return text;
+        return '';
+      })()`,
+      label,
+    )
+    if (String(status).startsWith('ERROR:')) {
+      throw new Error(String(status).slice('ERROR:'.length))
+    }
+    return String(status)
+  }
+
+  const openMusicXml = async (xml, fileName, expectedStep) => {
+    await evaluate(`document.getElementById('musicxml-tab-btn').click(); true`)
+    if (!await evaluate(musicXmlUploadExpression(xml, fileName))) {
+      throw new Error(`${fileName} input missing`)
+    }
+    await waitFor(
+      `document.getElementById('musicxml-open-btn')?.disabled === false`,
+      `${fileName} selection`,
+    )
+    await evaluate(`document.getElementById('musicxml-open-btn').click(); true`)
+    await waitFor(
+      `(() => {
+        const output = String(document.getElementById('xml-output')?.textContent || '');
+        const name = String(document.getElementById('musicxml-file-name')?.textContent || '');
+        return output.includes('<step>${expectedStep}</step>') && name.includes(${JSON.stringify(fileName)});
+      })()`,
+      `${fileName} parse`,
+    )
+  }
+
+  const beginPdfTransition = async (pdfName) => {
+    await evaluate(`document.getElementById('pdf-tab-btn').click(); true`)
+    if (!await evaluate(pdfUploadExpression(pdfName))) {
+      throw new Error(`${pdfName} input missing`)
+    }
+    await waitFor(
+      `String(document.getElementById('file-name')?.textContent || '') === ${JSON.stringify(pdfName)}`,
+      `${pdfName} real selection`,
+    )
+    await evaluate(`document.getElementById('progress-container').hidden = false; true`)
+    await waitFor(
+      `document.getElementById('smoosic-editor-frame')?.hidden === true`,
+      `${pdfName} pending hides stale editor`,
+    )
+  }
+
+  const completePdfSuccess = async (xml) => {
+    await evaluate(`(() => {
+      document.getElementById('results-section').hidden = false;
+      document.getElementById('xml-output').textContent = ${JSON.stringify(xml)};
+      document.getElementById('progress-container').hidden = true;
+      return true;
+    })()`)
+  }
+
+  await waitFor(
+    `document.readyState === 'complete' && !!document.getElementById('smoosic-tab-btn')`,
+    'app init',
+  )
+
+  await openMusicXml(musicXmlA, 'source-a.musicxml', 'C')
+  await evaluate(`document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(`!!document.getElementById('smoosic-editor-frame')`, 'editor iframe')
+  await waitFor(
+    `!!document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')`,
+    'editor document',
+  )
+  await waitEditorLoaded('source-a.musicxml', 'MusicXML A handoff')
+  await waitHostReady('MusicXML A host sync settled')
+
+  await evaluate(`document.getElementById('musicxml-tab-btn').click(); true`)
+  if (!await evaluate(musicXmlUploadExpression(invalidMusicXmlB, 'source-b-invalid.musicxml'))) {
+    throw new Error('MusicXML B input missing')
+  }
+  await waitFor(
+    `document.getElementById('musicxml-open-btn')?.disabled === false`,
+    'MusicXML B selection',
+  )
+  await evaluate(`document.getElementById('musicxml-open-btn').click(); true`)
+  await waitFor(
+    `(() => {
+      const error = document.getElementById('musicxml-error');
+      return !!error && error.hidden === false && String(error.textContent || '').trim().length > 0;
+    })()`,
+    'MusicXML B parse failure',
+  )
+  await waitFor(
+    `document.getElementById('musicxml-progress')?.hidden === true`,
+    'MusicXML B failure completion',
+  )
+
+  await evaluate(`document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(
+    `document.getElementById('smoosic-editor-frame')?.hidden === false`,
+    'A restored after B failure',
+  )
+  const afterFailure = await waitEditorLoaded(
+    'source-a.musicxml',
+    'MusicXML A restored after B failure',
+  )
+  if (afterFailure.includes('source-b-invalid.musicxml')) {
+    throw new Error('MusicXML B failure was promoted as a successful source')
+  }
+
+  await openMusicXml(musicXmlC, 'source-c.musicxml', 'E')
+  await waitEditorLoaded('source-c.musicxml', 'MusicXML C automatic refresh')
+  await waitHostReady('MusicXML C host sync settled')
+
+  await beginPdfTransition('pdf-a.pdf')
+  await completePdfSuccess(pdfXmlA)
+  await waitEditorLoaded('pdf-a.pdf.musicxml', 'PDF A success refresh')
+  await waitHostReady('PDF A host sync settled')
+
+  await beginPdfTransition('pdf-b.pdf')
+  await completePdfSuccess(pdfXmlB)
+  await waitEditorLoaded('pdf-b.pdf.musicxml', 'PDF B success refresh')
+  await waitHostReady('PDF B host sync settled')
+
+  await beginPdfTransition('pdf-c-failed.pdf')
+  await evaluate(`document.getElementById('progress-container').hidden = true; true`)
+  await waitFor(
+    `document.getElementById('smoosic-editor-frame')?.hidden === false`,
+    'PDF C failure restores last accepted editor',
+  )
+  const afterPdfFailure = await waitEditorLoaded(
+    'pdf-b.pdf.musicxml',
+    'PDF B retained after PDF C failure',
+  )
+  if (afterPdfFailure.includes('pdf-c-failed.pdf')) {
+    throw new Error('Failed PDF was promoted as a successful source')
+  }
+
+  await beginPdfTransition('pdf-d.pdf')
+  await completePdfSuccess(pdfXmlD)
+  const finalStatus = await waitEditorLoaded(
+    'pdf-d.pdf.musicxml',
+    'PDF D recovery refresh',
+  )
+
+  console.log(
+    `S14 source lifecycle browser proof PASS using ${chrome}: MusicXML A->B failure->C and PDF success/failure/recovery invariants hold. Final: ${finalStatus}`,
+  )
+} catch (error) {
+  console.error(`S14 source lifecycle browser proof failed closed: ${error?.message ?? error}`)
+  process.exitCode = 1
 } finally {
-  await new Promise((resolveClose) => server.close(resolveClose))
-}
-
-if (exitCode !== 0) {
-  console.error(`S14 source lifecycle Chrome exit ${exitCode}: ${stderr.slice(-5000)}`)
-  process.exit(1)
-}
-
-const requiredMarkers = [
-  'data-s14-musicxml-abc-pass="true"',
-  'data-s14-pdf-sequential-pass="true"',
-  'data-s14-pdf-failure-pass="true"',
-  'data-s14-pdf-recovery-pass="true"',
-  'data-s14-source-lifecycle="true"',
-]
-for (const marker of requiredMarkers) {
-  if (!stdout.includes(marker)) {
-    const error = stdout.match(/data-s14-source-lifecycle-error="([^"]+)"/)?.[1] || `required marker missing: ${marker}`
-    console.error(`S14 source lifecycle browser proof failed: ${error}`)
-    console.error(stdout.slice(-12000))
-    process.exit(1)
+  try {
+    await session?.close()
+  } catch (error) {
+    console.error(`S14 source lifecycle cleanup failed: ${error?.message ?? error}`)
+    process.exitCode = 1
   }
 }
-
-if (!/data-s14-final-editor-status="Yüklendi:[^"]*pdf-d\.pdf\.musicxml/.test(stdout)) {
-  console.error('S14 source lifecycle browser proof failed: final PDF recovery source missing.')
-  console.error(stdout.slice(-12000))
-  process.exit(1)
-}
-
-console.log(`S14 source lifecycle browser proof PASS using ${chrome}: MusicXML A->B failure->C and PDF success/failure/recovery invariants hold.`)
