@@ -10,6 +10,7 @@ import {
   assertTeacherPoolRepository,
 } from './teacherPoolRepository.js'
 import {
+  assertStrictInputObject,
   normalizeRequiredId,
   normalizeRequiredTimestamp,
 } from './teacherDeliveryContractValidation.js'
@@ -23,20 +24,16 @@ const PUBLISH_FIELDS = Object.freeze([
 ])
 
 function assertStrictPublishInput(input) {
-  if (
-    input === null ||
-    typeof input !== 'object' ||
-    Array.isArray(input)
-  ) {
-    throw new TypeError(
-      'Pool publication input must be an object.',
-    )
-  }
+  assertStrictInputObject(
+    input,
+    PUBLISH_FIELDS,
+    'Pool publication',
+  )
 
-  const keys = Object.keys(input)
   if (
-    keys.length !== PUBLISH_FIELDS.length ||
-    keys.some((key) => !PUBLISH_FIELDS.includes(key))
+    PUBLISH_FIELDS.some(
+      (field) => !Object.hasOwn(input, field),
+    )
   ) {
     throw new TypeError(
       'Pool publication input contains unsupported or missing fields.',
