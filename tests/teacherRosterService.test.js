@@ -227,3 +227,57 @@ test('TD-02 target preflight rejects duplicate authority returned by a custom ad
     /duplicate.*studentId/i,
   )
 })
+
+
+test('TD-02 getStudent rejects duplicate roster authority before returning a lookup result', () => {
+  const a = entry('student-a', 'Deniz')
+  const duplicate = entry('student-a', 'Deniz Eski')
+
+  const roster = createTeacherRosterService({
+    repository: {
+      list() {
+        return [a, duplicate]
+      },
+      getByStudentId() {
+        return a
+      },
+    },
+  })
+
+  assert.throws(
+    () => roster.getStudent('student-a'),
+    /duplicate.*studentId/i,
+  )
+})
+
+test('TD-02 multi-target preflight validates one coherent roster snapshot', () => {
+  const a = entry('student-a', 'Deniz')
+  const b = entry('student-b', 'Ece')
+  const inactiveB = entry('student-b', 'Ece', false)
+  let listCalls = 0
+
+  const roster = createTeacherRosterService({
+    repository: {
+      list() {
+        listCalls += 1
+        return listCalls === 1
+          ? [a, b]
+          : [a, inactiveB]
+      },
+      getByStudentId(studentId) {
+        return studentId === 'student-a' ? a : b
+      },
+    },
+  })
+
+  const result = roster.preflightActiveStudentIds([
+    'student-a',
+    'student-b',
+  ])
+
+  assert.equal(listCalls, 1)
+  assert.deepEqual(
+    result.map((row) => row.studentId),
+    ['student-a', 'student-b'],
+  )
+})
