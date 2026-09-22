@@ -78,7 +78,6 @@
 - `tests/teacherScoreAssignmentService.test.js`
 - `tests/teacherScoreAssignmentController.test.js`
 - `tests/teacherScoreAssignmentUi.test.js`
-- `tests/support/fakeTeacherScoreAssignmentDom.js`
 - `tests/teacherScoreAssignmentSecurity.test.js`
 - `docs/teacher-delivery-td04-score-private-assignment.md`
 
@@ -88,6 +87,7 @@
 - `src/services/scoreAssignmentSourceBinding.js`
 - `src/services/privateAssignment.js`
 - `src/services/teacherDeliveryContractValidation.js`
+- `tests/support/fakeTeacherPoolDom.js` (test-only fake DOM utility; no production dependency)
 - existing teacher workspace / Package 12 / Stage L dependencies transitively used by SCORE source binding.
 
 ### Do not modify unless a focused regression proves an unavoidable compatibility defect and new human approval is obtained
@@ -2169,7 +2169,7 @@ git commit -m "feat: add TD-04 teacher SCORE assignment controller"
 - Create: `src/teacherScoreAssignmentUi.js`
 - Create: `src/teacherScoreAssignmentUi.css`
 - Create: `tests/teacherScoreAssignmentUi.test.js`
-- Create: `tests/support/fakeTeacherScoreAssignmentDom.js`
+- Reuse read-only test utility: `tests/support/fakeTeacherPoolDom.js`
 
 **Interfaces:**
 - Consumes:
@@ -2181,90 +2181,344 @@ git commit -m "feat: add TD-04 teacher SCORE assignment controller"
   - `mountTeacherScoreAssignmentUi({ root, host, controller, workspace, sourceNotes })`
   - frozen handle with `refresh()` and `destroy()`
 - No automatic initialization.
+- Per selected student, the UI has a separate override-enabled checkbox so an explicitly enabled empty override is distinguishable from “use common note”.
 
-- [ ] **Step 1: Create bounded fake DOM helper in the RED commit**
+- [ ] **Step 1: Write failing UI tests**
 
-Create `tests/support/fakeTeacherScoreAssignmentDom.js` by copying the mechanics of `tests/support/fakeTeacherPoolDom.js` and adding selector support only for:
-
-- `h2`
-- `form`
-- `button`
-- class selectors
-- `input[name="selectedStudentIds"]`
-- `input[name="commonTeacherNote"]`
-- `textarea[name="commonTeacherNote"]`
-- `textarea[name="teacherNoteOverride"]`
-- `input[type="checkbox"]:checked`
-- `[data-student-id="..."]` only if required by the implementation tests.
-
-Do not add a DOM package.
-
-- [ ] **Step 2: Write failing UI tests**
-
-Create `tests/teacherScoreAssignmentUi.test.js` with these behaviors:
+Create `tests/teacherScoreAssignmentUi.test.js`:
 
 ```js
-test('TD-04 UI explicitly mounts Ödevi Hazırla and uses no delivery wording', () => {
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import {
+  mountTeacherScoreAssignmentUi,
+} from '../src/teacherScoreAssignmentUi.js'
+import {
+  createFakeDocument,
+} from './support/fakeTeacherPoolDom.js'
+
+function controllerFixture({
+  students = Object.freeze([
+    Object.freeze({
+      studentId: 'student-a',
+      displayNameOrNickname: 'Aynı Ad',
+    }),
+    Object.freeze({
+      studentId: 'student-b',
+      displayNameOrNickname: 'Aynı Ad',
+    }),
+  ]),
+  prepareResult = Object.freeze({
+    ok: true,
+    assignments: Object.freeze([
+      Object.freeze({
+        assignmentId: 'assignment-a',
+        studentId: 'student-a',
+      }),
+    ]),
+    message: '1 ödev hazırlandı.',
+  }),
+} = {}) {
+  const calls = []
+
+  return {
+    calls,
+    api: {
+      getViewModel() {
+        return Object.freeze({ students })
+      },
+      prepare(input) {
+        calls.push(input)
+        return prepareResult
+      },
+    },
+  }
+}
+
+function mount({
+  prepareResult,
+  students,
+} = {}) {
   const root = createFakeDocument()
   const host = root.createElement('div')
+  const fake = controllerFixture({
+    prepareResult,
+    students,
+  })
+  const workspace = Object.freeze({
+    marker: 'workspace',
+  })
+  const sourceNotes = Object.freeze([])
+
+  const handle = mountTeacherScoreAssignmentUi({
+    root,
+    host,
+    controller: fake.api,
+    workspace,
+    sourceNotes,
+  })
+
+  return {
+    root,
+    host,
+    fake,
+    handle,
+    workspace,
+    sourceNotes,
+  }
+}
+
+function selectionCheckboxes(host) {
+  return host.querySelectorAll(
+    'input[name="selectedStudentIds"]',
+  )
+}
+
+function overrideEnabledCheckboxes(host) {
+  return host.querySelectorAll(
+    'input[name="teacherNoteOverrideEnabled"]',
+  )
+}
+
+function overrideTextareas(host) {
+  return host.querySelectorAll(
+    'textarea[name="teacherNoteOverride"]',
+  )
+}
+
+test('TD-04 UI explicitly mounts Ödevi Hazırla and uses preparation wording only', () => {
+  const { host, handle } = mount()
+
+  assert.equal(
+    host.querySelector('h2').textContent,
+    'Ödevi Hazırla',
+  )
+
+  const buttons = host.querySelectorAll('button')
+  assert.equal(
+    buttons.some(
+      (node) => node.textContent === 'Ödevi Hazırla',
+    ),
+    true,
+  )
+  assert.equal(
+    buttons.some(
+      (node) =>
+        /gönderildi|teslim edildi/i.test(
+          node.textContent,
+        ),
+    ),
+    false,
+  )
+  assert.equal(typeof handle.refresh, 'function')
+  assert.equal(typeof handle.destroy, 'function')
+})
+
+test('TD-04 UI keeps duplicate display names separate by stable studentId', () => {
+  const { host } = mount()
+  const boxes = selectionCheckboxes(host)
+
+  assert.deepEqual(
+    boxes.map((node) => [node.id, node.value]),
+    [
+      [
+        'teacher-score-assignment-student-a',
+        'student-a',
+      ],
+      [
+        'teacher-score-assignment-student-b',
+        'student-b',
+      ],
+    ],
+  )
+})
+
+test('TD-04 UI submits common note plus selected-student text override', () => {
+  const {
+    host,
+    fake,
+    workspace,
+    sourceNotes,
+  } = mount()
+
+  const selected = selectionCheckboxes(host)
+  selected[0].checked = true
+  selected[0].dispatchEvent({ type: 'change' })
+  selected[1].checked = true
+  selected[1].dispatchEvent({ type: 'change' })
+
+  const common = host.querySelector(
+    'textarea[name="commonTeacherNote"]',
+  )
+  common.value = 'Ortak not'
+
+  const enabled =
+    overrideEnabledCheckboxes(host)
+  enabled[1].checked = true
+  enabled[1].dispatchEvent({ type: 'change' })
+
+  const overrides = overrideTextareas(host)
+  overrides[1].value = 'Metronom 60 BPM.'
+
+  host.querySelector('form').dispatchEvent({
+    type: 'submit',
+    preventDefault() {},
+  })
+
+  assert.deepEqual(fake.calls, [{
+    workspace,
+    sourceNotes,
+    studentIds: ['student-a', 'student-b'],
+    commonTeacherNote: 'Ortak not',
+    teacherNoteOverrides: [{
+      studentId: 'student-b',
+      teacherNote: 'Metronom 60 BPM.',
+    }],
+  }])
+})
+
+test('TD-04 UI submits explicitly enabled empty override', () => {
+  const { host, fake } = mount()
+
+  const selected = selectionCheckboxes(host)
+  selected[0].checked = true
+  selected[0].dispatchEvent({ type: 'change' })
+
+  const common = host.querySelector(
+    'textarea[name="commonTeacherNote"]',
+  )
+  common.value = 'Ortak not'
+
+  const enabled =
+    overrideEnabledCheckboxes(host)
+  enabled[0].checked = true
+  enabled[0].dispatchEvent({ type: 'change' })
+
+  overrideTextareas(host)[0].value = ''
+
+  host.querySelector('form').dispatchEvent({
+    type: 'submit',
+    preventDefault() {},
+  })
+
+  assert.deepEqual(
+    fake.calls[0].teacherNoteOverrides,
+    [{
+      studentId: 'student-a',
+      teacherNote: '',
+    }],
+  )
+})
+
+test('TD-04 UI excludes a stale override after its student is deselected', () => {
+  const { host, fake } = mount()
+
+  const selected = selectionCheckboxes(host)
+  selected[0].checked = true
+  selected[0].dispatchEvent({ type: 'change' })
+  selected[1].checked = true
+  selected[1].dispatchEvent({ type: 'change' })
+
+  const enabled =
+    overrideEnabledCheckboxes(host)
+  enabled[1].checked = true
+  enabled[1].dispatchEvent({ type: 'change' })
+  overrideTextareas(host)[1].value =
+    'Bu not gitmemeli.'
+
+  selected[1].checked = false
+  selected[1].dispatchEvent({ type: 'change' })
+
+  host.querySelector('form').dispatchEvent({
+    type: 'submit',
+    preventDefault() {},
+  })
+
+  assert.deepEqual(
+    fake.calls[0].studentIds,
+    ['student-a'],
+  )
+  assert.deepEqual(
+    fake.calls[0].teacherNoteOverrides,
+    [],
+  )
+})
+
+test('TD-04 UI shows bounded failure without clearing teacher input', () => {
+  const { host } = mount({
+    prepareResult: Object.freeze({
+      ok: false,
+      assignments: Object.freeze([]),
+      message: 'Ödev işlemi doğrulanamadı.',
+    }),
+  })
+
+  const selected = selectionCheckboxes(host)
+  selected[0].checked = true
+  selected[0].dispatchEvent({ type: 'change' })
+
+  const common = host.querySelector(
+    'textarea[name="commonTeacherNote"]',
+  )
+  common.value = 'Korunacak ortak not'
+
+  const enabled =
+    overrideEnabledCheckboxes(host)
+  enabled[0].checked = true
+  enabled[0].dispatchEvent({ type: 'change' })
+
+  const override = overrideTextareas(host)[0]
+  override.value = 'Korunacak özel not'
+
+  host.querySelector('form').dispatchEvent({
+    type: 'submit',
+    preventDefault() {},
+  })
+
+  assert.equal(
+    host.querySelector(
+      '.teacher-score-assignment__status',
+    ).textContent,
+    'Ödev işlemi doğrulanamadı.',
+  )
+  assert.equal(selected[0].checked, true)
+  assert.equal(common.value, 'Korunacak ortak not')
+  assert.equal(enabled[0].checked, true)
+  assert.equal(override.value, 'Korunacak özel not')
+})
+
+test('TD-04 UI destroy removes only its own mounted section', () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const sentinel = root.createElement('p')
+  sentinel.textContent = 'koru'
+  host.appendChild(sentinel)
   const fake = controllerFixture()
 
   const handle = mountTeacherScoreAssignmentUi({
     root,
     host,
     controller: fake.api,
-    workspace: Object.freeze({ marker: 'workspace' }),
+    workspace: Object.freeze({
+      marker: 'workspace',
+    }),
     sourceNotes: Object.freeze([]),
   })
 
+  handle.destroy()
+
+  assert.equal(host.children.includes(sentinel), true)
   assert.equal(
-    host.querySelector('h2').textContent,
-    'Ödevi Hazırla',
+    host.querySelector(
+      '.teacher-score-assignment',
+    ),
+    null,
   )
-  assert.equal(typeof handle.refresh, 'function')
-  assert.equal(typeof handle.destroy, 'function')
-  assert.doesNotMatch(
-    host.textContent || '',
-    /gönderildi|teslim edildi/i,
-  )
-})
-
-test('TD-04 UI keeps duplicate names separate by stable studentId', () => {
-  // two students share the same displayNameOrNickname
-  // checkbox values/ids must remain student-a and student-b.
-})
-
-test('TD-04 UI submits selected IDs, common note and selected-student overrides', () => {
-  // select student-a + student-b
-  // set common note
-  // set only student-b override
-  // submit
-  // assert controller.prepare receives:
-  // workspace, sourceNotes, studentIds in selection order,
-  // commonTeacherNote,
-  // teacherNoteOverrides: [{ studentId: 'student-b', teacherNote: '...' }]
-})
-
-test('TD-04 UI excludes stale override after student is deselected', () => {
-  // select student-b; type override; then deselect student-b;
-  // submit with only student-a selected;
-  // assert no student-b override is submitted.
-})
-
-test('TD-04 UI displays bounded failure without clearing teacher input', () => {
-  // controller returns { ok:false, assignments:[], message:'...' }
-  // assert status text;
-  // selected checkboxes and note values remain unchanged.
-})
-
-test('TD-04 UI destroy removes only its own mounted section', () => {
-  // sentinel sibling remains.
 })
 ```
 
-Write each test fully with concrete fake controller data; do not leave comments in place of assertions in the committed test file.
-
-- [ ] **Step 3: Run UI test and verify RED**
+- [ ] **Step 2: Run UI test and verify RED**
 
 Run:
 
@@ -2274,9 +2528,9 @@ node --test tests/teacherScoreAssignmentUi.test.js
 
 Expected: FAIL because `src/teacherScoreAssignmentUi.js` does not exist.
 
-- [ ] **Step 4: Implement explicit-mount UI structure**
+- [ ] **Step 3: Implement explicit-mount UI with explicit override opt-in**
 
-Create `src/teacherScoreAssignmentUi.js` with:
+Create `src/teacherScoreAssignmentUi.js`:
 
 ```js
 function element(root, tag, className = '') {
@@ -2317,6 +2571,7 @@ export function mountTeacherScoreAssignmentUi({
     'section',
     'teacher-score-assignment',
   )
+
   const heading = element(root, 'h2')
   heading.textContent = 'Ödevi Hazırla'
 
@@ -2325,13 +2580,24 @@ export function mountTeacherScoreAssignmentUi({
     'form',
     'teacher-score-assignment__form',
   )
+
   const studentList = element(
     root,
     'div',
     'teacher-score-assignment__students',
   )
+
+  const commonLabel = element(
+    root,
+    'label',
+    'teacher-score-assignment__common-note',
+  )
+  const commonLabelText = element(root, 'span')
+  commonLabelText.textContent = 'Ortak not'
   const commonNote = element(root, 'textarea')
   commonNote.name = 'commonTeacherNote'
+  commonLabel.appendChild(commonLabelText)
+  commonLabel.appendChild(commonNote)
 
   const submit = element(root, 'button')
   submit.type = 'submit'
@@ -2346,7 +2612,7 @@ export function mountTeacherScoreAssignmentUi({
   status.setAttribute('aria-live', 'polite')
 
   form.appendChild(studentList)
-  form.appendChild(commonNote)
+  form.appendChild(commonLabel)
   form.appendChild(submit)
   section.appendChild(heading)
   section.appendChild(form)
@@ -2354,19 +2620,6 @@ export function mountTeacherScoreAssignmentUi({
   host.appendChild(section)
 
   function renderStudents(rows) {
-    const prior = new Map()
-
-    for (
-      const row of studentList.querySelectorAll(
-        'textarea[name="teacherNoteOverride"]',
-      )
-    ) {
-      prior.set(
-        row.dataset.studentId,
-        row.value,
-      )
-    }
-
     studentList.replaceChildren()
 
     for (const row of rows) {
@@ -2377,59 +2630,104 @@ export function mountTeacherScoreAssignmentUi({
       )
       wrapper.dataset.studentId = row.studentId
 
-      const checkbox = element(root, 'input')
-      checkbox.type = 'checkbox'
-      checkbox.name = 'selectedStudentIds'
-      checkbox.value = row.studentId
-      checkbox.id =
+      const selected = element(root, 'input')
+      selected.type = 'checkbox'
+      selected.name = 'selectedStudentIds'
+      selected.value = row.studentId
+      selected.id =
         `teacher-score-assignment-${row.studentId}`
 
-      const label = element(root, 'span')
-      label.textContent =
+      const name = element(root, 'span')
+      name.textContent =
         row.displayNameOrNickname
+
+      const overrideEnabled = element(
+        root,
+        'input',
+      )
+      overrideEnabled.type = 'checkbox'
+      overrideEnabled.name =
+        'teacherNoteOverrideEnabled'
+      overrideEnabled.dataset.studentId =
+        row.studentId
+      overrideEnabled.hidden = true
+
+      const overrideLabel = element(root, 'span')
+      overrideLabel.textContent =
+        'Öğrenciye özel not'
+      overrideLabel.hidden = true
 
       const override = element(root, 'textarea')
       override.name = 'teacherNoteOverride'
       override.dataset.studentId = row.studentId
       override.hidden = true
-      override.value =
-        prior.get(row.studentId) ?? ''
 
-      checkbox.addEventListener('change', () => {
-        override.hidden = !checkbox.checked
-      })
+      function sync() {
+        overrideEnabled.hidden = !selected.checked
+        overrideLabel.hidden = !selected.checked
+        override.hidden = !(
+          selected.checked &&
+          overrideEnabled.checked
+        )
+      }
 
-      wrapper.appendChild(checkbox)
-      wrapper.appendChild(label)
+      selected.addEventListener('change', sync)
+      overrideEnabled.addEventListener(
+        'change',
+        sync,
+      )
+
+      wrapper.appendChild(selected)
+      wrapper.appendChild(name)
+      wrapper.appendChild(overrideEnabled)
+      wrapper.appendChild(overrideLabel)
       wrapper.appendChild(override)
       studentList.appendChild(wrapper)
     }
   }
 
   function selectedStudentIds() {
-    return [
-      ...studentList.querySelectorAll(
+    return studentList
+      .querySelectorAll(
         'input[type="checkbox"]:checked',
-      ),
-    ].map((node) => node.value)
-  }
-
-  function selectedOverrides(ids) {
-    const selected = new Set(ids)
-    return [
-      ...studentList.querySelectorAll(
-        'textarea[name="teacherNoteOverride"]',
-      ),
-    ]
+      )
       .filter(
         (node) =>
-          selected.has(node.dataset.studentId) &&
-          node.value !== '',
+          node.name === 'selectedStudentIds',
       )
-      .map((node) => ({
+      .map((node) => node.value)
+  }
+
+  function selectedOverrides(studentIds) {
+    const selected = new Set(studentIds)
+    const enabled = studentList
+      .querySelectorAll(
+        'input[type="checkbox"]:checked',
+      )
+      .filter(
+        (node) =>
+          node.name ===
+            'teacherNoteOverrideEnabled' &&
+          selected.has(node.dataset.studentId),
+      )
+
+    const textareas =
+      studentList.querySelectorAll(
+        'textarea[name="teacherNoteOverride"]',
+      )
+
+    return enabled.map((node) => {
+      const textarea = textareas.find(
+        (candidate) =>
+          candidate.dataset.studentId ===
+          node.dataset.studentId,
+      )
+
+      return {
         studentId: node.dataset.studentId,
-        teacherNote: node.value,
-      }))
+        teacherNote: textarea?.value ?? '',
+      }
+    })
   }
 
   function refresh() {
@@ -2465,38 +2763,7 @@ export function mountTeacherScoreAssignmentUi({
 }
 ```
 
-**Ruling for explicit empty override:** the UI cannot infer whether an empty visible textarea means “no override” or “explicitly clear common note” without a separate opt-in. Therefore the UI must include an override-enabled control per selected student if explicit empty override is to be expressible. Implement each student row with an `overrideEnabled` checkbox plus textarea; submit a row whenever override is enabled, including empty text. Tests must cover this. Do not use the simplified `node.value !== ''` filter above in the final implementation; it is structural pseudocode only for mount shape. The committed code must implement the approved C model exactly.
-
-- [ ] **Step 5: Implement explicit override-enabled behavior**
-
-For every student row add:
-
-- selection checkbox: `name="selectedStudentIds"`;
-- override-enabled checkbox: `name="teacherNoteOverrideEnabled"`;
-- override textarea: `name="teacherNoteOverride"`.
-
-Rules:
-
-```text
-student not selected
-→ override-enabled hidden/disabled for submission
-→ textarea hidden
-
-student selected, override-enabled false
-→ common note applies
-→ no override row submitted
-
-student selected, override-enabled true, textarea "Metronom 60"
-→ override row submitted with text
-
-student selected, override-enabled true, textarea ""
-→ override row submitted with empty text
-→ service creates explicit empty teacherNote
-```
-
-The test fixture must assert all four cases.
-
-- [ ] **Step 6: Add scoped CSS**
+- [ ] **Step 4: Add scoped CSS**
 
 Create `src/teacherScoreAssignmentUi.css`:
 
@@ -2507,14 +2774,11 @@ Create `src/teacherScoreAssignmentUi.css`:
 }
 
 .teacher-score-assignment__form,
-.teacher-score-assignment__students {
+.teacher-score-assignment__students,
+.teacher-score-assignment__student,
+.teacher-score-assignment__common-note {
   display: grid;
   gap: 0.75rem;
-}
-
-.teacher-score-assignment__student {
-  display: grid;
-  gap: 0.35rem;
 }
 
 .teacher-score-assignment [hidden] {
@@ -2524,20 +2788,25 @@ Create `src/teacherScoreAssignmentUi.css`:
 
 Do not alter global shell/layout selectors.
 
-- [ ] **Step 7: Run UI + controller tests and verify GREEN**
+- [ ] **Step 5: Run UI + controller tests and verify GREEN**
 
 Run:
 
 ```bash
-node --test   tests/teacherScoreAssignmentUi.test.js   tests/teacherScoreAssignmentController.test.js
+node --test \
+  tests/teacherScoreAssignmentUi.test.js \
+  tests/teacherScoreAssignmentController.test.js
 ```
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit Task 4**
+- [ ] **Step 6: Commit Task 4**
 
 ```bash
-git add   src/teacherScoreAssignmentUi.js   src/teacherScoreAssignmentUi.css   tests/teacherScoreAssignmentUi.test.js   tests/support/fakeTeacherScoreAssignmentDom.js
+git add \
+  src/teacherScoreAssignmentUi.js \
+  src/teacherScoreAssignmentUi.css \
+  tests/teacherScoreAssignmentUi.test.js
 git commit -m "feat: add TD-04 explicit SCORE assignment UI"
 ```
 
