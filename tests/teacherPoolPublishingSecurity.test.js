@@ -19,7 +19,7 @@ test('TD-03 source contains no persistence/network/browser-admin provider implem
 
     assert.doesNotMatch(
       source,
-      /firebase|adminCredential|listUserss*(|fetchs*(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|indexedDB|firestore|database|bearer|token/i,
+      /firebase|adminCredential|listUsers\s*\(|fetch\s*\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|indexedDB|firestore|database|bearer|token/i,
       path,
     )
   }
@@ -41,7 +41,7 @@ test('TD-03 does not production-mount teacher Pool UI', () => {
   )
   assert.doesNotMatch(
     shell,
-    /teacherPool|Havuza Gönder|id:s*['"]teacher['"]/i,
+    /teacherPool|Havuza Gönder|id:\s*['"]teacher['"]/i,
   )
 })
 
@@ -72,7 +72,7 @@ test('TD-03 UI is explicit-mount only and has no module-level auto-init hook', (
   )
   assert.doesNotMatch(
     source,
-    /DOMContentLoaded|initTeacherPoolPublishingUis*(|mountTeacherPoolPublishingUis*(s*document/i,
+    /DOMContentLoaded|initTeacherPoolPublishingUi\s*\(|mountTeacherPoolPublishingUi\s*\(\s*document/i,
   )
 })
 
@@ -89,6 +89,6 @@ test('TD-03 scoped CSS does not modify global app shell selectors', () => {
     .filter(Boolean)
 
   for (const selector of selectors) {
-    assert.match(selector, /^.teacher-pool-publishing/)
+    assert.match(selector, /^\.teacher-pool-publishing/)
   }
 })
