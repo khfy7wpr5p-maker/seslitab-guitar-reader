@@ -1246,6 +1246,6 @@ Do not merge, deploy, provision Firebase, enable flags or start Student App cros
 - **Spec coverage:** TD-06 private SCORE path, durable prepared handoff addendum, auth/identity/grants, PracticePackage compatibility, atomic delivery, lifecycle/revoke, Student read isolation, Firebase adapter, Security Rules, shadow-safe composition, kill switches and verification are mapped to Tasks 1–11.
 - **Deliberately separate operational scope:** real Firebase project/Auth/credentials/rules/index deployment, billing, production deployment, real-user provisioning and Student App repository work remain Human Gate B or later cross-repo work, exactly as required by the spec.
 - **Pool scope:** TD-03 Pool data gets Firestore round-trip/provisioning support in Task 9, but no Student Pool API/UI is activated because the Student App Pool contract is not yet approved.
-- **Placeholder scan:** no TBD/TODO/FIXME implementation placeholders are permitted.
+- **Placeholder scan:** no unresolved placeholder markers or deferred implementation blanks are permitted.
 - **Type consistency:** provider subject exists only at auth boundary; domain principal contains stable IDs only. `assignmentId` is the TD-06 v1 delivery ID. Prepared records link one assignment to one package ID/fingerprint.
 - **Review Focus:** all five listed failure modes have explicit tests in Tasks 1, 3–6 and 9.
