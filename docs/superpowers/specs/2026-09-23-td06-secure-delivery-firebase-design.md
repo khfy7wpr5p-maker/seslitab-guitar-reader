@@ -92,7 +92,7 @@ The original PrivateAssignment remains unchanged.
 
 TD-06 must preserve all of the following:
 
-`READY_EXACT_REVISION != DELIVERED_TO_STUDENT`
+`READY_EXACT_REVISION != DURABLY_PREPARED != DELIVERED_TO_STUDENT`
 
 `PrivateAssignment != AssignmentLifecycleRecord != DeliveryRecord`
 
@@ -114,6 +114,8 @@ Additional invariants:
 10. Existing TD-01 through TD-05 semantics and regression tests remain valid.
 11. Student App cannot create teacher approval, assignment lifecycle transitions, delivery records, or revocations.
 12. OMR Gateway persistence and Secure Delivery persistence do not share authority.
+13. A browser-local TD-04 assignment is not deliverable until the trusted backend has durably accepted the exact prepared assignment/package handoff.
+14. Durable preparation is not delivery; preparation success must never produce student-visible delivery state by itself.
 
 ## 4. Architecture
 
@@ -422,11 +424,85 @@ Required checks:
 
 A later approved SCORE revision creates a new exact package/assignment decision. Existing delivered packages are not rewritten in place.
 
+## 9A. Durable Prepared-Assignment Handoff
+
+TD-04 and TD-05 currently operate through provider-neutral in-memory teacher repositories. The Secure Delivery backend therefore needs an explicit trusted handoff before an `assignmentId` can be used by the delivery endpoint.
+
+TD-06 adds a teacher-only durable preparation endpoint:
+
+`POST /api/secure-delivery/v1/teacher/prepared-assignments`
+
+The request carries a bounded batch of exact prepared assignment material required for server-side reconstruction and validation:
+
+- immutable `PrivateAssignment v1`;
+- exact `ScoreAssignmentSourceBinding v1`;
+- exact approved revision identity;
+- exact MusicXML required for the student package;
+- canonical events required for PracticePackage v1;
+- bounded package metadata required by the Student App contract.
+
+The backend never trusts client-supplied `teacherId`. Teacher identity comes only from the verified Firebase session and identity mapping.
+
+For every submitted assignment the backend must:
+
+1. verify the authenticated teacher;
+2. map Firebase UID to stable `teacherId`;
+3. verify an active TeacherStudentGrant for the assignment's stable `studentId`;
+4. validate the immutable PrivateAssignment shape;
+5. validate exact assignment/sourceRef/student identity equality;
+6. assemble and validate the exact PracticePackage candidate;
+7. require package recipient studentId to equal assignment studentId;
+8. require package approved revisionId to equal sourceRef revisionId;
+9. require the approved revision state to remain `teacher_approved`;
+10. reject mutable, substituted, malformed, duplicate-conflicting or authority-mismatched records;
+11. persist the prepared assignment envelope and immutable PracticePackage in one atomic operation;
+12. reread the committed records and verify exact acknowledgement before reporting success.
+
+A preparation batch is all-or-nothing. One invalid record prevents all new prepared records in that request from becoming durable.
+
+Idempotent replay is allowed only when the existing durable assignment/package pair is exactly equivalent to the submitted pair. A conflicting assignment, student, revision, package fingerprint or package recipient fails closed.
+
+Successful durable preparation means only:
+
+`DURABLY_PREPARED`
+
+It does not mean:
+
+`DELIVERED_TO_STUDENT`
+
+The delivery endpoint remains:
+
+`POST /api/secure-delivery/v1/teacher/deliveries`
+
+and accepts only `assignmentId` references that already exist in the trusted durable prepared-assignment repository.
+
+This yields the explicit authority progression:
+
+```text
+READY_EXACT_REVISION
+        ↓
+local TD-04 PrivateAssignment prepared
+        ↓
+trusted durable prepared-assignment handoff
+        ↓
+DURABLY_PREPARED
+        ↓
+teacher delivery transaction
+        ↓
+DELIVERED_TO_STUDENT
+```
+
+The durable prepared-assignment handoff is a TD-06 backend boundary. It does not grant Student App visibility and it does not alter TD-04/TD-05 domain semantics.
+
 ## 10. Secure Delivery API
 
 All private pilot data goes through the trusted API.
 
 ### Teacher endpoints
+
+`POST /api/secure-delivery/v1/teacher/prepared-assignments`
+
+Durably persists a bounded batch of already-prepared TD-04 assignments plus exact PracticePackage material after authenticated server-side revalidation. Success means DURABLY_PREPARED only, never delivered.
 
 `POST /api/secure-delivery/v1/teacher/deliveries`
 
@@ -814,22 +890,23 @@ Before TD-06 may be called merge-ready:
 1. focused auth/identity tests pass;
 2. teacher/student grant tests pass;
 3. Firestore adapter tests pass;
-4. Security Rules/emulator tests pass;
-5. atomic batch delivery tests pass;
-6. idempotency tests pass;
-7. PracticePackage exact-revision tests pass;
-8. revoke visibility tests pass;
-9. IDOR/forged-ID/security tests pass;
-10. credential-leak security tests pass;
-11. TD-01 through TD-05 regressions pass;
-12. full repository test suite passes;
-13. production build passes;
-14. protected browser/Playwright baseline passes;
-15. Sonar checks pass;
-16. exact PR head is verified;
-17. branch is not behind current main;
-18. security-sensitive provider configuration is reviewed separately;
-19. no production credential or deployment change occurs without explicit approval.
+4. durable prepared-assignment handoff tests pass, including exact acknowledgement and conflict/idempotency behavior;
+5. Security Rules/emulator tests pass;
+6. atomic batch delivery tests pass;
+7. idempotency tests pass;
+8. PracticePackage exact-revision tests pass;
+9. revoke visibility tests pass;
+10. IDOR/forged-ID/security tests pass;
+11. credential-leak security tests pass;
+12. TD-01 through TD-05 regressions pass;
+13. full repository test suite passes;
+14. production build passes;
+15. protected browser/Playwright baseline passes;
+16. Sonar checks pass;
+17. exact PR head is verified;
+18. branch is not behind current main;
+19. security-sensitive provider configuration is reviewed separately;
+20. no production credential or deployment change occurs without explicit approval.
 
 ## 25. Completion Boundary
 
@@ -839,6 +916,7 @@ TD-06 domain/backend implementation is complete when:
 - Firebase UID maps to stable SesliTab teacher/student identity;
 - server-side teacher/student authorization is fail-closed;
 - TD-02 through TD-05 records persist durably without semantic drift;
+- browser-local TD-04 prepared assignments have an authenticated, atomic, exact durable handoff before delivery;
 - exact PracticePackage is assembled and validated;
 - bounded multi-student delivery is atomic;
 - delivery acknowledgement is exact and durable;
