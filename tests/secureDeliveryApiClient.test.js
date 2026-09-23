@@ -258,3 +258,33 @@ test('enabled composition uses injected provider factories without importing bro
     false,
   )
 })
+
+
+test('student assignment client returns bounded assignment metadata unchanged', async () => {
+  const { createSecureDeliveryApiClient } = await loadClient()
+  const expected = [{
+    deliveryId: 'assignment-a',
+    assignmentId: 'assignment-a',
+    packageId: 'package-a',
+    practiceType: 'SCORE',
+    teacherNote: '',
+    state: 'REPERTOIRE',
+    assignedAt: '2026-09-23T08:01:00Z',
+    deliveredAt: '2026-09-23T08:03:00Z',
+    package: { safe: true },
+  }]
+
+  const client = createSecureDeliveryApiClient({
+    baseUrl: 'https://example.invalid/api/secure-delivery/v1',
+    getIdToken: async () => 'fresh-token',
+    fetchImpl: async () => jsonResponse({
+      success: true,
+      data: expected,
+    }),
+  })
+
+  assert.deepEqual(
+    await client.listStudentAssignments(),
+    expected,
+  )
+})
