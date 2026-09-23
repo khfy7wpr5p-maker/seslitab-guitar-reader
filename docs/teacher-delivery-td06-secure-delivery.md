@@ -158,3 +158,43 @@ The following are not authorized by code completion:
 - merging PR #247.
 
 No production project identifier, credential, service account, or token is committed.
+
+
+## Task 11 final review evidence
+
+Final review was performed against product-code head:
+
+`fd8e108ebea37a65fedc7855aa60b1b3d589d50a`
+
+This review used a separate manual/self-review pass because no independent subagent dispatcher is available in the current execution environment.
+
+### Requirements coverage
+
+- All 31 focused TD-01 through TD-06 test files named by the implementation plan exist on the reviewed head.
+- The repository `npm test` command is `node --test tests/*.test.js`, so those focused files are included in the full Node test run.
+- Firebase emulator coverage remains separate through `npm run test:td06:emulator`.
+- Secure Delivery production flags remain closed unless their environment variables equal `true`.
+- The production server remains fail-closed and does not initialize Firebase composition.
+
+### Final security checklist
+
+The exact TD-06 product diff was reviewed for:
+
+- committed Firebase/service-account credentials;
+- raw token logging or browser token persistence;
+- Firebase provider UID leaking into domain principals/student read models;
+- direct client Firestore authority;
+- Firebase/Admin imports in browser code;
+- OMR job/storage imports inside `backend/delivery/**`;
+- client-supplied teacherId/studentId authority;
+- silent partial prepared/delivery batches;
+- missing exact acknowledgement rereads;
+- revoke/read visibility races;
+- default-open feature flags;
+- cross-repository Student App writes.
+
+No blocking finding remained in this review.
+
+The only Firebase project identifier in executable provider setup is the local emulator demo ID `demo-seslitab-td06`. Firestore client rules remain deny-all for the first pilot. Real Firebase project provisioning, credentials, production rule/index deployment, billing, production flags, deployment, Student App writes and merge remain behind Human Gate B / later explicit approvals.
+
+This documentation-only review commit must itself pass the exact-head CI, emulator, protected browser, Playwright and Sonar checks before TD-06 can be called merge-ready.
