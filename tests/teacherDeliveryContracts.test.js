@@ -76,6 +76,7 @@ test('TD-01 student lifecycle write surface is absent', () => {
   )
   assert.doesNotMatch(source, /student.*complete|student.*repertoire|hazırım|readyButton/i)
   assert.match(source, /CHORD_BOARD/)
-  assert.match(source, /chord-board-source-contract-deferred-to-td-07/)
+  assert.doesNotMatch(source, /chord-board-source-contract-deferred-to-td-07/)
   assert.equal(PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE, 'SCORE')
+  assert.equal(PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD, 'CHORD_BOARD')
 })
