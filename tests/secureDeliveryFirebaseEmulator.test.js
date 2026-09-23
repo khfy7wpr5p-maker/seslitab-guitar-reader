@@ -16,6 +16,7 @@ import {
 } from '../src/services/poolItem.js'
 import {
   createActivePoolPublicationRecord,
+  revokePoolPublicationRecord,
 } from '../src/services/poolPublicationRecord.js'
 import {
   createPreparedAssignmentRecord,
@@ -413,9 +414,22 @@ test('identity/grant lookup and roster/Pool provisioning round-trip through Admi
     audienceMode: POOL_AUDIENCE_MODE.ALL,
     recipientStudentIds: [],
   })
+  const revokedItem = createPoolItem({
+    poolItemId: 'pool-revoked',
+    title: 'Eski Duyuru',
+    shortDescription: 'Çalışma',
+    detailText: '',
+    publishedAt: '2026-09-23T08:00:00Z',
+    audienceMode: POOL_AUDIENCE_MODE.ALL,
+    recipientStudentIds: [],
+  })
   await store.putPoolPublicationsForProvisioning([
     createActivePoolPublicationRecord(selectedItem),
     createActivePoolPublicationRecord(allItem),
+    revokePoolPublicationRecord(
+      createActivePoolPublicationRecord(revokedItem),
+      '2026-09-23T08:10:00Z',
+    ),
   ])
 
   const selectedRecipients = await db
@@ -430,4 +444,29 @@ test('identity/grant lookup and roster/Pool provisioning round-trip through Admi
     .get()
   assert.equal(selectedRecipients.size, 2)
   assert.equal(allRecipients.size, 0)
+
+  assert.deepEqual(
+    (await store.listPoolPublicationsForStudent(
+      'student-provision',
+    ))
+      .map((record) => record.item.poolItemId)
+      .sort(),
+    ['pool-all', 'pool-selected'],
+  )
+  assert.deepEqual(
+    (await store.listPoolPublicationsForStudent(
+      'student-second',
+    ))
+      .map((record) => record.item.poolItemId)
+      .sort(),
+    ['pool-all', 'pool-selected'],
+  )
+  assert.deepEqual(
+    (await store.listPoolPublicationsForStudent(
+      'student-unselected',
+    ))
+      .map((record) => record.item.poolItemId)
+      .sort(),
+    ['pool-all'],
+  )
 })
