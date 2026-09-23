@@ -95,6 +95,12 @@ class FakeNode {
     }
   }
 
+  async dispatchEventAsync(event) {
+    for (const listener of this.listeners.get(event.type) ?? []) {
+      await listener(event)
+    }
+  }
+
   querySelectorAll(selector) {
     const matches = []
     const visit = (node) => {
