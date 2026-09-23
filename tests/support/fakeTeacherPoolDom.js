@@ -11,7 +11,7 @@ function matchesSelector(node, selector) {
   }
 
   const match = selector.match(
-    /^(input|textarea)(?:\[name="([^"]+)"\])?(?:\[value="([^"]+)"\])?$/,
+    /^(input|textarea|select)(?:\[name="([^"]+)"\])?(?:\[value="([^"]+)"\])?$/,
   )
   if (match) {
     const [, tag, name, value] = match
@@ -19,6 +19,17 @@ function matchesSelector(node, selector) {
     if (name && node.name !== name) return false
     if (value && node.value !== value) return false
     return true
+  }
+
+  const dataAttribute = selector.match(
+    /^\[data-([a-z0-9-]+)\]$/,
+  )
+  if (dataAttribute) {
+    const key = dataAttribute[1].replace(
+      /-([a-z])/g,
+      (_, letter) => letter.toUpperCase(),
+    )
+    return Object.hasOwn(node.dataset, key)
   }
 
   const checked = selector.match(
@@ -92,6 +103,12 @@ class FakeNode {
   dispatchEvent(event) {
     for (const listener of this.listeners.get(event.type) ?? []) {
       listener(event)
+    }
+  }
+
+  async dispatchEventAsync(event) {
+    for (const listener of this.listeners.get(event.type) ?? []) {
+      await listener(event)
     }
   }
 

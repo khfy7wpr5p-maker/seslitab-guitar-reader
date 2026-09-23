@@ -1,4 +1,5 @@
 import { isScoreAssignmentSourceBinding } from './scoreAssignmentSourceBinding.js'
+import { isChordBoardAssignmentSourceBinding } from './chordBoardAssignmentSourceBinding.js'
 import {
   assertStrictInputObject,
   isStrictFrozenRecord,
@@ -66,12 +67,20 @@ export function createPrivateAssignment(input = {}) {
     throw new TypeError('practiceType must be SCORE or CHORD_BOARD.')
   }
 
-  if (input.practiceType === PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD) {
-    throw new Error('chord-board-source-contract-deferred-to-td-07')
-  }
+  const validSource =
+    input.practiceType ===
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE
+      ? isScoreAssignmentSourceBinding(
+          input.sourceRef,
+        )
+      : isChordBoardAssignmentSourceBinding(
+          input.sourceRef,
+        )
 
-  if (!isScoreAssignmentSourceBinding(input.sourceRef)) {
-    throw new TypeError('sourceRef must be a valid immutable SCORE assignment source binding.')
+  if (!validSource) {
+    throw new TypeError(
+      `sourceRef must be a valid immutable ${input.practiceType} assignment source binding.`,
+    )
   }
   if (input.sourceRef.studentId !== studentId) {
     throw new Error('PrivateAssignment studentId must match sourceRef studentId.')
@@ -99,10 +108,11 @@ export function isPrivateAssignment(value) {
     if (
       value?.schemaVersion !== PRIVATE_ASSIGNMENT_SCHEMA_VERSION ||
       !isStrictFrozenRecord(value, RECORD_FIELDS) ||
-      value.practiceType !== PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE ||
+      !Object.values(
+        PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+      ).includes(value.practiceType) ||
       value.state !== PRIVATE_ASSIGNMENT_STATE.ACTIVE ||
-      value.revokedAt !== null ||
-      !isScoreAssignmentSourceBinding(value.sourceRef)
+      value.revokedAt !== null
     ) {
       return false
     }
@@ -128,7 +138,22 @@ export function isPrivateAssignment(value) {
     ) {
       return false
     }
-    if (value.sourceRef.studentId !== value.studentId) return false
+    const validSource =
+      value.practiceType ===
+        PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE
+        ? isScoreAssignmentSourceBinding(
+            value.sourceRef,
+          )
+        : isChordBoardAssignmentSourceBinding(
+            value.sourceRef,
+          )
+    if (!validSource) return false
+    if (
+      value.sourceRef.studentId !==
+      value.studentId
+    ) {
+      return false
+    }
 
     return true
   } catch {

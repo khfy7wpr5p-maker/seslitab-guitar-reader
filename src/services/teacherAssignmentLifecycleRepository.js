@@ -24,7 +24,7 @@ const REVOKE_FIELDS = Object.freeze([
 function assertInitialAssignment(value) {
   if (!isPrivateAssignment(value)) {
     throw new TypeError(
-      'assignment must be a valid immutable initial SCORE PrivateAssignment.',
+      'assignment must be a valid immutable initial PrivateAssignment.',
     )
   }
 

@@ -13,6 +13,12 @@ import {
   createTeacherWorkspace,
 } from '../src/services/teacherWorkspaceModel.js'
 import { createScoreAssignmentSourceBinding } from '../src/services/scoreAssignmentSourceBinding.js'
+import { getChordBoardVoicings } from '../src/services/chordBoardCatalog.js'
+
+let chordBindingApi = null
+try {
+  chordBindingApi = await import('../src/services/chordBoardAssignmentSourceBinding.js')
+} catch {}
 import {
   PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
   PRIVATE_ASSIGNMENT_STATE,
@@ -165,17 +171,76 @@ test('TD-01 teacher assignment state machine allows only ACTIVE -> COMPLETED -> 
   }
 })
 
-test('TD-01 CHORD_BOARD creation fails closed until TD-07 exact snapshot contract exists', () => {
+test('TD-07 PrivateAssignment accepts strict CHORD_BOARD source and keeps exact snapshot authority', () => {
+  assert.ok(chordBindingApi, 'TD-07 chord source binding module must exist')
+  const sourceRef =
+    chordBindingApi.createChordBoardAssignmentSourceBinding({
+      studentId: 'student-1',
+      snapshot: getChordBoardVoicings('Am')[0],
+      boundAt: '2026-09-22T16:26:00Z',
+    })
+
+  const assignment = createPrivateAssignment({
+    assignmentId: 'assignment-chord-1',
+    studentId: 'student-1',
+    practiceType: PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
+    teacherNote: 'Am akorunu temiz çalış.',
+    assignedAt: '2026-09-22T16:26:00Z',
+    sourceRef,
+  })
+
+  assert.equal(assignment.practiceType, 'CHORD_BOARD')
+  assert.equal(assignment.sourceRef, sourceRef)
+  assert.equal(
+    assignment.sourceRef.snapshot.voicingFingerprint,
+    getChordBoardVoicings('Am')[0].voicingFingerprint,
+  )
+  assert.equal(isPrivateAssignment(assignment), true)
+})
+
+test('TD-07 PrivateAssignment rejects source variant swaps and recipient mismatch', () => {
+  assert.ok(chordBindingApi, 'TD-07 chord source binding module must exist')
+  const chordSource =
+    chordBindingApi.createChordBoardAssignmentSourceBinding({
+      studentId: 'student-1',
+      snapshot: getChordBoardVoicings('Am')[0],
+      boundAt: '2026-09-22T16:26:00Z',
+    })
+
   assert.throws(
     () => createPrivateAssignment({
-      assignmentId: 'assignment-chord-1',
+      assignmentId: 'assignment-chord-mismatch',
+      studentId: 'student-2',
+      practiceType: PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
+      teacherNote: '',
+      assignedAt: '2026-09-22T16:26:00Z',
+      sourceRef: chordSource,
+    }),
+    /studentId.*sourceRef/i,
+  )
+
+  assert.throws(
+    () => createPrivateAssignment({
+      assignmentId: 'assignment-score-wrong-source',
+      studentId: 'student-1',
+      practiceType: PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE,
+      teacherNote: '',
+      assignedAt: '2026-09-22T16:26:00Z',
+      sourceRef: chordSource,
+    }),
+    /sourceRef|SCORE/i,
+  )
+
+  assert.throws(
+    () => createPrivateAssignment({
+      assignmentId: 'assignment-chord-wrong-source',
       studentId: 'student-1',
       practiceType: PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
-      teacherNote: 'C ve G akorları',
+      teacherNote: '',
       assignedAt: '2026-09-22T16:26:00Z',
-      sourceRef: Object.freeze({ frets: [0, 3, 2, 0, 1, 0] }),
+      sourceRef: scoreSource('student-1'),
     }),
-    /chord-board-source-contract-deferred-to-td-07/,
+    /sourceRef|CHORD_BOARD/i,
   )
 })
 

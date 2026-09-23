@@ -63,7 +63,15 @@ test('TD-05 preserves initial PrivateAssignment validator boundary', () => {
   )
   assert.match(
     source,
-    /value\.practiceType\s*!==\s*PRIVATE_ASSIGNMENT_PRACTICE_TYPE\.SCORE/,
+    /Object\.values\([\s\S]*PRIVATE_ASSIGNMENT_PRACTICE_TYPE[\s\S]*\)\.includes\(value\.practiceType\)/,
+  )
+  assert.match(
+    source,
+    /isScoreAssignmentSourceBinding\([\s\S]*value\.sourceRef/,
+  )
+  assert.match(
+    source,
+    /isChordBoardAssignmentSourceBinding\([\s\S]*value\.sourceRef/,
   )
 })
 

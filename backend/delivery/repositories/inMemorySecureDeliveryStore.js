@@ -23,10 +23,11 @@ import {
   isPoolPublicationRecord,
 } from '../../../src/services/poolPublicationRecord.js'
 import {
-  validateStudentPracticePackageV1,
-} from '../../../src/services/studentPracticePackageV1.js'
+  assertSecureDeliveryPackageMatchesAssignment,
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
 import {
-  fingerprintPracticePackage,
+  fingerprintSecureDeliveryPackage,
 } from '../integrity/packageFingerprint.js'
 import {
   assertStrictInputObject,
@@ -71,21 +72,24 @@ function assertPreparedCommitRow(row) {
       'prepared must be a valid PreparedAssignmentRecord.',
     )
   }
-  const validation =
-    validateStudentPracticePackageV1(row.package)
-  if (!validation.ok) {
+  let pkg
+  try {
+    pkg = restoreSecureDeliveryPackage(
+      row.package,
+    )
+    assertSecureDeliveryPackageMatchesAssignment(
+      pkg,
+      row.prepared.assignment,
+    )
+  } catch {
     throw new TypeError(
-      'package must be a valid Student PracticePackage v1.',
+      'package must be a valid secure delivery package.',
     )
   }
   if (
-    row.prepared.packageId !== row.package.packageId ||
+    row.prepared.packageId !== pkg.packageId ||
     row.prepared.packageFingerprint !==
-      fingerprintPracticePackage(row.package) ||
-    row.prepared.assignment.studentId !==
-      row.package.publication.recipientStudentId ||
-    row.prepared.assignment.sourceRef.revisionId !==
-      row.package.approvedRevision.revisionId
+      fingerprintSecureDeliveryPackage(pkg)
   ) {
     throw new Error(
       'prepared assignment package acknowledgement conflict.',
@@ -138,10 +142,11 @@ export function createInMemorySecureDeliveryStore({
   }
 
   for (const pkg of practicePackages) {
-    const validation = validateStudentPracticePackageV1(pkg)
-    if (!validation.ok) {
+    try {
+      restoreSecureDeliveryPackage(pkg)
+    } catch {
       throw new TypeError(
-        'initial PracticePackage must be valid.',
+        'initial secure delivery package must be valid.',
       )
     }
     if (packageById.has(pkg.packageId)) {
@@ -242,7 +247,7 @@ export function createInMemorySecureDeliveryStore({
           nextPackages.get(existing.packageId) ?? null
         if (
           existingPackage === null ||
-          fingerprintPracticePackage(
+          fingerprintSecureDeliveryPackage(
             existingPackage,
           ) !== existing.packageFingerprint
         ) {
@@ -258,7 +263,7 @@ export function createInMemorySecureDeliveryStore({
         nextPackages.get(row.package.packageId) ?? null
       if (
         existingPackage !== null &&
-        fingerprintPracticePackage(existingPackage) !==
+        fingerprintSecureDeliveryPackage(existingPackage) !==
           row.prepared.packageFingerprint
       ) {
         throw new Error(

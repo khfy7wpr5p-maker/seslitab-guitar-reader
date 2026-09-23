@@ -28,6 +28,19 @@ import {
   createStudentPrivatePracticePackageV1,
 } from '../src/services/studentPracticePackageV1.js'
 import {
+  createStudentPrivateChordBoardPackageV1,
+} from '../src/services/studentChordBoardPackageV1.js'
+import {
+  getChordBoardVoicings,
+} from '../src/services/chordBoardCatalog.js'
+import {
+  createChordBoardAssignmentSourceBinding,
+} from '../src/services/chordBoardAssignmentSourceBinding.js'
+import {
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+  createPrivateAssignment,
+} from '../src/services/privateAssignment.js'
+import {
   createStudentRosterEntry,
 } from '../src/services/studentRosterEntry.js'
 import {
@@ -38,7 +51,20 @@ import {
 } from '../src/services/teacherDeliveryWireCodec.js'
 import {
   fingerprintPracticePackage,
+  fingerprintSecureDeliveryPackage,
 } from '../backend/delivery/integrity/packageFingerprint.js'
+import {
+  createSecureDeliveryAuthorization,
+} from '../backend/delivery/authorization/secureDeliveryAuthorization.js'
+import {
+  createPreparedAssignmentService,
+} from '../backend/delivery/services/preparedAssignmentService.js'
+import {
+  createTeacherSecureDeliveryService,
+} from '../backend/delivery/services/teacherDeliveryService.js'
+import {
+  createStudentDeliveryReadService,
+} from '../backend/delivery/services/studentDeliveryReadService.js'
 
 const PROJECT_ID = 'demo-seslitab-td06'
 const EMULATOR_AVAILABLE = Boolean(
@@ -118,6 +144,78 @@ function preparedRow(suffix, overrides = {}) {
       packageFingerprint: fingerprintPracticePackage(pkg),
       preparedAt: '2026-09-23T08:02:00Z',
     }),
+    package: pkg,
+  })
+}
+
+
+function chordAssignment({
+  assignmentId,
+  studentId,
+  symbol = 'Am',
+  teacherNote = '60 BPM ile çalış.',
+  assignedAt = '2026-09-23T09:01:00Z',
+} = {}) {
+  const snapshot =
+    getChordBoardVoicings(symbol)[0]
+  return createPrivateAssignment({
+    assignmentId,
+    studentId,
+    practiceType:
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
+    teacherNote,
+    assignedAt,
+    sourceRef:
+      createChordBoardAssignmentSourceBinding({
+        studentId,
+        snapshot,
+        boundAt: assignedAt,
+      }),
+  })
+}
+
+function chordPreparedRow(
+  suffix,
+  overrides = {},
+) {
+  const assignmentId =
+    overrides.assignmentId ??
+    'assignment-chord-' + suffix
+  const studentId =
+    overrides.studentId ??
+    'student-chord-' + suffix
+  const a = chordAssignment({
+    assignmentId,
+    studentId,
+    symbol: overrides.symbol ?? 'Am',
+    teacherNote:
+      overrides.teacherNote ??
+      '60 BPM ile çalış.',
+  })
+  const pkg =
+    createStudentPrivateChordBoardPackageV1({
+      assignment: a,
+      practice: {
+        repeatCount:
+          overrides.repeatCount ?? 4,
+      },
+    })
+
+  return Object.freeze({
+    prepared:
+      createPreparedAssignmentRecord({
+        teacherId:
+          overrides.teacherId ??
+          'teacher-a',
+        assignment: a,
+        packageId: pkg.packageId,
+        packageFingerprint:
+          fingerprintSecureDeliveryPackage(
+            pkg,
+          ),
+        preparedAt:
+          '2026-09-23T09:02:00Z',
+      }),
     package: pkg,
   })
 }
@@ -468,5 +566,290 @@ test('identity/grant lookup and roster/Pool provisioning round-trip through Admi
       .map((record) => record.item.poolItemId)
       .sort(),
     ['pool-all'],
+  )
+})
+
+
+test('TD-07 Firestore round-trips exact CHORD_BOARD source and package without SCORE coercion', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const store =
+    createFirestoreSecureDeliveryStore({
+      firestore: db,
+    })
+  const row =
+    chordPreparedRow('roundtrip')
+
+  const ack =
+    await store.commitPreparedBatch([
+      row,
+    ])
+
+  assert.equal(ack.length, 1)
+
+  const storedPrepared =
+    await store.getPreparedAssignment(
+      row.prepared.assignment.assignmentId,
+    )
+  const storedPackage =
+    await store.getPracticePackage(
+      row.package.packageId,
+    )
+
+  assert.equal(
+    storedPrepared.assignment.practiceType,
+    'CHORD_BOARD',
+  )
+  assert.equal(
+    storedPackage.packageType,
+    'CHORD_BOARD',
+  )
+  assert.deepEqual(
+    storedPrepared.assignment.sourceRef
+      .snapshot.voicing.frets,
+    row.prepared.assignment.sourceRef
+      .snapshot.voicing.frets,
+  )
+  assert.deepEqual(
+    storedPrepared.assignment.sourceRef
+      .snapshot.voicing.fingers,
+    row.prepared.assignment.sourceRef
+      .snapshot.voicing.fingers,
+  )
+  assert.deepEqual(
+    storedPrepared.assignment.sourceRef
+      .snapshot.voicing.barres,
+    row.prepared.assignment.sourceRef
+      .snapshot.voicing.barres,
+  )
+  assert.equal(
+    storedPrepared.assignment.sourceRef
+      .voicingFingerprint,
+    row.prepared.assignment.sourceRef
+      .voicingFingerprint,
+  )
+  assert.equal(
+    fingerprintSecureDeliveryPackage(
+      storedPackage,
+    ),
+    row.prepared.packageFingerprint,
+  )
+})
+
+test('TD-07 Firestore CHORD_BOARD prepared conflict rolls back fresh rows atomically', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const store =
+    createFirestoreSecureDeliveryStore({
+      firestore: db,
+    })
+  const existing =
+    chordPreparedRow(
+      'conflict-existing',
+      {
+        assignmentId:
+          'assignment-chord-conflict-shared',
+        studentId:
+          'student-chord-conflict',
+        symbol: 'Am',
+      },
+    )
+  await store.commitPreparedBatch([
+    existing,
+  ])
+
+  const pending =
+    chordPreparedRow(
+      'conflict-pending',
+    )
+  const conflicting =
+    chordPreparedRow(
+      'conflict-new',
+      {
+        assignmentId:
+          'assignment-chord-conflict-shared',
+        studentId:
+          'student-chord-conflict',
+        symbol: 'G',
+      },
+    )
+
+  await assert.rejects(
+    () =>
+      store.commitPreparedBatch([
+        pending,
+        conflicting,
+      ]),
+    /conflict/i,
+  )
+
+  assert.equal(
+    await store.getPreparedAssignment(
+      pending.prepared.assignment
+        .assignmentId,
+    ),
+    null,
+  )
+  assert.equal(
+    await store.getPracticePackage(
+      pending.package.packageId,
+    ),
+    null,
+  )
+})
+
+test('TD-07 Firestore-backed services prepare deliver read lifecycle and revoke CHORD_BOARD exactly', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const studentId =
+    'student-chord-service'
+  await seedIdentityAndGrant(
+    studentId,
+  )
+
+  const store =
+    createFirestoreSecureDeliveryStore({
+      firestore: db,
+    })
+  const authorization =
+    createSecureDeliveryAuthorization({
+      store,
+    })
+  const preparedService =
+    createPreparedAssignmentService({
+      authorization,
+      store,
+      now: () =>
+        '2026-09-23T09:02:00Z',
+    })
+  const teacher =
+    createTeacherSecureDeliveryService({
+      authorization,
+      store,
+      now: (() => {
+        const values = [
+          '2026-09-23T09:03:00Z',
+          '2026-09-23T09:04:00Z',
+          '2026-09-23T09:05:00Z',
+          '2026-09-23T09:06:00Z',
+        ]
+        let index = 0
+        return () =>
+          values[index++] ??
+          values.at(-1)
+      })(),
+      createHistoryEventId:
+        (() => {
+          let index = 0
+          return () =>
+            'history-chord-' +
+            ++index
+        })(),
+    })
+  const student =
+    createStudentDeliveryReadService({
+      authorization,
+      store,
+    })
+
+  const row =
+    chordPreparedRow(
+      'service',
+      {
+        studentId,
+        assignmentId:
+          'assignment-chord-service',
+      },
+    )
+
+  await preparedService.prepareBatch({
+    providerSubject: 'uid-teacher',
+    items: [{
+      assignment:
+        plain(row.prepared.assignment),
+      package:
+        plain(row.package),
+    }],
+  })
+
+  const delivered =
+    await teacher.deliverBatch({
+      providerSubject:
+        'uid-teacher',
+      assignmentIds: [
+        row.prepared.assignment
+          .assignmentId,
+      ],
+    })
+  assert.equal(
+    delivered[0].assignmentId,
+    row.prepared.assignment.assignmentId,
+  )
+
+  const visible =
+    await student.getAssignment({
+      providerSubject:
+        'uid-' + studentId,
+      deliveryId:
+        row.prepared.assignment.assignmentId,
+    })
+  assert.equal(
+    visible.package.packageType,
+    'CHORD_BOARD',
+  )
+  assert.deepEqual(
+    visible.package.content.chordBoard
+      .voicing.frets,
+    row.package.content.chordBoard
+      .voicing.frets,
+  )
+
+  const completed =
+    await teacher.applyAssignmentAction({
+      providerSubject:
+        'uid-teacher',
+      assignmentId:
+        row.prepared.assignment.assignmentId,
+      action: 'COMPLETE',
+    })
+  assert.equal(
+    completed.lifecycle.state,
+    'COMPLETED',
+  )
+
+  const repertoire =
+    await teacher.applyAssignmentAction({
+      providerSubject:
+        'uid-teacher',
+      assignmentId:
+        row.prepared.assignment.assignmentId,
+      action: 'REPERTOIRE',
+    })
+  assert.equal(
+    repertoire.lifecycle.state,
+    'REPERTOIRE',
+  )
+
+  const revoked =
+    await teacher.applyAssignmentAction({
+      providerSubject:
+        'uid-teacher',
+      assignmentId:
+        row.prepared.assignment.assignmentId,
+      action: 'REVOKE',
+    })
+  assert.notEqual(
+    revoked.lifecycle.revokedAt,
+    null,
+  )
+  assert.notEqual(
+    revoked.delivery.revokedAt,
+    null,
+  )
+
+  await assert.rejects(
+    () =>
+      student.getAssignment({
+        providerSubject:
+          'uid-' + studentId,
+        deliveryId:
+          row.prepared.assignment
+            .assignmentId,
+      }),
+    /student-assignment-not-found/i,
   )
 })
