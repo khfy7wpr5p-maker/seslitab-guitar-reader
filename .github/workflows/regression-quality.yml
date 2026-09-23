@@ -67,6 +67,12 @@ jobs:
         with:
           node-version: 24
 
+      - name: Set up Java 21 for Firebase emulator coverage
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Install dependencies for coverage
         run: npm ci --ignore-scripts
 
@@ -75,10 +81,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p coverage
-          node --test --experimental-test-coverage \
-            --test-reporter=spec --test-reporter-destination=stdout \
-            --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
-            tests/*.test.js
+          ./node_modules/.bin/firebase emulators:exec \
+            --project demo-seslitab-td06 \
+            --only auth,firestore \
+            "node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info tests/*.test.js"
           test -s coverage/lcov.info
 
       - name: Detect SonarQube configuration
