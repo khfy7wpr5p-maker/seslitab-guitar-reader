@@ -22,11 +22,15 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "firebase-admin": "14.4.0",
     "jszip": "^3.10.1",
     "multer": "2.2.0",
     "pdfjs-dist": "6.2.108"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0",
+    "firebase-tools": "15.30.2",
     "vite": "8.2.0"
   }
 }
