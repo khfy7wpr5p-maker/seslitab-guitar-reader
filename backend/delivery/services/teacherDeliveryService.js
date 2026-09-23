@@ -13,14 +13,22 @@ import {
   transitionAssignmentLifecycleRecord,
 } from '../../../src/services/assignmentLifecycleRecord.js'
 import {
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
   PRIVATE_ASSIGNMENT_STATE,
 } from '../../../src/services/privateAssignment.js'
 import {
-  validateStudentPracticePackageV1,
-} from '../../../src/services/studentPracticePackageV1.js'
+  assertSecureDeliveryPackageMatchesAssignment,
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
 import {
-  fingerprintPracticePackage,
+  sameChordBoardVoicingSnapshot,
+} from '../../../src/services/chordBoardVoicingCanonical.js'
+import {
+  fingerprintSecureDeliveryPackage,
 } from '../integrity/packageFingerprint.js'
+import {
+  fingerprintChordBoardVoicingSync,
+} from '../integrity/chordBoardVoicingFingerprint.js'
 import {
   assertSecureDeliveryStore,
 } from '../repositories/secureDeliveryStore.js'
@@ -36,13 +44,64 @@ const ACTIONS = new Set([
 ])
 
 function sameAssignmentAuthority(left, right) {
+  if (
+    left.assignmentId !== right.assignmentId ||
+    left.studentId !== right.studentId ||
+    left.practiceType !== right.practiceType ||
+    left.sourceRef.studentId !==
+      right.sourceRef.studentId
+  ) {
+    return false
+  }
+
+  if (
+    left.practiceType ===
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE
+  ) {
+    return (
+      left.sourceRef.sourceId ===
+        right.sourceRef.sourceId &&
+      left.sourceRef.revisionId ===
+        right.sourceRef.revisionId
+    )
+  }
+
   return (
-    left.assignmentId === right.assignmentId &&
-    left.studentId === right.studentId &&
-    left.sourceRef.studentId === right.sourceRef.studentId &&
-    left.sourceRef.sourceId === right.sourceRef.sourceId &&
-    left.sourceRef.revisionId === right.sourceRef.revisionId
+    left.sourceRef.voicingFingerprint ===
+      right.sourceRef.voicingFingerprint &&
+    left.sourceRef.boundAt ===
+      right.sourceRef.boundAt &&
+    sameChordBoardVoicingSnapshot(
+      left.sourceRef.snapshot,
+      right.sourceRef.snapshot,
+    )
   )
+}
+
+function assertChordFingerprintAuthority(
+  assignment,
+  pkg,
+) {
+  if (
+    assignment.practiceType !==
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD
+  ) {
+    return
+  }
+  const computed =
+    fingerprintChordBoardVoicingSync(
+      assignment.sourceRef.snapshot,
+    )
+  if (
+    computed !==
+      assignment.sourceRef.voicingFingerprint ||
+    computed !==
+      pkg.content.chordBoard.voicingFingerprint
+  ) {
+    throw new Error(
+      'secure-delivery-prepared-package-mismatch',
+    )
+  }
 }
 
 function assertExactDelivery(
@@ -100,22 +159,32 @@ async function loadPreparedContext(
     prepared.assignment.studentId,
   )
 
-  const pkg =
+  const rawPackage =
     await store.getPracticePackage(
       prepared.packageId,
     )
-  const validation =
-    validateStudentPracticePackageV1(pkg)
-  if (
-    pkg === null ||
-    !validation.ok ||
-    fingerprintPracticePackage(pkg) !==
-      prepared.packageFingerprint ||
-    pkg.publication.recipientStudentId !==
-      prepared.assignment.studentId ||
-    pkg.approvedRevision.revisionId !==
-      prepared.assignment.sourceRef.revisionId
-  ) {
+  let pkg
+  try {
+    pkg = restoreSecureDeliveryPackage(
+      rawPackage,
+    )
+    assertSecureDeliveryPackageMatchesAssignment(
+      pkg,
+      prepared.assignment,
+    )
+    assertChordFingerprintAuthority(
+      prepared.assignment,
+      pkg,
+    )
+    if (
+      fingerprintSecureDeliveryPackage(pkg) !==
+        prepared.packageFingerprint
+    ) {
+      throw new Error(
+        'secure-delivery-prepared-package-fingerprint-mismatch',
+      )
+    }
+  } catch {
     throw new Error(
       'secure-delivery-prepared-package-mismatch',
     )
