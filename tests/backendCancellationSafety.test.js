@@ -54,6 +54,49 @@ test('unconfirmed provider cancellation remains a truthful failure', async () =>
   finally { releaseRunningOperation('job_c') }
 })
 
+test('cancellation waits for an active job to publish its provider operation', async () => {
+  let releaseRegistration
+  const registrationGate = new Promise((resolve) => { releaseRegistration = resolve })
+  let cancelCalls = 0
+  const provider = {
+    async cancelJob(providerJobId) {
+      cancelCalls++
+      assert.equal(providerJobId, 'provider_race')
+      return { success: true, terminationConfirmed: true }
+    },
+  }
+
+  const worker = runQueueEntry({ jobId: 'race_wait', provider: 'mock' }, 'race-test', {
+    processJob: async () => {
+      await registrationGate
+      registerRunningOperation('race_wait', provider, 'provider_race')
+    },
+  })
+
+  let settled = false
+  const cancellation = cancelRunningJob('race_wait').then((result) => {
+    settled = true
+    return result
+  })
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(settled, false)
+
+    releaseRegistration()
+    const result = await cancellation
+
+    assert.equal(result.success, true)
+    assert.equal(result.terminationConfirmed, true)
+    assert.equal(cancelCalls, 1)
+    await worker
+  } finally {
+    releaseRegistration()
+    await worker
+    releaseRunningOperation('race_wait')
+  }
+})
+
 test('mock provider confirms absence of a live child idempotently', async () => {
   const up = await mockProvider.uploadPdf(Buffer.from('pdf'), 'x.pdf')
   const first = await mockProvider.cancelJob(up.providerJobId)
