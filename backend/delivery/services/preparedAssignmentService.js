@@ -2,16 +2,26 @@ import {
   restorePrivateAssignmentV1,
 } from '../../../src/services/teacherDeliveryWireCodec.js'
 import {
-  restoreStudentPracticePackageV1,
-} from '../../../src/services/studentPracticePackageV1.js'
+  assertSecureDeliveryPackageMatchesAssignment,
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
+import {
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+} from '../../../src/services/privateAssignment.js'
+import {
+  sameChordBoardVoicingSnapshot,
+} from '../../../src/services/chordBoardVoicingCanonical.js'
 import {
   createPreparedAssignmentRecord,
   isPreparedAssignmentRecord,
 } from '../../../src/services/preparedAssignmentRecord.js'
 import {
-  fingerprintPracticePackage,
+  fingerprintSecureDeliveryPackage,
   canonicalPackageJson,
 } from '../integrity/packageFingerprint.js'
+import {
+  fingerprintChordBoardVoicingSync,
+} from '../integrity/chordBoardVoicingFingerprint.js'
 import {
   assertSecureDeliveryStore,
 } from '../repositories/secureDeliveryStore.js'
@@ -25,21 +35,86 @@ const ITEM_FIELDS = Object.freeze([
   'package',
 ])
 
+function sameAssignmentAuthority(left, right) {
+  if (
+    left.assignmentId !== right.assignmentId ||
+    left.studentId !== right.studentId ||
+    left.practiceType !== right.practiceType ||
+    left.sourceRef.studentId !==
+      right.sourceRef.studentId
+  ) {
+    return false
+  }
+
+  if (
+    left.practiceType ===
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE
+  ) {
+    return (
+      left.sourceRef.sourceId ===
+        right.sourceRef.sourceId &&
+      left.sourceRef.revisionId ===
+        right.sourceRef.revisionId
+    )
+  }
+
+  return (
+    left.sourceRef.voicingFingerprint ===
+      right.sourceRef.voicingFingerprint &&
+    left.sourceRef.boundAt ===
+      right.sourceRef.boundAt &&
+    sameChordBoardVoicingSnapshot(
+      left.sourceRef.snapshot,
+      right.sourceRef.snapshot,
+    )
+  )
+}
+
 function samePrepared(left, right) {
   return (
     isPreparedAssignmentRecord(left) &&
     left.teacherId === right.teacherId &&
-    left.assignment.assignmentId ===
-      right.assignment.assignmentId &&
-    left.assignment.studentId ===
-      right.assignment.studentId &&
-    left.assignment.sourceRef.revisionId ===
-      right.assignment.sourceRef.revisionId &&
+    sameAssignmentAuthority(
+      left.assignment,
+      right.assignment,
+    ) &&
     left.packageId === right.packageId &&
     left.packageFingerprint ===
       right.packageFingerprint &&
     left.preparedAt === right.preparedAt
   )
+}
+
+function assertChordFingerprintAuthority(
+  assignment,
+  pkg,
+) {
+  if (
+    assignment.practiceType !==
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD
+  ) {
+    return
+  }
+
+  const computed =
+    fingerprintChordBoardVoicingSync(
+      assignment.sourceRef.snapshot,
+    )
+
+  if (
+    computed !==
+      assignment.sourceRef.voicingFingerprint ||
+    computed !==
+      pkg.content.chordBoard.voicingFingerprint ||
+    !sameChordBoardVoicingSnapshot(
+      assignment.sourceRef.snapshot,
+      pkg.content.chordBoard,
+    )
+  ) {
+    throw new Error(
+      'prepared chord voicing fingerprint mismatch.',
+    )
+  }
 }
 
 function samePackage(left, right) {
@@ -113,38 +188,19 @@ export function createPreparedAssignmentService({
           rawItem.assignment,
         )
       const pkg =
-        restoreStudentPracticePackageV1(
+        restoreSecureDeliveryPackage(
           rawItem.package,
         )
+      assertSecureDeliveryPackageMatchesAssignment(
+        pkg,
+        assignment,
+      )
+      assertChordFingerprintAuthority(
+        assignment,
+        pkg,
+      )
       const fingerprint =
-        fingerprintPracticePackage(pkg)
-
-      if (
-        pkg.publication.scope !==
-          'student_private' ||
-        pkg.publication.recipientStudentId !==
-          assignment.studentId
-      ) {
-        throw new Error(
-          'prepared package recipient student mismatch.',
-        )
-      }
-      if (
-        pkg.approvedRevision.revisionId !==
-        assignment.sourceRef.revisionId
-      ) {
-        throw new Error(
-          'prepared package revision mismatch.',
-        )
-      }
-      if (
-        pkg.approvedRevision.state !==
-        'teacher_approved'
-      ) {
-        throw new Error(
-          'prepared package must be teacher_approved.',
-        )
-      }
+        fingerprintSecureDeliveryPackage(pkg)
 
       await authorization.requireTeacherStudent(
         teacherId,
@@ -163,11 +219,10 @@ export function createPreparedAssignmentService({
           duplicate.fingerprint !== fingerprint ||
           duplicate.package.packageId !==
             pkg.packageId ||
-          duplicate.assignment.studentId !==
-            assignment.studentId ||
-          duplicate.assignment.sourceRef
-            .revisionId !==
-            assignment.sourceRef.revisionId
+          !sameAssignmentAuthority(
+            duplicate.assignment,
+            assignment,
+          )
         ) {
           throw new Error(
             'duplicate assignmentId conflict in prepared batch.',
@@ -188,11 +243,10 @@ export function createPreparedAssignmentService({
         if (
           !isPreparedAssignmentRecord(existing) ||
           existing.teacherId !== teacherId ||
-          existing.assignment.studentId !==
-            assignment.studentId ||
-          existing.assignment.sourceRef
-            .revisionId !==
-            assignment.sourceRef.revisionId ||
+          !sameAssignmentAuthority(
+            existing.assignment,
+            assignment,
+          ) ||
           existing.packageId !== pkg.packageId ||
           existing.packageFingerprint !==
             fingerprint
@@ -294,7 +348,7 @@ export function createPreparedAssignmentService({
           storedPackage,
           planned.package,
         ) ||
-        fingerprintPracticePackage(
+        fingerprintSecureDeliveryPackage(
           storedPackage,
         ) !== stored.packageFingerprint
       ) {
