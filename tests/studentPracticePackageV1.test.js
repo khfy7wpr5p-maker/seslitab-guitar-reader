@@ -167,3 +167,17 @@ test('canonical package JSON rejects undefined, non-finite numbers and cycles', 
     /cycle|cyclic/i,
   )
 })
+
+
+test('canonical package JSON uses locale-aware alphabetical key ordering', async () => {
+  const { canonicalPackageJson } = await loadFingerprint()
+
+  assert.equal(
+    canonicalPackageJson({
+      z: 1,
+      ä: 2,
+      a: 3,
+    }),
+    '{"a":3,"ä":2,"z":1}',
+  )
+})
