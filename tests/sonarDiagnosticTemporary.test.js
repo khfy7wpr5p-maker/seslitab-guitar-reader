@@ -31,14 +31,17 @@ function getJson(url) {
 test('TEMP diagnostic: print exact Sonar new-code reliability issues', async () => {
   const url = 'https://sonarcloud.io/api/issues/search?componentKeys=khfy7wpr5p-maker_seslitab-guitar-reader&pullRequest=247&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true'
   const data = await getJson(url)
-  const issues = (data.issues ?? []).filter((issue) => (issue.impacts ?? []).some((impact) => impact.softwareQuality === 'RELIABILITY')).map((issue) => ({
+  const issues = (data.issues ?? []).slice(0, 100).map((issue) => ({
     rule: issue.rule,
     severity: issue.severity,
     component: issue.component,
     line: issue.line,
     message: issue.message,
     type: issue.type,
+    status: issue.status,
+    issueStatus: issue.issueStatus,
+    cleanCodeAttribute: issue.cleanCodeAttribute,
     impacts: issue.impacts,
   }))
-  assert.fail('SONAR_DIAGNOSTIC=' + JSON.stringify(issues))
+  assert.fail('SONAR_DIAGNOSTIC=' + JSON.stringify({ total: data.total, issues }))
 })
