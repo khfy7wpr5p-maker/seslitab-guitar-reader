@@ -157,6 +157,12 @@ export function createSecureDeliveryApiClient({
       )
     },
 
+    listStudentPool() {
+      return request(
+        'student/pool',
+      )
+    },
+
     listStudentAssignments() {
       return request(
         'student/assignments',
