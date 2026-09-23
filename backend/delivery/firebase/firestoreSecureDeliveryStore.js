@@ -775,6 +775,80 @@ export function createFirestoreSecureDeliveryStore({
     })
   }
 
+  async function listPoolPublicationsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+
+    const [allSnap, selectedSnap] =
+      await Promise.all([
+        collections.pool
+          .where(
+            'item.audienceMode',
+            '==',
+            'ALL',
+          )
+          .get(),
+        collections.pool
+          .where(
+            'item.recipientStudentIds',
+            'array-contains',
+            id,
+          )
+          .get(),
+      ])
+
+    const byId = new Map()
+    for (const snap of [
+      allSnap,
+      selectedSnap,
+    ]) {
+      for (const item of snap.docs) {
+        const record =
+          restorePoolPublicationRecordV1(
+            item.data(),
+          )
+
+        if (record.revokedAt !== null) {
+          continue
+        }
+
+        const authorized =
+          record.item.audienceMode ===
+            'ALL' ||
+          record.item.recipientStudentIds
+            .includes(id)
+
+        if (!authorized) {
+          throw new Error(
+            'Pool read authority conflict.',
+          )
+        }
+
+        const poolItemId =
+          record.item.poolItemId
+        const existing =
+          byId.get(poolItemId)
+        if (
+          existing !== undefined &&
+          !same(existing, record)
+        ) {
+          throw new Error(
+            'Pool read duplicate conflict.',
+          )
+        }
+        byId.set(poolItemId, record)
+      }
+    }
+
+    return Object.freeze(
+      [...byId.values()],
+    )
+  }
+
   async function putRosterEntriesForProvisioning(
     entries,
   ) {
@@ -966,6 +1040,8 @@ export function createFirestoreSecureDeliveryStore({
         ),
       )
     },
+
+    listPoolPublicationsForStudent,
 
     commitPreparedBatch,
     commitDeliveryBatch,
