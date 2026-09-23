@@ -9,7 +9,20 @@ function normalizeBaseUrl(value) {
       'baseUrl must be non-empty text.',
     )
   }
-  return value.trim().replace(/\/+$/u, '')
+  const trimmed = value.trim()
+  let end = trimmed.length
+  while (
+    end > 0 &&
+    trimmed.charCodeAt(end - 1) === 47
+  ) {
+    end -= 1
+  }
+  if (end === 0) {
+    throw new TypeError(
+      'baseUrl must contain a non-slash value.',
+    )
+  }
+  return trimmed.slice(0, end)
 }
 
 function publicApiError(payload, status) {
