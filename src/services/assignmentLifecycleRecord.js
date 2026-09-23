@@ -21,7 +21,7 @@ const RECORD_FIELDS = Object.freeze([
 function assertInitialAssignment(assignment) {
   if (!isPrivateAssignment(assignment)) {
     throw new TypeError(
-      'assignment must be a valid immutable initial SCORE PrivateAssignment.',
+      'assignment must be a valid immutable initial PrivateAssignment.',
     )
   }
 
