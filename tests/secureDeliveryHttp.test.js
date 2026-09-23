@@ -49,6 +49,10 @@ function fakeDeps(config) {
     },
   }
   const studentService = {
+    async listPoolItems(input) {
+      calls.push(['student-pool', input])
+      return []
+    },
     async listAssignments(input) {
       calls.push(['student-list', input])
       return []
