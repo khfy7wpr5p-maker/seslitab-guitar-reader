@@ -44,10 +44,6 @@ const EMULATOR_AVAILABLE = Boolean(
   process.env.FIRESTORE_EMULATOR_HOST &&
   process.env.FIREBASE_AUTH_EMULATOR_HOST,
 )
-const emulatorTest = EMULATOR_AVAILABLE
-  ? test
-  : test.skip
-
 let admin
 let db
 let createFirestoreSecureDeliveryStore
@@ -177,7 +173,7 @@ after(async () => {
   await admin?.delete()
 })
 
-emulatorTest('Firebase token verifier passes raw token only to verifyIdToken(token, true) and returns uid only', async () => {
+test('Firebase token verifier passes raw token only to verifyIdToken(token, true) and returns uid only', { skip: !EMULATOR_AVAILABLE }, async () => {
   const calls = []
   const verifier = createFirebaseTokenVerifier({
     auth: {
@@ -200,7 +196,7 @@ emulatorTest('Firebase token verifier passes raw token only to verifyIdToken(tok
   assert.equal('token' in verifier, false)
 })
 
-emulatorTest('Firestore prepared batch is atomic, exact-replay idempotent and rereads exact links', async () => {
+test('Firestore prepared batch is atomic, exact-replay idempotent and rereads exact links', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const a = preparedRow('prep-a')
   const b = preparedRow('prep-b')
@@ -215,7 +211,7 @@ emulatorTest('Firestore prepared batch is atomic, exact-replay idempotent and re
   assert.equal(replay[1].packageFingerprint, first[1].packageFingerprint)
 })
 
-emulatorTest('one prepared conflict rejects the whole transaction with zero new documents', async () => {
+test('one prepared conflict rejects the whole transaction with zero new documents', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const existing = preparedRow('conflict-existing', { packageId: 'package-conflict-shared' })
   await store.commitPreparedBatch([existing])
@@ -233,7 +229,7 @@ emulatorTest('one prepared conflict rejects the whole transaction with zero new 
   )
 })
 
-emulatorTest('delivery transaction is atomic and exact active replay is idempotent', async () => {
+test('delivery transaction is atomic and exact active replay is idempotent', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const a = preparedRow('delivery-a')
   const b = preparedRow('delivery-b')
@@ -260,7 +256,7 @@ emulatorTest('delivery transaction is atomic and exact active replay is idempote
   assert.deepEqual(await store.getDelivery(deliveryA.assignmentId), deliveryA)
 })
 
-emulatorTest('one missing prepared delivery row rejects whole batch without silent partial success', async () => {
+test('one missing prepared delivery row rejects whole batch without silent partial success', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const valid = preparedRow('delivery-atomic-valid')
   await store.commitPreparedBatch([valid])
@@ -286,7 +282,7 @@ emulatorTest('one missing prepared delivery row rejects whole batch without sile
   assert.equal(await store.getDelivery(validDelivery.assignmentId), null)
 })
 
-emulatorTest('revoked lifecycle blocks a new delivery transaction', async () => {
+test('revoked lifecycle blocks a new delivery transaction', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const row = preparedRow('delivery-revoked')
   await store.commitPreparedBatch([row])
@@ -316,7 +312,7 @@ emulatorTest('revoked lifecycle blocks a new delivery transaction', async () => 
   )
 })
 
-emulatorTest('lifecycle mutation persists current state, append-only history and delivery revoke atomically', async () => {
+test('lifecycle mutation persists current state, append-only history and delivery revoke atomically', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const row = preparedRow('lifecycle-a')
   await store.commitPreparedBatch([row])
@@ -375,7 +371,7 @@ emulatorTest('lifecycle mutation persists current state, append-only history and
   assert.equal((await store.getDelivery(delivery.assignmentId)).revokedAt, '2026-09-23T08:08:00Z')
 })
 
-emulatorTest('identity/grant lookup and roster/Pool provisioning round-trip through Admin-only persistence', async () => {
+test('identity/grant lookup and roster/Pool provisioning round-trip through Admin-only persistence', { skip: !EMULATOR_AVAILABLE }, async () => {
   await seedIdentityAndGrant('student-provision')
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
 
