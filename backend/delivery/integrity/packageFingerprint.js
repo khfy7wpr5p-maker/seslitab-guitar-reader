@@ -54,7 +54,7 @@ function canonicalize(value, ancestors) {
     }
 
     const fields = Object.keys(value)
-      .sort()
+      .sort((left, right) => left.localeCompare(right, 'en'))
       .map(
         (key) =>
           `${JSON.stringify(key)}:${canonicalize(
