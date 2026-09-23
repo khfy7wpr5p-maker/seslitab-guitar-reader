@@ -2,7 +2,7 @@
 
 ## Status
 
-TD-06 implements the private SCORE delivery path through a provider-neutral HTTP boundary and a Firebase-backed server adapter. The implementation is prepared for local emulator verification only. Production Firebase provisioning and activation remain behind Human Gate B.
+TD-06 implements the private SCORE delivery path through a provider-neutral HTTP boundary and a Firebase-backed server adapter. The merged TD-06 baseline is extended by a bounded, authenticated Student Pool read endpoint for the approved STUDENT-08 Pool contract. Production Firebase provisioning and activation remain behind Human Gate B.
 
 ## Semantic ladder
 
@@ -59,8 +59,11 @@ Teacher endpoints:
 
 Student endpoints:
 
+- `GET /student/pool`
 - `GET /student/assignments`
 - `GET /student/assignments/:deliveryId`
+
+The Pool response is sanitized to `poolItemId`, `title`, `shortDescription`, `detailText`, `publishedAt`, and `audienceMode`. Recipient lists are never returned to the Student App. `ALL` is visible to authenticated students; `SELECTED` is returned only for an exact stable `studentId` match. Revoked Pool publications are excluded.
 
 The browser-side `secureDeliveryApiClient` receives a `getIdToken` function by injection. It asks for a fresh token per request, places it only in the Authorization header, and never imports Firebase or persists the token.
 
@@ -155,7 +158,7 @@ The following are not authorized by code completion:
 - enabling Secure Delivery flags in production;
 - deploying the backend;
 - writing to `khfy7wpr5p-maker/st-student-app`;
-- merging PR #247.
+- merging or deploying the Student Pool follow-up without separate explicit approval.
 
 No production project identifier, credential, service account, or token is committed.
 
@@ -198,3 +201,23 @@ No blocking finding remained in this review.
 The only Firebase project identifier in executable provider setup is the local emulator demo ID `demo-seslitab-td06`. Firestore client rules remain deny-all for the first pilot. Real Firebase project provisioning, credentials, production rule/index deployment, billing, production flags, deployment, Student App writes and merge remain behind Human Gate B / later explicit approvals.
 
 This documentation-only review commit must itself pass the exact-head CI, emulator, protected browser, Playwright and Sonar checks before TD-06 can be called merge-ready.
+
+
+## Student Pool read follow-up — 23 September 2026
+
+The approved STUDENT-08 Pool contract is now represented at the trusted server boundary by:
+
+```text
+GET /api/secure-delivery/v1/student/pool
+```
+
+The endpoint uses the authenticated Firebase provider subject only to resolve the stable SesliTab student identity. Authorization is evaluated server-side. Direct browser Firestore reads remain denied.
+
+The server store returns only active Pool publications that are either:
+
+- `ALL`; or
+- `SELECTED` with an exact recipient match for the resolved stable `studentId`.
+
+The HTTP read model strips `recipientStudentIds`, provider identity, teacher identity, Firestore paths and other internal authority data before returning Pool content.
+
+This follow-up does not activate production Firebase, deploy rules/indexes, provision identities, write to Student App, implement TD-07 Chord Board delivery, or authorize merge/deployment.
