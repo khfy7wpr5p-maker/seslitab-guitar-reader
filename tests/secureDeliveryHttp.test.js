@@ -213,3 +213,44 @@ test('missing/invalid auth returns bounded error and never echoes raw token', as
   assert.equal((await invalid.text()).includes('bad'), false)
   assert.equal((await missing.text()).includes('stack'), false)
 })
+
+
+test('student assignment HTTP response preserves bounded assignment metadata only', async () => {
+  const { createSecureDeliveryRouter } = await loadHttp()
+  const deps = fakeDeps({
+    enabled: true,
+    writesEnabled: false,
+    studentReadsEnabled: true,
+  })
+
+  deps.studentService.listAssignments = async (input) => {
+    deps.calls.push(['student-list', input])
+    return [{
+      deliveryId: 'assignment-a',
+      assignmentId: 'assignment-a',
+      packageId: 'package-a',
+      practiceType: 'SCORE',
+      teacherNote: 'Ölçü 8 tekrar',
+      state: 'COMPLETED',
+      assignedAt: '2026-09-23T08:01:00Z',
+      deliveredAt: '2026-09-23T08:03:00Z',
+      package: { safe: true },
+    }]
+  }
+
+  const response = await request(
+    appFor(createSecureDeliveryRouter(deps)),
+    '/api/secure-delivery/v1/student/assignments',
+    {
+      method: 'GET',
+      headers: { Authorization: 'Bearer token' },
+    },
+  )
+
+  assert.equal(response.status, 200)
+  const body = await response.json()
+  assert.equal(body.data[0].state, 'COMPLETED')
+  assert.equal(body.data[0].assignmentId, 'assignment-a')
+  assert.equal(body.data[0].practiceType, 'SCORE')
+  assert.equal(JSON.stringify(body).includes('teacherId'), false)
+})
