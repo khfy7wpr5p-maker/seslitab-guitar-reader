@@ -221,3 +221,138 @@ test('pilot teacher writes remain closed and health reveals no provider identity
     false,
   )
 })
+
+
+test('pilot store fails closed for unknown IDs and every write seam', async () => {
+  const store = createStudent08PilotStore()
+
+  assert.equal(
+    await store.getPreparedAssignment('unknown'),
+    null,
+  )
+  assert.equal(
+    await store.getPracticePackage('unknown'),
+    null,
+  )
+  assert.equal(
+    await store.getDelivery('unknown'),
+    null,
+  )
+  assert.deepEqual(
+    await store.listActiveDeliveriesForStudent(
+      'unknown',
+    ),
+    [],
+  )
+  assert.deepEqual(
+    await store.listPoolPublicationsForStudent(
+      'unknown',
+    ),
+    [],
+  )
+  assert.deepEqual(
+    await store.listDeliveriesForTeacher(
+      'pilot-teacher',
+    ),
+    [],
+  )
+  assert.equal(
+    await store.getLifecycle(
+      'unknown',
+    ),
+    null,
+  )
+  assert.equal(
+    await store.getTeacherStudentGrant(
+      'pilot-teacher',
+      'unknown',
+    ),
+    null,
+  )
+
+  for (const method of [
+    'commitPreparedBatch',
+    'commitDeliveryBatch',
+    'commitLifecycleMutation',
+    'putRosterEntriesForProvisioning',
+    'putPoolPublicationsForProvisioning',
+  ]) {
+    await assert.rejects(
+      () => store[method]([]),
+      /pilot-read-only/,
+    )
+  }
+})
+
+test('pilot app rejects incomplete verifier and unsafe preview origins', () => {
+  assert.throws(
+    () => createStudent08PilotApp({
+      tokenVerifier: null,
+      allowedOrigin,
+    }),
+    /tokenVerifier/i,
+  )
+
+  assert.throws(
+    () => createStudent08PilotApp({
+      tokenVerifier,
+      allowedOrigin: 'http://example.test',
+    }),
+    /exact HTTPS origin/i,
+  )
+
+  assert.throws(
+    () => createStudent08PilotApp({
+      tokenVerifier,
+      allowedOrigin:
+        'https://example.test/path',
+    }),
+    /exact HTTPS origin/i,
+  )
+})
+
+test('pilot app fails authentication closed and returns bounded 404', async () => {
+  const app = createStudent08PilotApp({
+    tokenVerifier: {
+      async verifyIdToken() {
+        throw new Error('private-verifier-detail')
+      },
+    },
+    allowedOrigin,
+  })
+
+  const denied = await request(
+    app,
+    '/api/secure-delivery/v1/student/pool',
+    {
+      headers: {
+        Authorization: 'Bearer bad-token',
+        Origin: allowedOrigin,
+      },
+    },
+  )
+  assert.equal(denied.status, 401)
+  const deniedBody = await denied.json()
+  assert.equal(
+    JSON.stringify(deniedBody).includes(
+      'private-verifier-detail',
+    ),
+    false,
+  )
+
+  const missing = await request(
+    app,
+    '/does-not-exist',
+  )
+  assert.equal(missing.status, 404)
+  assert.deepEqual(
+    await missing.json(),
+    {
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'Endpoint bulunamadı.',
+      },
+    },
+  )
+})
