@@ -206,6 +206,7 @@ test('enabled composition uses injected provider factories without importing bro
     async getDelivery() { return null },
     async listDeliveriesForTeacher() { return [] },
     async listActiveDeliveriesForStudent() { return [] },
+    async listPoolPublicationsForStudent() { return [] },
     async commitPreparedBatch() { return [] },
     async commitDeliveryBatch() { return [] },
     async commitLifecycleMutation() { return {} },

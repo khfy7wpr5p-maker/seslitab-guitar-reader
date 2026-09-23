@@ -11,6 +11,12 @@ import {
   validateStudentPracticePackageV1,
 } from '../../../src/services/studentPracticePackageV1.js'
 import {
+  POOL_AUDIENCE_MODE,
+} from '../../../src/services/poolItem.js'
+import {
+  isPoolPublicationRecord,
+} from '../../../src/services/poolPublicationRecord.js'
+import {
   assertSecureDeliveryStore,
 } from '../repositories/secureDeliveryStore.js'
 import {
@@ -33,6 +39,47 @@ function studentView(
       prepared.assignment.teacherNote,
     deliveredAt: delivery.deliveredAt,
     package: pkg,
+  })
+}
+
+function studentPoolView(
+  record,
+  studentId,
+) {
+  if (!isPoolPublicationRecord(record)) {
+    throw new Error(
+      'student Pool authority mismatch.',
+    )
+  }
+
+  const item = record.item
+  const authorized =
+    record.revokedAt === null &&
+    (
+      item.audienceMode ===
+        POOL_AUDIENCE_MODE.ALL ||
+      (
+        item.audienceMode ===
+          POOL_AUDIENCE_MODE.SELECTED &&
+        item.recipientStudentIds
+          .includes(studentId)
+      )
+    )
+
+  if (!authorized) {
+    throw new Error(
+      'student Pool authority mismatch.',
+    )
+  }
+
+  return Object.freeze({
+    poolItemId: item.poolItemId,
+    title: item.title,
+    shortDescription:
+      item.shortDescription,
+    detailText: item.detailText,
+    publishedAt: item.publishedAt,
+    audienceMode: item.audienceMode,
   })
 }
 
@@ -95,6 +142,15 @@ export function createStudentDeliveryReadService({
   }
   const trustedStore =
     assertSecureDeliveryStore(store)
+  if (
+    typeof trustedStore
+      .listPoolPublicationsForStudent !==
+      'function'
+  ) {
+    throw new TypeError(
+      'store must provide listPoolPublicationsForStudent().',
+    )
+  }
 
   async function studentPrincipal(
     providerSubject,
@@ -261,8 +317,54 @@ export function createStudentDeliveryReadService({
     )
   }
 
+  async function listPoolItems({
+    providerSubject,
+  } = {}) {
+    const { studentId } =
+      await studentPrincipal(providerSubject)
+    const candidates =
+      await trustedStore
+        .listPoolPublicationsForStudent(
+          studentId,
+        )
+
+    if (!Array.isArray(candidates)) {
+      throw new TypeError(
+        'student Pool list must be an array.',
+      )
+    }
+
+    const output = []
+    const seen = new Set()
+
+    for (const candidate of candidates) {
+      const poolItemId =
+        candidate?.item?.poolItemId
+
+      if (
+        typeof poolItemId !== 'string' ||
+        seen.has(poolItemId)
+      ) {
+        throw new Error(
+          'student Pool authority mismatch.',
+        )
+      }
+
+      const view =
+        studentPoolView(
+          candidate,
+          studentId,
+        )
+      seen.add(view.poolItemId)
+      output.push(view)
+    }
+
+    return Object.freeze(output)
+  }
+
   return Object.freeze({
     listAssignments,
     getAssignment,
+    listPoolItems,
   })
 }

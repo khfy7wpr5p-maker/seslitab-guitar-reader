@@ -88,6 +88,7 @@ export function createSecureDeliveryRouter({
   for (const method of [
     'listAssignments',
     'getAssignment',
+    'listPoolItems',
   ]) {
     assertServiceMethod(
       studentService,
@@ -244,6 +245,20 @@ export function createSecureDeliveryRouter({
           assignmentId:
             req.params.assignmentId,
           action: req.body?.action,
+        }),
+      ),
+    ),
+  )
+
+  router.get(
+    '/student/pool',
+    requireEnabled,
+    requireStudentReads,
+    route(async (_req, res, subject) =>
+      success(
+        res,
+        await studentService.listPoolItems({
+          providerSubject: subject,
         }),
       ),
     ),
