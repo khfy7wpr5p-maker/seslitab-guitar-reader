@@ -26,10 +26,6 @@ const EMULATOR_AVAILABLE = Boolean(
   process.env.FIRESTORE_EMULATOR_HOST &&
   process.env.FIREBASE_AUTH_EMULATOR_HOST,
 )
-const emulatorTest = EMULATOR_AVAILABLE
-  ? test
-  : test.skip
-
 let env
 
 before(async () => {
@@ -65,14 +61,14 @@ async function assertDeniedForContext(context) {
   }
 }
 
-emulatorTest('unauthenticated direct Firestore clients cannot read or write TD-06 collections', async () => {
+test('unauthenticated direct Firestore clients cannot read or write TD-06 collections', { skip: !EMULATOR_AVAILABLE }, async () => {
   assert.ok(env)
   await assertDeniedForContext(
     env.unauthenticatedContext(),
   )
 })
 
-emulatorTest('STUDENT-like direct Firestore client cannot read or write TD-06 collections', async () => {
+test('STUDENT-like direct Firestore client cannot read or write TD-06 collections', { skip: !EMULATOR_AVAILABLE }, async () => {
   await assertDeniedForContext(
     env.authenticatedContext('student-provider-uid', {
       role: 'STUDENT',
@@ -80,7 +76,7 @@ emulatorTest('STUDENT-like direct Firestore client cannot read or write TD-06 co
   )
 })
 
-emulatorTest('TEACHER-like direct Firestore client cannot read or write TD-06 collections', async () => {
+test('TEACHER-like direct Firestore client cannot read or write TD-06 collections', { skip: !EMULATOR_AVAILABLE }, async () => {
   await assertDeniedForContext(
     env.authenticatedContext('teacher-provider-uid', {
       role: 'TEACHER',
