@@ -7,7 +7,7 @@ function getJson(url) {
     https.get(url, {
       headers: {
         'User-Agent': 'seslitab-sonar-diagnostic',
-        Accept: 'application/json',
+        Accept: 'application/vnd.github+json',
       },
     }, (res) => {
       let body = ''
@@ -15,7 +15,7 @@ function getJson(url) {
       res.on('data', (chunk) => { body += chunk })
       res.on('end', () => {
         if ((res.statusCode ?? 500) >= 400) {
-          reject(new Error('Sonar API HTTP ' + res.statusCode + ': ' + body.slice(0, 500)))
+          reject(new Error('GitHub API HTTP ' + res.statusCode + ': ' + body.slice(0, 800)))
           return
         }
         try {
@@ -28,20 +28,9 @@ function getJson(url) {
   })
 }
 
-test('TEMP diagnostic: print exact Sonar new-code reliability issues', async () => {
-  const url = 'https://sonarcloud.io/api/issues/search?componentKeys=khfy7wpr5p-maker_seslitab-guitar-reader&pullRequest=247&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true'
-  const data = await getJson(url)
-  const issues = (data.issues ?? []).slice(0, 100).map((issue) => ({
-    rule: issue.rule,
-    severity: issue.severity,
-    component: issue.component,
-    line: issue.line,
-    message: issue.message,
-    type: issue.type,
-    status: issue.status,
-    issueStatus: issue.issueStatus,
-    cleanCodeAttribute: issue.cleanCodeAttribute,
-    impacts: issue.impacts,
-  }))
-  assert.fail('SONAR_DIAGNOSTIC=' + JSON.stringify({ total: data.total, issues }))
+test('TEMP diagnostic: print Sonar GitHub check annotation', async () => {
+  const annotations = await getJson(
+    'https://api.github.com/repos/khfy7wpr5p-maker/seslitab-guitar-reader/check-runs/107099246629/annotations',
+  )
+  assert.fail('SONAR_DIAGNOSTIC=' + JSON.stringify(annotations))
 })
