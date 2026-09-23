@@ -464,6 +464,38 @@ export function createStudent08PilotApp({
       ),
     ),
   )
+
+  app.use((req, res, next) => {
+    const startedAt = Date.now()
+    res.on('finish', () => {
+      const path =
+        typeof req.path === 'string'
+          ? req.path
+          : ''
+      const allowedPath =
+        path === '/health' ||
+        path.startsWith(
+          '/api/secure-delivery/v1/student/',
+        )
+
+      if (!allowedPath) {
+        return
+      }
+
+      console.log(
+        '[Student08 Pilot Request]',
+        JSON.stringify({
+          method: req.method,
+          path,
+          status: res.statusCode,
+          durationMs:
+            Date.now() - startedAt,
+        }),
+      )
+    })
+    next()
+  })
+
   app.use(express.json({
     limit: '16kb',
   }))
