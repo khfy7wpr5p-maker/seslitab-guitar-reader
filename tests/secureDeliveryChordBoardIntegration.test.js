@@ -209,8 +209,14 @@ test('TD-07 CHORD_BOARD student read preserves IDOR isolation', async () => {
       deliveryId: 'assignment-chord-a',
     }),
     (error) => {
-      assert.match(error.message, /not-found|forbidden/i)
-      assert.doesNotMatch(error.message, /student-a|teacher-a/i)
+      assert.equal(
+        error.message,
+        'student-assignment-not-found',
+      )
+      assert.doesNotMatch(
+        error.message,
+        /teacher-a|uid-student-a/i,
+      )
       return true
     },
   )
