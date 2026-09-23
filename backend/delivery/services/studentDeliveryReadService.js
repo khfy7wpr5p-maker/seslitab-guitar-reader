@@ -30,13 +30,22 @@ function notFound() {
 function studentView(
   delivery,
   prepared,
+  lifecycle,
   pkg,
 ) {
+  const assignment = prepared.assignment
+
   return Object.freeze({
     deliveryId: delivery.deliveryId,
+    assignmentId: assignment.assignmentId,
     packageId: delivery.packageId,
-    teacherNote:
-      prepared.assignment.teacherNote,
+    practiceType: assignment.practiceType,
+    teacherNote: assignment.teacherNote,
+    state:
+      lifecycle === null
+        ? assignment.state
+        : lifecycle.state,
+    assignedAt: assignment.assignedAt,
     deliveredAt: delivery.deliveredAt,
     package: pkg,
   })
@@ -231,6 +240,7 @@ export function createStudentDeliveryReadService({
     return studentView(
       delivery,
       prepared,
+      lifecycle,
       pkg,
     )
   }
