@@ -50,7 +50,11 @@ export function getRunningOperation(jobId) { return runningOperations.get(jobId)
 export function releaseRunningOperation(jobId) { return runningOperations.delete(jobId) }
 
 export async function cancelRunningJob(jobId) {
-  const operation = runningOperations.get(jobId)
+  let operation = runningOperations.get(jobId)
+  while (!operation && activeJobs.has(jobId)) {
+    await new Promise((resolve) => setImmediate(resolve))
+    operation = runningOperations.get(jobId)
+  }
   if (!operation) return { success: false, terminationConfirmed: false, error: { code: 'CANCELLATION_FAILED', message: 'Çalışan sağlayıcı işlemi bulunamadı.' } }
   if (operation.cancelPromise) return operation.cancelPromise
   operation.cancellationRequested = true
