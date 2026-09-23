@@ -65,6 +65,22 @@ Student endpoints:
 
 The Pool response is sanitized to `poolItemId`, `title`, `shortDescription`, `detailText`, `publishedAt`, and `audienceMode`. Recipient lists are never returned to the Student App. `ALL` is visible to authenticated students; `SELECTED` is returned only for an exact stable `studentId` match. Revoked Pool publications are excluded.
 
+Student SCORE assignment responses expose only the bounded read model required by STUDENT-08:
+
+```text
+deliveryId
+assignmentId
+packageId
+practiceType
+teacherNote
+state
+assignedAt
+deliveredAt
+package
+```
+
+`assignmentId`, `practiceType`, `state`, and `assignedAt` are derived from trusted prepared/lifecycle records. No caller-supplied identity is accepted. No top-level `studentId`, `teacherId`, `providerSubject`, recipient list, Firestore path, or evidence ID is returned. PracticePackage v1 remains unchanged; its existing intended-recipient field stays confined to package validation.
+
 The browser-side `secureDeliveryApiClient` receives a `getIdToken` function by injection. It asks for a fresh token per request, places it only in the Authorization header, and never imports Firebase or persists the token.
 
 ## Firestore collections

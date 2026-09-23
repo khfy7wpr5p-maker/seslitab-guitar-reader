@@ -11,6 +11,10 @@ import { createTeacherStudentGrant } from '../src/services/teacherStudentGrant.j
 import { createSecureDeliveryAuthorization } from '../backend/delivery/authorization/secureDeliveryAuthorization.js'
 import { createInMemorySecureDeliveryStore } from '../backend/delivery/repositories/inMemorySecureDeliveryStore.js'
 import { createTeacherSecureDeliveryService } from '../backend/delivery/services/teacherDeliveryService.js'
+import {
+  createInitialAssignmentLifecycleRecord,
+  transitionAssignmentLifecycleRecord,
+} from '../src/services/assignmentLifecycleRecord.js'
 
 async function loadService() {
   try {
@@ -96,7 +100,7 @@ function teacherMapping() {
   })
 }
 
-function makeHarness() {
+function makeHarness({ lifecycleA = null } = {}) {
   const a = prepared('assignment-a', 'student-a', 'revision-a', 'package-a')
   const b = prepared('assignment-b', 'student-b', 'revision-b', 'package-b')
   const deliveryA = createDeliveryRecord({
@@ -131,10 +135,12 @@ function makeHarness() {
     grants,
     preparedAssignments: [a.record, b.record],
     practicePackages: [a.package, b.package],
+    lifecycles: lifecycleA === null ? [] : [lifecycleA],
     deliveries: [deliveryA, deliveryB],
   })
   return {
     store,
+    preparedA: a.record,
     authorization: createSecureDeliveryAuthorization({ store }),
   }
 }
@@ -150,9 +156,66 @@ test('student list returns only the authenticated student private work', async (
 
   assert.equal(rows.length, 1)
   assert.equal(rows[0].deliveryId, 'assignment-a')
-  assert.equal(rows[0].packageId, 'package-a')
+  assert.deepEqual(
+    {
+      deliveryId: rows[0].deliveryId,
+      assignmentId: rows[0].assignmentId,
+      packageId: rows[0].packageId,
+      practiceType: rows[0].practiceType,
+      state: rows[0].state,
+      assignedAt: rows[0].assignedAt,
+      deliveredAt: rows[0].deliveredAt,
+    },
+    {
+      deliveryId: 'assignment-a',
+      assignmentId: 'assignment-a',
+      packageId: 'package-a',
+      practiceType: 'SCORE',
+      state: 'ACTIVE',
+      assignedAt: '2026-09-23T08:01:00Z',
+      deliveredAt: '2026-09-23T08:03:00Z',
+    },
+  )
   assert.equal(rows[0].package.publication.recipientStudentId, 'student-a')
   assert.equal(rows[0].teacherNote, 'Ölçü 8 tekrar')
+})
+
+test('student read model carries current lifecycle state', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+
+  const base = makeHarness()
+  const active =
+    createInitialAssignmentLifecycleRecord(
+      base.preparedA.assignment,
+    )
+  const completed =
+    transitionAssignmentLifecycleRecord(
+      active,
+      'COMPLETED',
+      '2026-09-23T08:20:00Z',
+    )
+  const repertoire =
+    transitionAssignmentLifecycleRecord(
+      completed,
+      'REPERTOIRE',
+      '2026-09-23T08:30:00Z',
+    )
+
+  for (const [lifecycle, expected] of [
+    [completed, 'COMPLETED'],
+    [repertoire, 'REPERTOIRE'],
+  ]) {
+    const h = makeHarness({ lifecycleA: lifecycle })
+    const service = createStudentDeliveryReadService(h)
+    const [row] = await service.listAssignments({
+      providerSubject: 'uid-student-a',
+    })
+
+    assert.equal(row.state, expected)
+    assert.equal(row.assignmentId, 'assignment-a')
+    assert.equal(row.practiceType, 'SCORE')
+    assert.equal(row.assignedAt, '2026-09-23T08:01:00Z')
+  }
 })
 
 test('Student A cannot read Student B even with exact deliveryId and error does not reveal owner', async () => {
@@ -182,6 +245,21 @@ test('student read model strips teacher/provider/evidence diagnostics', async ()
     deliveryId: 'assignment-a',
   })
   const serialized = JSON.stringify(result)
+
+  assert.deepEqual(
+    Object.keys(result).sort(),
+    [
+      'assignedAt',
+      'assignmentId',
+      'deliveredAt',
+      'deliveryId',
+      'package',
+      'packageId',
+      'practiceType',
+      'state',
+      'teacherNote',
+    ],
+  )
 
   for (const forbidden of [
     'firebaseUid',
