@@ -32,15 +32,15 @@ import {
   restorePrivateAssignmentV1,
 } from '../../../src/services/teacherDeliveryWireCodec.js'
 import {
-  restoreStudentPracticePackageV1,
-  validateStudentPracticePackageV1,
-} from '../../../src/services/studentPracticePackageV1.js'
+  assertSecureDeliveryPackageMatchesAssignment,
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
 import {
   normalizeRequiredId,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
 import {
   canonicalPackageJson,
-  fingerprintPracticePackage,
+  fingerprintSecureDeliveryPackage,
 } from '../integrity/packageFingerprint.js'
 
 function plain(value) {
@@ -162,23 +162,29 @@ function validatePreparedRow(row) {
       'prepared batch row must contain a valid PreparedAssignmentRecord.',
     )
   }
-  const validation =
-    validateStudentPracticePackageV1(row.package)
-  if (!validation.ok) {
+
+  let pkg
+  try {
+    pkg = restoreSecureDeliveryPackage(
+      row.package,
+    )
+    assertSecureDeliveryPackageMatchesAssignment(
+      pkg,
+      row.prepared.assignment,
+    )
+  } catch {
     throw new TypeError(
-      'prepared batch row must contain a valid PracticePackage.',
+      'prepared batch row must contain a valid secure delivery package.',
     )
   }
+
   if (
     row.prepared.packageId !==
-      row.package.packageId ||
+      pkg.packageId ||
     row.prepared.packageFingerprint !==
-      fingerprintPracticePackage(row.package) ||
-    row.prepared.assignment.studentId !==
-      row.package.publication.recipientStudentId ||
-    row.prepared.assignment.sourceRef
-      .revisionId !==
-      row.package.approvedRevision.revisionId
+      fingerprintSecureDeliveryPackage(
+        pkg,
+      )
   ) {
     throw new Error(
       'prepared assignment package conflict.',
@@ -242,7 +248,7 @@ export function createFirestoreSecureDeliveryStore({
       .doc(documentId(id))
       .get()
     return snap.exists
-      ? restoreStudentPracticePackageV1(
+      ? restoreSecureDeliveryPackage(
           snap.data(),
         )
       : null
@@ -377,7 +383,7 @@ export function createFirestoreSecureDeliveryStore({
 
         if (snaps.package.exists) {
           const storedPackage =
-            restoreStudentPracticePackageV1(
+            restoreSecureDeliveryPackage(
               snaps.package.data(),
             )
           if (
@@ -385,7 +391,7 @@ export function createFirestoreSecureDeliveryStore({
               storedPackage,
               row.package,
             ) ||
-            fingerprintPracticePackage(
+            fingerprintSecureDeliveryPackage(
               storedPackage,
             ) !==
               row.prepared
