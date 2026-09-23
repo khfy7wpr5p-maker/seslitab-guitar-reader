@@ -535,6 +535,26 @@ export function createInMemorySecureDeliveryStore({
       )
     },
 
+    async listPoolPublicationsForStudent(
+      studentId,
+    ) {
+      const id = normalizeRequiredId(
+        studentId,
+        'studentId',
+      )
+      return Object.freeze(
+        [...poolById.values()].filter(
+          (record) =>
+            record.revokedAt === null &&
+            (
+              record.item.audienceMode === 'ALL' ||
+              record.item.recipientStudentIds
+                .includes(id)
+            ),
+        ),
+      )
+    },
+
     commitPreparedBatch,
     commitDeliveryBatch,
     commitLifecycleMutation,
