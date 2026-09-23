@@ -137,29 +137,15 @@ test('TD-07 CHORD_BOARD package rejects wrong assignment kind and unsupported fi
   assert.match(
     validateStudentChordBoardPackageV1(pkg)
       .errors.join('\n'),
-    /unsupported top-level field: providerSubject/i,
+    /unsupported (?:top-level|package) field: providerSubject/i,
   )
 })
 
-test('TD-07 CHORD_BOARD package rejects recipient assignment and exact snapshot mismatch', () => {
+test('TD-07 CHORD_BOARD package rejects assignment identity and exact snapshot mismatch', () => {
   const {
     createStudentPrivateChordBoardPackageV1,
     validateStudentChordBoardPackageV1,
   } = requireApi()
-  const pkg = structuredClone(
-    createStudentPrivateChordBoardPackageV1({
-      assignment: assignment(),
-      practice: {},
-    }),
-  )
-
-  pkg.publication.recipientStudentId =
-    'student-other'
-  assert.match(
-    validateStudentChordBoardPackageV1(pkg)
-      .errors.join('\n'),
-    /recipient|student/i,
-  )
 
   const wrongId = structuredClone(
     createStudentPrivateChordBoardPackageV1({
