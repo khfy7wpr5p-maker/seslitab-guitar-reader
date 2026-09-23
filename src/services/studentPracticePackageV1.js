@@ -253,3 +253,14 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
   }
   return pkg
 }
+
+
+export function restoreStudentPracticePackageV1(raw) {
+  const validation = validateStudentPracticePackageV1(raw)
+  if (!validation.ok) {
+    throw new TypeError(
+      `invalid Student PracticePackage v1: ${validation.errors.join('; ')}`,
+    )
+  }
+  return cloneFrozenJson(raw)
+}
