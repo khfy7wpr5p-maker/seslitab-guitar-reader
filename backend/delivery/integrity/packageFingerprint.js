@@ -3,6 +3,9 @@ import { createHash } from 'node:crypto'
 import {
   validateStudentPracticePackageV1,
 } from '../../../src/services/studentPracticePackageV1.js'
+import {
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
 
 function isPlainObject(value) {
   if (
@@ -72,6 +75,13 @@ export function canonicalPackageJson(value) {
   return canonicalize(value, new Set())
 }
 
+export function fingerprintSecureDeliveryPackage(value) {
+  const pkg = restoreSecureDeliveryPackage(value)
+  return createHash('sha256')
+    .update(canonicalPackageJson(pkg), 'utf8')
+    .digest('hex')
+}
+
 export function fingerprintPracticePackage(value) {
   const validation =
     validateStudentPracticePackageV1(value)
@@ -81,7 +91,5 @@ export function fingerprintPracticePackage(value) {
     )
   }
 
-  return createHash('sha256')
-    .update(canonicalPackageJson(value), 'utf8')
-    .digest('hex')
+  return fingerprintSecureDeliveryPackage(value)
 }
