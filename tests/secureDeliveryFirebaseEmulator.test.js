@@ -40,6 +40,14 @@ import {
 } from '../backend/delivery/integrity/packageFingerprint.js'
 
 const PROJECT_ID = 'demo-seslitab-td06'
+const EMULATOR_AVAILABLE = Boolean(
+  process.env.FIRESTORE_EMULATOR_HOST &&
+  process.env.FIREBASE_AUTH_EMULATOR_HOST,
+)
+const emulatorTest = EMULATOR_AVAILABLE
+  ? test
+  : test.skip
+
 let admin
 let db
 let createFirestoreSecureDeliveryStore
@@ -151,8 +159,7 @@ async function seedIdentityAndGrant(studentId = 'student-a') {
 }
 
 before(async () => {
-  process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080'
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099'
+  if (!EMULATOR_AVAILABLE) return
   const adminModule = await import('../backend/delivery/firebase/firebaseAdmin.js')
   const tokenModule = await import('../backend/delivery/firebase/firebaseTokenVerifier.js')
   const storeModule = await import('../backend/delivery/firebase/firestoreSecureDeliveryStore.js')
@@ -170,7 +177,7 @@ after(async () => {
   await admin?.delete()
 })
 
-test('Firebase token verifier passes raw token only to verifyIdToken(token, true) and returns uid only', async () => {
+emulatorTest('Firebase token verifier passes raw token only to verifyIdToken(token, true) and returns uid only', async () => {
   const calls = []
   const verifier = createFirebaseTokenVerifier({
     auth: {
@@ -193,7 +200,7 @@ test('Firebase token verifier passes raw token only to verifyIdToken(token, true
   assert.equal('token' in verifier, false)
 })
 
-test('Firestore prepared batch is atomic, exact-replay idempotent and rereads exact links', async () => {
+emulatorTest('Firestore prepared batch is atomic, exact-replay idempotent and rereads exact links', async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const a = preparedRow('prep-a')
   const b = preparedRow('prep-b')
@@ -208,7 +215,7 @@ test('Firestore prepared batch is atomic, exact-replay idempotent and rereads ex
   assert.equal(replay[1].packageFingerprint, first[1].packageFingerprint)
 })
 
-test('one prepared conflict rejects the whole transaction with zero new documents', async () => {
+emulatorTest('one prepared conflict rejects the whole transaction with zero new documents', async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const existing = preparedRow('conflict-existing', { packageId: 'package-conflict-shared' })
   await store.commitPreparedBatch([existing])
@@ -226,7 +233,7 @@ test('one prepared conflict rejects the whole transaction with zero new document
   )
 })
 
-test('delivery transaction is atomic and exact active replay is idempotent', async () => {
+emulatorTest('delivery transaction is atomic and exact active replay is idempotent', async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const a = preparedRow('delivery-a')
   const b = preparedRow('delivery-b')
@@ -253,7 +260,7 @@ test('delivery transaction is atomic and exact active replay is idempotent', asy
   assert.deepEqual(await store.getDelivery(deliveryA.assignmentId), deliveryA)
 })
 
-test('one missing prepared delivery row rejects whole batch without silent partial success', async () => {
+emulatorTest('one missing prepared delivery row rejects whole batch without silent partial success', async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const valid = preparedRow('delivery-atomic-valid')
   await store.commitPreparedBatch([valid])
@@ -279,7 +286,7 @@ test('one missing prepared delivery row rejects whole batch without silent parti
   assert.equal(await store.getDelivery(validDelivery.assignmentId), null)
 })
 
-test('revoked lifecycle blocks a new delivery transaction', async () => {
+emulatorTest('revoked lifecycle blocks a new delivery transaction', async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const row = preparedRow('delivery-revoked')
   await store.commitPreparedBatch([row])
@@ -309,7 +316,7 @@ test('revoked lifecycle blocks a new delivery transaction', async () => {
   )
 })
 
-test('lifecycle mutation persists current state, append-only history and delivery revoke atomically', async () => {
+emulatorTest('lifecycle mutation persists current state, append-only history and delivery revoke atomically', async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const row = preparedRow('lifecycle-a')
   await store.commitPreparedBatch([row])
@@ -368,7 +375,7 @@ test('lifecycle mutation persists current state, append-only history and deliver
   assert.equal((await store.getDelivery(delivery.assignmentId)).revokedAt, '2026-09-23T08:08:00Z')
 })
 
-test('identity/grant lookup and roster/Pool provisioning round-trip through Admin-only persistence', async () => {
+emulatorTest('identity/grant lookup and roster/Pool provisioning round-trip through Admin-only persistence', async () => {
   await seedIdentityAndGrant('student-provision')
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
 
