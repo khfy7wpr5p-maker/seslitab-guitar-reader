@@ -22,9 +22,18 @@ const COLLECTIONS = Object.freeze([
   'deliveries',
 ])
 
+const EMULATOR_AVAILABLE = Boolean(
+  process.env.FIRESTORE_EMULATOR_HOST &&
+  process.env.FIREBASE_AUTH_EMULATOR_HOST,
+)
+const emulatorTest = EMULATOR_AVAILABLE
+  ? test
+  : test.skip
+
 let env
 
 before(async () => {
+  if (!EMULATOR_AVAILABLE) return
   const rules = await readFile(
     new URL('../firestore.rules', import.meta.url),
     'utf8',
@@ -56,14 +65,14 @@ async function assertDeniedForContext(context) {
   }
 }
 
-test('unauthenticated direct Firestore clients cannot read or write TD-06 collections', async () => {
+emulatorTest('unauthenticated direct Firestore clients cannot read or write TD-06 collections', async () => {
   assert.ok(env)
   await assertDeniedForContext(
     env.unauthenticatedContext(),
   )
 })
 
-test('STUDENT-like direct Firestore client cannot read or write TD-06 collections', async () => {
+emulatorTest('STUDENT-like direct Firestore client cannot read or write TD-06 collections', async () => {
   await assertDeniedForContext(
     env.authenticatedContext('student-provider-uid', {
       role: 'STUDENT',
@@ -71,7 +80,7 @@ test('STUDENT-like direct Firestore client cannot read or write TD-06 collection
   )
 })
 
-test('TEACHER-like direct Firestore client cannot read or write TD-06 collections', async () => {
+emulatorTest('TEACHER-like direct Firestore client cannot read or write TD-06 collections', async () => {
   await assertDeniedForContext(
     env.authenticatedContext('teacher-provider-uid', {
       role: 'TEACHER',
