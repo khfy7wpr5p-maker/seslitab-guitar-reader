@@ -1,0 +1,35 @@
+name: TD06 temporary lockfile sync
+
+on:
+  push:
+    branches:
+      - feat/td06-secure-delivery-firebase
+
+permissions:
+  contents: write
+
+jobs:
+  sync-lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/td06-secure-delivery-firebase
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install exact reviewed Firebase versions
+        run: |
+          npm install --save-exact firebase-admin@14.4.0
+          npm install --save-dev --save-exact firebase@12.19.0 @firebase/rules-unit-testing@5.0.2 firebase-tools@15.30.2
+      - name: Commit generated package lock
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git diff --cached --quiet || git commit -m "build: add exact TD-06 Firebase dependencies"
+          git push origin HEAD:feat/td06-secure-delivery-firebase
