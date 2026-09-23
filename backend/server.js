@@ -21,6 +21,8 @@ import { startGateway, stopGateway } from './index.js'
 import { toGatewayError, ValidationError } from './utils/errors.js'
 import { createCorsOptions } from './security/corsPolicy.js'
 import { createFixedWindowRateLimiter } from './security/rateLimitPolicy.js'
+import { createSecureDeliveryConfig } from './delivery/config.js'
+import { createUnavailableSecureDeliveryRouter } from './delivery/http/router.js'
 
 import { handleUploadPdf } from './api/uploadPdf.js'
 import { handleAnalyzePdf } from './api/analyzePdf.js'
@@ -144,6 +146,19 @@ const jobRateLimiter = createFixedWindowRateLimiter({
 })
 
 app.use('/api', apiRateLimiter)
+
+const SECURE_DELIVERY_CONFIG =
+  createSecureDeliveryConfig(process.env)
+
+// TD-06 is mounted fail-closed before Firebase composition exists.
+// Task 10 will replace this unavailable boundary with the injected
+// Secure Delivery composition after its own reviewed implementation.
+app.use(
+  '/api/secure-delivery/v1',
+  createUnavailableSecureDeliveryRouter({
+    config: SECURE_DELIVERY_CONFIG,
+  }),
+)
 
 app.post('/api/v1/discovery/search', async (req, res) => {
   try {
