@@ -267,7 +267,7 @@ test('prepared handoff rejects missing grant, unknown wire fields and source stu
 test('prepared handoff enforces 40-item maximum and rejects conflicting duplicate IDs before write', async () => {
   const { createPreparedAssignmentService } = await loadService()
   const students = Array.from({ length: 41 }, (_, index) => 'student-' + index)
-  const h = harness({ students })
+  const h = harness({ students: [...students, 'student-a'] })
   const service = createPreparedAssignmentService({
     authorization: h.authorization,
     store: h.store,
