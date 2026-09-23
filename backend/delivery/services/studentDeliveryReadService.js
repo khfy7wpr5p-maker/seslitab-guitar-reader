@@ -8,8 +8,9 @@ import {
   isAssignmentLifecycleRecord,
 } from '../../../src/services/assignmentLifecycleRecord.js'
 import {
-  validateStudentPracticePackageV1,
-} from '../../../src/services/studentPracticePackageV1.js'
+  assertSecureDeliveryPackageMatchesAssignment,
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
 import {
   POOL_AUDIENCE_MODE,
 } from '../../../src/services/poolItem.js'
@@ -103,28 +104,36 @@ function assertPreparedForDelivery(
 }
 
 function assertPackageForStudent(
-  pkg,
+  rawPackage,
   prepared,
   studentId,
 ) {
-  const validation =
-    validateStudentPracticePackageV1(pkg)
-  if (
-    pkg === null ||
-    !validation.ok ||
-    pkg.packageId !== prepared.packageId ||
-    pkg.publication.scope !==
-      'student_private' ||
-    pkg.publication.recipientStudentId !==
-      studentId ||
-    pkg.approvedRevision.revisionId !==
-      prepared.assignment.sourceRef.revisionId
-  ) {
+  try {
+    const pkg =
+      restoreSecureDeliveryPackage(
+        rawPackage,
+      )
+    if (
+      pkg.packageId !== prepared.packageId ||
+      pkg.publication.scope !==
+        'student_private' ||
+      pkg.publication.recipientStudentId !==
+        studentId
+    ) {
+      throw new Error(
+        'student delivery package recipient mismatch.',
+      )
+    }
+    assertSecureDeliveryPackageMatchesAssignment(
+      pkg,
+      prepared.assignment,
+    )
+    return pkg
+  } catch {
     throw new Error(
       'student delivery package authority mismatch.',
     )
   }
-  return pkg
 }
 
 export function createStudentDeliveryReadService({
