@@ -21,6 +21,8 @@
 - Fret semantics: -1 = muted, 0 = open, positive integer = fretted; imported TD-07 catalog must remain within the pinned Chord Board bound 0..20.
 - Finger semantics: -1 = muted, 0 = open/no finger, 1..4 = left-hand finger.
 - Exact voicing authority is the immutable frets + fingers + barres + shape + generated/curated snapshot, never symbol + voicingIndex.
+- voicingFingerprint is SHA-256 over canonical schemaVersion + sourceKind + chord + voicing content only; source repository/commit/catalog provenance is retained separately and does not participate in the voicing hash.
+- catalogFingerprint is SHA-256 over source repository/commit plus ordered catalog musical content and voicing fingerprints, excluding the catalogFingerprint field itself and excluding each embedded provenance.catalogFingerprint to avoid circular hashing.
 - Preserve display spelling separately from canonical chord identity.
 - Preserve READY_EXACT_REVISION != DURABLY_PREPARED != DELIVERED_TO_STUDENT.
 - Preserve TD-05 forward lifecycle ACTIVE -> COMPLETED -> REPERTOIRE; revoke remains one-way.
@@ -249,7 +251,7 @@ export function normalizeChordBoardVoicingSnapshot(value) {
 }
 ~~~
 
-Canonical JSON excludes only voicingFingerprint itself, sorts object keys with localeCompare using en, and preserves array order exactly.
+canonicalChordBoardVoicingJson() serializes exactly { schemaVersion, sourceKind, chord, voicing }; it excludes voicingFingerprint and the entire provenance object. It sorts object keys with localeCompare using en and preserves array order exactly. This makes the musical fingerprint stable across catalog provenance changes while provenance remains separately auditable.
 
 - [ ] **Step 4: Implement SHA-256 adapters over the same canonical JSON**
 
@@ -311,6 +313,7 @@ git commit -m "feat: add TD-07 exact chord voicing contract"
 - Produces loadPinnedChordBoardCatalog().
 - Produces listChordBoardSymbols().
 - Produces getChordBoardVoicings(displayOrCanonicalSymbol).
+- Produces isPinnedChordBoardVoicing(snapshot), which requires fingerprint lookup plus canonical structural equality against the loaded catalog.
 
 - [ ] **Step 1: Write failing catalog tests**
 
@@ -348,7 +351,7 @@ node --test tests/chordBoardCatalog.test.js
 
 - [ ] **Step 3: Implement a read-only catalog generator**
 
-The generator requires CHORD_BOARD_SOURCE_DIR, dynamically imports chord-catalog.js, chord-core.js and voicing-library.js from that checkout, iterates CHORD_SYMBOLS, resolves getVoicings(symbol), normalizes each exact voicing, computes voicingFingerprint, then computes one catalogFingerprint over ordered canonical catalog content.
+The generator requires CHORD_BOARD_SOURCE_DIR, dynamically imports chord-catalog.js, chord-core.js and voicing-library.js from that checkout, iterates CHORD_SYMBOLS, resolves getVoicings(symbol), normalizes each exact voicing, and computes voicingFingerprint from musical content only. Then compute catalogFingerprint from source repository/commit plus ordered chord/voicing content and voicing fingerprints while omitting every provenance.catalogFingerprint. Finally inject that completed catalogFingerprint into each snapshot provenance and the top-level catalog record; do not recompute the catalog hash after injection.
 
 The generated file must contain:
 - schemaVersion;
@@ -372,7 +375,7 @@ Expected: generated SesliTab JSON exists and the source checkout status is empty
 
 - [ ] **Step 5: Implement strict frozen catalog loader/query**
 
-The loader validates the stored repository/commit, recomputes catalogFingerprint, normalizes every voicing through Task 1, freezes the result, and exposes query functions. Query normalization may accept display spelling, but returned snapshots preserve stored displaySymbol.
+The loader validates the stored repository/commit, recomputes catalogFingerprint using the same non-circular payload, normalizes every voicing through Task 1, recomputes every voicing SHA-256, freezes the result, and exposes query functions. Query normalization may accept display spelling, but returned snapshots preserve stored displaySymbol. isPinnedChordBoardVoicing(snapshot) first finds candidates by voicingFingerprint and then requires sameChordBoardVoicingSnapshot() before returning true.
 
 - [ ] **Step 6: Run catalog tests**
 
@@ -524,7 +527,7 @@ git commit -m "feat: add CHORD_BOARD private assignment source"
 **Interfaces:**
 - Repository methods: list(), getByAssignmentId(), findExactChordBoardAssignment({ studentId, voicingFingerprint }), createBatch(assignments).
 - Service method: prepareChordBoardAssignments({ snapshot, studentIds, commonTeacherNote, teacherNoteOverrides }).
-- Consumes existing rosterService.preflightActiveStudentIds(), createAssignmentId(), now().
+- Consumes existing rosterService.preflightActiveStudentIds(), the Task 2 catalog API isPinnedChordBoardVoicing(snapshot), createAssignmentId(), now().
 
 - [ ] **Step 1: Write failing repository tests**
 
@@ -556,7 +559,7 @@ node --test tests/teacherChordBoardAssignmentRepository.test.js
 
 - [ ] **Step 3: Write failing assignment-service tests**
 
-Cover active-roster preflight, duplicate student normalization, common/per-student notes, max 40, 41 rejection, all-or-nothing mutation, exact idempotent retry and changed-note conflict.
+Cover active-roster preflight, duplicate student normalization, common/per-student notes, max 40, 41 rejection, all-or-nothing mutation, rejection of a structurally valid snapshot that is not present in the pinned catalog, exact idempotent retry and changed-note conflict.
 
 ~~~js
 test('TD-07 fans one exact voicing to separate recipient-bound assignments', () => {
@@ -577,7 +580,7 @@ test('TD-07 fans one exact voicing to separate recipient-bound assignments', () 
 
 - [ ] **Step 4: Implement preflight-before-mutation**
 
-Build all recipient bindings and candidate assignments first. Resolve exact retries/conflicts before createBatch(). Only call createAssignmentId() and now() for truly new rows. Validate repository acknowledgement exactly.
+Before roster mutation or ID allocation, require isPinnedChordBoardVoicing(input.snapshot) === true. Then build all recipient bindings and candidate assignments, resolve exact retries/conflicts before createBatch(), call createAssignmentId() and now() only for truly new rows, and validate repository acknowledgement exactly.
 
 - [ ] **Step 5: Run Task 4 tests**
 
@@ -671,8 +674,8 @@ git commit -m "test: extend assignment lifecycle to chord board"
 - StudentChordBoardPackageV1 fields:
   - schemaVersion: '1.0.0'
   - packageType: 'CHORD_BOARD'
-  - packageId
-  - title
+  - packageId, exactly assignment.assignmentId for v1 one-to-one delivery
+  - title, derived as displaySymbol + ' akor çalışması' and normalized through the existing bounded display-name limit
   - assignmentAuthority: { assignmentId, state: 'teacher_assigned', assignedAt }
   - publication: { scope: 'student_private', recipientStudentId }
   - content: { chordBoard: exact snapshot }
@@ -1204,7 +1207,7 @@ Do not merge, deploy, enable production flags, modify Chord Board, or start Stud
 - **Spec coverage:** exact snapshot, pinned catalog, recipient binding, CHORD_BOARD PrivateAssignment, teacher producer/UI, lifecycle, package union, TD-06 prepare/deliver/read, persistence, security, update process, non-goals and completion criteria map to Tasks 1–10.
 - **Subsystem decomposition:** catalog/contract, assignment producer, package/delivery and teacher UI are tightly coupled by exact source identity and remain one implementation plan with reviewable task gates.
 - **SCORE compatibility:** SCORE source/package schemas are not repurposed; new logic is variant-aware and existing SCORE regression suites remain mandatory.
-- **Fingerprint consistency:** browser and backend SHA-256 use one canonical JSON producer; backend recomputes before durable preparation.
+- **Fingerprint consistency:** browser and backend SHA-256 use one canonical musical-content JSON producer; provenance is outside the voicing hash, catalog hashing is explicitly non-circular, and backend recomputes voicing SHA-256 before durable preparation.
 - **Replay/collision safety:** fingerprint alone is insufficient for exact replay; canonical snapshot equality is also required.
 - **Runtime boundary:** SesliTab contains the teacher Akor Ata module, but production auto-mount remains closed until teacher auth/roster activation is separately approved.
 - **Cross-repository boundary:** st-guitar-chord-board and st-student-app remain untouched.
