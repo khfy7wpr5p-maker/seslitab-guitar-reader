@@ -66,6 +66,26 @@ function setHostStatus(root, text, kind = 'info') {
   status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite')
 }
 
+function staleSourceOutcome() {
+  return Object.freeze({
+    status: SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE,
+  })
+}
+
+function publishFailedOutcome(pendingPublication) {
+  return Object.freeze({
+    status: SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED,
+    revision: pendingPublication?.revision ?? null,
+    musicXml: pendingPublication?.musicXml ?? null,
+  })
+}
+
+function conflictOutcome() {
+  return Object.freeze({
+    status: SMOOSIC_WRITEBACK_STATUS.CONFLICT,
+  })
+}
+
 function secureId(root, prefix) {
   const scope = root?.defaultView?.crypto ?? globalThis.crypto
   if (typeof scope?.randomUUID !== 'function') {
@@ -223,7 +243,7 @@ function cancelPendingWriteback(state) {
   if (!pending) return
   state.pendingWriteback = null
   clearTimeout(pending.timeout)
-  pending.reject(new Error('Kaynak değişti; önceki düzenleme isteği geçersiz.'))
+  pending.reject(staleSourceOutcome())
 }
 
 function requestEditorMusicXml(root) {
@@ -290,14 +310,20 @@ function publishCommittedRevision(root, committed) {
 
 function retryPendingPublication(root) {
   const state = stateFor(root)
-  if (!state.pendingPublication) return false
-  publishCommittedRevision(root, state.pendingPublication)
+  const pendingPublication = state.pendingPublication
+  if (!pendingPublication) return conflictOutcome()
+  publishCommittedRevision(root, pendingPublication)
   setHostStatus(
     root,
     'Düzenleme SesliTab\'a uygulandı. Yeni sürüm doğrulandı ve çıktılar güncellendi.',
     'ready',
   )
-  return true
+  return Object.freeze({
+    status: SMOOSIC_WRITEBACK_STATUS.APPLIED,
+    revision: pendingPublication.revision,
+    musicXml: pendingPublication.musicXml,
+    retriedPublication: true,
+  })
 }
 
 async function applyEditorWriteback(root) {
@@ -307,7 +333,7 @@ async function applyEditorWriteback(root) {
 
   if (sourceTransitionPending(root)) {
     setHostStatus(root, 'Yeni eser hazırlanırken düzenleme uygulanamaz.', 'error')
-    return false
+    return staleSourceOutcome()
   }
 
   if (state.pendingPublication) {
@@ -315,7 +341,7 @@ async function applyEditorWriteback(root) {
       return retryPendingPublication(root)
     } catch (error) {
       setHostStatus(root, error?.message || 'Güncel sürüm yayımlanamadı.', 'error')
-      return false
+      return publishFailedOutcome(state.pendingPublication)
     }
   }
 
@@ -344,7 +370,7 @@ async function applyEditorWriteback(root) {
 
     if (result.status === SMOOSIC_WRITEBACK_STATUS.NO_CHANGE) {
       setHostStatus(root, 'SesliTab’a uygulanacak yeni bir müzikal değişiklik yok.', 'info')
-      return true
+      return result
     }
 
     if (result.status === SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE) {
@@ -353,12 +379,12 @@ async function applyEditorWriteback(root) {
         'Bu yapısal düzenleme editörde korunuyor ancak henüz SesliTab sürümüne uygulanamıyor. MusicXML olarak kaydedebilirsiniz.',
         'error',
       )
-      return false
+      return result
     }
 
     if (result.status !== SMOOSIC_WRITEBACK_STATUS.APPLIED) {
       setHostStatus(root, 'Düzenleme doğrulanamadı; mevcut SesliTab sürümü korunuyor.', 'error')
-      return false
+      return result
     }
 
     state.authority = result.authority
@@ -382,13 +408,17 @@ async function applyEditorWriteback(root) {
         'Yeni sürüm kaydedildi ancak ekran güncellenemedi. Yeniden uygulayarak yayını tekrar deneyin.',
         'error',
       )
-      return false
+      return publishFailedOutcome(state.pendingPublication)
     }
   } catch (error) {
+    if (error?.status === SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE) {
+      setHostStatus(root, 'Kaynak değişti; önceki düzenleme isteği geçersiz.', 'error')
+      return staleSourceOutcome()
+    }
     if (state.sourceRevision === startingSourceRevision) {
       setHostStatus(root, error?.message || 'Düzenleme SesliTab’a uygulanamadı.', 'error')
     }
-    return false
+    return conflictOutcome()
   } finally {
     if (applyButton) applyButton.disabled = false
   }

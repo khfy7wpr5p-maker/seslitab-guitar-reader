@@ -48,6 +48,7 @@ test('S15 republishes a committed revision through the existing result path with
 
 const host = readFileSync(new URL('../src/smoosicEditorTabUi.js', import.meta.url), 'utf8')
 const css = readFileSync(new URL('../src/smoosicEditorTab.css', import.meta.url), 'utf8')
+const writeback = readFileSync(new URL('../src/services/smoosicProductWriteback.js', import.meta.url), 'utf8')
 
 test('S15 host exposes one explicit apply control and secure request identity', () => {
   assert.match(host, /const APPLY_ID = 'smoosic-apply-btn'/)
@@ -82,6 +83,16 @@ test('S15 publish failure is retried without creating another immutable revision
   assert.match(host, /state\.publishingWritebackXml/)
   assert.match(host, /if \(state\.pendingPublication\)/)
   assert.match(host, /retryPendingPublication\(root\)/)
+})
+
+test('S15 exposes typed stale-source and publish-failure outcomes without committing again', () => {
+  assert.match(writeback, /STALE_SOURCE:\s*'STALE_SOURCE'/)
+  assert.match(writeback, /PUBLISH_FAILED:\s*'PUBLISH_FAILED'/)
+  assert.match(host, /function staleSourceOutcome\(/)
+  assert.match(host, /function publishFailedOutcome\(/)
+  assert.match(host, /return staleSourceOutcome\(/)
+  assert.match(host, /return publishFailedOutcome\(/)
+  assert.match(host, /return retryPendingPublication\(root\)/)
 })
 
 test('S15 unsupported structural edit remains exportable instead of becoming canonical', () => {
