@@ -22,7 +22,23 @@ export const SMOOSIC_WRITEBACK_STATUS = Object.freeze({
   UNSUPPORTED_STRUCTURE: 'UNSUPPORTED_STRUCTURE',
   INVALID_XML: 'INVALID_XML',
   CONFLICT: 'CONFLICT',
+  STALE_SOURCE: 'STALE_SOURCE',
+  PUBLISH_FAILED: 'PUBLISH_FAILED',
 })
+
+export function createSmoosicWritebackOutcome(status, {
+  revision = null,
+  musicXml = null,
+  retriedPublication = false,
+} = {}) {
+  if (status === SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED) {
+    return Object.freeze({ status, revision, musicXml })
+  }
+  if (status === SMOOSIC_WRITEBACK_STATUS.APPLIED && retriedPublication) {
+    return Object.freeze({ status, revision, musicXml, retriedPublication })
+  }
+  return Object.freeze({ status })
+}
 
 const STABLE_LOCATOR_FIELDS = Object.freeze([
   'partId',
