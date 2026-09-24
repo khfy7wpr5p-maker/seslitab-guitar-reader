@@ -100,7 +100,11 @@ async function runMobileKeyAction(button) {
     && applicationInstance.view
   ) {
     const previousXml = currentEditorMusicXmlText();
-    sendKey(key, { ctrlKey, altKey, shiftKey });
+    const view = applicationInstance.view;
+    if (!view.tracker?.selections?.length) {
+      await view.moveHome({ ctrlKey: true, shiftKey: false, altKey: false });
+    }
+    await view.setPitch(key);
     await waitForEditorMusicXmlMutation(previousXml);
     return;
   }
