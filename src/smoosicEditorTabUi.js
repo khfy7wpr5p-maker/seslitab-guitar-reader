@@ -433,7 +433,8 @@ async function waitForEditorReady(frame) {
     if (status.startsWith('Başlatma hatası:') || status.startsWith('Hata:')) {
       throw new Error(status)
     }
-    if (status.includes('Editör hazır') || status.startsWith('Yüklendi:')) return true
+    if (status.includes('Editör hazır') || status.startsWith('Yüklendi:') ||
+      frame.contentDocument?.getElementById('poc-status')?.hasAttribute('data-loaded-file-name')) return true
     await sleep(150)
   }
   throw new Error('Nota editörü zamanında hazır olmadı.')
@@ -443,7 +444,7 @@ async function waitForMusicXmlLoad(frame, expectedFileName) {
   const deadline = Date.now() + LOAD_TIMEOUT_MS
   while (Date.now() < deadline) {
     const status = iframeStatus(frame)
-    if (status.startsWith('Yüklendi:') && status.includes(expectedFileName)) return status
+    if (frame.contentDocument?.getElementById('poc-status')?.getAttribute('data-loaded-file-name') === expectedFileName) return status
     if (status.startsWith('XML hatası:') || status.startsWith('Hata:') || status.startsWith('Başlatma hatası:')) {
       throw new Error(status)
     }
@@ -476,7 +477,10 @@ function assignInputFile(frame, input, file) {
 
 function resetIframeStatusForTransfer(frame, fileName) {
   const status = frame.contentDocument?.getElementById('poc-status')
-  if (status) status.textContent = `SesliTab aktarımı: ${fileName}`
+  if (status) {
+    status.removeAttribute('data-loaded-file-name')
+    status.textContent = `SesliTab aktarımı: ${fileName}`
+  }
 }
 
 async function loadSourceIntoEditor(root, frame) {

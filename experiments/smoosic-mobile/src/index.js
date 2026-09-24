@@ -238,6 +238,7 @@ async function loadMusicXmlFile(file) {
   });
   currentScoreBaseName = stripMusicXmlExtension(name);
   window.dispatchEvent(new Event('resize'));
+  document.getElementById('poc-status')?.setAttribute('data-loaded-file-name', name);
   setStatus(`Yüklendi: ${name}`);
 }
 
