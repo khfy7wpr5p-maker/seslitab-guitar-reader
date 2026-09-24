@@ -82,7 +82,14 @@ async function waitForEditorMusicXmlMutation(previousXml, timeoutMs = 1800) {
       return currentXml;
     }
   }
-  throw new Error('Nota değişikliği uygulanmadı. Önce notayı seçin veya farklı bir perde seçin.');
+  const view = applicationInstance?.view;
+  const readStep = (score) => {
+    if (!score) return 'missing';
+    const xml = new XMLSerializer().serializeToString(SmoToXml.convert(score));
+    return new DOMParser().parseFromString(xml, 'text/xml')
+      .querySelector('part > measure > note pitch > step')?.textContent || 'unknown';
+  };
+  throw new Error(`Nota değişikliği uygulanmadı (selected=${view?.tracker?.selections?.length}, view=${readStep(view?.score)}, store=${readStep(view?.storeScore)}).`);
 }
 
 async function runMobileKeyAction(button) {
