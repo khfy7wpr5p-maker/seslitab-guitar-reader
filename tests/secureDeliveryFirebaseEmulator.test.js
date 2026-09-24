@@ -44,6 +44,13 @@ import {
   createStudentRosterEntry,
 } from '../src/services/studentRosterEntry.js'
 import {
+  createPieceAssignment,
+} from '../src/services/pieceAssignment.js'
+import {
+  createInitialPieceLifecycleRecord,
+  transitionPieceLifecycleRecord,
+} from '../src/services/pieceAssignmentLifecycleRecord.js'
+import {
   createTeacherStudentGrant,
 } from '../src/services/teacherStudentGrant.js'
 import {
@@ -851,5 +858,70 @@ test('TD-07 Firestore-backed services prepare deliver read lifecycle and revoke 
             .assignmentId,
       }),
     /student-assignment-not-found/i,
+  )
+})
+
+
+test('Firestore round-trips immutable Piece authority and lifecycle in server-owned collections', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const store = createFirestoreSecureDeliveryStore({ firestore: db })
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-firestore-a',
+    pieceId: 'piece-cambaz-firestore',
+    arrangementId: 'arr-cambaz-firestore',
+    studentId: 'student-firestore-a',
+    title: 'Cambaz',
+    teacherNote: '',
+    assignedAt: '2026-09-24T08:00:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'score-firestore-a',
+      chordAssignmentIds: ['chord-firestore-a'],
+    },
+  })
+
+  await store.putPieceAssignment(piece)
+  assert.deepEqual(
+    await store.getPieceAssignment(piece.pieceAssignmentId),
+    piece,
+  )
+  assert.deepEqual(
+    await store.listPieceAssignmentsForStudent(piece.studentId),
+    Object.freeze([piece]),
+  )
+  assert.equal(
+    await store.getPieceLifecycle(piece.pieceAssignmentId),
+    null,
+  )
+
+  const active = createInitialPieceLifecycleRecord(piece)
+  const completed = transitionPieceLifecycleRecord(
+    active,
+    'COMPLETED',
+    '2026-09-24T09:00:00Z',
+  )
+  assert.deepEqual(
+    await store.commitPieceLifecycleMutation({
+      currentLifecycle: active,
+      nextLifecycle: completed,
+    }),
+    completed,
+  )
+  assert.deepEqual(
+    await store.getPieceLifecycle(piece.pieceAssignmentId),
+    completed,
+  )
+
+  const conflict = createPieceAssignment({
+    pieceAssignmentId: piece.pieceAssignmentId,
+    pieceId: piece.pieceId,
+    arrangementId: piece.arrangementId,
+    studentId: piece.studentId,
+    title: 'Changed title',
+    teacherNote: '',
+    assignedAt: piece.assignedAt,
+    contentRefs: piece.contentRefs,
+  })
+  await assert.rejects(
+    () => store.putPieceAssignment(conflict),
+    /piece.*conflict|immutable/i,
   )
 })
