@@ -280,6 +280,12 @@ export function createFirestoreSecureDeliveryStore({
     pool: db.collection(
       'poolPublications',
     ),
+    pieces: db.collection(
+      'pieceAssignments',
+    ),
+    pieceLifecycle: db.collection(
+      'pieceAssignmentLifecycle',
+    ),
   })
 
   async function getPreparedAssignment(
