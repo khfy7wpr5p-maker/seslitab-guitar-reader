@@ -21,6 +21,25 @@
   font-weight: 600;
 }
 
+
+#smoosic-apply-btn {
+  min-height: 44px;
+  max-width: 100%;
+  margin: 0.75rem 0.85rem;
+  padding: 0.65rem 0.9rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+#smoosic-apply-btn:disabled {
+  cursor: wait;
+}
+
+#smoosic-apply-btn:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
 .smoosic-editor-frame {
   display: block;
   width: 100%;

@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>S15 Smoosic write-back proof</title>
+</head>
+<body
+  data-s15-writeback="pending"
+  data-s15-supported-edit="false"
+  data-s15-consumers-refreshed="false"
+  data-s15-stale-writeback-rejected="false"
+  data-s15-editor-usable="false">
+  <iframe id="app-frame" src="/index.html" style="width:390px;height:844px;border:0"></iframe>
+  <pre id="status">pending</pre>
+  <script>
+    const sourceXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <work><work-title>S15 C</work-title></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes>
+      <divisions>1</divisions>
+      <time><beats>4</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef>
+    </attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+  </measure></part>
+</score-partwise>`;
+
+    const replacementXml = sourceXml
+      .replace('<work-title>S15 C</work-title>', '<work-title>S15 G replacement</work-title>')
+      .replace('<step>C</step>', '<step>G</step>');
+
+    const staleCandidateXml = sourceXml
+      .replace('<work-title>S15 C</work-title>', '<work-title>S15 stale E</work-title>')
+      .replace('<step>C</step>', '<step>E</step>');
+
+    const body = document.body;
+    const status = document.getElementById('status');
+    const appFrame = document.getElementById('app-frame');
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    function fail(message) {
+      const text = String(message || 'unknown failure');
+      body.setAttribute('data-s15-writeback', 'failed');
+      body.setAttribute('data-s15-writeback-error', text.replace(/["<>]/g, ''));
+      status.textContent = text;
+      throw new Error(text);
+    }
+
+    async function waitFor(check, label, timeout = 150000) {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        try {
+          const value = check();
+          if (value) return value;
+        } catch {}
+        await sleep(100);
+      }
+      fail('timeout: ' + label);
+    }
+
+    function assignMusicXml(win, doc, xml, fileName) {
+      const input = doc.getElementById('musicxml-file-input');
+      const file = new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
+      const transfer = new win.DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    }
+
+    async function openMusicXml(win, doc, xml, fileName, expectedStep) {
+      doc.getElementById('musicxml-tab-btn').click();
+      assignMusicXml(win, doc, xml, fileName);
+      await waitFor(() => doc.getElementById('musicxml-open-btn')?.disabled === false, fileName + ' selection');
+      doc.getElementById('musicxml-open-btn').click();
+      await waitFor(() => {
+        const output = String(doc.getElementById('xml-output')?.textContent || '');
+        const name = String(doc.getElementById('musicxml-file-name')?.textContent || '');
+        return output.includes('<step>' + expectedStep + '</step>') && name.includes(fileName);
+      }, fileName + ' accepted parse');
+    }
+
+    async function waitEditorLoaded(frame, fileName, label) {
+      return await waitFor(() => {
+        const doc = frame.contentDocument;
+        const text = String(doc?.getElementById('poc-status')?.textContent || '');
+        if (text.startsWith('Yüklendi:') && text.includes(fileName)) return text;
+        if (text.startsWith('Başlatma hatası:') || text.startsWith('Hata:') || text.startsWith('XML hatası:')) {
+          fail(label + ': ' + text);
+        }
+        return '';
+      }, label);
+    }
+
+    function musicXmlStructureSummary(xmlText) {
+      const parsed = new DOMParser().parseFromString(String(xmlText || ''), 'text/xml');
+      const note = parsed.querySelector('part > measure > note');
+      return {
+        scorePartId: parsed.querySelector('score-part')?.getAttribute('id') || '',
+        partId: parsed.querySelector('part')?.getAttribute('id') || '',
+        measureNumber: parsed.querySelector('part > measure')?.getAttribute('number') || '',
+        step: note?.querySelector('pitch > step')?.textContent || '',
+        octave: note?.querySelector('pitch > octave')?.textContent || '',
+        voice: note?.querySelector('voice')?.textContent || '',
+        staff: note?.querySelector('staff')?.textContent || '',
+        step: note?.querySelector('pitch > step')?.textContent || '',
+        octave: note?.querySelector('pitch > octave')?.textContent || '',
+        grace: Boolean(note?.querySelector('grace')),
+        chord: Boolean(note?.querySelector('chord')),
+        noteCount: parsed.querySelectorAll('part > measure > note').length,
+      };
+    }
+
+    function selectFirstRenderedNote(editorFrame) {
+      const editorDoc = editorFrame.contentDocument;
+      const editorWin = editorFrame.contentWindow;
+      const notehead = [...(editorDoc?.querySelectorAll('.vf-notehead') || [])]
+        .find((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+      if (!notehead) fail('Smoosic rendered notehead not found for selection');
+
+      const rect = notehead.getBoundingClientRect();
+      const options = {
+        bubbles: true,
+        cancelable: true,
+        view: editorWin,
+        clientX: rect.left + (rect.width / 2),
+        clientY: rect.top + (rect.height / 2),
+        button: 0,
+        buttons: 1,
+      };
+      notehead.dispatchEvent(new editorWin.MouseEvent('mousedown', options));
+      notehead.dispatchEvent(new editorWin.MouseEvent('mouseup', { ...options, buttons: 0 }));
+      notehead.dispatchEvent(new editorWin.MouseEvent('click', { ...options, buttons: 0 }));
+      body.setAttribute('data-s15-note-selected', 'true');
+      return true;
+    }
+
+    function consumerSnapshot(doc) {
+      return {
+        guitarState: String(doc.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || ''),
+        guitar: String(doc.getElementById('guitar-tab-output')?.textContent || ''),
+        violinState: String(doc.getElementById('tab-violin')?.getAttribute('data-violin-state') || ''),
+        violin: String(doc.getElementById('violin-output')?.textContent || ''),
+      };
+    }
+
+    async function waitConsumerTerminal(doc, label) {
+      return await waitFor(() => {
+        const snap = consumerSnapshot(doc);
+        const guitarTerminal = snap.guitarState && snap.guitarState !== 'idle';
+        const violinTerminal = snap.violinState && snap.violinState !== 'idle';
+        return guitarTerminal && violinTerminal ? snap : null;
+      }, label);
+    }
+
+    function installRequestCapture(editorFrame) {
+      const editorWin = editorFrame.contentWindow;
+      const original = editorWin.postMessage.bind(editorWin);
+      let captured = null;
+
+      editorWin.postMessage = function(message, targetOrigin, transfer) {
+        if (message?.type === 'seslitab:smoosic-export-request') {
+          captured = {
+            type: message.type,
+            version: message.version,
+            requestId: message.requestId,
+            sourceRevision: message.sourceRevision,
+          };
+          return;
+        }
+        return original(message, targetOrigin, transfer);
+      };
+
+      return {
+        captured: () => captured,
+        restore: () => { editorWin.postMessage = original; },
+      };
+    }
+
+    function sendStaleResultFromEditor(editorFrame, payload) {
+      const doc = editorFrame.contentDocument;
+      const script = doc.createElement('script');
+      script.textContent =
+        'parent.postMessage(' + JSON.stringify(payload).replace(/</g, '\\u003c') + ', location.origin);';
+      doc.body.appendChild(script);
+      script.remove();
+    }
+
+    async function run() {
+      await waitFor(() => appFrame.contentDocument?.getElementById('smoosic-tab-btn'), 'app init');
+      const win = appFrame.contentWindow;
+      const doc = appFrame.contentDocument;
+
+      await openMusicXml(win, doc, sourceXml, 's15-writeback.musicxml', 'C');
+      const beforeConsumers = await waitConsumerTerminal(doc, 'initial product consumers');
+
+      doc.getElementById('smoosic-tab-btn').click();
+      const editorFrame = await waitFor(() => doc.getElementById('smoosic-editor-frame'), 'Smoosic frame');
+      await waitFor(() => editorFrame.contentDocument?.getElementById('poc-status'), 'Smoosic document');
+      await waitEditorLoaded(editorFrame, 's15-writeback.musicxml', 'initial Smoosic handoff');
+
+      const editorRoot = editorFrame.contentDocument?.getElementById('smoo');
+      const domSample = editorRoot
+        ? [...editorRoot.querySelectorAll('*')]
+            .filter((element) => {
+              const tag = String(element.tagName || '').toLowerCase();
+              const cls = String(element.getAttribute?.('class') || '');
+              const id = String(element.id || '');
+              return tag === 'svg'
+                || tag === 'g'
+                || tag === 'path'
+                || tag === 'ellipse'
+                || tag === 'circle'
+                || /note|stave|voice|measure|vf|smo/i.test(cls + ' ' + id);
+            })
+            .slice(0, 80)
+            .map((element) => {
+              const rect = element.getBoundingClientRect?.();
+              return {
+                tag: String(element.tagName || '').toLowerCase(),
+                id: String(element.id || ''),
+                cls: String(element.getAttribute?.('class') || '').slice(0, 120),
+                w: Number(rect?.width || 0).toFixed(1),
+                h: Number(rect?.height || 0).toFixed(1),
+              };
+            })
+        : [];
+      body.setAttribute(
+        'data-s15-editor-dom-sample',
+        JSON.stringify(domSample).replace(/["<>]/g, (char) => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;' }[char])),
+      );
+
+      const notehead = await waitFor(
+        () => editorFrame.contentDocument?.querySelector('#smoo .vf-notehead'),
+        'rendered Smoosic notehead',
+      );
+      const rect = notehead.getBoundingClientRect();
+      if (!(rect.width > 0 && rect.height > 0)) {
+        fail('rendered Smoosic notehead has no clickable geometry');
+      }
+      const clientX = rect.left + (rect.width / 2);
+      const clientY = rect.top + (rect.height / 2);
+      for (const type of ['mousemove', 'mousedown', 'mouseup', 'click']) {
+        notehead.dispatchEvent(new editorFrame.contentWindow.MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0,
+        }));
+        await sleep(30);
+      }
+
+      selectFirstRenderedNote(editorFrame);
+      await sleep(250);
+
+      const pitchButton = await waitFor(
+        () => editorFrame.contentDocument?.querySelector('button[data-key="d"]'),
+        'Smoosic Re control',
+      );
+      pitchButton.click();
+      await sleep(250);
+
+      const applyButton = await waitFor(
+        () => doc.getElementById('smoosic-apply-btn'),
+        'SesliTab apply button',
+      );
+
+      let observedEditorExport = null;
+      win.addEventListener('message', (event) => {
+        if (
+          event.source === editorFrame.contentWindow
+          && event.data?.type === 'seslitab:smoosic-export-result'
+          && typeof event.data.musicXml === 'string'
+          && event.data.musicXml
+        ) {
+          observedEditorExport = event.data.musicXml;
+          const summary = musicXmlStructureSummary(observedEditorExport);
+          body.setAttribute('data-s15-candidate-step', summary.step || '');
+          body.setAttribute(
+            'data-s15-candidate-summary',
+            JSON.stringify(summary).replace(/["<>]/g, (char) => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;' }[char])),
+          );
+        }
+      }, true);
+
+      applyButton.click();
+
+      const writebackStatus = await waitFor(() => {
+        const hostStatus = String(doc.getElementById('smoosic-editor-host-status')?.textContent || '');
+        body.setAttribute('data-s15-last-host-status', hostStatus.replace(/["<>]/g, ''));
+        if (hostStatus.includes('Yeni sürüm doğrulandı')) return hostStatus;
+        if (
+          hostStatus.includes('uygulanamadı')
+          || hostStatus.includes('doğrulanamadı')
+          || hostStatus.includes('MusicXML alınamadı')
+          || hostStatus.includes('hazır değil')
+          || hostStatus.includes('yapısal düzenleme')
+          || hostStatus.includes('zamanında alınamadı')
+          || hostStatus.includes('uygulanacak yeni bir müzikal değişiklik yok')
+        ) {
+          return '__ERROR__' + hostStatus;
+        }
+        return '';
+      }, 'supported write-back terminal state');
+      if (writebackStatus.startsWith('__ERROR__')) {
+        const sourceSummary = musicXmlStructureSummary(sourceXml);
+        const candidateSummary = musicXmlStructureSummary(observedEditorExport);
+        fail(
+          'supported write-back rejected: '
+          + writebackStatus.slice('__ERROR__'.length)
+          + ' | source=' + JSON.stringify(sourceSummary)
+          + ' | candidate=' + JSON.stringify(candidateSummary)
+        );
+      }
+
+      const candidateAfterCommit = musicXmlStructureSummary(observedEditorExport);
+      const visibleAfterCommit = musicXmlStructureSummary(
+        String(doc.getElementById('xml-output')?.textContent || ''),
+      );
+      body.setAttribute('data-s15-candidate-step', candidateAfterCommit.step || 'none');
+      body.setAttribute('data-s15-visible-step-after-commit', visibleAfterCommit.step || 'none');
+
+      await waitFor(() => {
+        const xml = String(doc.getElementById('xml-output')?.textContent || '');
+        return xml.includes('<step>D</step>') && !xml.includes('<step>C</step>');
+      }, 'current MusicXML becomes D');
+
+      const afterConsumers = await waitConsumerTerminal(doc, 'refreshed product consumers');
+      if (
+        afterConsumers.guitarState === beforeConsumers.guitarState
+        && afterConsumers.guitar === beforeConsumers.guitar
+        && afterConsumers.violinState === beforeConsumers.violinState
+        && afterConsumers.violin === beforeConsumers.violin
+      ) {
+        fail('Guitar/violin consumers did not refresh after the committed revision');
+      }
+
+      if (editorFrame.hidden || !editorFrame.isConnected) {
+        fail('Smoosic editor did not remain usable after write-back');
+      }
+
+      body.setAttribute('data-s15-supported-edit', 'true');
+      body.setAttribute('data-s15-consumers-refreshed', 'true');
+      body.setAttribute('data-s15-editor-usable', 'true');
+
+      // Capture a real host export request but deliberately prevent delivery to
+      // the editor. Then accept a new source and send the old response from the
+      // correct iframe realm. The stale response must not overwrite the new source.
+      const capture = installRequestCapture(editorFrame);
+      applyButton.click();
+      const pending = await waitFor(() => capture.captured(), 'captured in-flight write-back request');
+
+      await openMusicXml(win, doc, replacementXml, 's15-replacement.musicxml', 'G');
+      await waitFor(() => editorFrame.hidden === false, 'replacement restores editor');
+      await waitEditorLoaded(editorFrame, 's15-replacement.musicxml', 'replacement Smoosic handoff');
+
+      sendStaleResultFromEditor(editorFrame, {
+        type: 'seslitab:smoosic-export-result',
+        version: 1,
+        requestId: pending.requestId,
+        sourceRevision: pending.sourceRevision,
+        fileName: 's15-stale.musicxml',
+        musicXml: staleCandidateXml,
+        roundTripOk: true,
+        shapeOk: true,
+        semanticOk: true,
+      });
+
+      await sleep(500);
+      const finalXml = String(doc.getElementById('xml-output')?.textContent || '');
+      if (!finalXml.includes('<step>G</step>') || finalXml.includes('<step>E</step>')) {
+        fail('stale Smoosic write-back overwrote the accepted replacement source');
+      }
+
+      capture.restore();
+      body.setAttribute('data-s15-stale-writeback-rejected', 'true');
+      body.setAttribute('data-s15-writeback', 'true');
+      status.textContent = 'PASS';
+    }
+
+    appFrame.addEventListener('load', () => {
+      run().catch((error) => {
+        if (body.getAttribute('data-s15-writeback') !== 'failed') {
+          fail(error?.message || error);
+        }
+      });
+    }, { once: true });
+  </script>
+</body>
+</html>
