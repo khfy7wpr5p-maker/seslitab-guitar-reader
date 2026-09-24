@@ -83,13 +83,14 @@ async function waitForEditorMusicXmlMutation(previousXml, timeoutMs = 1800) {
     }
   }
   const view = applicationInstance?.view;
+  const selected = view?.tracker?.selections?.[0];
   const readStep = (score) => {
     if (!score) return 'missing';
     const xml = new XMLSerializer().serializeToString(SmoToXml.convert(score));
     return new DOMParser().parseFromString(xml, 'text/xml')
       .querySelector('part > measure > note pitch > step')?.textContent || 'unknown';
   };
-  throw new Error(`Nota değişikliği uygulanmadı (selected=${view?.tracker?.selections?.length}, view=${readStep(view?.score)}, store=${readStep(view?.storeScore)}).`);
+  throw new Error(`Nota değişikliği uygulanmadı (selected=${view?.tracker?.selections?.length}, selectedPitch=${selected?.note?.pitches?.[0]?.letter}, selectedStaffCurrent=${selected?.staff === view?.score?.staves?.[selected?.selector?.staff]}, locator=${JSON.stringify(selected?.selector)}, view=${readStep(view?.score)}, store=${readStep(view?.storeScore)}).`);
 }
 
 async function runMobileKeyAction(button) {
