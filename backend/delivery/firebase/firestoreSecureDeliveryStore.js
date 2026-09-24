@@ -5,6 +5,14 @@ import {
   isAssignmentLifecycleRecord,
 } from '../../../src/services/assignmentLifecycleRecord.js'
 import {
+  createPieceAssignment,
+  isPieceAssignment,
+} from '../../../src/services/pieceAssignment.js'
+import {
+  createInitialPieceLifecycleRecord,
+  isPieceAssignmentLifecycleRecord,
+} from '../../../src/services/pieceAssignmentLifecycleRecord.js'
+import {
   createDeliveryRecord,
   isDeliveryRecord,
   revokeDeliveryRecord,
@@ -36,6 +44,7 @@ import {
   restoreSecureDeliveryPackage,
 } from '../../../src/services/secureDeliveryPackage.js'
 import {
+  assertStrictInputObject,
   normalizeRequiredId,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
 import {
@@ -118,6 +127,55 @@ function restoreDelivery(raw) {
     )
   }
   return record
+}
+
+
+function restorePieceAssignment(raw) {
+  const restored = createPieceAssignment({
+    pieceAssignmentId:
+      raw.pieceAssignmentId,
+    pieceId: raw.pieceId,
+    arrangementId: raw.arrangementId,
+    studentId: raw.studentId,
+    title: raw.title,
+    teacherNote: raw.teacherNote,
+    assignedAt: raw.assignedAt,
+    contentRefs: raw.contentRefs,
+  })
+
+  if (!same(restored, raw)) {
+    throw new TypeError(
+      'invalid PieceAssignment persistence snapshot.',
+    )
+  }
+
+  return restored
+}
+
+function restorePieceLifecycle(
+  raw,
+  piece,
+) {
+  const restored = Object.freeze({
+    schemaVersion: raw.schemaVersion,
+    piece,
+    state: raw.state,
+    stateChangedAt: raw.stateChangedAt,
+    revokedAt: raw.revokedAt,
+  })
+
+  if (
+    !isPieceAssignmentLifecycleRecord(
+      restored,
+    ) ||
+    !same(restored, raw)
+  ) {
+    throw new TypeError(
+      'invalid Piece lifecycle persistence snapshot.',
+    )
+  }
+
+  return restored
 }
 
 function same(left, right) {
@@ -291,6 +349,258 @@ export function createFirestoreSecureDeliveryStore({
     return snap.exists
       ? restoreDelivery(snap.data())
       : null
+  }
+
+
+  async function getPieceAssignment(
+    pieceAssignmentId,
+  ) {
+    const id = normalizeRequiredId(
+      pieceAssignmentId,
+      'pieceAssignmentId',
+    )
+    const snap = await collections.pieces
+      .doc(documentId(id))
+      .get()
+
+    return snap.exists
+      ? restorePieceAssignment(
+          snap.data(),
+        )
+      : null
+  }
+
+  async function getPieceLifecycle(
+    pieceAssignmentId,
+  ) {
+    const id = normalizeRequiredId(
+      pieceAssignmentId,
+      'pieceAssignmentId',
+    )
+    const [piece, lifecycleSnap] =
+      await Promise.all([
+        getPieceAssignment(id),
+        collections.pieceLifecycle
+          .doc(documentId(id))
+          .get(),
+      ])
+
+    if (!lifecycleSnap.exists) {
+      return null
+    }
+    if (piece === null) {
+      throw new Error(
+        'Piece lifecycle authority missing.',
+      )
+    }
+
+    return restorePieceLifecycle(
+      lifecycleSnap.data(),
+      piece,
+    )
+  }
+
+  async function listPieceAssignmentsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+    const snap = await collections.pieces
+      .where('studentId', '==', id)
+      .get()
+
+    return Object.freeze(
+      snap.docs.map((item) => {
+        const piece =
+          restorePieceAssignment(
+            item.data(),
+          )
+        if (piece.studentId !== id) {
+          throw new Error(
+            'Piece student scope conflict.',
+          )
+        }
+        return piece
+      }),
+    )
+  }
+
+  async function putPieceAssignment(
+    piece,
+  ) {
+    if (!isPieceAssignment(piece)) {
+      throw new TypeError(
+        'piece must be a valid immutable PieceAssignment.',
+      )
+    }
+
+    const ref = collections.pieces.doc(
+      documentId(
+        piece.pieceAssignmentId,
+      ),
+    )
+
+    return db.runTransaction(
+      async (tx) => {
+        const snap = await tx.get(ref)
+
+        if (snap.exists) {
+          const stored =
+            restorePieceAssignment(
+              snap.data(),
+            )
+          if (!same(stored, piece)) {
+            throw new Error(
+              'Piece assignment immutable conflict.',
+            )
+          }
+          return stored
+        }
+
+        tx.create(ref, plain(piece))
+        return piece
+      },
+    )
+  }
+
+  async function commitPieceLifecycleMutation(
+    input = {},
+  ) {
+    assertStrictInputObject(
+      input,
+      [
+        'currentLifecycle',
+        'nextLifecycle',
+      ],
+      'PieceLifecycleMutation',
+    )
+
+    const {
+      currentLifecycle,
+      nextLifecycle,
+    } = input
+
+    if (
+      !isPieceAssignmentLifecycleRecord(
+        currentLifecycle,
+      ) ||
+      !isPieceAssignmentLifecycleRecord(
+        nextLifecycle,
+      )
+    ) {
+      throw new TypeError(
+        'Piece lifecycle mutation requires valid lifecycle records.',
+      )
+    }
+
+    const id =
+      currentLifecycle.piece
+        .pieceAssignmentId
+
+    if (
+      nextLifecycle.piece
+        .pieceAssignmentId !== id ||
+      !same(
+        currentLifecycle.piece,
+        nextLifecycle.piece,
+      )
+    ) {
+      throw new Error(
+        'Piece lifecycle mutation authority mismatch.',
+      )
+    }
+
+    const pieceRef =
+      collections.pieces.doc(
+        documentId(id),
+      )
+    const lifecycleRef =
+      collections.pieceLifecycle.doc(
+        documentId(id),
+      )
+
+    return db.runTransaction(
+      async (tx) => {
+        const pieceSnap =
+          await tx.get(pieceRef)
+        const lifecycleSnap =
+          await tx.get(lifecycleRef)
+
+        if (!pieceSnap.exists) {
+          throw new Error(
+            'Piece lifecycle authority missing.',
+          )
+        }
+
+        const storedPiece =
+          restorePieceAssignment(
+            pieceSnap.data(),
+          )
+
+        if (
+          !same(
+            storedPiece,
+            currentLifecycle.piece,
+          )
+        ) {
+          throw new Error(
+            'Piece lifecycle stored authority conflict.',
+          )
+        }
+
+        const storedLifecycle =
+          lifecycleSnap.exists
+            ? restorePieceLifecycle(
+                lifecycleSnap.data(),
+                storedPiece,
+              )
+            : null
+
+        if (storedLifecycle === null) {
+          const expectedInitial =
+            createInitialPieceLifecycleRecord(
+              storedPiece,
+            )
+          if (
+            !same(
+              expectedInitial,
+              currentLifecycle,
+            )
+          ) {
+            throw new Error(
+              'Piece lifecycle current conflict.',
+            )
+          }
+        } else if (
+          !same(
+            storedLifecycle,
+            currentLifecycle,
+          )
+        ) {
+          throw new Error(
+            'Piece lifecycle current conflict.',
+          )
+        }
+
+        if (
+          same(
+            currentLifecycle,
+            nextLifecycle,
+          )
+        ) {
+          return storedLifecycle ??
+            currentLifecycle
+        }
+
+        tx.set(
+          lifecycleRef,
+          plain(nextLifecycle),
+        )
+        return nextLifecycle
+      },
+    )
   }
 
   async function commitPreparedBatch(rows) {
@@ -995,6 +1305,11 @@ export function createFirestoreSecureDeliveryStore({
     getPracticePackage,
     getLifecycle,
     getDelivery,
+    getPieceAssignment,
+    getPieceLifecycle,
+    listPieceAssignmentsForStudent,
+    putPieceAssignment,
+    commitPieceLifecycleMutation,
 
     async listDeliveriesForTeacher(
       teacherId,
