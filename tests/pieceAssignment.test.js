@@ -97,6 +97,16 @@ test('PieceAssignmentV1 rejects duplicate child IDs and unsupported caller autho
     /duplicate.*chord/i,
   )
 
+  assert.throws(
+    () => createPieceAssignment(validInput({
+      contentRefs: {
+        scoreAssignmentId: 'shared-child',
+        chordAssignmentIds: ['shared-child'],
+      },
+    })),
+    /duplicate.*child|same assignment/i,
+  )
+
   for (const extra of [
     { state: 'COMPLETED' },
     { revokedAt: '2026-09-24T09:00:00Z' },
