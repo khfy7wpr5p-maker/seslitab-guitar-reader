@@ -114,7 +114,14 @@ async function runMobileKeyAction(button) {
     if (selected.note !== current.note) {
       view.tracker.selections = [current];
     }
-    await view.setPitch(key);
+    if (view.tracker.selections.length === 1 && current.note.pitches?.length === 1) {
+      const pitch = SmoMusic.getLetterNotePitch(
+        current.note.pitches[0], key, current.measure.keySignature
+      );
+      await view.setPitches([pitch]);
+    } else {
+      await view.setPitch(key);
+    }
     await waitForEditorMusicXmlMutation(previousXml);
     return;
   }

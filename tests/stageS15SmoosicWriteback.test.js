@@ -111,7 +111,7 @@ test('S15 waits for native Smoosic pitch edits before exporting to SesliTab', ()
   assert.match(editor, /async function waitForEditorMusicXmlMutation\(previousXml/)
   assert.match(
     editor,
-    /const previousXml = currentEditorMusicXmlText\(\)[\s\S]*await view\.setPitch\(key\)[\s\S]*await waitForEditorMusicXmlMutation\(previousXml\)/,
+    /const previousXml = currentEditorMusicXmlText\(\)[\s\S]*await view\.setPitches\(\[pitch\]\)[\s\S]*await waitForEditorMusicXmlMutation\(previousXml\)/,
   )
   assert.match(editor, /if \(!view\.tracker\?\.selections\?\.length\) \{[\s\S]*await view\.moveHome/)
   assert.match(
