@@ -181,3 +181,77 @@ test('canonical package JSON uses locale-aware alphabetical key ordering', async
     '{"a":3,"ä":2,"z":1}',
   )
 })
+
+
+test('private SCORE package carries exact optional guitar TAB MusicXML', async () => {
+  const {
+    createStudentPrivatePracticePackageV1,
+    validateStudentPracticePackageV1,
+  } = await loadPackageContract()
+
+  const tabXml =
+    '<score-partwise version="4.0"><part-list/></score-partwise>'
+  const pkg =
+    createStudentPrivatePracticePackageV1(
+      validInput({
+        guitarTabMusicXml: tabXml,
+      }),
+    )
+
+  assert.deepEqual(
+    pkg.content.guitarTab,
+    {
+      format: 'musicxml',
+      data: tabXml,
+    },
+  )
+  assert.equal(
+    Object.isFrozen(pkg.content.guitarTab),
+    true,
+  )
+  assert.equal(
+    validateStudentPracticePackageV1(pkg).ok,
+    true,
+  )
+})
+
+test('TAB MusicXML remains optional and malformed TAB payloads fail closed', async () => {
+  const {
+    createStudentPrivatePracticePackageV1,
+    validateStudentPracticePackageV1,
+  } = await loadPackageContract()
+
+  const withoutTab =
+    createStudentPrivatePracticePackageV1(
+      validInput(),
+    )
+  assert.equal(
+    withoutTab.content.guitarTab,
+    null,
+  )
+
+  for (const guitarTab of [
+    { format: 'ascii', data: '0-1-2' },
+    { format: 'musicxml', data: '' },
+    {
+      format: 'musicxml',
+      data: '<score-partwise/>',
+      extra: true,
+    },
+  ]) {
+    const raw = structuredClone(
+      withoutTab,
+    )
+    raw.content.guitarTab =
+      guitarTab
+    const result =
+      validateStudentPracticePackageV1(
+        raw,
+      )
+    assert.equal(result.ok, false)
+    assert.match(
+      result.errors.join('\n'),
+      /guitarTab/i,
+    )
+  }
+})
