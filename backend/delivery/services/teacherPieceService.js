@@ -115,6 +115,7 @@ export function createTeacherPieceService({
     expectedPracticeType,
     teacherId,
     studentId,
+    allowRevoked = false,
   }) {
     const id = normalizeRequiredId(
       assignmentId,
@@ -139,7 +140,10 @@ export function createTeacherPieceService({
       delivery.deliveryId !== id ||
       delivery.teacherId !== teacherId ||
       delivery.studentId !== studentId ||
-      delivery.revokedAt !== null
+      (
+        !allowRevoked &&
+        delivery.revokedAt !== null
+      )
     ) {
       throw childAuthorityError()
     }
@@ -170,7 +174,10 @@ export function createTeacherPieceService({
           id ||
         lifecycle.assignment.studentId !==
           studentId ||
-        lifecycle.revokedAt !== null
+        (
+          !allowRevoked &&
+          lifecycle.revokedAt !== null
+        )
       ) {
         throw childAuthorityError()
       }
@@ -182,6 +189,7 @@ export function createTeacherPieceService({
   async function verifyPieceChildren(
     piece,
     teacherId,
+    { allowRevoked = false } = {},
   ) {
     await authorization
       .requireTeacherStudent(
@@ -200,6 +208,7 @@ export function createTeacherPieceService({
           PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE,
         teacherId,
         studentId: piece.studentId,
+        allowRevoked,
       })
     }
 
@@ -214,6 +223,7 @@ export function createTeacherPieceService({
           PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
         teacherId,
         studentId: piece.studentId,
+        allowRevoked,
       })
     }
   }
@@ -325,6 +335,7 @@ export function createTeacherPieceService({
     await verifyPieceChildren(
       piece,
       teacherId,
+      { allowRevoked: true },
     )
 
     const storedLifecycle =
