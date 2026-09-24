@@ -72,6 +72,7 @@ let selectedPdfFile = null
 let selectedMusicXmlFile = null
 let qualityGateActive = false
 let stageHPlaybackRoute = null
+let suppressResultScroll = false
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -537,9 +538,28 @@ function handleAnalysisResult(notes, xmlString, hasRhythm) {
   syncStageHPlaybackPresentation()
 
   // Scroll to results
-  setTimeout(() => {
-    $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, 300)
+  if (!suppressResultScroll) {
+    setTimeout(() => {
+      $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 300)
+  }
+}
+
+export function applyRevalidatedMusicXmlRevision(notes, musicXml) {
+  if (!Array.isArray(notes) || notes.length === 0) {
+    throw new TypeError('Revalidated revision requires non-empty notes.')
+  }
+  if (typeof musicXml !== 'string' || !musicXml.trim().includes('<score-')) {
+    throw new TypeError('Revalidated revision requires MusicXML.')
+  }
+
+  suppressResultScroll = true
+  try {
+    handleAnalysisResult(notes, musicXml, musicXmlHasRhythm(notes))
+    return true
+  } finally {
+    suppressResultScroll = false
+  }
 }
 
 // ── Result tab switching ────────────────────────────────────

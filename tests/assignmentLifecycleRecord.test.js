@@ -6,6 +6,8 @@ import {
   PRIVATE_ASSIGNMENT_STATE,
   createPrivateAssignment,
 } from '../src/services/privateAssignment.js'
+import { getChordBoardVoicings } from '../src/services/chordBoardCatalog.js'
+import { createChordBoardAssignmentSourceBinding } from '../src/services/chordBoardAssignmentSourceBinding.js'
 import {
   createInitialAssignmentLifecycleRecord,
   isAssignmentLifecycleRecord,
@@ -46,6 +48,29 @@ function scoreAssignment({
     teacherNote: 'Yavaş çalış.',
     assignedAt,
     sourceRef: sourceRef(studentId),
+  })
+}
+
+
+function chordAssignment({
+  assignmentId = 'assignment-chord-a',
+  studentId = 'student-a',
+  assignedAt = '2026-09-23T07:30:00Z',
+} = {}) {
+  const snapshot = getChordBoardVoicings('Am')[0]
+  return createPrivateAssignment({
+    assignmentId,
+    studentId,
+    practiceType:
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
+    teacherNote: 'Geçişleri temiz çalış.',
+    assignedAt,
+    sourceRef:
+      createChordBoardAssignmentSourceBinding({
+        studentId,
+        snapshot,
+        boundAt: assignedAt,
+      }),
   })
 }
 
@@ -229,5 +254,75 @@ test('TD-05 lifecycle requires a valid immutable initial SCORE assignment', () =
       }),
     ),
     /PrivateAssignment/i,
+  )
+})
+
+
+test('TD-07 CHORD_BOARD follows ACTIVE -> COMPLETED -> REPERTOIRE and one-way revoke', () => {
+  const assignment = chordAssignment()
+  const active =
+    createInitialAssignmentLifecycleRecord(
+      assignment,
+    )
+  const completed =
+    transitionAssignmentLifecycleRecord(
+      active,
+      PRIVATE_ASSIGNMENT_STATE.COMPLETED,
+      '2026-09-23T08:00:00Z',
+    )
+  const repertoire =
+    transitionAssignmentLifecycleRecord(
+      completed,
+      PRIVATE_ASSIGNMENT_STATE.REPERTOIRE,
+      '2026-09-23T09:00:00Z',
+    )
+  const revoked =
+    revokeAssignmentLifecycleRecord(
+      repertoire,
+      '2026-09-23T10:00:00Z',
+    )
+
+  assert.equal(active.assignment, assignment)
+  assert.equal(
+    completed.state,
+    PRIVATE_ASSIGNMENT_STATE.COMPLETED,
+  )
+  assert.equal(
+    repertoire.state,
+    PRIVATE_ASSIGNMENT_STATE.REPERTOIRE,
+  )
+  assert.equal(revoked.assignment, assignment)
+  assert.equal(
+    revoked.state,
+    PRIVATE_ASSIGNMENT_STATE.REPERTOIRE,
+  )
+  assert.equal(
+    revoked.revokedAt,
+    '2026-09-23T10:00:00Z',
+  )
+
+  assert.throws(
+    () =>
+      transitionAssignmentLifecycleRecord(
+        revoked,
+        PRIVATE_ASSIGNMENT_STATE.REPERTOIRE,
+        '2026-09-23T11:00:00Z',
+      ),
+    /revoked/i,
+  )
+})
+
+test('TD-07 lifecycle invalid-assignment copy is practice-type neutral', () => {
+  assert.throws(
+    () =>
+      createInitialAssignmentLifecycleRecord(
+        Object.freeze({
+          assignmentId: 'forged',
+        }),
+      ),
+    {
+      message:
+        'assignment must be a valid immutable initial PrivateAssignment.',
+    },
   )
 })

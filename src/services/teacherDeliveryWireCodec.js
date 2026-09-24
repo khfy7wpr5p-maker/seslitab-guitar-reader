@@ -13,6 +13,7 @@ import {
 } from './poolPublicationRecord.js'
 import {
   createPrivateAssignment,
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
   PRIVATE_ASSIGNMENT_SCHEMA_VERSION,
   PRIVATE_ASSIGNMENT_STATE,
 } from './privateAssignment.js'
@@ -21,6 +22,13 @@ import {
   SCORE_ASSIGNMENT_SOURCE_KIND,
   isScoreAssignmentSourceBinding,
 } from './scoreAssignmentSourceBinding.js'
+import {
+  isChordBoardAssignmentSourceBinding,
+  restoreChordBoardAssignmentSourceBindingV1,
+} from './chordBoardAssignmentSourceBinding.js'
+import {
+  sameChordBoardVoicingSnapshot,
+} from './chordBoardVoicingCanonical.js'
 import {
   ASSIGNMENT_LIFECYCLE_SCHEMA_VERSION,
   isAssignmentLifecycleRecord,
@@ -134,7 +142,34 @@ function restoreScoreAssignmentSourceBindingV1(raw) {
 }
 
 function sameSource(left, right) {
-  return SOURCE_FIELDS.every((field) => left[field] === right[field])
+  if (
+    isScoreAssignmentSourceBinding(left) &&
+    isScoreAssignmentSourceBinding(right)
+  ) {
+    return SOURCE_FIELDS.every(
+      (field) => left[field] === right[field],
+    )
+  }
+
+  if (
+    isChordBoardAssignmentSourceBinding(left) &&
+    isChordBoardAssignmentSourceBinding(right)
+  ) {
+    return (
+      left.schemaVersion === right.schemaVersion &&
+      left.sourceKind === right.sourceKind &&
+      left.studentId === right.studentId &&
+      left.voicingFingerprint ===
+        right.voicingFingerprint &&
+      left.boundAt === right.boundAt &&
+      sameChordBoardVoicingSnapshot(
+        left.snapshot,
+        right.snapshot,
+      )
+    )
+  }
+
+  return false
 }
 
 function sameAssignment(left, right) {
@@ -205,7 +240,28 @@ export function restorePrivateAssignmentV1(raw) {
     throw new TypeError('invalid initial PrivateAssignment wire snapshot.')
   }
 
-  const sourceRef = restoreScoreAssignmentSourceBindingV1(raw.sourceRef)
+  let sourceRef
+  if (
+    raw.practiceType ===
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE
+  ) {
+    sourceRef =
+      restoreScoreAssignmentSourceBindingV1(
+        raw.sourceRef,
+      )
+  } else if (
+    raw.practiceType ===
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD
+  ) {
+    sourceRef =
+      restoreChordBoardAssignmentSourceBindingV1(
+        raw.sourceRef,
+      )
+  } else {
+    throw new TypeError(
+      'unsupported PrivateAssignment practiceType.',
+    )
+  }
   return createPrivateAssignment({
     assignmentId: raw.assignmentId,
     studentId: raw.studentId,

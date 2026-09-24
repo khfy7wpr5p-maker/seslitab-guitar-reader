@@ -17,16 +17,24 @@ import {
   isPrivateAssignment,
 } from '../../../src/services/privateAssignment.js'
 import {
+  isPieceAssignment,
+} from '../../../src/services/pieceAssignment.js'
+import {
+  createInitialPieceLifecycleRecord,
+  isPieceAssignmentLifecycleRecord,
+} from '../../../src/services/pieceAssignmentLifecycleRecord.js'
+import {
   isStudentRosterEntry,
 } from '../../../src/services/studentRosterEntry.js'
 import {
   isPoolPublicationRecord,
 } from '../../../src/services/poolPublicationRecord.js'
 import {
-  validateStudentPracticePackageV1,
-} from '../../../src/services/studentPracticePackageV1.js'
+  assertSecureDeliveryPackageMatchesAssignment,
+  restoreSecureDeliveryPackage,
+} from '../../../src/services/secureDeliveryPackage.js'
 import {
-  fingerprintPracticePackage,
+  fingerprintSecureDeliveryPackage,
 } from '../integrity/packageFingerprint.js'
 import {
   assertStrictInputObject,
@@ -46,6 +54,12 @@ const LIFECYCLE_MUTATION_FIELDS = Object.freeze([
   'deliveryBefore',
   'deliveryAfter',
   'historyEventId',
+])
+
+
+const PIECE_LIFECYCLE_MUTATION_FIELDS = Object.freeze([
+  'currentLifecycle',
+  'nextLifecycle',
 ])
 
 function grantKey(teacherId, studentId) {
@@ -71,21 +85,24 @@ function assertPreparedCommitRow(row) {
       'prepared must be a valid PreparedAssignmentRecord.',
     )
   }
-  const validation =
-    validateStudentPracticePackageV1(row.package)
-  if (!validation.ok) {
+  let pkg
+  try {
+    pkg = restoreSecureDeliveryPackage(
+      row.package,
+    )
+    assertSecureDeliveryPackageMatchesAssignment(
+      pkg,
+      row.prepared.assignment,
+    )
+  } catch {
     throw new TypeError(
-      'package must be a valid Student PracticePackage v1.',
+      'package must be a valid secure delivery package.',
     )
   }
   if (
-    row.prepared.packageId !== row.package.packageId ||
+    row.prepared.packageId !== pkg.packageId ||
     row.prepared.packageFingerprint !==
-      fingerprintPracticePackage(row.package) ||
-    row.prepared.assignment.studentId !==
-      row.package.publication.recipientStudentId ||
-    row.prepared.assignment.sourceRef.revisionId !==
-      row.package.approvedRevision.revisionId
+      fingerprintSecureDeliveryPackage(pkg)
   ) {
     throw new Error(
       'prepared assignment package acknowledgement conflict.',
@@ -113,6 +130,8 @@ export function createInMemorySecureDeliveryStore({
   let deliveryByAssignment = new Map()
   let rosterByStudent = new Map()
   let poolById = new Map()
+  let pieceByAssignment = new Map()
+  let pieceLifecycleByAssignment = new Map()
 
   for (const mapping of identityMappings) {
     if (!isSecureDeliveryIdentityMapping(mapping)) {
@@ -138,10 +157,11 @@ export function createInMemorySecureDeliveryStore({
   }
 
   for (const pkg of practicePackages) {
-    const validation = validateStudentPracticePackageV1(pkg)
-    if (!validation.ok) {
+    try {
+      restoreSecureDeliveryPackage(pkg)
+    } catch {
       throw new TypeError(
-        'initial PracticePackage must be valid.',
+        'initial secure delivery package must be valid.',
       )
     }
     if (packageById.has(pkg.packageId)) {
@@ -242,7 +262,7 @@ export function createInMemorySecureDeliveryStore({
           nextPackages.get(existing.packageId) ?? null
         if (
           existingPackage === null ||
-          fingerprintPracticePackage(
+          fingerprintSecureDeliveryPackage(
             existingPackage,
           ) !== existing.packageFingerprint
         ) {
@@ -258,7 +278,7 @@ export function createInMemorySecureDeliveryStore({
         nextPackages.get(row.package.packageId) ?? null
       if (
         existingPackage !== null &&
-        fingerprintPracticePackage(existingPackage) !==
+        fingerprintSecureDeliveryPackage(existingPackage) !==
           row.prepared.packageFingerprint
       ) {
         throw new Error(
@@ -427,6 +447,180 @@ export function createInMemorySecureDeliveryStore({
     })
   }
 
+  async function getPieceAssignment(
+    pieceAssignmentId,
+  ) {
+    return (
+      pieceByAssignment.get(
+        normalizeRequiredId(
+          pieceAssignmentId,
+          'pieceAssignmentId',
+        ),
+      ) ?? null
+    )
+  }
+
+  async function getPieceLifecycle(
+    pieceAssignmentId,
+  ) {
+    return (
+      pieceLifecycleByAssignment.get(
+        normalizeRequiredId(
+          pieceAssignmentId,
+          'pieceAssignmentId',
+        ),
+      ) ?? null
+    )
+  }
+
+  async function listPieceAssignmentsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+    return Object.freeze(
+      [...pieceByAssignment.values()].filter(
+        (piece) => piece.studentId === id,
+      ),
+    )
+  }
+
+  async function putPieceAssignment(piece) {
+    if (!isPieceAssignment(piece)) {
+      throw new TypeError(
+        'piece must be a valid immutable PieceAssignment.',
+      )
+    }
+
+    const id = piece.pieceAssignmentId
+    const existing =
+      pieceByAssignment.get(id) ?? null
+
+    if (existing !== null) {
+      if (!sameRecord(existing, piece)) {
+        throw new Error(
+          'Piece assignment immutable conflict.',
+        )
+      }
+      return existing
+    }
+
+    const next = new Map(pieceByAssignment)
+    next.set(id, piece)
+    pieceByAssignment = next
+    return piece
+  }
+
+  async function commitPieceLifecycleMutation(
+    input = {},
+  ) {
+    assertStrictInputObject(
+      input,
+      PIECE_LIFECYCLE_MUTATION_FIELDS,
+      'PieceLifecycleMutation',
+    )
+
+    const {
+      currentLifecycle,
+      nextLifecycle,
+    } = input
+
+    if (
+      !isPieceAssignmentLifecycleRecord(
+        currentLifecycle,
+      ) ||
+      !isPieceAssignmentLifecycleRecord(
+        nextLifecycle,
+      )
+    ) {
+      throw new TypeError(
+        'Piece lifecycle mutation requires valid lifecycle records.',
+      )
+    }
+
+    const id =
+      currentLifecycle.piece
+        .pieceAssignmentId
+
+    if (
+      nextLifecycle.piece
+        .pieceAssignmentId !== id ||
+      !sameRecord(
+        currentLifecycle.piece,
+        nextLifecycle.piece,
+      )
+    ) {
+      throw new Error(
+        'Piece lifecycle mutation authority mismatch.',
+      )
+    }
+
+    const storedPiece =
+      pieceByAssignment.get(id) ?? null
+
+    if (
+      storedPiece === null ||
+      !sameRecord(
+        storedPiece,
+        currentLifecycle.piece,
+      )
+    ) {
+      throw new Error(
+        'Piece lifecycle stored authority conflict.',
+      )
+    }
+
+    const storedLifecycle =
+      pieceLifecycleByAssignment.get(id) ??
+      null
+
+    if (storedLifecycle === null) {
+      const expectedInitial =
+        createInitialPieceLifecycleRecord(
+          storedPiece,
+        )
+      if (
+        !sameRecord(
+          expectedInitial,
+          currentLifecycle,
+        )
+      ) {
+        throw new Error(
+          'Piece lifecycle current conflict.',
+        )
+      }
+    } else if (
+      !sameRecord(
+        storedLifecycle,
+        currentLifecycle,
+      )
+    ) {
+      throw new Error(
+        'Piece lifecycle current conflict.',
+      )
+    }
+
+    if (
+      sameRecord(
+        currentLifecycle,
+        nextLifecycle,
+      )
+    ) {
+      return storedLifecycle ??
+        currentLifecycle
+    }
+
+    const next =
+      new Map(
+        pieceLifecycleByAssignment,
+      )
+    next.set(id, nextLifecycle)
+    pieceLifecycleByAssignment = next
+    return nextLifecycle
+  }
+
   return Object.freeze({
     async getIdentityMapping(providerSubject) {
       const id = normalizeRequiredId(
@@ -506,6 +700,12 @@ export function createInMemorySecureDeliveryStore({
         ) ?? null
       )
     },
+
+    getPieceAssignment,
+    getPieceLifecycle,
+    listPieceAssignmentsForStudent,
+    putPieceAssignment,
+    commitPieceLifecycleMutation,
 
     async listDeliveriesForTeacher(teacherId) {
       const id = normalizeRequiredId(

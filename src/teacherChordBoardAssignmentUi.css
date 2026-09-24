@@ -1,0 +1,44 @@
+.teacher-chord-board-assignment {
+  display: grid;
+  gap: 1rem;
+}
+
+.teacher-chord-board-assignment__form,
+.teacher-chord-board-assignment__positions,
+.teacher-chord-board-assignment__students,
+.teacher-chord-board-assignment__student,
+.teacher-chord-board-assignment__common-note,
+.teacher-chord-board-assignment__preview {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.teacher-chord-board-assignment__strings {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.teacher-chord-board-assignment__string {
+  min-width: 0;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid currentColor;
+  border-radius: 0.35rem;
+  text-align: center;
+}
+
+.teacher-chord-board-assignment__position {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.teacher-chord-board-assignment [hidden] {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .teacher-chord-board-assignment__strings {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

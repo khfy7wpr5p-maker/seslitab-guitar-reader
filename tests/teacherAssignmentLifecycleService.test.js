@@ -16,6 +16,9 @@ import {
 import {
   createInMemoryTeacherScoreAssignmentRepository,
 } from '../src/services/teacherScoreAssignmentRepository.js'
+import { getChordBoardVoicings } from '../src/services/chordBoardCatalog.js'
+import { createChordBoardAssignmentSourceBinding } from '../src/services/chordBoardAssignmentSourceBinding.js'
+import { createInMemoryTeacherChordBoardAssignmentRepository } from '../src/services/teacherChordBoardAssignmentRepository.js'
 import {
   createTeacherAssignmentLifecycleService,
 } from '../src/services/teacherAssignmentLifecycleService.js'
@@ -53,6 +56,30 @@ function scoreAssignment({
     teacherNote: 'Yavaş çalış.',
     assignedAt: '2026-09-23T07:30:00Z',
     sourceRef: sourceRef(studentId, revisionId),
+  })
+}
+
+
+function chordAssignment({
+  assignmentId = 'assignment-chord-a',
+  studentId = 'student-a',
+} = {}) {
+  const assignedAt = '2026-09-23T07:30:00Z'
+  const snapshot =
+    getChordBoardVoicings('Am')[0]
+  return createPrivateAssignment({
+    assignmentId,
+    studentId,
+    practiceType:
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD,
+    teacherNote: 'Akoru temiz çalış.',
+    assignedAt,
+    sourceRef:
+      createChordBoardAssignmentSourceBinding({
+        studentId,
+        snapshot,
+        boundAt: assignedAt,
+      }),
   })
 }
 
@@ -422,4 +449,62 @@ test('TD-05 service history is frozen and revalidates exact assignment identity'
 
   assert.equal(Object.isFrozen(history), true)
   assert.deepEqual(history, [completed])
+})
+
+
+test('TD-07 lifecycle service completes promotes and revokes CHORD_BOARD without changing exact source', () => {
+  const assignment = chordAssignment()
+  const assignmentRepository =
+    createInMemoryTeacherChordBoardAssignmentRepository([
+      assignment,
+    ])
+  const lifecycleRepository =
+    createInMemoryTeacherAssignmentLifecycleRepository()
+  const times = [
+    '2026-09-23T08:00:00Z',
+    '2026-09-23T09:00:00Z',
+    '2026-09-23T10:00:00Z',
+  ]
+  let index = 0
+  const service =
+    createTeacherAssignmentLifecycleService({
+      assignmentRepository,
+      lifecycleRepository,
+      now() {
+        return times[index++]
+      },
+    })
+
+  const completed =
+    service.markCompleted(
+      assignment.assignmentId,
+    )
+  const repertoire =
+    service.moveToRepertoire(
+      assignment.assignmentId,
+    )
+  const revoked =
+    service.revokeAssignment(
+      assignment.assignmentId,
+    )
+
+  assert.equal(completed.assignment, assignment)
+  assert.equal(repertoire.assignment, assignment)
+  assert.equal(revoked.assignment, assignment)
+  assert.equal(
+    revoked.assignment.sourceRef,
+    assignment.sourceRef,
+  )
+  assert.equal(
+    revoked.assignment.sourceRef.snapshot,
+    assignment.sourceRef.snapshot,
+  )
+  assert.equal(
+    revoked.state,
+    PRIVATE_ASSIGNMENT_STATE.REPERTOIRE,
+  )
+  assert.equal(
+    revoked.revokedAt,
+    '2026-09-23T10:00:00Z',
+  )
 })
