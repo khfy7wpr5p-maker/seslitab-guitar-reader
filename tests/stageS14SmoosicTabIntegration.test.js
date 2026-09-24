@@ -22,7 +22,8 @@ test('S14 ignores reset-hidden stale XML and requires the newly dispatched filen
   assert.match(host, /results\.hasAttribute\?\.\('hidden'\)/)
   assert.match(host, /resetIframeStatusForTransfer\(frame, fileName\)/)
   assert.match(host, /waitForMusicXmlLoad\(frame, fileName\)/)
-  assert.match(host, /status\.startsWith\('Yüklendi:'\) && status\.includes\(expectedFileName\)/)
+  assert.match(host, /status\.removeAttribute\('data-loaded-file-name'\)/)
+  assert.match(host, /getAttribute\('data-loaded-file-name'\) === expectedFileName/)
 })
 
 test('S14 tracks the active source lifecycle and refreshes an already-created editor', () => {
