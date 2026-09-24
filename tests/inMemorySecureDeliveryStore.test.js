@@ -22,6 +22,13 @@ import {
 import {
   createTeacherStudentGrant,
 } from '../src/services/teacherStudentGrant.js'
+import {
+  createPieceAssignment,
+} from '../src/services/pieceAssignment.js'
+import {
+  createInitialPieceLifecycleRecord,
+  transitionPieceLifecycleRecord,
+} from '../src/services/pieceAssignmentLifecycleRecord.js'
 
 async function loadStore() {
   try {
@@ -224,4 +231,110 @@ test('delivery batch is atomic and active student/teacher lists are scoped', asy
     /invalid|conflict/i,
   )
   assert.equal(await store.getDelivery('assignment-b'), b)
+})
+
+
+test('Piece authority persists by exact identity and remains student-scoped', async () => {
+  const { createInMemorySecureDeliveryStore } = await loadStore()
+  const store = createInMemorySecureDeliveryStore()
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-assignment-a',
+    pieceId: 'piece-cambaz-a',
+    arrangementId: 'arr-cambaz-a',
+    studentId: 'student-a',
+    title: 'Cambaz',
+    teacherNote: '',
+    assignedAt: '2026-09-24T08:00:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'score-a',
+      chordAssignmentIds: ['chord-a'],
+    },
+  })
+
+  assert.equal(await store.putPieceAssignment(piece), piece)
+  assert.equal(
+    await store.getPieceAssignment('piece-assignment-a'),
+    piece,
+  )
+  assert.deepEqual(
+    await store.listPieceAssignmentsForStudent('student-a'),
+    Object.freeze([piece]),
+  )
+  assert.deepEqual(
+    await store.listPieceAssignmentsForStudent('student-b'),
+    Object.freeze([]),
+  )
+  assert.equal(
+    await store.getPieceLifecycle('piece-assignment-a'),
+    null,
+  )
+
+  assert.equal(await store.putPieceAssignment(piece), piece)
+
+  const conflict = createPieceAssignment({
+    pieceAssignmentId: 'piece-assignment-a',
+    pieceId: 'piece-cambaz-a',
+    arrangementId: 'arr-cambaz-a',
+    studentId: 'student-a',
+    title: 'Cambaz - changed',
+    teacherNote: '',
+    assignedAt: '2026-09-24T08:00:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'score-a',
+      chordAssignmentIds: ['chord-a'],
+    },
+  })
+  await assert.rejects(
+    () => store.putPieceAssignment(conflict),
+    /piece.*conflict|immutable/i,
+  )
+  assert.equal(
+    (await store.getPieceAssignment('piece-assignment-a')).title,
+    'Cambaz',
+  )
+})
+
+test('Piece lifecycle persistence compares exact current authority before mutation', async () => {
+  const { createInMemorySecureDeliveryStore } = await loadStore()
+  const store = createInMemorySecureDeliveryStore()
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-assignment-lifecycle',
+    pieceId: 'piece-work-lifecycle',
+    arrangementId: 'arr-lifecycle',
+    studentId: 'student-a',
+    title: 'Fikrimin İnce Gülü',
+    teacherNote: 'Yavaş çalış.',
+    assignedAt: '2026-09-24T08:00:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'score-lifecycle',
+      chordAssignmentIds: [],
+    },
+  })
+  await store.putPieceAssignment(piece)
+
+  const active = createInitialPieceLifecycleRecord(piece)
+  const completed = transitionPieceLifecycleRecord(
+    active,
+    'COMPLETED',
+    '2026-09-24T09:00:00Z',
+  )
+
+  const result = await store.commitPieceLifecycleMutation({
+    currentLifecycle: active,
+    nextLifecycle: completed,
+  })
+
+  assert.equal(result, completed)
+  assert.deepEqual(
+    await store.getPieceLifecycle(piece.pieceAssignmentId),
+    completed,
+  )
+
+  await assert.rejects(
+    () => store.commitPieceLifecycleMutation({
+      currentLifecycle: active,
+      nextLifecycle: completed,
+    }),
+    /current conflict/i,
+  )
 })
