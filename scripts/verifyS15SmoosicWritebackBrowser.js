@@ -483,29 +483,36 @@ try {
     throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
   }
 
-  const afterConsumers = await waitFor(
-    cdp,
-    `(() => {
-      const guitarState = String(document.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || '');
-      const violinState = String(document.getElementById('tab-violin')?.getAttribute('data-violin-state') || '');
-      if (!guitarState || guitarState === 'idle' || !violinState || violinState === 'idle') return null;
-      return {
-        guitarState,
-        guitar: String(document.getElementById('guitar-tab-output')?.textContent || ''),
-        violinState,
-        violin: String(document.getElementById('violin-output')?.textContent || ''),
-      };
-    })()`,
-    'refreshed product consumers',
-  )
-
-  if (
-    afterConsumers.guitarState === beforeConsumers.guitarState
-    && afterConsumers.guitar === beforeConsumers.guitar
-    && afterConsumers.violinState === beforeConsumers.violinState
-    && afterConsumers.violin === beforeConsumers.violin
-  ) {
-    throw new Error('Guitar/violin consumers did not refresh after the committed revision.')
+  try {
+    await waitFor(
+      cdp,
+      `(() => {
+        const guitarState = String(document.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || '');
+        const violinState = String(document.getElementById('tab-violin')?.getAttribute('data-violin-state') || '');
+        if (!guitarState || guitarState === 'idle' || !violinState || violinState === 'idle') return null;
+        const result = {
+          guitarState,
+          guitar: String(document.getElementById('guitar-tab-output')?.textContent || ''),
+          violinState,
+          violin: String(document.getElementById('violin-output')?.textContent || ''),
+        };
+        const before = ${JSON.stringify(beforeConsumers)};
+        return result.guitarState !== before.guitarState || result.guitar !== before.guitar
+          || result.violinState !== before.violinState || result.violin !== before.violin
+          ? result : null;
+      })()`,
+      'refreshed product consumers',
+      10000,
+    )
+  } catch (error) {
+    const current = await evaluate(cdp, `(() => ({
+      guitarState: String(document.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || ''),
+      guitar: String(document.getElementById('guitar-tab-output')?.textContent || ''),
+      violinState: String(document.getElementById('tab-violin')?.getAttribute('data-violin-state') || ''),
+      violin: String(document.getElementById('violin-output')?.textContent || ''),
+      summary: String(document.getElementById('notes-summary')?.textContent || ''),
+    }))()`)
+    throw new Error(`${error.message} | before=${JSON.stringify(beforeConsumers)} | after=${JSON.stringify(current)}`)
   }
 
   const editorUsable = await evaluate(
