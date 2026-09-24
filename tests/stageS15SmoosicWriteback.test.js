@@ -95,12 +95,19 @@ const S15_TWO_NOTE_XML = S15_SOURCE_XML.replace(
   '</note><note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>',
 )
 
-function staleSourceHost({ sourceXml = '', candidateXml = '' } = {}) {
+function staleSourceHost({
+  sourceXml = '',
+  candidateXml = '',
+  holdExport = false,
+  observeSources = false,
+  secureIds = true,
+} = {}) {
   const windowListeners = new Map()
   const root = {
     nodes: new Map(),
+    postMessageCount: 0,
     defaultView: {
-      crypto: { randomUUID: () => 's15-test-id' },
+      crypto: secureIds ? { randomUUID: () => 's15-test-id' } : {},
       location: { origin: 'https://seslitab.test' },
       DOMParser: class ProductDOMParser extends globalThis.DOMParser {
         parseFromString(xml, type) {
@@ -128,6 +135,8 @@ function staleSourceHost({ sourceXml = '', candidateXml = '' } = {}) {
           File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
           Event: class { constructor(type) { this.type = type } },
           postMessage(message) {
+            root.postMessageCount += 1
+            if (holdExport) return
             queueMicrotask(() => {
               for (const listener of windowListeners.get('message') ?? []) listener({
                 origin: root.defaultView.location.origin,
@@ -161,7 +170,36 @@ function staleSourceHost({ sourceXml = '', candidateXml = '' } = {}) {
     root.xmlOutput = xmlOutput
     const fileName = root.createElement('span'); fileName.id = 'musicxml-file-name'; fileName.textContent = 's15-writeback.musicxml'
   }
+  if (observeSources) {
+    root.defaultView.MutationObserver = class {
+      constructor(callback) { root.sourceObserverCallback = callback }
+      observe() {}
+    }
+    root.emitSourceMutation = (...records) => root.sourceObserverCallback?.(records)
+  }
   return root
+}
+
+function installResultPublishingSurface(root) {
+  for (const id of [
+    'rhythmic-output',
+    'rhythmic-html-output',
+    'notes-summary',
+    'notes-output',
+    'rhythm-warning',
+    'rhythm-warning-html',
+    'voice-section',
+    'rhythm-section',
+  ]) {
+    if (root.getElementById(id)) continue
+    const element = root.createElement('div')
+    element.id = id
+  }
+}
+
+async function settleWriteback() {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 test('S15 host exposes one explicit apply control and secure request identity', () => {
@@ -240,12 +278,80 @@ test('S15 returns a typed retryable publish failure after the immutable commit w
   await new Promise((resolve) => setTimeout(resolve, 0))
 
   root.getElementById('smoosic-apply-btn').click()
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await settleWriteback()
 
   const status = root.getElementById('smoosic-editor-host-status')
   assert.equal(status.dataset.kind, 'error')
   assert.match(status.textContent, /Yeni sürüm kaydedildi ancak ekran güncellenemedi/)
+
+  root.getElementById('smoosic-apply-btn').click()
+  await settleWriteback()
+  assert.equal(status.dataset.kind, 'error')
+  assert.equal(root.postMessageCount, 1)
+
+  installResultPublishingSurface(root)
+  root.getElementById('smoosic-apply-btn').click()
+  await settleWriteback()
+  assert.equal(status.dataset.kind, 'ready')
+  assert.match(status.textContent, /Yeni sürüm doğrulandı/)
+  assert.equal(root.postMessageCount, 1)
+  assert.equal(root.getElementById('xml-output').textContent, candidateXml)
+  clearPackage3Notes()
+  globalThis.document = previousDocument
+})
+
+test('S15 rejects an in-flight export as STALE_SOURCE when source replacement starts', async () => {
+  const candidateXml = S15_SOURCE_XML.replace('<step>C</step>', '<step>D</step>')
+  const root = staleSourceHost({
+    sourceXml: S15_SOURCE_XML,
+    candidateXml,
+    holdExport: true,
+    observeSources: true,
+  })
+  publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+
+  const previousDocument = globalThis.document
+  globalThis.document = root
+  const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+  ensureSmoosicEditorTab(root)
+  root.getElementById('smoosic-tab-btn').click()
+  root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+  await settleWriteback()
+
+  root.getElementById('smoosic-apply-btn').click()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(root.postMessageCount, 1)
+  root.getElementById('smoosic-editor-frame').isConnected = false
+  root.getElementById('progress-container').hidden = false
+  root.emitSourceMutation({ target: root.getElementById('progress-container') })
+  await settleWriteback()
+
+  const status = root.getElementById('smoosic-editor-host-status')
+  assert.equal(status.dataset.kind, 'error')
+  assert.match(status.textContent, /Kaynak değişti/)
+  clearPackage3Notes()
+  globalThis.document = previousDocument
+})
+
+test('S15 returns CONFLICT when secure request identity cannot be created', async () => {
+  const root = staleSourceHost({
+    sourceXml: S15_SOURCE_XML,
+    candidateXml: S15_SOURCE_XML,
+    secureIds: false,
+  })
+  publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+
+  const previousDocument = globalThis.document
+  globalThis.document = root
+  const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+  ensureSmoosicEditorTab(root)
+  root.getElementById('smoosic-apply-btn').click()
+  await settleWriteback()
+
+  const status = root.getElementById('smoosic-editor-host-status')
+  assert.equal(status.dataset.kind, 'error')
+  assert.match(status.textContent, /Güvenli düzenleme kimliği üretilemiyor/)
+  assert.equal(root.postMessageCount, 0)
   clearPackage3Notes()
   globalThis.document = previousDocument
 })
@@ -262,8 +368,7 @@ async function runHostWritebackCandidate(candidateXml, sourceXml = S15_SOURCE_XM
   root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
   await new Promise((resolve) => setTimeout(resolve, 0))
   root.getElementById('smoosic-apply-btn').click()
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await settleWriteback()
   clearPackage3Notes()
   globalThis.document = previousDocument
   return root.getElementById('smoosic-editor-host-status').textContent
