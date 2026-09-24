@@ -20,6 +20,8 @@ const COLLECTIONS = Object.freeze([
   'assignmentLifecycle',
   'practicePackages',
   'deliveries',
+  'pieceAssignments',
+  'pieceAssignmentLifecycle',
 ])
 
 const EMULATOR_AVAILABLE = Boolean(

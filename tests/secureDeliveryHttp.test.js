@@ -48,7 +48,33 @@ function fakeDeps(config) {
       return { lifecycle: { state: input.action }, delivery: null }
     },
   }
+  const teacherPieceService = {
+    async createPiece(input) {
+      calls.push(['piece-create', input])
+      return {
+        pieceAssignmentId:
+          input.input?.pieceAssignmentId,
+      }
+    },
+    async applyPieceAction(input) {
+      calls.push(['piece-action', input])
+      return {
+        state: input.action,
+      }
+    },
+  }
   const studentService = {
+    async listPieces(input) {
+      calls.push(['student-piece-list', input])
+      return []
+    },
+    async getPiece(input) {
+      calls.push(['student-piece-get', input])
+      return {
+        pieceAssignmentId:
+          input.pieceAssignmentId,
+      }
+    },
     async listPoolItems(input) {
       calls.push(['student-pool', input])
       return []
@@ -73,6 +99,7 @@ function fakeDeps(config) {
     calls,
     preparedService,
     teacherService,
+    teacherPieceService,
     studentService,
     tokenVerifier,
     config,
@@ -178,6 +205,19 @@ test('router exposes approved teacher/student endpoints with providerSubject onl
     ['/api/secure-delivery/v1/teacher/assignments/assignment-a/actions', { method: 'POST', headers: auth, body: JSON.stringify({ action: 'REVOKE' }) }, 200],
     ['/api/secure-delivery/v1/student/assignments', { method: 'GET', headers: auth }, 200],
     ['/api/secure-delivery/v1/student/assignments/assignment-a', { method: 'GET', headers: auth }, 200],
+    ['/api/secure-delivery/v1/student/pieces', { method: 'GET', headers: auth }, 200],
+    ['/api/secure-delivery/v1/student/pieces/piece-a', { method: 'GET', headers: auth }, 200],
+    ['/api/secure-delivery/v1/teacher/pieces', { method: 'POST', headers: auth, body: JSON.stringify({
+      pieceAssignmentId: 'piece-a',
+      pieceId: 'work-a',
+      arrangementId: 'arr-a',
+      studentId: 'student-a',
+      title: 'Cambaz',
+      teacherNote: '',
+      scoreAssignmentId: 'assignment-a',
+      chordAssignmentIds: [],
+    }) }, 200],
+    ['/api/secure-delivery/v1/teacher/pieces/piece-a/actions', { method: 'POST', headers: auth, body: JSON.stringify({ action: 'COMPLETE' }) }, 200],
   ]) {
     const response = await request(app, path, init)
     assert.equal(response.status, expectedStatus, path)
@@ -253,4 +293,96 @@ test('student assignment HTTP response preserves bounded assignment metadata onl
   assert.equal(body.data[0].assignmentId, 'assignment-a')
   assert.equal(body.data[0].practiceType, 'SCORE')
   assert.equal(JSON.stringify(body).includes('teacherId'), false)
+})
+
+
+test('teacher Piece HTTP route derives teacher authority from verified token and forwards only Piece input', async () => {
+  const { createSecureDeliveryRouter } = await loadHttp()
+  const deps = fakeDeps({
+    enabled: true,
+    writesEnabled: true,
+    studentReadsEnabled: true,
+  })
+  const input = {
+    pieceAssignmentId: 'piece-http-a',
+    pieceId: 'work-http-a',
+    arrangementId: 'arr-http-a',
+    studentId: 'student-a',
+    title: 'Cambaz',
+    teacherNote: '',
+    scoreAssignmentId: 'assignment-a',
+    chordAssignmentIds: ['chord-a'],
+  }
+
+  const response = await request(
+    appFor(createSecureDeliveryRouter(deps)),
+    '/api/secure-delivery/v1/teacher/pieces',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    },
+  )
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(
+    deps.calls.filter(([name]) => name === 'piece-create'),
+    [[
+      'piece-create',
+      {
+        providerSubject: 'uid-from-token',
+        input,
+      },
+    ]],
+  )
+})
+
+test('student Piece HTTP response stays bounded and excludes recipient/provider internals', async () => {
+  const { createSecureDeliveryRouter } = await loadHttp()
+  const deps = fakeDeps({
+    enabled: true,
+    writesEnabled: false,
+    studentReadsEnabled: true,
+  })
+
+  deps.studentService.listPieces = async (input) => {
+    deps.calls.push(['student-piece-list', input])
+    return [{
+      schemaVersion: '1.0.0',
+      pieceAssignmentId: 'piece-a',
+      pieceId: 'work-a',
+      arrangementId: 'arr-a',
+      title: 'Cambaz',
+      teacherNote: '',
+      state: 'ACTIVE',
+      assignedAt: '2026-09-24T08:00:00Z',
+      contentRefs: {
+        scoreAssignmentId: 'assignment-a',
+        chordAssignmentIds: ['chord-a'],
+      },
+    }]
+  }
+
+  const response = await request(
+    appFor(createSecureDeliveryRouter(deps)),
+    '/api/secure-delivery/v1/student/pieces',
+    {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer token',
+      },
+    },
+  )
+
+  assert.equal(response.status, 200)
+  const body = await response.json()
+  assert.equal(body.data[0].pieceId, 'work-a')
+  const serialized = JSON.stringify(body)
+  assert.equal(serialized.includes('studentId'), false)
+  assert.equal(serialized.includes('teacherId'), false)
+  assert.equal(serialized.includes('providerSubject'), false)
+  assert.equal(serialized.includes('package'), false)
 })

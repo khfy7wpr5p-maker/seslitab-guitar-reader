@@ -8,6 +8,12 @@ import {
   isAssignmentLifecycleRecord,
 } from '../../../src/services/assignmentLifecycleRecord.js'
 import {
+  isPieceAssignment,
+} from '../../../src/services/pieceAssignment.js'
+import {
+  isPieceAssignmentLifecycleRecord,
+} from '../../../src/services/pieceAssignmentLifecycleRecord.js'
+import {
   assertSecureDeliveryPackageMatchesAssignment,
   restoreSecureDeliveryPackage,
 } from '../../../src/services/secureDeliveryPackage.js'
@@ -26,6 +32,39 @@ import {
 
 function notFound() {
   return new Error('student-assignment-not-found')
+}
+
+
+function pieceNotFound() {
+  return new Error('student-piece-not-found')
+}
+
+function sameRecord(left, right) {
+  return (
+    JSON.stringify(left) ===
+    JSON.stringify(right)
+  )
+}
+
+function studentPieceView(
+  piece,
+  lifecycle,
+) {
+  return Object.freeze({
+    schemaVersion: piece.schemaVersion,
+    pieceAssignmentId:
+      piece.pieceAssignmentId,
+    pieceId: piece.pieceId,
+    arrangementId: piece.arrangementId,
+    title: piece.title,
+    teacherNote: piece.teacherNote,
+    state:
+      lifecycle === null
+        ? piece.state
+        : lifecycle.state,
+    assignedAt: piece.assignedAt,
+    contentRefs: piece.contentRefs,
+  })
 }
 
 function studentView(
@@ -336,6 +375,158 @@ export function createStudentDeliveryReadService({
     )
   }
 
+  async function visiblePieceById(
+    studentId,
+    pieceAssignmentId,
+  ) {
+    const id = normalizeRequiredId(
+      pieceAssignmentId,
+      'pieceAssignmentId',
+    )
+
+    const piece =
+      await trustedStore
+        .getPieceAssignment(id)
+
+    if (
+      piece === null ||
+      !isPieceAssignment(piece) ||
+      piece.pieceAssignmentId !== id ||
+      piece.studentId !== studentId
+    ) {
+      throw pieceNotFound()
+    }
+
+    const lifecycle =
+      await trustedStore
+        .getPieceLifecycle(id)
+
+    if (lifecycle !== null) {
+      if (
+        !isPieceAssignmentLifecycleRecord(
+          lifecycle,
+        ) ||
+        lifecycle.piece
+          .pieceAssignmentId !== id ||
+        lifecycle.piece.studentId !==
+          studentId ||
+        !sameRecord(
+          lifecycle.piece,
+          piece,
+        )
+      ) {
+        throw new Error(
+          'student Piece lifecycle authority mismatch.',
+        )
+      }
+
+      if (lifecycle.revokedAt !== null) {
+        throw pieceNotFound()
+      }
+    }
+
+    return studentPieceView(
+      piece,
+      lifecycle,
+    )
+  }
+
+  async function listPieces({
+    providerSubject,
+  } = {}) {
+    const { studentId } =
+      await studentPrincipal(
+        providerSubject,
+      )
+
+    const candidates =
+      await trustedStore
+        .listPieceAssignmentsForStudent(
+          studentId,
+        )
+
+    if (!Array.isArray(candidates)) {
+      throw new TypeError(
+        'student Piece list must be an array.',
+      )
+    }
+
+    const output = []
+    const seen = new Set()
+
+    for (const candidate of candidates) {
+      if (
+        !isPieceAssignment(candidate) ||
+        candidate.studentId !== studentId
+      ) {
+        throw new Error(
+          'student Piece list authority mismatch.',
+        )
+      }
+
+      const id =
+        candidate.pieceAssignmentId
+
+      if (seen.has(id)) {
+        throw new Error(
+          'duplicate student Piece authority.',
+        )
+      }
+      seen.add(id)
+
+      const current =
+        await trustedStore
+          .getPieceAssignment(id)
+
+      if (
+        current === null ||
+        !isPieceAssignment(current) ||
+        current.studentId !== studentId ||
+        !sameRecord(
+          current,
+          candidate,
+        )
+      ) {
+        continue
+      }
+
+      try {
+        output.push(
+          await visiblePieceById(
+            studentId,
+            id,
+          ),
+        )
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message ===
+            'student-piece-not-found'
+        ) {
+          continue
+        }
+        throw error
+      }
+    }
+
+    return Object.freeze(output)
+  }
+
+  async function getPiece({
+    providerSubject,
+    pieceAssignmentId,
+  } = {}) {
+    const { studentId } =
+      await studentPrincipal(
+        providerSubject,
+      )
+
+    return visiblePieceById(
+      studentId,
+      pieceAssignmentId,
+    )
+  }
+
   async function listPoolItems({
     providerSubject,
   } = {}) {
@@ -384,6 +575,8 @@ export function createStudentDeliveryReadService({
   return Object.freeze({
     listAssignments,
     getAssignment,
+    listPieces,
+    getPiece,
     listPoolItems,
   })
 }

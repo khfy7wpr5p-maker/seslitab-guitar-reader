@@ -195,11 +195,25 @@ function routerDeps() {
         return {}
       },
     },
+    teacherPieceService: {
+      async createPiece() {
+        return {}
+      },
+      async applyPieceAction() {
+        return {}
+      },
+    },
     studentService: {
       async listAssignments() {
         return []
       },
       async getAssignment() {
+        return {}
+      },
+      async listPieces() {
+        return []
+      },
+      async getPiece() {
         return {}
       },
       async listPoolItems(input) {
