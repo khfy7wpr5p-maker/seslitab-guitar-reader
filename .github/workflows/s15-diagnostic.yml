@@ -1,0 +1,38 @@
+name: S15 Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  s15-writeback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Verify S15 Smoosic write-back
+        run: node scripts/verifyS15SmoosicWritebackBrowser.js
+
+      - name: Upload S15 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s15-diagnostic
+          path: artifacts/s15-smoosic-writeback.json
+          if-no-files-found: warn
