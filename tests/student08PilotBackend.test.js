@@ -46,7 +46,7 @@ test('pilot store maps Firebase subject to opaque stable student identity', asyn
   assert.equal(repeat.studentId, mapping.studentId)
 })
 
-test('pilot app exposes authenticated sanitized Pool and SCORE reads only', async () => {
+test('pilot app exposes authenticated sanitized Pool, SCORE, CHORD_BOARD and Piece reads', async () => {
   const app = createStudent08PilotApp({
     tokenVerifier,
     allowedOrigin,
@@ -90,9 +90,21 @@ test('pilot app exposes authenticated sanitized Pool and SCORE reads only', asyn
   )
   assert.equal(list.status, 200)
   const listBody = await list.json()
-  assert.equal(listBody.data.length, 1)
-  const row = listBody.data[0]
+  assert.equal(listBody.data.length, 2)
+  const row = listBody.data.find(
+    (item) => item.practiceType === 'SCORE',
+  )
+  const chord = listBody.data.find(
+    (item) =>
+      item.practiceType === 'CHORD_BOARD',
+  )
+  assert.ok(row)
+  assert.ok(chord)
   assert.equal(row.practiceType, 'SCORE')
+  assert.equal(
+    chord.package.packageType,
+    'CHORD_BOARD',
+  )
   assert.equal(row.state, 'ACTIVE')
   assert.equal(
     row.package.publication.scope,
@@ -119,6 +131,51 @@ test('pilot app exposes authenticated sanitized Pool and SCORE reads only', asyn
   assert.equal(
     exactBody.data.deliveryId,
     row.deliveryId,
+  )
+
+  const pieces = await request(
+    app,
+    '/api/secure-delivery/v1/student/pieces',
+    {
+      headers: {
+        Authorization: 'Bearer pilot-token',
+        Origin: allowedOrigin,
+      },
+    },
+  )
+  assert.equal(pieces.status, 200)
+  const piecesBody = await pieces.json()
+  assert.equal(piecesBody.data.length, 1)
+  const piece = piecesBody.data[0]
+  assert.equal(piece.state, 'ACTIVE')
+  assert.equal(
+    piece.contentRefs.scoreAssignmentId,
+    row.assignmentId,
+  )
+  assert.deepEqual(
+    piece.contentRefs.chordAssignmentIds,
+    [chord.assignmentId],
+  )
+
+  const exactPiece = await request(
+    app,
+    '/api/secure-delivery/v1/student/pieces/' +
+      encodeURIComponent(
+        piece.pieceAssignmentId,
+      ),
+    {
+      headers: {
+        Authorization: 'Bearer pilot-token',
+        Origin: allowedOrigin,
+      },
+    },
+  )
+  assert.equal(exactPiece.status, 200)
+  const exactPieceBody =
+    await exactPiece.json()
+  assert.equal(
+    exactPieceBody.data.pieceAssignmentId,
+    piece.pieceAssignmentId,
   )
 })
 
@@ -250,6 +307,20 @@ test('pilot store fails closed for unknown IDs and every write seam', async () =
     ),
     [],
   )
+  assert.equal(
+    await store.getPieceAssignment('unknown'),
+    null,
+  )
+  assert.equal(
+    await store.getPieceLifecycle('unknown'),
+    null,
+  )
+  assert.deepEqual(
+    await store.listPieceAssignmentsForStudent(
+      'unknown',
+    ),
+    [],
+  )
   assert.deepEqual(
     await store.listDeliveriesForTeacher(
       'pilot-teacher',
@@ -274,6 +345,8 @@ test('pilot store fails closed for unknown IDs and every write seam', async () =
     'commitPreparedBatch',
     'commitDeliveryBatch',
     'commitLifecycleMutation',
+    'putPieceAssignment',
+    'commitPieceLifecycleMutation',
     'putRosterEntriesForProvisioning',
     'putPoolPublicationsForProvisioning',
   ]) {

@@ -29,6 +29,22 @@ import {
   createStudentPrivatePracticePackageV1,
 } from '../../../src/services/studentPracticePackageV1.js'
 import {
+  getChordBoardVoicings,
+} from '../../../src/services/chordBoardCatalog.js'
+import {
+  createChordBoardAssignmentSourceBinding,
+} from '../../../src/services/chordBoardAssignmentSourceBinding.js'
+import {
+  createStudentPrivateChordBoardPackageV1,
+} from '../../../src/services/studentChordBoardPackageV1.js'
+import {
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+  createPrivateAssignment,
+} from '../../../src/services/privateAssignment.js'
+import {
+  createPieceAssignment,
+} from '../../../src/services/pieceAssignment.js'
+import {
   createPoolItem,
   POOL_AUDIENCE_MODE,
 } from '../../../src/services/poolItem.js'
@@ -40,6 +56,7 @@ import {
 } from '../../../src/services/teacherDeliveryWireCodec.js'
 import {
   fingerprintPracticePackage,
+  fingerprintSecureDeliveryPackage,
 } from '../integrity/packageFingerprint.js'
 
 const CREATED_AT = '2026-09-23T12:00:00Z'
@@ -108,6 +125,10 @@ function fixtureForSuffix(suffix) {
     'pilot-assignment-' + suffix
   const packageId =
     'pilot-package-' + suffix
+  const chordAssignmentId =
+    'pilot-chord-assignment-' + suffix
+  const pieceAssignmentId =
+    'pilot-piece-' + suffix
   const revisionId =
     'pilot-revision-' + suffix
 
@@ -153,7 +174,7 @@ function fixtureForSuffix(suffix) {
     createStudentPrivatePracticePackageV1({
       packageId,
       workId: 'pilot-work-' + suffix,
-      title: 'S08-3 Pilot Etüt',
+      title: 'S08-4 Piece Pilot Etüt',
       revisionId,
       approvedAt: CREATED_AT,
       studentId,
@@ -183,12 +204,93 @@ function fixtureForSuffix(suffix) {
       deliveredAt: DELIVERED_AT,
     })
 
+  const chordSnapshot =
+    getChordBoardVoicings('Am')[0]
+  if (!chordSnapshot) {
+    throw new Error(
+      'pilot Am chord snapshot unavailable.',
+    )
+  }
+
+  const chordAssignment =
+    createPrivateAssignment({
+      assignmentId: chordAssignmentId,
+      studentId,
+      practiceType:
+        PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+          .CHORD_BOARD,
+      teacherNote:
+        'Pilot Am akoru: temiz seslerle çalış.',
+      assignedAt: ASSIGNED_AT,
+      sourceRef:
+        createChordBoardAssignmentSourceBinding({
+          studentId,
+          snapshot: chordSnapshot,
+          boundAt: ASSIGNED_AT,
+        }),
+    })
+
+  const chordPackage =
+    createStudentPrivateChordBoardPackageV1({
+      assignment: chordAssignment,
+      practice: {
+        repeatCount: 4,
+      },
+    })
+
+  const chordPrepared =
+    createPreparedAssignmentRecord({
+      teacherId: TEACHER_ID,
+      assignment: chordAssignment,
+      packageId: chordPackage.packageId,
+      packageFingerprint:
+        fingerprintSecureDeliveryPackage(
+          chordPackage,
+        ),
+      preparedAt: PREPARED_AT,
+    })
+
+  const chordDelivery =
+    createDeliveryRecord({
+      assignmentId: chordAssignmentId,
+      packageId: chordPackage.packageId,
+      teacherId: TEACHER_ID,
+      studentId,
+      deliveredAt: DELIVERED_AT,
+    })
+
+  const piece =
+    createPieceAssignment({
+      pieceAssignmentId,
+      pieceId:
+        'pilot-piece-work-' + suffix,
+      arrangementId:
+        'pilot-guitar-standard',
+      studentId,
+      title: 'S08-4 Piece Pilot',
+      teacherNote:
+        'Nota ve Am akorunu aynı çalışma alanında kullan.',
+      assignedAt: ASSIGNED_AT,
+      contentRefs: {
+        scoreAssignmentId:
+          assignmentId,
+        chordAssignmentIds: [
+          chordAssignmentId,
+        ],
+      },
+    })
+
   return Object.freeze({
     studentId,
     assignment,
     pkg,
     prepared,
     delivery,
+    chordAssignment,
+    chordPackage,
+    chordPrepared,
+    chordDelivery,
+    piece,
   })
 }
 
@@ -232,24 +334,47 @@ export function createStudent08PilotStore() {
     async getPreparedAssignment(
       assignmentId,
     ) {
-      const suffix = suffixFromId(
+      const scoreSuffix = suffixFromId(
         assignmentId,
         'pilot-assignment-',
       )
-      return suffix === null
+      if (scoreSuffix !== null) {
+        return fixtureForSuffix(
+          scoreSuffix,
+        ).prepared
+      }
+
+      const chordSuffix = suffixFromId(
+        assignmentId,
+        'pilot-chord-assignment-',
+      )
+      return chordSuffix === null
         ? null
-        : fixtureForSuffix(suffix)
-            .prepared
+        : fixtureForSuffix(
+            chordSuffix,
+          ).chordPrepared
     },
 
     async getPracticePackage(packageId) {
-      const suffix = suffixFromId(
+      const scoreSuffix = suffixFromId(
         packageId,
         'pilot-package-',
       )
-      return suffix === null
+      if (scoreSuffix !== null) {
+        return fixtureForSuffix(
+          scoreSuffix,
+        ).pkg
+      }
+
+      const chordSuffix = suffixFromId(
+        packageId,
+        'pilot-chord-assignment-',
+      )
+      return chordSuffix === null
         ? null
-        : fixtureForSuffix(suffix).pkg
+        : fixtureForSuffix(
+            chordSuffix,
+          ).chordPackage
     },
 
     async getLifecycle() {
@@ -257,14 +382,25 @@ export function createStudent08PilotStore() {
     },
 
     async getDelivery(assignmentId) {
-      const suffix = suffixFromId(
+      const scoreSuffix = suffixFromId(
         assignmentId,
         'pilot-assignment-',
       )
-      return suffix === null
+      if (scoreSuffix !== null) {
+        return fixtureForSuffix(
+          scoreSuffix,
+        ).delivery
+      }
+
+      const chordSuffix = suffixFromId(
+        assignmentId,
+        'pilot-chord-assignment-',
+      )
+      return chordSuffix === null
         ? null
-        : fixtureForSuffix(suffix)
-            .delivery
+        : fixtureForSuffix(
+            chordSuffix,
+          ).chordDelivery
     },
 
     async listDeliveriesForTeacher() {
@@ -279,8 +415,47 @@ export function createStudent08PilotStore() {
       return Object.freeze(
         fixture === null
           ? []
-          : [fixture.delivery],
+          : [
+              fixture.delivery,
+              fixture.chordDelivery,
+            ],
       )
+    },
+
+    async getPieceAssignment(
+      pieceAssignmentId,
+    ) {
+      const suffix = suffixFromId(
+        pieceAssignmentId,
+        'pilot-piece-',
+      )
+      return suffix === null
+        ? null
+        : fixtureForSuffix(suffix).piece
+    },
+
+    async getPieceLifecycle() {
+      return null
+    },
+
+    async listPieceAssignmentsForStudent(
+      studentId,
+    ) {
+      const fixture =
+        fixtureForStudentId(studentId)
+      return Object.freeze(
+        fixture === null
+          ? []
+          : [fixture.piece],
+      )
+    },
+
+    async putPieceAssignment() {
+      return readOnlyFailure()
+    },
+
+    async commitPieceLifecycleMutation() {
+      return readOnlyFailure()
     },
 
     async listPoolPublicationsForStudent(
@@ -429,6 +604,17 @@ function readOnlyTeacherService() {
   })
 }
 
+function readOnlyTeacherPieceService() {
+  return Object.freeze({
+    async createPiece() {
+      return readOnlyFailure()
+    },
+    async applyPieceAction() {
+      return readOnlyFailure()
+    },
+  })
+}
+
 export function createStudent08PilotApp({
   tokenVerifier,
   allowedOrigin,
@@ -520,6 +706,8 @@ export function createStudent08PilotApp({
         readOnlyPreparedService(),
       teacherService:
         readOnlyTeacherService(),
+      teacherPieceService:
+        readOnlyTeacherPieceService(),
       studentService,
       config: Object.freeze({
         enabled: true,
