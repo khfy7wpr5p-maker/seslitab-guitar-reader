@@ -542,15 +542,32 @@ try {
   )
 
   await openMusicXml(cdp, replacementXml, 's15-replacement.musicxml', 'G')
-  await waitFor(
-    cdp,
-    `(() => {
+  try {
+    await waitFor(
+      cdp,
+      `(() => {
+        const frame = document.getElementById('smoosic-editor-frame');
+        const text = String(frame?.contentDocument?.getElementById('poc-status')?.textContent || '');
+        return frame?.hidden === false && text.startsWith('Yüklendi:') && text.includes('s15-replacement.musicxml');
+      })()`,
+      'replacement Smoosic handoff',
+      16000,
+    )
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `(() => {
       const frame = document.getElementById('smoosic-editor-frame');
-      const text = String(frame?.contentDocument?.getElementById('poc-status')?.textContent || '');
-      return frame?.hidden === false && text.startsWith('Yüklendi:') && text.includes('s15-replacement.musicxml');
-    })()`,
-    'replacement Smoosic handoff',
-  )
+      return {
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        editorStatus: String(frame?.contentDocument?.getElementById('poc-status')?.textContent || ''),
+        frameHidden: frame?.hidden,
+        xmlStep: new DOMParser().parseFromString(String(document.getElementById('xml-output')?.textContent || ''), 'text/xml')
+          .querySelector('part > measure > note pitch > step')?.textContent || '',
+        acceptedName: String(document.getElementById('musicxml-file-name')?.textContent || ''),
+        applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+      };
+    })()`)
+    throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
+  }
 
   await evaluate(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
