@@ -1,10 +1,23 @@
+import { getPackage3MeasureSnapshot } from '../package3MeasureBridge.js'
+import { applyRevalidatedMusicXmlRevision } from './app.js'
+import {
+  SMOOSIC_WRITEBACK_STATUS,
+  applySmoosicProductWriteback,
+  createSmoosicProductAuthority,
+} from './services/smoosicProductWriteback.js'
+
 const TAB_ID = 'smoosic-tab-btn'
 const PANEL_ID = 'smoosic-panel'
 const FRAME_ID = 'smoosic-editor-frame'
 const STATUS_ID = 'smoosic-editor-host-status'
+const APPLY_ID = 'smoosic-apply-btn'
 const EDITOR_URL = '/smoosic-editor/index.html'
 const READY_TIMEOUT_MS = 60000
 const LOAD_TIMEOUT_MS = 45000
+const WRITEBACK_TIMEOUT_MS = 45000
+const WRITEBACK_REQUEST = 'seslitab:smoosic-export-request'
+const WRITEBACK_RESULT = 'seslitab:smoosic-export-result'
+const WRITEBACK_VERSION = 1
 
 const states = new WeakMap()
 
@@ -24,6 +37,15 @@ function stateFor(root) {
       sourceObserver: null,
       sourceRevision: 0,
       syncPromise: Promise.resolve(false),
+      authority: null,
+      authoritySourceXml: null,
+      authoritySourceName: null,
+      authoritySourceRevision: null,
+      pendingWriteback: null,
+      pendingPublication: null,
+      publishingWritebackXml: null,
+      writebackPromise: Promise.resolve(false),
+      writebackMessageHandler: null,
     }
     states.set(root, state)
   }
@@ -42,6 +64,23 @@ function setHostStatus(root, text, kind = 'info') {
   status.hidden = !text
   status.setAttribute('role', kind === 'error' ? 'alert' : 'status')
   status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite')
+}
+
+function secureId(root, prefix) {
+  const scope = root?.defaultView?.crypto ?? globalThis.crypto
+  if (typeof scope?.randomUUID !== 'function') {
+    throw new Error('Güvenli düzenleme kimliği üretilemiyor.')
+  }
+  return `${prefix}-${scope.randomUUID()}`
+}
+
+function clearAuthorityState(state) {
+  state.authority = null
+  state.authoritySourceXml = null
+  state.authoritySourceName = null
+  state.authoritySourceRevision = null
+  state.pendingPublication = null
+  state.publishingWritebackXml = null
 }
 
 function sourceTransitionPending(root) {
@@ -107,6 +146,254 @@ function acceptedSource(root) {
   return { xml, fileName: currentSourceName(root) }
 }
 
+function createAuthorityForAcceptedSource(root) {
+  const state = stateFor(root)
+  const source = acceptedSource(root)
+  const snapshot = getPackage3MeasureSnapshot()
+  if (!source || !Array.isArray(snapshot?.notes) || snapshot.notes.length === 0) {
+    throw new Error('SesliTab current nota verisi düzenleme için hazır değil.')
+  }
+
+  if (
+    state.authority
+    && state.authoritySourceXml === source.xml
+    && state.authoritySourceName === source.fileName
+  ) {
+    state.authoritySourceRevision = state.sourceRevision
+    return state.authority
+  }
+
+  const authority = createSmoosicProductAuthority({
+    notes: snapshot.notes,
+    musicXml: source.xml,
+    sourceId: secureId(root, 'smoosic-source'),
+    automaticRevisionId: secureId(root, 'smoosic-auto'),
+    historyId: secureId(root, 'smoosic-history'),
+    actorId: 'smoosic-local-editor',
+    createdAt: new Date().toISOString(),
+  })
+
+  state.authority = authority
+  state.authoritySourceXml = source.xml
+  state.authoritySourceName = source.fileName
+  state.authoritySourceRevision = state.sourceRevision
+  state.pendingPublication = null
+  state.publishingWritebackXml = null
+  return authority
+}
+
+function validateWritebackMessage(root, event) {
+  const state = stateFor(root)
+  const pending = state.pendingWriteback
+  const win = root.defaultView
+  const message = event.data
+
+  if (!pending || !win) return null
+  if (event.origin !== win.location.origin) return null
+  if (event.source !== state.frame?.contentWindow) return null
+  if (!message || typeof message !== 'object') return null
+  if (message.type !== WRITEBACK_RESULT || message.version !== WRITEBACK_VERSION) return null
+  if (message.requestId !== pending.requestId) return null
+  if (message.sourceRevision !== pending.sourceRevision) return null
+  if (state.sourceRevision !== pending.sourceRevision) return null
+  if (sourceTransitionPending(root)) return null
+  return message
+}
+
+function bindWritebackMessages(root) {
+  const state = stateFor(root)
+  const win = root.defaultView
+  if (!win?.addEventListener || state.writebackMessageHandler) return false
+
+  state.writebackMessageHandler = (event) => {
+    const message = validateWritebackMessage(root, event)
+    if (!message) return
+
+    const pending = state.pendingWriteback
+    state.pendingWriteback = null
+    clearTimeout(pending.timeout)
+    pending.resolve(message)
+  }
+  win.addEventListener('message', state.writebackMessageHandler)
+  return true
+}
+
+function cancelPendingWriteback(state) {
+  const pending = state.pendingWriteback
+  if (!pending) return
+  state.pendingWriteback = null
+  clearTimeout(pending.timeout)
+  pending.reject(new Error('Kaynak değişti; önceki düzenleme isteği geçersiz.'))
+}
+
+function requestEditorMusicXml(root) {
+  const state = stateFor(root)
+  const frame = state.frame
+  const win = root.defaultView
+  if (!frame?.isConnected || !frame.contentWindow || !frame.getAttribute('src')) {
+    return Promise.reject(new Error('Nota editörü MusicXML aktarımı için hazır değil.'))
+  }
+  if (!win?.location?.origin) {
+    return Promise.reject(new Error('SesliTab origin bilgisi kullanılamıyor.'))
+  }
+  if (state.pendingWriteback) {
+    return Promise.reject(new Error('Bir düzenleme aktarımı zaten devam ediyor.'))
+  }
+
+  const requestId = secureId(root, 'smoosic-writeback')
+  const sourceRevision = state.sourceRevision
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (state.pendingWriteback?.requestId !== requestId) return
+      state.pendingWriteback = null
+      reject(new Error('Nota editöründen MusicXML zamanında alınamadı.'))
+    }, WRITEBACK_TIMEOUT_MS)
+
+    state.pendingWriteback = {
+      requestId,
+      sourceRevision,
+      timeout,
+      resolve,
+      reject,
+    }
+
+    frame.contentWindow.postMessage({
+      type: WRITEBACK_REQUEST,
+      version: WRITEBACK_VERSION,
+      requestId,
+      sourceRevision,
+    }, win.location.origin)
+  })
+}
+
+function publishCommittedRevision(root, committed) {
+  const state = stateFor(root)
+  state.publishingWritebackXml = committed.musicXml
+
+  try {
+    applyRevalidatedMusicXmlRevision(committed.revision.content, committed.musicXml)
+    state.observedSourceXml = committed.musicXml
+    state.lastSourceXml = committed.musicXml
+    state.sourceRevision += 1
+    state.authoritySourceXml = committed.musicXml
+    state.authoritySourceName = state.observedSourceName || state.authoritySourceName
+    state.authoritySourceRevision = state.sourceRevision
+    state.lastSourceName = state.observedSourceName || state.lastSourceName
+    state.pendingPublication = null
+    state.publishingWritebackXml = null
+    return true
+  } catch (error) {
+    throw error
+  }
+}
+
+function retryPendingPublication(root) {
+  const state = stateFor(root)
+  if (!state.pendingPublication) return false
+  publishCommittedRevision(root, state.pendingPublication)
+  setHostStatus(
+    root,
+    'Düzenleme SesliTab\'a uygulandı. Yeni sürüm doğrulandı ve çıktılar güncellendi.',
+    'ready',
+  )
+  return true
+}
+
+async function applyEditorWriteback(root) {
+  const state = stateFor(root)
+  const applyButton = root.getElementById?.(APPLY_ID)
+  const startingSourceRevision = state.sourceRevision
+
+  if (sourceTransitionPending(root)) {
+    setHostStatus(root, 'Yeni eser hazırlanırken düzenleme uygulanamaz.', 'error')
+    return false
+  }
+
+  if (state.pendingPublication) {
+    try {
+      return retryPendingPublication(root)
+    } catch (error) {
+      setHostStatus(root, error?.message || 'Güncel sürüm yayımlanamadı.', 'error')
+      return false
+    }
+  }
+
+  if (state.pendingWriteback) return false
+  if (applyButton) applyButton.disabled = true
+
+  try {
+    const authority = createAuthorityForAcceptedSource(root)
+    setHostStatus(root, 'Düzenleme SesliTab için doğrulanıyor…', 'loading')
+
+    const candidate = await requestEditorMusicXml(root)
+    if (typeof candidate.musicXml !== 'string' || !candidate.musicXml.trim()) {
+      setHostStatus(root, candidate.error || 'Editörden MusicXML alınamadı.', 'error')
+      return false
+    }
+
+    const result = applySmoosicProductWriteback({
+      authority,
+      musicXml: candidate.musicXml,
+      revisionId: secureId(root, 'smoosic-revision'),
+      eventId: secureId(root, 'smoosic-edit-event'),
+      operationIdPrefix: secureId(root, 'smoosic-operation'),
+      createdAt: new Date().toISOString(),
+      DOMParserCtor: root.defaultView?.DOMParser ?? globalThis.DOMParser,
+    })
+
+    if (result.status === SMOOSIC_WRITEBACK_STATUS.NO_CHANGE) {
+      setHostStatus(root, 'SesliTab’a uygulanacak yeni bir müzikal değişiklik yok.', 'info')
+      return true
+    }
+
+    if (result.status === SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE) {
+      setHostStatus(
+        root,
+        'Bu yapısal düzenleme editörde korunuyor ancak henüz SesliTab sürümüne uygulanamıyor. MusicXML olarak kaydedebilirsiniz.',
+        'error',
+      )
+      return false
+    }
+
+    if (result.status !== SMOOSIC_WRITEBACK_STATUS.APPLIED) {
+      setHostStatus(root, 'Düzenleme doğrulanamadı; mevcut SesliTab sürümü korunuyor.', 'error')
+      return false
+    }
+
+    state.authority = result.authority
+    state.pendingPublication = Object.freeze({
+      revision: result.revision,
+      musicXml: result.musicXml,
+    })
+
+    try {
+      const committed = state.pendingPublication
+      publishCommittedRevision(root, committed)
+      setHostStatus(
+        root,
+        'Düzenleme SesliTab\'a uygulandı. Yeni sürüm doğrulandı ve çıktılar güncellendi.',
+        'ready',
+      )
+      return true
+    } catch (error) {
+      setHostStatus(
+        root,
+        'Yeni sürüm kaydedildi ancak ekran güncellenemedi. Yeniden uygulayarak yayını tekrar deneyin.',
+        'error',
+      )
+      return false
+    }
+  } catch (error) {
+    if (state.sourceRevision === startingSourceRevision) {
+      setHostStatus(root, error?.message || 'Düzenleme SesliTab’a uygulanamadı.', 'error')
+    }
+    return false
+  } finally {
+    if (applyButton) applyButton.disabled = false
+  }
+}
+
 function setTabActive(root, active) {
   const button = root.getElementById?.(TAB_ID)
   const panel = root.getElementById?.(PANEL_ID)
@@ -157,7 +444,8 @@ async function waitForEditorReady(frame) {
     if (status.startsWith('Başlatma hatası:') || status.startsWith('Hata:')) {
       throw new Error(status)
     }
-    if (status.includes('Editör hazır') || status.startsWith('Yüklendi:')) return true
+    if (status.includes('Editör hazır') || status.startsWith('Yüklendi:') ||
+      frame.contentDocument?.getElementById('poc-status')?.hasAttribute('data-loaded-file-name')) return true
     await sleep(150)
   }
   throw new Error('Nota editörü zamanında hazır olmadı.')
@@ -167,7 +455,7 @@ async function waitForMusicXmlLoad(frame, expectedFileName) {
   const deadline = Date.now() + LOAD_TIMEOUT_MS
   while (Date.now() < deadline) {
     const status = iframeStatus(frame)
-    if (status.startsWith('Yüklendi:') && status.includes(expectedFileName)) return status
+    if (frame.contentDocument?.getElementById('poc-status')?.getAttribute('data-loaded-file-name') === expectedFileName) return status
     if (status.startsWith('XML hatası:') || status.startsWith('Hata:') || status.startsWith('Başlatma hatası:')) {
       throw new Error(status)
     }
@@ -200,7 +488,10 @@ function assignInputFile(frame, input, file) {
 
 function resetIframeStatusForTransfer(frame, fileName) {
   const status = frame.contentDocument?.getElementById('poc-status')
-  if (status) status.textContent = `SesliTab aktarımı: ${fileName}`
+  if (status) {
+    status.removeAttribute('data-loaded-file-name')
+    status.textContent = `SesliTab aktarımı: ${fileName}`
+  }
 }
 
 async function loadSourceIntoEditor(root, frame) {
@@ -311,6 +602,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
       // Invalidate any in-flight transfer, but keep the last accepted source.
       // If the replacement fails, that accepted source remains authoritative.
       state.sourceRevision += 1
+      cancelPendingWriteback(state)
       if (state.frame?.isConnected && state.frame.getAttribute('src')) {
         void enqueueEditorSync(root)
       }
@@ -343,6 +635,8 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
     state.observedSourceXml = null
     state.observedSourceName = null
     state.sourceRevision += 1
+    cancelPendingWriteback(state)
+    clearAuthorityState(state)
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
     if (state.frame?.isConnected && state.frame.getAttribute('src')) {
@@ -356,6 +650,13 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   // filename; never combine stale XML with the newly selected filename.
   if (!allowInitial && !xmlChanged) {
     state.pendingSourceName = null
+    if (
+      state.authority
+      && state.authoritySourceXml === state.observedSourceXml
+      && state.authoritySourceName === state.observedSourceName
+    ) {
+      state.authoritySourceRevision = state.sourceRevision
+    }
     if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
       void enqueueEditorSync(root)
     }
@@ -363,6 +664,14 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   }
 
   state.pendingSourceName = null
+  if (
+    state.pendingPublication
+    && state.publishingWritebackXml
+    && xml === state.publishingWritebackXml
+  ) {
+    return false
+  }
+
   if (xml === state.observedSourceXml && fileName === state.observedSourceName) {
     if (wasPending && state.frame?.isConnected && state.frame.getAttribute('src')) {
       void enqueueEditorSync(root)
@@ -370,9 +679,20 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
     return false
   }
 
+  if (
+    state.authority
+    && (
+      state.authoritySourceXml !== xml
+      || state.authoritySourceName !== fileName
+    )
+  ) {
+    clearAuthorityState(state)
+  }
+
   state.observedSourceXml = xml
   state.observedSourceName = fileName
   state.sourceRevision += 1
+  cancelPendingWriteback(state)
   state.lastSourceXml = null
   state.lastSourceName = 'seslitab-current.musicxml'
 
@@ -444,6 +764,7 @@ export function ensureSmoosicEditorTab(root = document) {
   const existing = root.getElementById(TAB_ID)
   if (existing) {
     bindSourceLifecycle(root)
+    bindWritebackMessages(root)
     return root.getElementById(PANEL_ID)
   }
 
@@ -476,10 +797,25 @@ export function ensureSmoosicEditorTab(root = document) {
   status.hidden = true
   panel.appendChild(status)
 
+  const applyButton = root.createElement('button')
+  applyButton.id = APPLY_ID
+  applyButton.type = 'button'
+  applyButton.className = 'smoosic-apply-button'
+  applyButton.textContent = "Düzenlemeyi SesliTab'a Uygula"
+  applyButton.setAttribute('aria-describedby', STATUS_ID)
+  applyButton.addEventListener('click', () => {
+    const state = stateFor(root)
+    state.writebackPromise = state.writebackPromise
+      .catch(() => false)
+      .then(() => applyEditorWriteback(root))
+  })
+  panel.appendChild(applyButton)
+
   panelParent.appendChild(panel)
   button.addEventListener('click', () => { void activateEditor(root) })
   bindOtherTabs(root)
   bindSourceLifecycle(root)
+  bindWritebackMessages(root)
   return panel
 }
 

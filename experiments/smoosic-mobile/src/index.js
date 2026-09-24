@@ -8,6 +8,7 @@ const {
   SuiSampler,
   SuiAudioPlayer,
   SmoMusic,
+  SmoSelection,
   ScoreRoadMapBuilder
 } = require('smoosic');
 
@@ -28,6 +29,7 @@ let metronomeRunToken = 0;
 let metronomeNodes = [];
 let activePlaybackStartPoint = null;
 let currentScoreBaseName = 'score';
+let mobileEditPromise = Promise.resolve();
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
 
@@ -46,6 +48,92 @@ function sendKey(key, options = {}) {
     shiftKey: Boolean(options.shiftKey)
   });
   document.body.dispatchEvent(event);
+}
+
+async function awaitEditorStable() {
+  await mobileEditPromise;
+  const renderer = applicationInstance && applicationInstance.view
+    ? applicationInstance.view.renderer
+    : null;
+  if (renderer && typeof renderer.updatePromise === 'function') {
+    await renderer.updatePromise();
+  }
+}
+
+function currentEditorMusicXmlText() {
+  if (!applicationInstance || !applicationInstance.view) return '';
+  const sourceScore = applicationInstance.view.storeScore || applicationInstance.view.score;
+  if (!sourceScore) return '';
+  const xmlDom = SmoToXml.convert(sourceScore);
+  return new XMLSerializer().serializeToString(xmlDom);
+}
+
+async function waitForEditorMusicXmlMutation(previousXml, timeoutMs = 1800) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const currentXml = currentEditorMusicXmlText();
+    if (currentXml && currentXml !== previousXml) {
+      const renderer = applicationInstance && applicationInstance.view
+        ? applicationInstance.view.renderer
+        : null;
+      if (renderer && typeof renderer.updatePromise === 'function') {
+        await renderer.updatePromise();
+      }
+      return currentXml;
+    }
+  }
+  throw new Error('Nota değişikliği uygulanmadı. Önce notayı seçin veya farklı bir perde seçin.');
+}
+
+async function runMobileKeyAction(button) {
+  const key = String(button.dataset.key || '');
+  const ctrlKey = button.dataset.ctrl === 'true';
+  const altKey = button.dataset.alt === 'true';
+  const shiftKey = button.dataset.shift === 'true';
+
+  if (
+    /^[a-g]$/.test(key)
+    && !ctrlKey
+    && !altKey
+    && !shiftKey
+    && applicationInstance
+    && applicationInstance.view
+  ) {
+    const previousXml = currentEditorMusicXmlText();
+    const view = applicationInstance.view;
+    if (!view.tracker?.selections?.length) {
+      await view.moveHome({ ctrlKey: true, shiftKey: false, altKey: false });
+    }
+    const selected = view.tracker.selections[0];
+    const locator = selected?.selector;
+    const current = locator && SmoSelection.noteSelection(
+      view.score, locator.staff, locator.measure, locator.voice, locator.tick
+    );
+    if (!current?.note) throw new Error('Seçili nota bulunamadı.');
+    if (selected.note !== current.note) {
+      view.tracker.selections = [current];
+    }
+    if (view.tracker.selections.length === 1 && current.note.pitches?.length === 1) {
+      const pitch = SmoMusic.getLetterNotePitch(
+        current.note.pitches[0], key, current.measure.keySignature
+      );
+      await view.setPitches([pitch]);
+    } else {
+      await view.setPitch(key);
+    }
+    await waitForEditorMusicXmlMutation(previousXml);
+    return;
+  }
+
+  sendKey(key, { ctrlKey, altKey, shiftKey });
+  await Promise.resolve();
+  const renderer = applicationInstance && applicationInstance.view
+    ? applicationInstance.view.renderer
+    : null;
+  if (renderer && typeof renderer.updatePromise === 'function') {
+    await renderer.updatePromise();
+  }
 }
 
 function setStatus(text) {
@@ -143,8 +231,14 @@ async function loadMusicXmlFile(file) {
     score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
   }
   await applicationInstance.view.changeScore(score);
+  await applicationInstance.view.moveHome({
+    ctrlKey: true,
+    shiftKey: false,
+    altKey: false
+  });
   currentScoreBaseName = stripMusicXmlExtension(name);
   window.dispatchEvent(new Event('resize'));
+  document.getElementById('poc-status')?.setAttribute('data-loaded-file-name', name);
   setStatus(`Yüklendi: ${name}`);
 }
 
@@ -630,13 +724,12 @@ function sameSemanticScore(a, b) {
   return JSON.stringify(semanticScoreSignature(a)) === JSON.stringify(semanticScoreSignature(b));
 }
 
-async function exportMusicXml() {
+function serializeCurrentMusicXml() {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
   }
-  stopNativePlayback();
-  setStatus('MusicXML hazırlanıyor…');
 
+  stopNativePlayback();
   const sourceScore = applicationInstance.view.storeScore || applicationInstance.view.score;
   const xmlDom = SmoToXml.convert(sourceScore);
   const xmlText = new XMLSerializer().serializeToString(xmlDom);
@@ -648,9 +741,23 @@ async function exportMusicXml() {
   const shapeOk = sameScoreShape(scoreShape(sourceScore), scoreShape(roundTripScore));
   const semanticOk = sameSemanticScore(sourceScore, roundTripScore);
   const roundTripOk = shapeOk && semanticOk;
-
   const fileName = `${currentScoreBaseName}-edited.musicxml`;
-  const file = new File([xmlText], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
+
+  return {
+    musicXml: xmlText,
+    fileName,
+    roundTripOk,
+    shapeOk,
+    semanticOk
+  };
+}
+
+async function exportMusicXml() {
+  setStatus('MusicXML hazırlanıyor…');
+  await awaitEditorStable();
+  const serialized = serializeCurrentMusicXml();
+  const { musicXml, fileName, roundTripOk, shapeOk } = serialized;
+  const file = new File([musicXml], fileName, { type: 'application/vnd.recordare.musicxml+xml' });
   setStatus(roundTripOk
     ? 'MusicXML semantic round-trip doğrulandı'
     : `MusicXML üretildi · ${shapeOk ? 'semantic fark' : 'yapı farkı'} tespit edildi`);
@@ -677,6 +784,48 @@ async function exportMusicXml() {
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+const SESLITAB_EXPORT_REQUEST = 'seslitab:smoosic-export-request';
+const SESLITAB_EXPORT_RESULT = 'seslitab:smoosic-export-result';
+const SESLITAB_EXPORT_VERSION = 1;
+
+async function handleSesliTabExportRequest(event) {
+  if (event.source !== parent) return;
+  if (event.origin !== window.location.origin) return;
+
+  const message = event.data;
+  if (!message || typeof message !== 'object') return;
+  if (message.type !== SESLITAB_EXPORT_REQUEST) return;
+  if (message.version !== 1) return;
+  if (typeof message.requestId !== 'string' || !message.requestId) return;
+  if (!Number.isSafeInteger(message.sourceRevision) || message.sourceRevision < 0) return;
+
+  try {
+    await awaitEditorStable();
+    const serialized = serializeCurrentMusicXml();
+    event.source.postMessage({
+      type: SESLITAB_EXPORT_RESULT,
+      version: SESLITAB_EXPORT_VERSION,
+      requestId: message.requestId,
+      sourceRevision: message.sourceRevision,
+      fileName: serialized.fileName,
+      musicXml: serialized.musicXml,
+      roundTripOk: serialized.roundTripOk,
+      shapeOk: serialized.shapeOk,
+      semanticOk: serialized.semanticOk
+    }, event.origin);
+  } catch (error) {
+    event.source.postMessage({
+      type: SESLITAB_EXPORT_RESULT,
+      version: SESLITAB_EXPORT_VERSION,
+      requestId: message.requestId,
+      sourceRevision: message.sourceRevision,
+      fileName: `${currentScoreBaseName}-edited.musicxml`,
+      musicXml: '',
+      error: String(error && error.message ? error.message : 'MusicXML üretilemedi')
+    }, event.origin);
+  }
 }
 
 function wireNativeTransportGuard() {
@@ -717,12 +866,15 @@ function wireMobileControls() {
   document.querySelectorAll('[data-key]').forEach((button) => {
     button.addEventListener('click', () => {
       if (!editorReady) return setStatus('Editör hazırlanıyor…');
-      sendKey(button.dataset.key, {
-        ctrlKey: button.dataset.ctrl === 'true',
-        altKey: button.dataset.alt === 'true',
-        shiftKey: button.dataset.shift === 'true'
-      });
-      button.blur();
+
+      mobileEditPromise = mobileEditPromise
+        .catch(() => undefined)
+        .then(() => runMobileKeyAction(button))
+        .catch((error) => {
+          console.error(error);
+          setStatus(`Düzenleme hatası: ${String(error && error.message ? error.message : error)}`);
+        })
+        .finally(() => button.blur());
     });
   });
 
@@ -772,6 +924,7 @@ async function boot() {
   const domContainer = document.getElementById('smoo');
   wireMobileControls();
   wireNativeTransportGuard();
+  window.addEventListener('message', handleSesliTabExportRequest);
   updateMetronomeButton();
   setEditorControlsEnabled(false);
   window.addEventListener('error', (event) => setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`));

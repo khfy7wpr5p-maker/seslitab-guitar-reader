@@ -61,6 +61,17 @@ jobs:
       - name: Verify S14 complete source lifecycle acceptance
         run: node scripts/verifyS14SourceLifecycleAcceptanceBrowser.js
 
+      - name: Verify S15 Smoosic write-back in real browser
+        run: node scripts/verifyS15SmoosicWritebackBrowser.js
+
+      - name: Upload S15 Smoosic write-back evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s15-smoosic-writeback
+          path: artifacts/s15-smoosic-writeback.json
+          if-no-files-found: warn
+
       - name: Verify STI-17 cross-realm iframe renderer in real browser
         run: node scripts/verifySti17CrossRealmBrowser.js
 
