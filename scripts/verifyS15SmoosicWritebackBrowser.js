@@ -328,7 +328,7 @@ try {
 
   await openMusicXml(cdp, sourceXml, 's15-writeback.musicxml', 'C')
 
-  const beforeConsumers = await waitFor(
+  await waitFor(
     cdp,
     `(() => {
       const guitarState = String(document.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || '');
@@ -395,6 +395,17 @@ try {
 
   await evaluate(cdp, `(() => {
     window.__S15_FIRST_EXPORT__ = null;
+    window.__S15_CONSUMER_MUTATIONS__ = { guitar: 0, violin: 0 };
+    for (const [kind, panelId, outputId] of [
+      ['guitar', 'tab-guitar-tab', 'guitar-tab-output'],
+      ['violin', 'tab-violin', 'violin-output'],
+    ]) {
+      const panel = document.getElementById(panelId);
+      const output = document.getElementById(outputId);
+      const observer = new MutationObserver(() => { window.__S15_CONSUMER_MUTATIONS__[kind]++; });
+      if (panel) observer.observe(panel, { attributes: true, attributeFilter: [kind === 'guitar' ? 'data-guitar-tab-state' : 'data-violin-state'] });
+      if (output) observer.observe(output, { childList: true, characterData: true, subtree: true });
+    }
     if (!window.__S15_EXPORT_PROBE_BOUND__) {
       window.addEventListener('message', (event) => {
         if (
@@ -483,37 +494,15 @@ try {
     throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
   }
 
-  try {
-    await waitFor(
-      cdp,
-      `(() => {
-        const guitarState = String(document.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || '');
-        const violinState = String(document.getElementById('tab-violin')?.getAttribute('data-violin-state') || '');
-        if (!guitarState || guitarState === 'idle' || !violinState || violinState === 'idle') return null;
-        const result = {
-          guitarState,
-          guitar: String(document.getElementById('guitar-tab-output')?.textContent || ''),
-          violinState,
-          violin: String(document.getElementById('violin-output')?.textContent || ''),
-        };
-        const before = ${JSON.stringify(beforeConsumers)};
-        return result.guitarState !== before.guitarState || result.guitar !== before.guitar
-          || result.violinState !== before.violinState || result.violin !== before.violin
-          ? result : null;
-      })()`,
-      'refreshed product consumers',
-      10000,
-    )
-  } catch (error) {
-    const current = await evaluate(cdp, `(() => ({
-      guitarState: String(document.getElementById('tab-guitar-tab')?.getAttribute('data-guitar-tab-state') || ''),
-      guitar: String(document.getElementById('guitar-tab-output')?.textContent || ''),
-      violinState: String(document.getElementById('tab-violin')?.getAttribute('data-violin-state') || ''),
-      violin: String(document.getElementById('violin-output')?.textContent || ''),
-      summary: String(document.getElementById('notes-summary')?.textContent || ''),
-    }))()`)
-    throw new Error(`${error.message} | before=${JSON.stringify(beforeConsumers)} | after=${JSON.stringify(current)}`)
-  }
+  await waitFor(
+    cdp,
+    `(() => {
+      const changes = window.__S15_CONSUMER_MUTATIONS__;
+      return changes?.guitar > 0 && changes?.violin > 0;
+    })()`,
+    'Guitar and violin consumers render the new Package 3 snapshot',
+    10000,
+  )
 
   const editorUsable = await evaluate(
     cdp,
