@@ -447,3 +447,67 @@ test('Piece action rejects invalid action and cannot skip ACTIVE directly to rep
     /transition/i,
   )
 })
+
+
+test('Piece lifecycle remains controllable after a child is independently revoked', async () => {
+  const { service, store } =
+    await harness()
+
+  const piece = await service.createPiece({
+    providerSubject: 'uid-teacher-a',
+    input: pieceInput(),
+  })
+
+  const child =
+    await store.getPreparedAssignment(
+      'score-a',
+    )
+  const deliveryBefore =
+    await store.getDelivery('score-a')
+  const currentLifecycle =
+    createInitialAssignmentLifecycleRecord(
+      child.assignment,
+    )
+  const nextLifecycle =
+    revokeAssignmentLifecycleRecord(
+      currentLifecycle,
+      '2026-09-24T08:30:00Z',
+    )
+  const deliveryAfter =
+    revokeDeliveryRecord(
+      deliveryBefore,
+      '2026-09-24T08:30:00Z',
+    )
+
+  await store.commitLifecycleMutation({
+    teacherId: 'teacher-a',
+    assignment: child.assignment,
+    currentLifecycle,
+    nextLifecycle,
+    deliveryBefore,
+    deliveryAfter,
+    historyEventId:
+      'history-child-revoke-a',
+  })
+
+  const revoked =
+    await service.applyPieceAction({
+      providerSubject: 'uid-teacher-a',
+      pieceAssignmentId:
+        piece.pieceAssignmentId,
+      action: 'REVOKE',
+    })
+
+  assert.equal(
+    revoked.revokedAt,
+    '2026-09-24T09:00:00Z',
+  )
+  assert.equal(
+    (
+      await store.getDelivery(
+        'score-a',
+      )
+    ).revokedAt,
+    '2026-09-24T08:30:00Z',
+  )
+})
