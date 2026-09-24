@@ -115,6 +115,14 @@ test('pilot app exposes authenticated sanitized Pool, SCORE, CHORD_BOARD and Pie
     true,
   )
   assert.equal(
+    row.package.content.guitarTab.format,
+    'musicxml',
+  )
+  assert.match(
+    row.package.content.guitarTab.data,
+    /<sign>TAB<\/sign>/,
+  )
+  assert.equal(
     row.package.publication.scope,
     'student_private',
   )

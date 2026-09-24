@@ -78,6 +78,27 @@ const PILOT_MUSIC_XML =
   '<duration>4</duration><type>whole</type></note>' +
   '</measure></part></score-partwise>'
 
+const PILOT_TAB_MUSIC_XML =
+  '<?xml version="1.0" encoding="UTF-8"?>' +
+  '<score-partwise version="4.0">' +
+  '<part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>' +
+  '<part id="P1"><measure number="1">' +
+  '<attributes><divisions>1</divisions>' +
+  '<time><beats>4</beats><beat-type>4</beat-type></time>' +
+  '<clef><sign>TAB</sign><line>5</line></clef>' +
+  '<staff-details><staff-lines>6</staff-lines>' +
+  '<staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="2"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="3"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="4"><tuning-step>D</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="5"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>' +
+  '</staff-details></attributes>' +
+  '<note><pitch><step>C</step><octave>4</octave></pitch>' +
+  '<duration>4</duration><type>whole</type>' +
+  '<notations><technical><string>2</string><fret>1</fret></technical></notations>' +
+  '</note></measure></part></score-partwise>'
+
 function hashSubject(value) {
   if (
     typeof value !== 'string' ||
@@ -179,6 +200,8 @@ function fixtureForSuffix(suffix) {
       approvedAt: CREATED_AT,
       studentId,
       musicXml: PILOT_MUSIC_XML,
+      guitarTabMusicXml:
+        PILOT_TAB_MUSIC_XML,
       canonicalEvents: [],
       practice: {
         tempoBpm: 60,

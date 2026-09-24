@@ -31,6 +31,7 @@ const INPUT_FIELDS = Object.freeze([
   'approvedAt',
   'studentId',
   'musicXml',
+  'guitarTabMusicXml',
   'canonicalEvents',
   'practice',
 ])
@@ -181,6 +182,47 @@ export function validateStudentPracticePackageV1(value) {
       }
     }
 
+    if (
+      content.guitarTab !== undefined &&
+      content.guitarTab !== null
+    ) {
+      if (!isRecord(content.guitarTab)) {
+        errors.push(
+          'content.guitarTab must be an object or null',
+        )
+      } else {
+        const keys =
+          Object.keys(content.guitarTab)
+        for (const key of keys) {
+          if (
+            key !== 'format' &&
+            key !== 'data'
+          ) {
+            errors.push(
+              `unsupported content.guitarTab field: ${key}`,
+            )
+          }
+        }
+        if (
+          content.guitarTab.format !==
+          'musicxml'
+        ) {
+          errors.push(
+            'content.guitarTab.format must be musicxml',
+          )
+        }
+        if (
+          !hasText(
+            content.guitarTab.data,
+          )
+        ) {
+          errors.push(
+            'content.guitarTab.data must be a non-empty string',
+          )
+        }
+      }
+    }
+
     if (!Array.isArray(content.canonicalEvents)) {
       errors.push('content.canonicalEvents must be an array')
     }
@@ -241,6 +283,18 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
       canonicalEvents: cloneFrozenJson(
         input.canonicalEvents,
       ),
+      guitarTab:
+        input.guitarTabMusicXml === undefined ||
+        input.guitarTabMusicXml === null
+          ? null
+          : Object.freeze({
+              format: 'musicxml',
+              data: normalizeRequiredText(
+                input.guitarTabMusicXml,
+                'guitarTabMusicXml',
+                5_000_000,
+              ),
+            }),
     }),
     practice: cloneFrozenJson(input.practice ?? {}),
   })
