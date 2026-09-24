@@ -3,6 +3,7 @@ import { applyRevalidatedMusicXmlRevision } from './app.js'
 import {
   SMOOSIC_WRITEBACK_STATUS,
   applySmoosicProductWriteback,
+  createSmoosicWritebackOutcome,
   createSmoosicProductAuthority,
 } from './services/smoosicProductWriteback.js'
 
@@ -64,26 +65,6 @@ function setHostStatus(root, text, kind = 'info') {
   status.hidden = !text
   status.setAttribute('role', kind === 'error' ? 'alert' : 'status')
   status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite')
-}
-
-function staleSourceOutcome() {
-  return Object.freeze({
-    status: SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE,
-  })
-}
-
-function publishFailedOutcome(pendingPublication) {
-  return Object.freeze({
-    status: SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED,
-    revision: pendingPublication?.revision ?? null,
-    musicXml: pendingPublication?.musicXml ?? null,
-  })
-}
-
-function conflictOutcome() {
-  return Object.freeze({
-    status: SMOOSIC_WRITEBACK_STATUS.CONFLICT,
-  })
 }
 
 function secureId(root, prefix) {
@@ -243,7 +224,7 @@ function cancelPendingWriteback(state) {
   if (!pending) return
   state.pendingWriteback = null
   clearTimeout(pending.timeout)
-  pending.reject(staleSourceOutcome())
+  pending.reject(createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE))
 }
 
 function requestEditorMusicXml(root) {
@@ -311,15 +292,14 @@ function publishCommittedRevision(root, committed) {
 function retryPendingPublication(root) {
   const state = stateFor(root)
   const pendingPublication = state.pendingPublication
-  if (!pendingPublication) return conflictOutcome()
+  if (!pendingPublication) return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.CONFLICT)
   publishCommittedRevision(root, pendingPublication)
   setHostStatus(
     root,
     'Düzenleme SesliTab\'a uygulandı. Yeni sürüm doğrulandı ve çıktılar güncellendi.',
     'ready',
   )
-  return Object.freeze({
-    status: SMOOSIC_WRITEBACK_STATUS.APPLIED,
+  return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.APPLIED, {
     revision: pendingPublication.revision,
     musicXml: pendingPublication.musicXml,
     retriedPublication: true,
@@ -333,7 +313,7 @@ async function applyEditorWriteback(root) {
 
   if (sourceTransitionPending(root)) {
     setHostStatus(root, 'Yeni eser hazırlanırken düzenleme uygulanamaz.', 'error')
-    return staleSourceOutcome()
+    return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
   }
 
   if (state.pendingPublication) {
@@ -341,7 +321,7 @@ async function applyEditorWriteback(root) {
       return retryPendingPublication(root)
     } catch (error) {
       setHostStatus(root, error?.message || 'Güncel sürüm yayımlanamadı.', 'error')
-      return publishFailedOutcome(state.pendingPublication)
+      return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED, state.pendingPublication)
     }
   }
 
@@ -408,17 +388,17 @@ async function applyEditorWriteback(root) {
         'Yeni sürüm kaydedildi ancak ekran güncellenemedi. Yeniden uygulayarak yayını tekrar deneyin.',
         'error',
       )
-      return publishFailedOutcome(state.pendingPublication)
+      return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED, state.pendingPublication)
     }
   } catch (error) {
     if (error?.status === SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE) {
       setHostStatus(root, 'Kaynak değişti; önceki düzenleme isteği geçersiz.', 'error')
-      return staleSourceOutcome()
+      return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
     }
     if (state.sourceRevision === startingSourceRevision) {
       setHostStatus(root, error?.message || 'Düzenleme SesliTab’a uygulanamadı.', 'error')
     }
-    return conflictOutcome()
+    return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.CONFLICT)
   } finally {
     if (applyButton) applyButton.disabled = false
   }

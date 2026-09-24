@@ -185,6 +185,42 @@ test('returns NO_CHANGE without creating a revision for exact current MusicXML',
   assert.equal(result.authority.workspace.history.revisions.length, 1)
 })
 
+test('builds typed stale-source and retryable publish-failure outcomes', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    createSmoosicWritebackOutcome,
+  } = await loadWriteback()
+
+  assert.deepEqual(
+    createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE),
+    { status: SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE },
+  )
+  assert.deepEqual(
+    createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED, {
+      revision: { revisionId: 's15-edit-1' },
+      musicXml: '<score-partwise />',
+    }),
+    {
+      status: SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED,
+      revision: { revisionId: 's15-edit-1' },
+      musicXml: '<score-partwise />',
+    },
+  )
+  assert.deepEqual(
+    createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.APPLIED, {
+      revision: { revisionId: 's15-edit-1' },
+      musicXml: '<score-partwise />',
+      retriedPublication: true,
+    }),
+    {
+      status: SMOOSIC_WRITEBACK_STATUS.APPLIED,
+      revision: { revisionId: 's15-edit-1' },
+      musicXml: '<score-partwise />',
+      retriedPublication: true,
+    },
+  )
+})
+
 test('rejects note removal as unsupported structure without partial history', async () => {
   const {
     SMOOSIC_WRITEBACK_STATUS,
