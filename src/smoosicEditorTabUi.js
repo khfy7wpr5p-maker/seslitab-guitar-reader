@@ -218,6 +218,14 @@ function bindWritebackMessages(root) {
   return true
 }
 
+function cancelPendingWriteback(state) {
+  const pending = state.pendingWriteback
+  if (!pending) return
+  state.pendingWriteback = null
+  clearTimeout(pending.timeout)
+  pending.reject(new Error('Kaynak değişti; önceki düzenleme isteği geçersiz.'))
+}
+
 function requestEditorMusicXml(root) {
   const state = stateFor(root)
   const frame = state.frame
@@ -295,6 +303,7 @@ function retryPendingPublication(root) {
 async function applyEditorWriteback(root) {
   const state = stateFor(root)
   const applyButton = root.getElementById?.(APPLY_ID)
+  const startingSourceRevision = state.sourceRevision
 
   if (sourceTransitionPending(root)) {
     setHostStatus(root, 'Yeni eser hazırlanırken düzenleme uygulanamaz.', 'error')
@@ -376,7 +385,9 @@ async function applyEditorWriteback(root) {
       return false
     }
   } catch (error) {
-    setHostStatus(root, error?.message || 'Düzenleme SesliTab’a uygulanamadı.', 'error')
+    if (state.sourceRevision === startingSourceRevision) {
+      setHostStatus(root, error?.message || 'Düzenleme SesliTab’a uygulanamadı.', 'error')
+    }
     return false
   } finally {
     if (applyButton) applyButton.disabled = false
@@ -591,6 +602,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
       // Invalidate any in-flight transfer, but keep the last accepted source.
       // If the replacement fails, that accepted source remains authoritative.
       state.sourceRevision += 1
+      cancelPendingWriteback(state)
       if (state.frame?.isConnected && state.frame.getAttribute('src')) {
         void enqueueEditorSync(root)
       }
@@ -623,6 +635,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
     state.observedSourceXml = null
     state.observedSourceName = null
     state.sourceRevision += 1
+    cancelPendingWriteback(state)
     clearAuthorityState(state)
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
@@ -679,6 +692,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   state.observedSourceXml = xml
   state.observedSourceName = fileName
   state.sourceRevision += 1
+  cancelPendingWriteback(state)
   state.lastSourceXml = null
   state.lastSourceName = 'seslitab-current.musicxml'
 

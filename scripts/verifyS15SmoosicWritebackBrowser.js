@@ -638,6 +638,98 @@ try {
     throw new Error('Stale Smoosic write-back overwrote the accepted replacement source.')
   }
 
+  const sendCapturedResult = async (musicXml) => {
+    const request = await waitFor(cdp, `window.__S15_PENDING_REQUEST__ || null`, 'captured write-back request')
+    await evaluate(cdp, `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const payload = ${JSON.stringify({
+        type: 'seslitab:smoosic-export-result',
+        version: 1,
+        requestId: request.requestId,
+        sourceRevision: request.sourceRevision,
+        fileName: 's15-negative.musicxml',
+        musicXml,
+        roundTripOk: true,
+        shapeOk: true,
+        semanticOk: true,
+      })};
+      const script = frame.contentDocument.createElement('script');
+      script.textContent = 'parent.postMessage(' + JSON.stringify(payload).replace(/</g, '\\u003c') + ', location.origin);';
+      frame.contentDocument.body.appendChild(script);
+      script.remove();
+      return true;
+    })()`)
+  }
+
+  await waitFor(cdp, `document.getElementById('smoosic-apply-btn')?.disabled === false`, 'stale request released')
+  await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const original = frame.contentWindow.postMessage.bind(frame.contentWindow);
+    window.__S15_ORIGINAL_POSTMESSAGE__ = original;
+    window.__S15_EXPORT_REQUEST_COUNT__ = 0;
+    frame.contentWindow.postMessage = function(message, targetOrigin, transfer) {
+      if (message?.type === 'seslitab:smoosic-export-request') {
+        window.__S15_PENDING_REQUEST__ = message;
+        window.__S15_EXPORT_REQUEST_COUNT__++;
+        return;
+      }
+      return original(message, targetOrigin, transfer);
+    };
+    return true;
+  })()`)
+
+  await evaluate(cdp, `(() => {
+    const button = document.getElementById('smoosic-apply-btn');
+    window.__S15_PENDING_REQUEST__ = null;
+    button.click();
+    button.click();
+    return true;
+  })()`)
+  await waitFor(cdp, `window.__S15_EXPORT_REQUEST_COUNT__ === 1`, 'one concurrent export request')
+  await sendCapturedResult('<score-partwise><broken>')
+  await waitFor(cdp, `document.getElementById('smoosic-editor-host-status')?.dataset.kind === 'error' && document.getElementById('smoosic-apply-btn')?.disabled === false`, 'invalid XML rejected')
+  if (!await evaluate(cdp, `String(document.getElementById('xml-output')?.textContent || '').includes('<step>G</step>')`)) {
+    throw new Error('Invalid XML changed the accepted revision.')
+  }
+
+  const addedNoteXml = replacementXml.replace('</measure>',
+    '<note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note></measure>')
+  await evaluate(cdp, `(() => { window.__S15_PENDING_REQUEST__ = null; document.getElementById('smoosic-apply-btn').click(); return true; })()`)
+  await sendCapturedResult(addedNoteXml)
+  await waitFor(cdp, `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('yapısal düzenleme') && document.getElementById('smoosic-apply-btn')?.disabled === false`, 'structural edit rejected')
+  if (!await evaluate(cdp, `String(document.getElementById('xml-output')?.textContent || '').includes('<step>G</step>')`)) {
+    throw new Error('Unsupported structure changed the accepted revision.')
+  }
+
+  await evaluate(cdp, `(() => {
+    const output = document.getElementById('rhythmic-output');
+    const marker = document.createComment('S15 publish retry marker');
+    output.replaceWith(marker);
+    window.__S15_REMOVED_OUTPUT__ = { output, marker };
+    window.__S15_PENDING_REQUEST__ = null;
+    document.getElementById('smoosic-apply-btn').click();
+    return true;
+  })()`)
+  await sendCapturedResult(replacementXml.replace('<step>G</step>', '<step>E</step>'))
+  await waitFor(cdp, `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('ekran güncellenemedi') && document.getElementById('smoosic-apply-btn')?.disabled === false`, 'committed revision publish failure')
+  const requestCountBeforeRetry = await evaluate(cdp, `window.__S15_EXPORT_REQUEST_COUNT__`)
+  await evaluate(cdp, `(() => {
+    const removed = window.__S15_REMOVED_OUTPUT__;
+    removed.marker.replaceWith(removed.output);
+    delete window.__S15_REMOVED_OUTPUT__;
+    document.getElementById('smoosic-apply-btn').click();
+    return true;
+  })()`)
+  await waitFor(cdp, `String(document.getElementById('xml-output')?.textContent || '').includes('<step>E</step>') && String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`, 'retry publishes committed revision')
+  if (await evaluate(cdp, `window.__S15_EXPORT_REQUEST_COUNT__`) !== requestCountBeforeRetry) {
+    throw new Error('Publish retry exported and committed a second revision.')
+  }
+  await evaluate(cdp, `(() => {
+    document.getElementById('smoosic-editor-frame').contentWindow.postMessage = window.__S15_ORIGINAL_POSTMESSAGE__;
+    delete window.__S15_ORIGINAL_POSTMESSAGE__;
+    return true;
+  })()`)
+
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
   writeFileSync(evidencePath, JSON.stringify({
     documentType: 'S15SmoosicWritebackEvidence',
@@ -645,12 +737,16 @@ try {
     supportedEditCommitted: true,
     freshProductPublished: true,
     staleWritebackRejected: true,
+    duplicateRequestRejected: true,
+    invalidXmlRejected: true,
+    unsupportedStructureRejected: true,
+    publishRetryWithoutSecondExport: true,
     editorRemainedUsable: true,
     physicalIphoneSafariVerified: false,
   }, null, 2) + '\n')
 
   console.log(
-    `S15 Smoosic write-back browser proof PASS using ${chrome}: rendered note + toolbar C→D edit committed, consumers refreshed, stale response rejected, editor remained usable.`,
+    `S15 Smoosic write-back browser proof PASS using ${chrome}: C→D committed, consumers refreshed, stale/duplicate/invalid/structural requests rejected, publish retry reused committed revision.`,
   )
 } catch (error) {
   console.error(`S15 write-back browser proof failed closed: ${error?.message ?? error}`)
