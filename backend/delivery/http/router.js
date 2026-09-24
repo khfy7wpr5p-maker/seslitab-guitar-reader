@@ -56,6 +56,7 @@ export function createSecureDeliveryRouter({
   tokenVerifier,
   preparedService,
   teacherService,
+  teacherPieceService,
   studentService,
   config,
 } = {}) {
@@ -86,8 +87,20 @@ export function createSecureDeliveryRouter({
     )
   }
   for (const method of [
+    'createPiece',
+    'applyPieceAction',
+  ]) {
+    assertServiceMethod(
+      teacherPieceService,
+      method,
+      'teacherPieceService',
+    )
+  }
+  for (const method of [
     'listAssignments',
     'getAssignment',
+    'listPieces',
+    'getPiece',
     'listPoolItems',
   ]) {
     assertServiceMethod(
@@ -250,6 +263,39 @@ export function createSecureDeliveryRouter({
     ),
   )
 
+
+  router.post(
+    '/teacher/pieces',
+    requireEnabled,
+    requireWrites,
+    route(async (req, res, subject) =>
+      success(
+        res,
+        await teacherPieceService.createPiece({
+          providerSubject: subject,
+          input: req.body,
+        }),
+      ),
+    ),
+  )
+
+  router.post(
+    '/teacher/pieces/:pieceAssignmentId/actions',
+    requireEnabled,
+    requireWrites,
+    route(async (req, res, subject) =>
+      success(
+        res,
+        await teacherPieceService.applyPieceAction({
+          providerSubject: subject,
+          pieceAssignmentId:
+            req.params.pieceAssignmentId,
+          action: req.body?.action,
+        }),
+      ),
+    ),
+  )
+
   router.get(
     '/student/pool',
     requireEnabled,
@@ -273,6 +319,37 @@ export function createSecureDeliveryRouter({
         res,
         await studentService.listAssignments({
           providerSubject: subject,
+        }),
+      ),
+    ),
+  )
+
+
+  router.get(
+    '/student/pieces',
+    requireEnabled,
+    requireStudentReads,
+    route(async (_req, res, subject) =>
+      success(
+        res,
+        await studentService.listPieces({
+          providerSubject: subject,
+        }),
+      ),
+    ),
+  )
+
+  router.get(
+    '/student/pieces/:pieceAssignmentId',
+    requireEnabled,
+    requireStudentReads,
+    route(async (req, res, subject) =>
+      success(
+        res,
+        await studentService.getPiece({
+          providerSubject: subject,
+          pieceAssignmentId:
+            req.params.pieceAssignmentId,
         }),
       ),
     ),
