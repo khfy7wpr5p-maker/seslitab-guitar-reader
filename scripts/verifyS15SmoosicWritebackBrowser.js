@@ -542,13 +542,38 @@ try {
   )
 
   await openMusicXml(cdp, replacementXml, 's15-replacement.musicxml', 'G')
+  await waitFor(
+    cdp,
+    `document.getElementById('smoosic-editor-frame')?.hidden === false`,
+    'replacement keeps Smoosic visible',
+  )
+  await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const requestId = 's15-replacement-probe-' + crypto.randomUUID();
+    window.__S15_REPLACEMENT_EXPORT__ = null;
+    window.addEventListener('message', (event) => {
+      if (event.source === frame.contentWindow
+        && event.origin === location.origin
+        && event.data?.type === 'seslitab:smoosic-export-result'
+        && event.data.requestId === requestId) {
+        window.__S15_REPLACEMENT_EXPORT__ = event.data;
+      }
+    }, { once: false });
+    window.__S15_ORIGINAL_POSTMESSAGE__({
+      type: 'seslitab:smoosic-export-request',
+      version: 1,
+      requestId,
+      sourceRevision: ${Number(pendingRequest.sourceRevision) + 1},
+    }, location.origin);
+    return true;
+  })()`)
   try {
     await waitFor(
       cdp,
       `(() => {
-        const frame = document.getElementById('smoosic-editor-frame');
-        const text = String(frame?.contentDocument?.getElementById('poc-status')?.textContent || '');
-        return frame?.hidden === false && text.startsWith('Yüklendi:') && text.includes('s15-replacement.musicxml');
+        const xml = String(window.__S15_REPLACEMENT_EXPORT__?.musicXml || '');
+        return new DOMParser().parseFromString(xml, 'text/xml')
+          .querySelector('part > measure > note pitch > step')?.textContent === 'G';
       })()`,
       'replacement Smoosic handoff',
       16000,
@@ -564,6 +589,9 @@ try {
           .querySelector('part > measure > note pitch > step')?.textContent || '',
         acceptedName: String(document.getElementById('musicxml-file-name')?.textContent || ''),
         applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+        probeStep: new DOMParser().parseFromString(String(window.__S15_REPLACEMENT_EXPORT__?.musicXml || ''), 'text/xml')
+          .querySelector('part > measure > note pitch > step')?.textContent || '',
+        probeError: String(window.__S15_REPLACEMENT_EXPORT__?.error || ''),
       };
     })()`)
     throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
