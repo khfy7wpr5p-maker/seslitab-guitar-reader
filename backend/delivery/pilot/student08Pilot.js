@@ -80,24 +80,34 @@ const PILOT_MUSIC_XML =
 
 const PILOT_TAB_MUSIC_XML =
   '<?xml version="1.0" encoding="UTF-8"?>' +
-  '<score-partwise version="4.0">' +
+  '<score-partwise version="3.1">' +
   '<part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>' +
-  '<part id="P1"><measure number="1">' +
-  '<attributes><divisions>1</divisions>' +
+  '<part id="P1"><measure number="1"><attributes>' +
+  '<divisions>1</divisions><key><fifths>0</fifths></key>' +
   '<time><beats>4</beats><beat-type>4</beat-type></time>' +
-  '<clef><sign>TAB</sign><line>5</line></clef>' +
-  '<staff-details><staff-lines>6</staff-lines>' +
-  '<staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>' +
-  '<staff-tuning line="2"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
-  '<staff-tuning line="3"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
-  '<staff-tuning line="4"><tuning-step>D</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
-  '<staff-tuning line="5"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>' +
-  '<staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>' +
+  '<staves>2</staves>' +
+  '<clef number="1"><sign>G</sign><line>2</line></clef>' +
+  '<clef number="2"><sign>TAB</sign><line>5</line></clef>' +
+  '<staff-details number="2"><staff-lines>6</staff-lines>' +
+  '<staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="2"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="3"><tuning-step>D</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="4"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="5"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>' +
+  '<staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>' +
   '</staff-details></attributes>' +
-  '<note><pitch><step>C</step><octave>4</octave></pitch>' +
-  '<duration>4</duration><type>whole</type>' +
-  '<notations><technical><string>2</string><fret>1</fret></technical></notations>' +
-  '</note></measure></part></score-partwise>'
+  '<note><pitch><step>B</step><octave>4</octave></pitch>' +
+  '<duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>' +
+  '<note><pitch><step>E</step><octave>5</octave></pitch>' +
+  '<duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>' +
+  '<backup><duration>4</duration></backup>' +
+  '<note><pitch><step>B</step><octave>4</octave></pitch>' +
+  '<duration>2</duration><voice>5</voice><type>half</type><staff>2</staff>' +
+  '<notations><technical><string>1</string><fret>7</fret></technical></notations></note>' +
+  '<note><pitch><step>E</step><octave>5</octave></pitch>' +
+  '<duration>2</duration><voice>5</voice><type>half</type><staff>2</staff>' +
+  '<notations><technical><string>1</string><fret>12</fret></technical></notations></note>' +
+  '</measure></part></score-partwise>'
 
 function hashSubject(value) {
   if (
