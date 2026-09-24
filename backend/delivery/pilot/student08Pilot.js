@@ -182,6 +182,7 @@ function fixtureForSuffix(suffix) {
       canonicalEvents: [],
       practice: {
         tempoBpm: 60,
+        allowTempoChange: true,
       },
     })
 

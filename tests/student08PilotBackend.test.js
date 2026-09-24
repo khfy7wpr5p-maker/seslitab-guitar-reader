@@ -107,6 +107,14 @@ test('pilot app exposes authenticated sanitized Pool, SCORE, CHORD_BOARD and Pie
   )
   assert.equal(row.state, 'ACTIVE')
   assert.equal(
+    row.package.practice.tempoBpm,
+    60,
+  )
+  assert.equal(
+    row.package.practice.allowTempoChange,
+    true,
+  )
+  assert.equal(
     row.package.publication.scope,
     'student_private',
   )
