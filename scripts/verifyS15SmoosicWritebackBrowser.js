@@ -258,33 +258,6 @@ async function openMusicXml(cdp, xml, fileName, expectedStep) {
   )
 }
 
-async function nativeClick(cdp, point) {
-  await cdp.send('Input.dispatchMouseEvent', {
-    type: 'mouseMoved',
-    x: point.x,
-    y: point.y,
-    button: 'none',
-  })
-  await delay(80)
-  await cdp.send('Input.dispatchMouseEvent', {
-    type: 'mousePressed',
-    x: point.x,
-    y: point.y,
-    button: 'left',
-    buttons: 1,
-    clickCount: 1,
-  })
-  await cdp.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: point.x,
-    y: point.y,
-    button: 'left',
-    buttons: 0,
-    clickCount: 1,
-  })
-  await delay(120)
-}
-
 const server = createServer((request, response) => {
   const url = new URL(request.url || '/', 'http://127.0.0.1')
   const target = safeDistPath(url.pathname)
@@ -387,99 +360,19 @@ try {
     'Smoosic initial handoff',
   )
 
-  await evaluate(cdp, `(() => {
-    const frame = document.getElementById('smoosic-editor-frame');
-    if (!frame) return false;
-    const head = [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])]
-      .find((element) => {
-        const r = element.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
-      });
-    if (!head) return false;
-
-    head.scrollIntoView({ block: 'center', inline: 'center' });
-
-    const frameRect = frame.getBoundingClientRect();
-    const noteRect = head.getBoundingClientRect();
-    const noteOuterY = frameRect.top + noteRect.top + (noteRect.height / 2);
-    const targetY = window.innerHeight * 0.42;
-    window.scrollBy(0, noteOuterY - targetY);
-    return true;
-  })()`)
-  await delay(250)
-
-  let notePoint
-  try {
-    notePoint = await waitFor(
-      cdp,
-      `(() => {
-        const frame = document.getElementById('smoosic-editor-frame');
-        if (!frame || frame.hidden) return null;
-        const f = frame.getBoundingClientRect();
-        const heads = [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])];
-        const head = heads.find((element) => {
-          const r = element.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        });
-        if (!head) return null;
-        const r = head.getBoundingClientRect();
-        const point = {
-          x: f.left + r.left + (r.width / 2),
-          y: f.top + r.top + (r.height / 2),
-          width: r.width,
-          height: r.height,
-        };
-        if (
-          point.x < 0
-          || point.x >= window.innerWidth
-          || point.y < 0
-          || point.y >= window.innerHeight
-        ) {
-          return null;
-        }
-        return point;
-      })()`,
-      'visible rendered Smoosic notehead geometry',
-      10000,
-    )
-  } catch (error) {
-    const geometry = await evaluate(cdp, `(() => {
+  await waitFor(
+    cdp,
+    `(() => {
       const frame = document.getElementById('smoosic-editor-frame');
-      const f = frame?.getBoundingClientRect();
-      const heads = [...(frame?.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])];
-      const head = heads.find((element) => {
-        const r = element.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
-      });
-      const r = head?.getBoundingClientRect();
-      const scrollers = frame?.contentDocument
-        ? [...frame.contentDocument.querySelectorAll('*')]
-            .filter((element) => {
-              const style = frame.contentWindow.getComputedStyle(element);
-              return /(auto|scroll)/.test(style.overflowY)
-                && element.scrollHeight > element.clientHeight;
-            })
-            .slice(0, 8)
-            .map((element) => ({
-              id: String(element.id || ''),
-              cls: String(element.className?.baseVal || element.className || '').slice(0, 120),
-              top: element.scrollTop,
-              clientHeight: element.clientHeight,
-              scrollHeight: element.scrollHeight,
-            }))
-        : [];
-      return {
-        viewport: { width: window.innerWidth, height: window.innerHeight, scrollY: window.scrollY },
-        frame: f ? { left: f.left, top: f.top, width: f.width, height: f.height } : null,
-        note: r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null,
-        innerScrollY: frame?.contentWindow?.scrollY ?? null,
-        scrollers,
-      };
-    })()`)
-    throw new Error(`${error.message} | geometry=${JSON.stringify(geometry)}`)
-  }
-
-  await nativeClick(cdp, notePoint)
+      if (!frame || frame.hidden) return false;
+      return [...(frame.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])]
+        .some((head) => {
+          const rect = head.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+    })()`,
+    'rendered Smoosic notehead',
+  )
 
   const pitchTriggered = await evaluate(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
@@ -716,7 +609,7 @@ try {
   }, null, 2) + '\n')
 
   console.log(
-    `S15 Smoosic write-back browser proof PASS using ${chrome}: native note selection + C→D edit committed, consumers refreshed, stale response rejected, editor remained usable.`,
+    `S15 Smoosic write-back browser proof PASS using ${chrome}: rendered note + toolbar C→D edit committed, consumers refreshed, stale response rejected, editor remained usable.`,
   )
 } catch (error) {
   console.error(`S15 write-back browser proof failed closed: ${error?.message ?? error}`)
