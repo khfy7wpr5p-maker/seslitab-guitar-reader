@@ -15,6 +15,14 @@ import {
   createInitialAssignmentLifecycleRecord,
   transitionAssignmentLifecycleRecord,
 } from '../src/services/assignmentLifecycleRecord.js'
+import {
+  createPieceAssignment,
+} from '../src/services/pieceAssignment.js'
+import {
+  createInitialPieceLifecycleRecord,
+  revokePieceLifecycleRecord,
+  transitionPieceLifecycleRecord,
+} from '../src/services/pieceAssignmentLifecycleRecord.js'
 
 async function loadService() {
   try {
@@ -330,5 +338,142 @@ test('student list rereads current delivery and fails closed across revoke race'
   assert.deepEqual(
     await service.listAssignments({ providerSubject: 'uid-student-a' }),
     Object.freeze([]),
+  )
+})
+
+
+test('student Piece list uses Piece lifecycle and exposes bounded manifest metadata only', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-student-a',
+    pieceId: 'work-cambaz-a',
+    arrangementId: 'arr-cambaz-a',
+    studentId: 'student-a',
+    title: 'Cambaz',
+    teacherNote: 'Yavaş çalış.',
+    assignedAt: '2026-09-24T08:10:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'assignment-a',
+      chordAssignmentIds: [],
+    },
+  })
+  await h.store.putPieceAssignment(piece)
+  const active = createInitialPieceLifecycleRecord(piece)
+  const completed = transitionPieceLifecycleRecord(
+    active,
+    'COMPLETED',
+    '2026-09-24T08:20:00Z',
+  )
+  await h.store.commitPieceLifecycleMutation({
+    currentLifecycle: active,
+    nextLifecycle: completed,
+  })
+
+  const service = createStudentDeliveryReadService(h)
+  const rows = await service.listPieces({
+    providerSubject: 'uid-student-a',
+  })
+
+  assert.equal(rows.length, 1)
+  assert.deepEqual(
+    Object.keys(rows[0]).sort(),
+    [
+      'arrangementId',
+      'assignedAt',
+      'contentRefs',
+      'pieceAssignmentId',
+      'pieceId',
+      'schemaVersion',
+      'state',
+      'teacherNote',
+      'title',
+    ],
+  )
+  assert.equal(rows[0].state, 'COMPLETED')
+  assert.equal(rows[0].title, 'Cambaz')
+  assert.deepEqual(rows[0].contentRefs, {
+    scoreAssignmentId: 'assignment-a',
+    chordAssignmentIds: [],
+  })
+  const serialized = JSON.stringify(rows[0])
+  assert.equal(serialized.includes('studentId'), false)
+  assert.equal(serialized.includes('teacherId'), false)
+  assert.equal(serialized.includes('package'), false)
+})
+
+test('student cannot read another student Piece by exact Piece ID and error hides ownership', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  await h.store.putPieceAssignment(
+    createPieceAssignment({
+      pieceAssignmentId: 'piece-student-b',
+      pieceId: 'work-b',
+      arrangementId: 'arr-b',
+      studentId: 'student-b',
+      title: 'Cambaz',
+      teacherNote: '',
+      assignedAt: '2026-09-24T08:10:00Z',
+      contentRefs: {
+        scoreAssignmentId: 'assignment-b',
+        chordAssignmentIds: [],
+      },
+    }),
+  )
+
+  const service = createStudentDeliveryReadService(h)
+  await assert.rejects(
+    () => service.getPiece({
+      providerSubject: 'uid-student-a',
+      pieceAssignmentId: 'piece-student-b',
+    }),
+    (error) => {
+      assert.match(error.message, /not-found|forbidden/i)
+      assert.doesNotMatch(error.message, /student-b|piece-student-b/i)
+      return true
+    },
+  )
+})
+
+test('revoked Piece is absent from student list and cannot reopen by exact ID', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-revoked-a',
+    pieceId: 'work-revoked-a',
+    arrangementId: 'arr-revoked-a',
+    studentId: 'student-a',
+    title: 'Fikrimin İnce Gülü',
+    teacherNote: '',
+    assignedAt: '2026-09-24T08:10:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'assignment-a',
+      chordAssignmentIds: [],
+    },
+  })
+  await h.store.putPieceAssignment(piece)
+  const active = createInitialPieceLifecycleRecord(piece)
+  const revoked = revokePieceLifecycleRecord(
+    active,
+    '2026-09-24T08:30:00Z',
+  )
+  await h.store.commitPieceLifecycleMutation({
+    currentLifecycle: active,
+    nextLifecycle: revoked,
+  })
+
+  const service = createStudentDeliveryReadService(h)
+  assert.deepEqual(
+    await service.listPieces({
+      providerSubject: 'uid-student-a',
+    }),
+    Object.freeze([]),
+  )
+  await assert.rejects(
+    () => service.getPiece({
+      providerSubject: 'uid-student-a',
+      pieceAssignmentId: piece.pieceAssignmentId,
+    }),
+    /not-found|forbidden/i,
   )
 })
