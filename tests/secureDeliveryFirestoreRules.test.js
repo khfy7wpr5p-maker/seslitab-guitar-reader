@@ -15,6 +15,8 @@ import {
 const PROJECT_ID = 'demo-seslitab-td06'
 const COLLECTIONS = Object.freeze([
   'identityMappings',
+  'identityDomainBindings',
+  'secureDeliveryProvisioningAudit',
   'teacherStudentGrants',
   'privateAssignments',
   'assignmentLifecycle',
