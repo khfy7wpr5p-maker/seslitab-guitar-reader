@@ -194,19 +194,22 @@ test('SES-14 provisioning stays non-HTTP, secret-free and production-disabled', 
     /secureDeliveryProvisioning|provisioning\/v1|provisioning.*router/i,
   )
 
-  const cli = readFileSync(
-    new URL(
-      '../scripts/secureDeliveryProvisioning.mjs',
-      import.meta.url,
+  const cliContract = [
+    '../scripts/secureDeliveryProvisioning.mjs',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js',
+  ].map((path) =>
+    readFileSync(
+      new URL(path, import.meta.url),
+      'utf8',
     ),
-    'utf8',
-  )
+  ).join('\n')
+
   assert.match(
-    cli,
+    cliContract,
     /SECURE_DELIVERY_PROVISIONING_APPLY/,
   )
   assert.match(
-    cli,
+    cliContract,
     /--apply/,
   )
 
