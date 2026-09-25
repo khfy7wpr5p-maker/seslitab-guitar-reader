@@ -381,6 +381,33 @@ function applyCreateIdentity(
   const existingBinding =
     before.binding
 
+  for (
+    const candidate
+    of state.identities.values()
+  ) {
+    if (
+      candidate.providerSubject ===
+        command.providerSubject
+    ) {
+      continue
+    }
+
+    const candidateIdentity =
+      mappingDomainIdentity(
+        candidate,
+      )
+    if (
+      candidateIdentity.role ===
+        identity.role &&
+      candidateIdentity.stableId ===
+        identity.stableId
+    ) {
+      throw new Error(
+        'secure-delivery-provisioning-domain-binding-conflict',
+      )
+    }
+  }
+
   if (existingMapping !== null) {
     const existingIdentity =
       mappingDomainIdentity(
