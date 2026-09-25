@@ -12,6 +12,10 @@ import {
   createSecureDeliveryProvisioningService,
 } from '../backend/delivery/provisioning/secureDeliveryProvisioningService.js'
 import {
+  normalizeSecureDeliveryProvisioningManifest,
+  parseSecureDeliveryProvisioningCliArgs,
+} from '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js'
+import {
   createSecureDeliveryAuthorization,
 } from '../backend/delivery/authorization/secureDeliveryAuthorization.js'
 
@@ -526,3 +530,98 @@ test('SES-14 batch conflict produces zero partial writes and zero audit rows', a
     Object.freeze([]),
   )
 })
+
+test('SES-14 manifest and CLI contracts are strict and dry-run-first', () => {
+  const manifest =
+    normalizeSecureDeliveryProvisioningManifest({
+      commands: [
+        {
+          operationId:
+            'op-manifest',
+          action:
+            SECURE_DELIVERY_PROVISIONING_ACTION.CREATE_IDENTITY,
+          operatorId:
+            'operator-test',
+          reason:
+            'manifest validation',
+          timestamp: T0,
+          providerSubject:
+            'uid-manifest',
+          role: 'STUDENT',
+          teacherId: null,
+          studentId:
+            'student-manifest',
+        },
+      ],
+    })
+
+  assert.equal(
+    manifest.commands.length,
+    1,
+  )
+  assert.equal(
+    Object.isFrozen(
+      manifest.commands,
+    ),
+    true,
+  )
+
+  assert.throws(
+    () =>
+      normalizeSecureDeliveryProvisioningManifest({
+        commands: manifest.commands,
+        productionProjectId:
+          'must-not-be-accepted',
+      }),
+    /unsupported field/i,
+  )
+
+  assert.deepEqual(
+    parseSecureDeliveryProvisioningCliArgs([
+      '--manifest',
+      'manifest.json',
+    ]),
+    Object.freeze({
+      manifestPath:
+        'manifest.json',
+      apply: false,
+      emulator: false,
+    }),
+  )
+
+  assert.throws(
+    () =>
+      parseSecureDeliveryProvisioningCliArgs([
+        '--manifest',
+        'manifest.json',
+        '--apply',
+      ]),
+    /emulator-only|production.*not authorized/i,
+  )
+
+  assert.deepEqual(
+    parseSecureDeliveryProvisioningCliArgs([
+      '--manifest',
+      'manifest.json',
+      '--emulator',
+      '--apply',
+    ]),
+    Object.freeze({
+      manifestPath:
+        'manifest.json',
+      apply: true,
+      emulator: true,
+    }),
+  )
+
+  assert.throws(
+    () =>
+      parseSecureDeliveryProvisioningCliArgs([
+        '--manifest',
+        'manifest.json',
+        '--unknown',
+      ]),
+    /unsupported.*argument/i,
+  )
+})
+
