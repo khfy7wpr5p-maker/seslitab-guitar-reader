@@ -42,6 +42,38 @@ function documentId(value) {
   ).toString('base64url')
 }
 
+function domainBindingDocumentId(
+  domainKey,
+) {
+  const parts =
+    domainKey.split('\u0001')
+  if (
+    parts.length !== 2 ||
+    (
+      parts[0] !== 'TEACHER' &&
+      parts[0] !== 'STUDENT'
+    )
+  ) {
+    throw new Error(
+      'secure-delivery-provisioning-domain-binding-key-invalid',
+    )
+  }
+
+  const stableId =
+    normalizeRequiredId(
+      parts[1],
+      'stableId',
+    )
+
+  return Buffer.from(
+    JSON.stringify([
+      parts[0],
+      stableId,
+    ]),
+    'utf8',
+  ).toString('base64url')
+}
+
 function pairDocumentId(
   teacherId,
   studentId,
@@ -202,7 +234,9 @@ export function createFirestoreSecureDeliveryProvisioningStore({
 
   function bindingRef(domainKey) {
     return collections.bindings.doc(
-      documentId(domainKey),
+      domainBindingDocumentId(
+        domainKey,
+      ),
     )
   }
 
