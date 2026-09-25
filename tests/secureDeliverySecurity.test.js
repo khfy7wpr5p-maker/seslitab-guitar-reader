@@ -142,3 +142,84 @@ test('TD-06 keeps DURABLY_PREPARED distinct from DELIVERED_TO_STUDENT', () => {
     /prepared[^\n]{0,40}(?:means|=|is)\s*delivered/i,
   )
 })
+
+test('SES-14 provisioning stays non-HTTP, secret-free and production-disabled', () => {
+  const provisioningSource = [
+    '../src/services/secureDeliveryProvisioning.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningDomain.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningStore.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningService.js',
+    '../backend/delivery/provisioning/firestoreSecureDeliveryProvisioningStore.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js',
+    '../scripts/secureDeliveryProvisioning.mjs',
+  ].map((path) =>
+    readFileSync(
+      new URL(path, import.meta.url),
+      'utf8',
+    ),
+  ).join('\n')
+
+  for (const forbidden of [
+    /serviceAccount/i,
+    /private_key/i,
+    /client_email/i,
+    /credential\.cert/i,
+    /password/i,
+    /raw ID token/i,
+    /BEGIN PRIVATE KEY/i,
+  ]) {
+    assert.doesNotMatch(
+      provisioningSource,
+      forbidden,
+    )
+  }
+
+  const server = readFileSync(
+    new URL(
+      '../backend/server.js',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  const router = readFileSync(
+    new URL(
+      '../backend/delivery/http/router.js',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+
+  assert.doesNotMatch(
+    server + '\n' + router,
+    /secureDeliveryProvisioning|provisioning\/v1|provisioning.*router/i,
+  )
+
+  const cli = readFileSync(
+    new URL(
+      '../scripts/secureDeliveryProvisioning.mjs',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(
+    cli,
+    /SECURE_DELIVERY_PROVISIONING_APPLY/,
+  )
+  assert.match(
+    cli,
+    /--apply/,
+  )
+
+  const admin = readFileSync(
+    new URL(
+      '../backend/delivery/firebase/firebaseAdmin.js',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  assert.match(
+    admin,
+    /production-not-authorized/,
+  )
+})
+
