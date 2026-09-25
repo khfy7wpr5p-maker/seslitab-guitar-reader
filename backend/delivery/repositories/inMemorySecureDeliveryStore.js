@@ -40,6 +40,11 @@ import {
   assertStrictInputObject,
   normalizeRequiredId,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
+import {
+  createProvisioningState,
+  provisioningDomainBindingKey,
+  simulateSecureDeliveryProvisioningBatch,
+} from '../provisioning/secureDeliveryProvisioningDomain.js'
 
 const PREPARED_ROW_FIELDS = Object.freeze([
   'prepared',
@@ -122,6 +127,8 @@ export function createInMemorySecureDeliveryStore({
   poolPublications = [],
 } = {}) {
   let identityBySubject = new Map()
+  let identityBindingByDomain = new Map()
+  let provisioningAuditByOperation = new Map()
   let grantsByPair = new Map()
   let preparedByAssignment = new Map()
   let packageById = new Map()
@@ -142,7 +149,30 @@ export function createInMemorySecureDeliveryStore({
     if (identityBySubject.has(mapping.providerSubject)) {
       throw new Error('duplicate identity mapping.')
     }
+    const stableId =
+      mapping.role === 'TEACHER'
+        ? mapping.teacherId
+        : mapping.studentId
+    const bindingKey =
+      provisioningDomainBindingKey(
+        mapping.role,
+        stableId,
+      )
+    if (identityBindingByDomain.has(bindingKey)) {
+      throw new Error(
+        'duplicate stable domain identity mapping.',
+      )
+    }
     identityBySubject.set(mapping.providerSubject, mapping)
+    identityBindingByDomain.set(
+      bindingKey,
+      Object.freeze({
+        role: mapping.role,
+        stableId,
+        providerSubject:
+          mapping.providerSubject,
+      }),
+    )
   }
 
   for (const grant of grants) {
@@ -621,6 +651,45 @@ export function createInMemorySecureDeliveryStore({
     return nextLifecycle
   }
 
+  function provisioningState() {
+    return createProvisioningState({
+      identities: identityBySubject,
+      bindings: identityBindingByDomain,
+      grants: grantsByPair,
+      audits: provisioningAuditByOperation,
+    })
+  }
+
+  async function previewProvisioningBatch(
+    commands,
+  ) {
+    return simulateSecureDeliveryProvisioningBatch({
+      state: provisioningState(),
+      commands,
+    }).operations
+  }
+
+  async function commitProvisioningBatch(
+    commands,
+  ) {
+    const simulated =
+      simulateSecureDeliveryProvisioningBatch({
+        state: provisioningState(),
+        commands,
+      })
+
+    identityBySubject =
+      simulated.state.identities
+    identityBindingByDomain =
+      simulated.state.bindings
+    grantsByPair =
+      simulated.state.grants
+    provisioningAuditByOperation =
+      simulated.state.audits
+
+    return simulated.operations
+  }
+
   return Object.freeze({
     async getIdentityMapping(providerSubject) {
       const id = normalizeRequiredId(
@@ -648,6 +717,28 @@ export function createInMemorySecureDeliveryStore({
           ),
         ) ?? null
       )
+    },
+
+    previewProvisioningBatch,
+    commitProvisioningBatch,
+
+    async getProvisioningAudit(
+      operationId,
+    ) {
+      return (
+        provisioningAuditByOperation.get(
+          normalizeRequiredId(
+            operationId,
+            'operationId',
+          ),
+        ) ?? null
+      )
+    },
+
+    async listProvisioningAudit() {
+      return Object.freeze([
+        ...provisioningAuditByOperation.values(),
+      ])
     },
 
     async getPreparedAssignment(assignmentId) {
