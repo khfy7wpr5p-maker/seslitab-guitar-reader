@@ -18,7 +18,7 @@
     "test": "node --test tests/*.test.js",
     "backend:start": "node backend/server.js",
     "backend:dev": "node --watch backend/server.js",
-    "test:td06:emulator": "firebase emulators:exec --project demo-seslitab-td06 --only auth,firestore \"node --test tests/secureDeliveryFirestoreRules.test.js tests/secureDeliveryFirebaseEmulator.test.js\""
+    "test:td06:emulator": "firebase emulators:exec --project demo-seslitab-td06 --only auth,firestore \"node --test tests/secureDeliveryFirestoreRules.test.js tests/secureDeliveryFirebaseEmulator.test.js tests/secureDeliveryProvisioningFirebaseEmulator.test.js\""
   },
   "dependencies": {
     "cors": "^2.8.5",
