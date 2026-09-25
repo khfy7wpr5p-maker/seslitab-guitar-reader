@@ -625,3 +625,44 @@ test('SES-14 manifest and CLI contracts are strict and dry-run-first', () => {
   )
 })
 
+test('SES-14 rejects provider role collision for the same UID', async () => {
+  const store =
+    createInMemorySecureDeliveryStore()
+  const service =
+    await appliedService(store)
+
+  await service.execute({
+    apply: true,
+    commands: [
+      createIdentity({
+        operationId:
+          'op-role-teacher',
+        providerSubject:
+          'uid-role-collision',
+        role: 'TEACHER',
+        teacherId:
+          'teacher-role',
+      }),
+    ],
+  })
+
+  await assert.rejects(
+    () =>
+      service.execute({
+        apply: true,
+        commands: [
+          createIdentity({
+            operationId:
+              'op-role-student',
+            providerSubject:
+              'uid-role-collision',
+            role: 'STUDENT',
+            studentId:
+              'student-role',
+          }),
+        ],
+      }),
+    /provider|identity.*conflict|role/i,
+  )
+})
+
