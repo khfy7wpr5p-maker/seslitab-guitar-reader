@@ -435,6 +435,7 @@ export function createFirestoreSecureDeliveryProvisioningStore({
   async function loadState(
     commands,
     getAll,
+    getIdentityCollection,
   ) {
     const descriptors =
       primaryDescriptors(commands)
@@ -589,6 +590,30 @@ export function createFirestoreSecureDeliveryProvisioningStore({
       )
     }
 
+    if (
+      commands.some(
+        (command) =>
+          command.action ===
+          SECURE_DELIVERY_PROVISIONING_ACTION.CREATE_IDENTITY,
+      )
+    ) {
+      const identitySnap =
+        await getIdentityCollection()
+      for (
+        const item
+        of identitySnap.docs
+      ) {
+        const mapping =
+          restoreIdentity(
+            item.data(),
+          )
+        maps.identities.set(
+          mapping.providerSubject,
+          mapping,
+        )
+      }
+    }
+
     return createProvisioningState(
       maps,
     )
@@ -601,6 +626,8 @@ export function createFirestoreSecureDeliveryProvisioningStore({
       commands,
       async (refs) =>
         db.getAll(...refs),
+      async () =>
+        collections.identities.get(),
     )
 
     return simulateSecureDeliveryProvisioningBatch({
@@ -630,6 +657,10 @@ export function createFirestoreSecureDeliveryProvisioningStore({
             commands,
             async (refs) =>
               tx.getAll(...refs),
+            async () =>
+              tx.get(
+                collections.identities,
+              ),
           )
 
         const simulated =
