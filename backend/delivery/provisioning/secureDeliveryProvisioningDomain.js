@@ -778,6 +778,58 @@ function applyRegrant(
   }
 }
 
+function currentCommandTargetState(
+  state,
+  command,
+) {
+  if (
+    command.action ===
+      SECURE_DELIVERY_PROVISIONING_ACTION.CREATE_IDENTITY
+  ) {
+    const identity =
+      getProvisioningDomainIdentity(
+        command,
+      )
+    return identitySnapshot(
+      state,
+      command.providerSubject,
+      provisioningDomainBindingKey(
+        identity.role,
+        identity.stableId,
+      ),
+    )
+  }
+
+  if (
+    command.action ===
+      SECURE_DELIVERY_PROVISIONING_ACTION.DISABLE_IDENTITY
+  ) {
+    const mapping =
+      state.identities.get(
+        command.providerSubject,
+      ) ?? null
+    if (mapping === null) {
+      return Object.freeze({
+        mapping: null,
+        binding: null,
+      })
+    }
+    return identitySnapshot(
+      state,
+      command.providerSubject,
+      mappingDomainKey(
+        mapping,
+      ),
+    )
+  }
+
+  return grantSnapshot(
+    state,
+    command.teacherId,
+    command.studentId,
+  )
+}
+
 function applyNewCommand(
   state,
   command,
@@ -862,6 +914,20 @@ export function simulateSecureDeliveryProvisioningBatch({
       ) {
         throw new Error(
           'secure-delivery-provisioning-operationId-payload-conflict',
+        )
+      }
+
+      const currentState =
+        currentCommandTargetState(
+          next,
+          command,
+        )
+      if (
+        hashJson(currentState) !==
+        existingAudit.afterFingerprint
+      ) {
+        throw new Error(
+          'secure-delivery-provisioning-idempotent-replay-state-drift',
         )
       }
 
