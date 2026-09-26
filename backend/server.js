@@ -83,9 +83,7 @@ app.use(
 // General gateway CORS remains unchanged for non-Secure-Delivery routes.
 app.use(
   cors(
-    createCorsOptions(
-      GATEWAY_CONFIG.allowedOrigins,
-    ),
+    createCorsOptions(GATEWAY_CONFIG.allowedOrigins),
   ),
 )
 app.use(express.json())
