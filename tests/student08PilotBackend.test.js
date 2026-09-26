@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 
 import {
   createStudent08PilotApp,
@@ -20,6 +21,17 @@ async function request(app, path, init = {}) {
 const allowedOrigin =
   'https://st-student-s08-3-pilot.onrender.com'
 
+function subjectHash(value) {
+  return crypto
+    .createHash('sha256')
+    .update(value, 'utf8')
+    .digest('hex')
+}
+
+const allowedProviderSubjectHashes = [
+  subjectHash('firebase-uid-a'),
+]
+
 const tokenVerifier = {
   async verifyIdToken(token) {
     assert.equal(token, 'pilot-token')
@@ -28,7 +40,9 @@ const tokenVerifier = {
 }
 
 test('pilot store maps Firebase subject to opaque stable student identity', async () => {
-  const store = createStudent08PilotStore()
+  const store = createStudent08PilotStore({
+    allowedProviderSubjectHashes,
+  })
 
   const mapping =
     await store.getIdentityMapping('firebase-uid-a')
@@ -50,6 +64,7 @@ test('pilot app exposes authenticated sanitized Pool, SCORE, CHORD_BOARD and Pie
   const app = createStudent08PilotApp({
     tokenVerifier,
     allowedOrigin,
+    allowedProviderSubjectHashes,
   })
 
   const pool = await request(
@@ -195,10 +210,101 @@ test('pilot app exposes authenticated sanitized Pool, SCORE, CHORD_BOARD and Pie
   )
 })
 
+test('pilot store denies unknown and revoked provider subjects before fixture access', async () => {
+  const unknownStore = createStudent08PilotStore({
+    allowedProviderSubjectHashes,
+  })
+
+  assert.equal(
+    await unknownStore.getIdentityMapping(
+      'firebase-uid-unknown',
+    ),
+    null,
+  )
+
+  const revokedStore = createStudent08PilotStore({
+    allowedProviderSubjectHashes,
+    revokedProviderSubjectHashes: [
+      subjectHash('firebase-uid-a'),
+    ],
+  })
+
+  assert.equal(
+    await revokedStore.getIdentityMapping(
+      'firebase-uid-a',
+    ),
+    null,
+  )
+})
+
+test('pilot app fails closed for valid tokens whose UID is not authorized or is revoked', async () => {
+  const verifier = {
+    async verifyIdToken(token) {
+      if (token === 'unknown-token') {
+        return { uid: 'firebase-uid-unknown' }
+      }
+      if (token === 'revoked-token') {
+        return { uid: 'firebase-uid-a' }
+      }
+      return { uid: 'firebase-uid-a' }
+    },
+  }
+
+  const unknownApp = createStudent08PilotApp({
+    tokenVerifier: verifier,
+    allowedOrigin,
+    allowedProviderSubjectHashes,
+  })
+  const unknown = await request(
+    unknownApp,
+    '/api/secure-delivery/v1/student/pool',
+    {
+      headers: {
+        Authorization: 'Bearer unknown-token',
+        Origin: allowedOrigin,
+      },
+    },
+  )
+  assert.equal(unknown.status, 401)
+  assert.equal(
+    JSON.stringify(await unknown.json()).includes(
+      'firebase-uid-unknown',
+    ),
+    false,
+  )
+
+  const revokedApp = createStudent08PilotApp({
+    tokenVerifier: verifier,
+    allowedOrigin,
+    allowedProviderSubjectHashes,
+    revokedProviderSubjectHashes: [
+      subjectHash('firebase-uid-a'),
+    ],
+  })
+  const revoked = await request(
+    revokedApp,
+    '/api/secure-delivery/v1/student/pool',
+    {
+      headers: {
+        Authorization: 'Bearer revoked-token',
+        Origin: allowedOrigin,
+      },
+    },
+  )
+  assert.equal(revoked.status, 401)
+  assert.equal(
+    JSON.stringify(await revoked.json()).includes(
+      'firebase-uid-a',
+    ),
+    false,
+  )
+})
+
 test('pilot CORS preflight permits Authorization only for exact preview origin', async () => {
   const app = createStudent08PilotApp({
     tokenVerifier,
     allowedOrigin,
+    allowedProviderSubjectHashes,
   })
 
   const allowed = await request(
@@ -254,6 +360,7 @@ test('pilot teacher writes remain closed and health reveals no provider identity
   const app = createStudent08PilotApp({
     tokenVerifier,
     allowedOrigin,
+    allowedProviderSubjectHashes,
   })
 
   const write = await request(
@@ -297,7 +404,9 @@ test('pilot teacher writes remain closed and health reveals no provider identity
 
 
 test('pilot store fails closed for unknown IDs and every write seam', async () => {
-  const store = createStudent08PilotStore()
+  const store = createStudent08PilotStore({
+    allowedProviderSubjectHashes,
+  })
 
   assert.equal(
     await store.getPreparedAssignment('unknown'),
