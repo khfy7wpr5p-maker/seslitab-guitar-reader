@@ -75,6 +75,12 @@ test('production acceptance creates an isolated student identity, exercises real
     async previewProvisioningBatch() {
       throw new Error('preview not expected')
     },
+    async getProvisioningAudit() {
+      return null
+    },
+    async listProvisioningAudit() {
+      return []
+    },
     async commitProvisioningBatch(commands) {
       for (const command of commands) {
         calls.push([
