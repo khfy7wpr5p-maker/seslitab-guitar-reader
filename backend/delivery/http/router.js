@@ -158,11 +158,11 @@ export function createSecureDeliveryRouter({
 
   function requireAvailable(
     operation,
-    enabled,
+    isEnabled,
     errorMessage,
   ) {
     return (_req, res, next) => {
-      if (!enabled) {
+      if (!isEnabled()) {
         const error =
           new Error(errorMessage)
         const status =
@@ -189,7 +189,7 @@ export function createSecureDeliveryRouter({
   function requireEnabled(operation) {
     return requireAvailable(
       operation,
-      trustedConfig.enabled,
+() => trustedConfig.enabled,
       'secure-delivery-feature-disabled',
     )
   }
@@ -197,7 +197,7 @@ export function createSecureDeliveryRouter({
   function requireWrites(operation) {
     return requireAvailable(
       operation,
-      trustedConfig.writesEnabled,
+() => trustedConfig.writesEnabled,
       'secure-delivery-writes-disabled',
     )
   }
@@ -205,7 +205,7 @@ export function createSecureDeliveryRouter({
   function requireStudentReads(operation) {
     return requireAvailable(
       operation,
-      trustedConfig.studentReadsEnabled,
+() => trustedConfig.studentReadsEnabled,
       'secure-delivery-student-reads-disabled',
     )
   }
