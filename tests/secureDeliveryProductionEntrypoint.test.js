@@ -581,3 +581,81 @@ test('Render pilot server remains a tiny dispatcher and cannot embed pilot or pr
     /createPilotFirebaseTokenVerifier|STUDENT08_PILOT_ENABLED|createSecureDeliveryProductionHttpApp|startGateway|multer/,
   )
 })
+
+
+test('production runtime runs the gated acceptance bootstrap only after listen and exposes its completion result', async () => {
+  const calls = []
+  const runtime =
+    await startProductionSecureDeliveryServer({
+      env: {
+        PORT: '10002',
+        SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP:
+          'true',
+      },
+      async createHttpApp() {
+        return {
+          app: {
+            kind:
+              'production-app',
+          },
+          boundary: {
+            async close() {},
+          },
+        }
+      },
+      async runAcceptance(input) {
+        calls.push([
+          'acceptance',
+          input.port,
+          input.env
+            .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP,
+        ])
+        return Object.freeze({
+          ran: true,
+          outcome: 'pass',
+          authorizedStatus:
+            200,
+          revokedStatus: 400,
+        })
+      },
+      listen(
+        _app,
+        _port,
+        _host,
+        callback,
+      ) {
+        calls.push([
+          'listen',
+        ])
+        callback()
+        return fakeServer()
+      },
+    })
+
+  const result =
+    await runtime
+      .waitForAcceptance()
+
+  assert.deepEqual(
+    calls,
+    [
+      ['listen'],
+      [
+        'acceptance',
+        10002,
+        'true',
+      ],
+    ],
+  )
+  assert.deepEqual(
+    result,
+    {
+      ran: true,
+      outcome: 'pass',
+      authorizedStatus: 200,
+      revokedStatus: 400,
+    },
+  )
+
+  await runtime.close()
+})
