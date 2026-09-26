@@ -65,6 +65,7 @@ const PREPARED_AT = '2026-09-23T12:02:00Z'
 const DELIVERED_AT = '2026-09-23T12:03:00Z'
 const TEACHER_ID = 'pilot-teacher'
 const PILOT_PREFIX = /^[a-f0-9]{16}$/u
+const PILOT_SUBJECT_HASH = /^[a-f0-9]{64}$/u
 
 const PILOT_MUSIC_XML =
   '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -109,7 +110,7 @@ const PILOT_TAB_MUSIC_XML =
   '<notations><technical><string>1</string><fret>12</fret></technical></notations></note>' +
   '</measure></part></score-partwise>'
 
-function hashSubject(value) {
+function fingerprintSubject(value) {
   if (
     typeof value !== 'string' ||
     value.trim().length === 0
@@ -123,7 +124,40 @@ function hashSubject(value) {
     .createHash('sha256')
     .update(value.trim(), 'utf8')
     .digest('hex')
+}
+
+function hashSubject(value) {
+  return fingerprintSubject(value)
     .slice(0, 16)
+}
+
+function normalizeSubjectHashes(
+  values,
+  label,
+) {
+  if (!Array.isArray(values)) {
+    throw new TypeError(
+      `${label} must be an array.`,
+    )
+  }
+
+  const output = new Set()
+  for (const value of values) {
+    if (
+      typeof value !== 'string' ||
+      !PILOT_SUBJECT_HASH.test(
+        value.trim().toLowerCase(),
+      )
+    ) {
+      throw new TypeError(
+        `${label} must contain SHA-256 hex hashes.`,
+      )
+    }
+    output.add(
+      value.trim().toLowerCase(),
+    )
+  }
+  return output
 }
 
 function studentIdForSubject(subject) {
@@ -342,11 +376,41 @@ function readOnlyFailure() {
   throw new Error('pilot-read-only')
 }
 
-export function createStudent08PilotStore() {
+export function createStudent08PilotStore({
+  allowedProviderSubjectHashes = [],
+  revokedProviderSubjectHashes = [],
+} = {}) {
+  const allowedSubjects =
+    normalizeSubjectHashes(
+      allowedProviderSubjectHashes,
+      'allowedProviderSubjectHashes',
+    )
+  const revokedSubjects =
+    normalizeSubjectHashes(
+      revokedProviderSubjectHashes,
+      'revokedProviderSubjectHashes',
+    )
+
   return Object.freeze({
     async getIdentityMapping(
       providerSubject,
     ) {
+      const subjectFingerprint =
+        fingerprintSubject(
+          providerSubject,
+        )
+
+      if (
+        !allowedSubjects.has(
+          subjectFingerprint,
+        ) ||
+        revokedSubjects.has(
+          subjectFingerprint,
+        )
+      ) {
+        return null
+      }
+
       return createSecureDeliveryIdentityMapping({
         providerSubject,
         role: 'STUDENT',
@@ -652,6 +716,8 @@ function readOnlyTeacherPieceService() {
 export function createStudent08PilotApp({
   tokenVerifier,
   allowedOrigin,
+  allowedProviderSubjectHashes = [],
+  revokedProviderSubjectHashes = [],
 } = {}) {
   if (
     !tokenVerifier ||
@@ -664,7 +730,10 @@ export function createStudent08PilotApp({
   }
 
   const store =
-    createStudent08PilotStore()
+    createStudent08PilotStore({
+      allowedProviderSubjectHashes,
+      revokedProviderSubjectHashes,
+    })
   const authorization =
     createSecureDeliveryAuthorization({
       store,
