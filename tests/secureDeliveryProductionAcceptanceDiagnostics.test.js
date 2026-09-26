@@ -45,6 +45,7 @@ function response(status, body = {}) {
 function harness({
   failCleanup = false,
   failCreateAfterMutation = false,
+  customTokenError = null,
 } = {}) {
   let mapping = null
   const actions = []
@@ -170,6 +171,9 @@ function harness({
             },
             async createUser() {},
             async createCustomToken() {
+              if (customTokenError) {
+                throw customTokenError
+              }
               return customToken
             },
             async deleteUser() {},
@@ -266,6 +270,61 @@ test('failed production acceptance logs only a privacy-safe stage and disables a
         h.customToken,
       ].join('|'),
     ),
+  )
+})
+
+test('custom-token signing failure logs a fixed privacy-safe reason without leaking the underlying error', async () => {
+  const signingError = Object.assign(
+    new Error(
+      'Permission iam.serviceAccounts.signBlob is required for service-account@example.invalid',
+    ),
+    {
+      code:
+        'auth/insufficient-permission',
+    },
+  )
+  const h = harness({
+    customTokenError:
+      signingError,
+  })
+
+  await assert.rejects(
+    () =>
+      runSecureDeliveryProductionAcceptance({
+        env: env(),
+        port: 10000,
+        factories:
+          h.factories,
+        fetchImpl:
+          h.fetchImpl,
+        write:
+          h.write,
+      }),
+    /production-acceptance-failed/i,
+  )
+
+  assert.deepEqual(
+    h.actions,
+    [
+      'CREATE_IDENTITY',
+      'DISABLE_IDENTITY',
+    ],
+  )
+
+  const joined =
+    h.logs.join('\n')
+
+  assert.match(
+    joined,
+    /"outcome":"failed","stage":"custom_token","reason":"signing_permission_denied"/,
+  )
+  assert.match(
+    joined,
+    /"outcome":"failure_cleanup_pass","stage":"identity_disable_cleanup"/,
+  )
+  assert.doesNotMatch(
+    joined,
+    /iam\.serviceAccounts\.signBlob|service-account@example\.invalid|insufficient-permission/,
   )
 })
 
