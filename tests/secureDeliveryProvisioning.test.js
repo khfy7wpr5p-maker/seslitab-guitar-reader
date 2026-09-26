@@ -586,6 +586,7 @@ test('SES-14 manifest and CLI contracts are strict and dry-run-first', () => {
         'manifest.json',
       apply: false,
       emulator: false,
+      production: false,
     }),
   )
 
@@ -596,7 +597,49 @@ test('SES-14 manifest and CLI contracts are strict and dry-run-first', () => {
         'manifest.json',
         '--apply',
       ]),
-    /emulator-only|production.*not authorized/i,
+    /requires.*emulator|requires.*production/i,
+  )
+
+  assert.deepEqual(
+    parseSecureDeliveryProvisioningCliArgs([
+      '--manifest',
+      'manifest.json',
+      '--production',
+    ]),
+    Object.freeze({
+      manifestPath:
+        'manifest.json',
+      apply: false,
+      emulator: false,
+      production: true,
+    }),
+  )
+
+  assert.deepEqual(
+    parseSecureDeliveryProvisioningCliArgs([
+      '--manifest',
+      'manifest.json',
+      '--production',
+      '--apply',
+    ]),
+    Object.freeze({
+      manifestPath:
+        'manifest.json',
+      apply: true,
+      emulator: false,
+      production: true,
+    }),
+  )
+
+  assert.throws(
+    () =>
+      parseSecureDeliveryProvisioningCliArgs([
+        '--manifest',
+        'manifest.json',
+        '--emulator',
+        '--production',
+      ]),
+    /mutually exclusive/i,
   )
 
   assert.deepEqual(
@@ -611,6 +654,7 @@ test('SES-14 manifest and CLI contracts are strict and dry-run-first', () => {
         'manifest.json',
       apply: true,
       emulator: true,
+      production: false,
     }),
   )
 

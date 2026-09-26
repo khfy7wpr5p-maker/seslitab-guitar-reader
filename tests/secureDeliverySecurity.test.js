@@ -107,23 +107,47 @@ test('TD-06 is not automatically mounted into the production browser entry point
   )
 })
 
-test('TD-06 backend remains fail-closed instead of silently activating Firebase composition', () => {
+test('SES-15 backend remains fail-closed behind a dedicated production activation boundary', () => {
   const server = readFileSync(
     new URL('../backend/server.js', import.meta.url),
+    'utf8',
+  )
+  const boundary = readFileSync(
+    new URL(
+      '../backend/delivery/production/secureDeliveryProductionBoundary.js',
+      import.meta.url,
+    ),
     'utf8',
   )
 
   assert.match(
     server,
+    /createSecureDeliveryProductionBoundary/,
+  )
+  assert.doesNotMatch(
+    server,
     /createUnavailableSecureDeliveryRouter/,
   )
   assert.doesNotMatch(
     server,
-    /createSecureDeliveryComposition/,
-  )
-  assert.doesNotMatch(
-    server,
     /firebaseAdmin|firestoreSecureDeliveryStore|firebaseTokenVerifier/,
+  )
+
+  assert.match(
+    boundary,
+    /SECURE_DELIVERY_PRODUCTION_ACTIVATION/,
+  )
+  assert.match(
+    boundary,
+    /SECURE_DELIVERY_FIREBASE_PROJECT_ID/,
+  )
+  assert.match(
+    boundary,
+    /read-only-requires-writes-disabled/,
+  )
+  assert.match(
+    boundary,
+    /createUnavailableSecureDeliveryRouter/,
   )
 })
 
@@ -151,6 +175,7 @@ test('SES-14 provisioning stays non-HTTP, secret-free and production-disabled', 
     '../backend/delivery/provisioning/secureDeliveryProvisioningService.js',
     '../backend/delivery/provisioning/firestoreSecureDeliveryProvisioningStore.js',
     '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningTarget.js',
     '../scripts/secureDeliveryProvisioning.mjs',
   ].map((path) =>
     readFileSync(
@@ -197,6 +222,7 @@ test('SES-14 provisioning stays non-HTTP, secret-free and production-disabled', 
   const cliContract = [
     '../scripts/secureDeliveryProvisioning.mjs',
     '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningTarget.js',
   ].map((path) =>
     readFileSync(
       new URL(path, import.meta.url),

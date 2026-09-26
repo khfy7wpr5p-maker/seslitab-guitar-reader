@@ -19,10 +19,14 @@ import { getProviderName } from './providers/index.js'
 import { runAudiverisPreflight, safePreflightResponse } from './services/audiverisPreflight.js'
 import { startGateway, stopGateway } from './index.js'
 import { toGatewayError, ValidationError } from './utils/errors.js'
-import { createCorsOptions } from './security/corsPolicy.js'
+import {
+  createCorsOptions,
+  createSecureDeliveryCorsOptions,
+} from './security/corsPolicy.js'
 import { createFixedWindowRateLimiter } from './security/rateLimitPolicy.js'
-import { createSecureDeliveryConfig } from './delivery/config.js'
-import { createUnavailableSecureDeliveryRouter } from './delivery/http/router.js'
+import {
+  createSecureDeliveryProductionBoundary,
+} from './delivery/production/secureDeliveryProductionBoundary.js'
 
 import { handleUploadPdf } from './api/uploadPdf.js'
 import { handleAnalyzePdf } from './api/analyzePdf.js'
@@ -46,6 +50,11 @@ async function ensureRuntimeDirs() {
 
 await ensureRuntimeDirs()
 
+const SECURE_DELIVERY_BOUNDARY =
+  await createSecureDeliveryProductionBoundary({
+    env: process.env,
+  })
+
 const app = express()
 
 // Render forwards requests through internal reverse proxies.
@@ -59,11 +68,24 @@ app.set('trust proxy', [
 
 let shuttingDown = false
 
-// Exact-origin CORS allowlist.
-// Production permits only the published SesliTab frontend.
-// Requests without an Origin header remain available for health checks
-// and server-to-server tools.
-app.use(cors(createCorsOptions(GATEWAY_CONFIG.allowedOrigins)))
+// Secure Delivery has a narrower browser contract that permits
+// Authorization only for the permanent Student/teacher origins.
+app.use(
+  '/api/secure-delivery/v1',
+  cors(
+    createSecureDeliveryCorsOptions(
+      GATEWAY_CONFIG
+        .secureDeliveryAllowedOrigins,
+    ),
+  ),
+)
+
+// General gateway CORS remains unchanged for non-Secure-Delivery routes.
+app.use(
+  cors(
+    createCorsOptions(GATEWAY_CONFIG.allowedOrigins),
+  ),
+)
 app.use(express.json())
 
 // Reject new jobs/searches during shutdown.
@@ -147,17 +169,11 @@ const jobRateLimiter = createFixedWindowRateLimiter({
 
 app.use('/api', apiRateLimiter)
 
-const SECURE_DELIVERY_CONFIG =
-  createSecureDeliveryConfig(process.env)
-
-// TD-06 is mounted fail-closed before Firebase composition exists.
-// Task 10 will replace this unavailable boundary with the injected
-// Secure Delivery composition after its own reviewed implementation.
+// Production activation remains fail-closed unless the dedicated
+// SES-15 master gate and read-only profile are explicitly enabled.
 app.use(
   '/api/secure-delivery/v1',
-  createUnavailableSecureDeliveryRouter({
-    config: SECURE_DELIVERY_CONFIG,
-  }),
+  SECURE_DELIVERY_BOUNDARY.router,
 )
 
 app.post('/api/v1/discovery/search', async (req, res) => {
@@ -311,6 +327,7 @@ async function shutdown() {
   console.log('[OMR Gateway] Shutting down...')
   shuttingDown = true
   server.close()
+  await SECURE_DELIVERY_BOUNDARY.close()
   await stopGateway()
   process.exit(0)
 }

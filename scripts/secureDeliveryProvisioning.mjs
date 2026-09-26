@@ -3,11 +3,12 @@ import {
 } from 'node:fs/promises'
 
 import {
-  createInMemorySecureDeliveryStore,
-} from '../backend/delivery/repositories/inMemorySecureDeliveryStore.js'
-import {
   createSecureDeliveryProvisioningService,
 } from '../backend/delivery/provisioning/secureDeliveryProvisioningService.js'
+import {
+  assertSecureDeliveryProvisioningApplyAuthorization,
+  createSecureDeliveryProvisioningTarget,
+} from '../backend/delivery/provisioning/secureDeliveryProvisioningTarget.js'
 import {
   normalizeSecureDeliveryProvisioningManifest,
   parseSecureDeliveryProvisioningCliArgs,
@@ -29,52 +30,6 @@ async function readManifest(path) {
   )
 }
 
-async function createStore({
-  emulator,
-}) {
-  if (!emulator) {
-    return Object.freeze({
-      store:
-        createInMemorySecureDeliveryStore(),
-      close: async () => {},
-      target:
-        'MANIFEST_ONLY_DRY_RUN',
-    })
-  }
-
-  const {
-    createFirebaseAdminServices,
-    EMULATOR_PROJECT_ID,
-  } = await import(
-    '../backend/delivery/firebase/firebaseAdmin.js'
-  )
-  const {
-    createFirestoreSecureDeliveryProvisioningStore,
-  } = await import(
-    '../backend/delivery/provisioning/firestoreSecureDeliveryProvisioningStore.js'
-  )
-
-  const admin =
-    createFirebaseAdminServices({
-      emulator: true,
-      projectId:
-        EMULATOR_PROJECT_ID,
-      appName:
-        'seslitab-ses14-provisioning-cli',
-    })
-
-  return Object.freeze({
-    store:
-      createFirestoreSecureDeliveryProvisioningStore({
-        firestore:
-          admin.firestore,
-      }),
-    close: () => admin.delete(),
-    target:
-      'FIREBASE_EMULATOR',
-  })
-}
-
 async function main() {
   const options =
     parseSecureDeliveryProvisioningCliArgs(
@@ -86,21 +41,16 @@ async function main() {
     )
 
   const applyEnabled =
-    process.env
-      .SECURE_DELIVERY_PROVISIONING_APPLY ===
-    'true'
-
-  if (
-    options.apply &&
-    !applyEnabled
-  ) {
-    throw new Error(
-      'secure-delivery-provisioning-apply-disabled-by-safety-gate',
-    )
-  }
+    assertSecureDeliveryProvisioningApplyAuthorization({
+      options,
+      env: process.env,
+    })
 
   const target =
-    await createStore(options)
+    await createSecureDeliveryProvisioningTarget({
+      options,
+      env: process.env,
+    })
 
   try {
     const service =
