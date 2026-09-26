@@ -177,12 +177,13 @@ test('create and disable bootstrap gates are mutually exclusive and require a fi
   assert.throws(
     () =>
       createPilotIdentityBootstrap({
-        env: {
-          SECURE_DELIVERY_PILOT_IDENTITY_BOOTSTRAP_CREATE:
-            'true',
-          STUDENT08_PILOT_ALLOWED_PROVIDER_SUBJECT_HASHES:
-            hash('subject'),
-        },
+        env: activeEnv(
+          'subject',
+          {
+            SECURE_DELIVERY_PILOT_IDENTITY_BOOTSTRAP_TIMESTAMP:
+              undefined,
+          },
+        ),
         firestore: {},
       }),
     /timestamp/i,
