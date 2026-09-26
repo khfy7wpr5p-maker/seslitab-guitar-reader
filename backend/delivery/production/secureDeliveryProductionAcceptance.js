@@ -492,13 +492,17 @@ export async function runSecureDeliveryProductionAcceptance({
       })
     revokedStatus =
       revoked.status
+    const revokedBody =
+      await revoked.json()
 
     if (
-      revoked.status >= 200 &&
-      revoked.status < 300
+      revoked.status !== 400 ||
+      revokedBody?.success !== false ||
+      revokedBody?.error?.code !==
+        'INVALID_REQUEST'
     ) {
       throw new Error(
-        'secure-delivery-production-acceptance-revoked-read-not-closed',
+        'secure-delivery-production-acceptance-revoked-response-invalid',
       )
     }
 
@@ -530,6 +534,7 @@ export async function runSecureDeliveryProductionAcceptance({
       },
     )
   } finally {
+    let cleanupFailure = null
     try {
       await admin.auth
         .deleteUser(
@@ -538,15 +543,29 @@ export async function runSecureDeliveryProductionAcceptance({
     } catch (error) {
       if (
         error?.code !==
-          'auth/user-not-found' &&
-        failure === null
+        'auth/user-not-found'
       ) {
-        safeWrite(
-          write,
-          'cleanup_failed',
-        )
+        cleanupFailure = error
       }
     }
+
     await admin.delete()
+
+    if (
+      cleanupFailure !== null &&
+      failure === null
+    ) {
+      safeWrite(
+        write,
+        'cleanup_failed',
+      )
+      throw new Error(
+        'secure-delivery-production-acceptance-cleanup-failed',
+        {
+          cause:
+            cleanupFailure,
+        },
+      )
+    }
   }
 }
