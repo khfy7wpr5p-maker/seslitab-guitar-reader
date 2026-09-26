@@ -212,3 +212,163 @@ test('default structured observer serializes only allowlisted fields', async () 
   assert.equal(lines[0].includes('secret-token'), false)
   assert.equal(lines[0].includes('student-secret'), false)
 })
+
+
+test('router consumes rejected async observer results without affecting the request', async () => {
+  const d = deps([])
+  let rejectionConsumed = false
+  d.observeRequest = () => ({
+    catch(handler) {
+      rejectionConsumed = true
+      handler(
+        new Error(
+          'synthetic-observer-sink-failure',
+        ),
+      )
+      return this
+    },
+  })
+
+  const app =
+    appFor(
+      createSecureDeliveryRouter(d),
+    )
+
+  const response = await request(
+    app,
+    '/api/secure-delivery/v1/student/assignments',
+    {
+      headers: {
+        Authorization:
+          'Bearer good-token',
+      },
+    },
+  )
+
+  assert.equal(response.status, 200)
+  assert.equal(
+    rejectionConsumed,
+    true,
+  )
+})
+
+test('feature gates emit privacy-safe unavailable outcomes before auth', async () => {
+  const cases = [
+    {
+      name: 'master gate',
+      configure(d) {
+        d.config.enabled = false
+      },
+      path:
+        '/api/secure-delivery/v1/student/assignments',
+      init: {},
+      operation:
+        'student_assignments_list',
+    },
+    {
+      name: 'student reads gate',
+      configure(d) {
+        d.config.studentReadsEnabled =
+          false
+      },
+      path:
+        '/api/secure-delivery/v1/student/assignments',
+      init: {},
+      operation:
+        'student_assignments_list',
+    },
+    {
+      name: 'writes gate',
+      configure() {},
+      path:
+        '/api/secure-delivery/v1/teacher/prepared-assignments',
+      init: {
+        method: 'POST',
+        headers: {
+          'content-type':
+            'application/json',
+        },
+        body: JSON.stringify({
+          items: [],
+        }),
+      },
+      operation:
+        'teacher_prepared_assignments_create',
+    },
+  ]
+
+  for (const item of cases) {
+    const events = []
+    const d = deps(events)
+    item.configure(d)
+    const app =
+      appFor(
+        createSecureDeliveryRouter(d),
+      )
+
+    const response =
+      await request(
+        app,
+        item.path,
+        item.init,
+      )
+
+    assert.equal(
+      response.status,
+      503,
+      item.name,
+    )
+    assert.deepEqual(
+      events,
+      [
+        {
+          event:
+            'secure_delivery_request',
+          operation:
+            item.operation,
+          outcome:
+            'unavailable',
+          status: 503,
+        },
+      ],
+      item.name,
+    )
+  }
+})
+
+
+test('feature gates preserve request-time config evaluation', async () => {
+  const events = []
+  const d = deps(events)
+  const app =
+    appFor(
+      createSecureDeliveryRouter(d),
+    )
+
+  d.config.studentReadsEnabled =
+    false
+
+  const response = await request(
+    app,
+    '/api/secure-delivery/v1/student/assignments',
+  )
+
+  assert.equal(
+    response.status,
+    503,
+  )
+  assert.deepEqual(
+    events,
+    [
+      {
+        event:
+          'secure_delivery_request',
+        operation:
+          'student_assignments_list',
+        outcome:
+          'unavailable',
+        status: 503,
+      },
+    ],
+  )
+})
