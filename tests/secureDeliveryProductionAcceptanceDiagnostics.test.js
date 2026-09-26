@@ -48,6 +48,7 @@ function harness({
 } = {}) {
   let mapping = null
   const actions = []
+  const identityCommands = []
   const logs = []
   const customToken =
     'custom-token-sensitive-value'
@@ -71,6 +72,24 @@ function harness({
         actions.push(
           command.action,
         )
+        if (
+          command.action ===
+            'CREATE_IDENTITY' ||
+          command.action ===
+            'DISABLE_IDENTITY'
+        ) {
+          identityCommands.push({
+            action:
+              command.action,
+            providerSubject:
+              command.providerSubject,
+            studentId:
+              command.studentId ??
+              null,
+            operationId:
+              command.operationId,
+          })
+        }
 
         if (
           command.action ===
@@ -131,6 +150,7 @@ function harness({
 
   return {
     actions,
+    identityCommands,
     logs,
     get mapping() {
       return mapping
@@ -340,5 +360,62 @@ test('ambiguous create failure re-reads and disables an identity that may alread
   assert.doesNotMatch(
     joined,
     /ses15-production-acceptance-v1|custom-token-sensitive-value/,
+  )
+})
+
+
+test('acceptance run id isolates retry identity and provisioning operation ids without logging them', async () => {
+  const h = harness()
+  const retryEnv = {
+    ...env(),
+    SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_RUN_ID:
+      'retry-2',
+  }
+
+  await assert.rejects(
+    () =>
+      runSecureDeliveryProductionAcceptance({
+        env: retryEnv,
+        port: 10000,
+        factories:
+          h.factories,
+        fetchImpl:
+          h.fetchImpl,
+        write:
+          h.write,
+      }),
+    /production-acceptance-failed/i,
+  )
+
+  assert.deepEqual(
+    h.identityCommands,
+    [
+      {
+        action:
+          'CREATE_IDENTITY',
+        providerSubject:
+          'ses15-production-acceptance-retry-2',
+        studentId:
+          'ses15-production-acceptance-student-retry-2',
+        operationId:
+          'ses15-production-acceptance-create-retry-2',
+      },
+      {
+        action:
+          'DISABLE_IDENTITY',
+        providerSubject:
+          'ses15-production-acceptance-retry-2',
+        studentId: null,
+        operationId:
+          'ses15-production-acceptance-failure-disable-retry-2',
+      },
+    ],
+  )
+
+  const joined =
+    h.logs.join('\n')
+  assert.doesNotMatch(
+    joined,
+    /retry-2|ses15-production-acceptance-retry-2/,
   )
 })
