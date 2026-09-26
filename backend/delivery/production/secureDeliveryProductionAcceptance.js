@@ -5,10 +5,8 @@ import {
   assertSecureDeliveryProvisioningApplyAuthorization,
 } from '../provisioning/secureDeliveryProvisioningTarget.js'
 
-const ACCEPTANCE_UID =
-  'ses15-production-acceptance-v1'
-const ACCEPTANCE_STUDENT_ID =
-  'ses15-production-acceptance-student-v1'
+const DEFAULT_ACCEPTANCE_RUN_ID =
+  'v1'
 const STUDENT_ORIGIN =
   'https://st-student-app.onrender.com'
 
@@ -33,6 +31,38 @@ function safeWrite(
       ...detail,
     }),
   )
+}
+
+function acceptanceIdentity(
+  runId,
+) {
+  if (
+    !/^[a-z0-9][a-z0-9-]{0,31}$/u.test(
+      runId,
+    )
+  ) {
+    throw new Error(
+      'secure-delivery-production-acceptance-run-id-invalid',
+    )
+  }
+
+  return Object.freeze({
+    uid:
+      'ses15-production-acceptance-' +
+      runId,
+    studentId:
+      'ses15-production-acceptance-student-' +
+      runId,
+    createOperationId:
+      'ses15-production-acceptance-create-' +
+      runId,
+    disableOperationId:
+      'ses15-production-acceptance-disable-' +
+      runId,
+    failureDisableOperationId:
+      'ses15-production-acceptance-failure-disable-' +
+      runId,
+  })
 }
 
 function addSecond(timestamp) {
@@ -140,6 +170,12 @@ function assertAcceptanceEnvironment(
         .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_TIMESTAMP ??
         '',
     ).trim()
+  const runId =
+    String(
+      env
+        .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_RUN_ID ??
+        DEFAULT_ACCEPTANCE_RUN_ID,
+    ).trim()
 
   if (!projectId) {
     throw new Error(
@@ -160,6 +196,9 @@ function assertAcceptanceEnvironment(
   return Object.freeze({
     projectId,
     apiKey,
+    ...acceptanceIdentity(
+      runId,
+    ),
     timestamp:
       new Date(
         Date.parse(timestamp),
@@ -171,10 +210,11 @@ function assertAcceptanceEnvironment(
 
 async function ensureAuthUser(
   auth,
+  uid,
 ) {
   try {
     await auth.getUser(
-      ACCEPTANCE_UID,
+      uid,
     )
     return
   } catch (error) {
@@ -187,7 +227,7 @@ async function ensureAuthUser(
   }
 
   await auth.createUser({
-    uid: ACCEPTANCE_UID,
+    uid,
     disabled: false,
   })
 }
@@ -335,18 +375,23 @@ export async function runSecureDeliveryProductionAcceptance({
   let authorizedStatus = null
   let revokedStatus = null
   let failure = null
+  let stage = 'identity_lookup'
+  let runtimeStore = null
+  let provisioningService = null
+  let identityMayBeActive = false
 
   try {
-    const runtimeStore =
+    runtimeStore =
       trustedFactories
         .createRuntimeStore({
           firestore:
             admin.firestore,
         })
+    stage = 'identity_lookup'
     const existing =
       await runtimeStore
         .getIdentityMapping(
-          ACCEPTANCE_UID,
+          config.uid,
         )
 
     if (
@@ -365,7 +410,7 @@ export async function runSecureDeliveryProductionAcceptance({
       })
     }
 
-    const provisioningService =
+    provisioningService =
       createSecureDeliveryProvisioningService({
         store:
           trustedFactories
@@ -380,13 +425,14 @@ export async function runSecureDeliveryProductionAcceptance({
       existing === null ||
       existing === undefined
     ) {
+      stage = 'identity_provision'
       await provisioningService
         .execute({
           apply: true,
           commands: [
             {
               operationId:
-                'ses15-production-acceptance-create-v1',
+                config.createOperationId,
               action:
                 'CREATE_IDENTITY',
               operatorId:
@@ -396,36 +442,43 @@ export async function runSecureDeliveryProductionAcceptance({
               timestamp:
                 config.timestamp,
               providerSubject:
-                ACCEPTANCE_UID,
+                config.uid,
               role: 'STUDENT',
               teacherId: null,
               studentId:
-                ACCEPTANCE_STUDENT_ID,
+                config.studentId,
             },
           ],
         })
+      identityMayBeActive = true
     } else if (
       existing.providerSubject !==
-        ACCEPTANCE_UID ||
+        config.uid ||
       existing.role !==
         'STUDENT' ||
       existing.studentId !==
-        ACCEPTANCE_STUDENT_ID ||
+        config.studentId ||
       existing.active !== true
     ) {
       throw new Error(
         'secure-delivery-production-acceptance-existing-identity-conflict',
       )
+    } else {
+      identityMayBeActive = true
     }
 
+    stage = 'auth_user'
     await ensureAuthUser(
       admin.auth,
+      config.uid,
     )
+    stage = 'custom_token'
     const customToken =
       await admin.auth
         .createCustomToken(
-          ACCEPTANCE_UID,
+          config.uid,
         )
+    stage = 'token_exchange'
     idToken =
       await exchangeCustomToken({
         fetchImpl,
@@ -434,6 +487,7 @@ export async function runSecureDeliveryProductionAcceptance({
         customToken,
       })
 
+    stage = 'authorized_read'
     const authorized =
       await studentRead({
         fetchImpl,
@@ -463,13 +517,14 @@ export async function runSecureDeliveryProductionAcceptance({
       )
     }
 
+    stage = 'identity_disable'
     await provisioningService
       .execute({
         apply: true,
         commands: [
           {
             operationId:
-              'ses15-production-acceptance-disable-v1',
+              config.disableOperationId,
             action:
               'DISABLE_IDENTITY',
             operatorId:
@@ -479,11 +534,13 @@ export async function runSecureDeliveryProductionAcceptance({
             timestamp:
               config.disableTimestamp,
             providerSubject:
-              ACCEPTANCE_UID,
+              config.uid,
           },
         ],
       })
+    identityMayBeActive = false
 
+    stage = 'revoked_read'
     const revoked =
       await studentRead({
         fetchImpl,
@@ -506,6 +563,7 @@ export async function runSecureDeliveryProductionAcceptance({
       )
     }
 
+    stage = 'complete'
     safeWrite(
       write,
       'pass',
@@ -526,6 +584,9 @@ export async function runSecureDeliveryProductionAcceptance({
     safeWrite(
       write,
       'failed',
+      {
+        stage,
+      },
     )
     throw new Error(
       'secure-delivery-production-acceptance-failed',
@@ -534,11 +595,128 @@ export async function runSecureDeliveryProductionAcceptance({
       },
     )
   } finally {
+    let identityCleanupFailure = null
+
+    if (
+      failure !== null &&
+      !identityMayBeActive &&
+      stage === 'identity_provision' &&
+      runtimeStore !== null &&
+      provisioningService !== null
+    ) {
+      try {
+        const possibleMapping =
+          await runtimeStore
+            .getIdentityMapping(
+              config.uid,
+            )
+
+        if (
+          possibleMapping !== null &&
+          possibleMapping !== undefined
+        ) {
+          const isExpectedIdentity =
+            possibleMapping
+              .providerSubject ===
+              config.uid &&
+            possibleMapping.role ===
+              'STUDENT' &&
+            possibleMapping.teacherId ===
+              null &&
+            possibleMapping.studentId ===
+              config.studentId
+
+          if (!isExpectedIdentity) {
+            throw new Error(
+              'secure-delivery-production-acceptance-failure-cleanup-identity-conflict',
+            )
+          }
+
+          if (
+            possibleMapping.active ===
+              true &&
+            possibleMapping.disabledAt ===
+              null
+          ) {
+            identityMayBeActive = true
+          } else if (
+            possibleMapping.active !==
+              false ||
+            possibleMapping.disabledAt ===
+              null
+          ) {
+            throw new Error(
+              'secure-delivery-production-acceptance-failure-cleanup-identity-state-invalid',
+            )
+          }
+        }
+      } catch (error) {
+        identityCleanupFailure = error
+        safeWrite(
+          write,
+          'failure_cleanup_failed',
+          {
+            stage:
+              'identity_lookup_cleanup',
+          },
+        )
+      }
+    }
+
+    if (
+      failure !== null &&
+      identityMayBeActive &&
+      provisioningService !== null &&
+      identityCleanupFailure === null
+    ) {
+      try {
+        await provisioningService
+          .execute({
+            apply: true,
+            commands: [
+              {
+                operationId:
+                  config.failureDisableOperationId,
+                action:
+                  'DISABLE_IDENTITY',
+                operatorId:
+                  'ses15-production-acceptance',
+                reason:
+                  'SES-15 production acceptance failure cleanup.',
+                timestamp:
+                  config.disableTimestamp,
+                providerSubject:
+                  config.uid,
+              },
+            ],
+          })
+        identityMayBeActive = false
+        safeWrite(
+          write,
+          'failure_cleanup_pass',
+          {
+            stage:
+              'identity_disable_cleanup',
+          },
+        )
+      } catch (error) {
+        identityCleanupFailure = error
+        safeWrite(
+          write,
+          'failure_cleanup_failed',
+          {
+            stage:
+              'identity_disable_cleanup',
+          },
+        )
+      }
+    }
+
     let cleanupFailure = null
     try {
       await admin.auth
         .deleteUser(
-          ACCEPTANCE_UID,
+          config.uid,
         )
     } catch (error) {
       if (
@@ -550,6 +728,18 @@ export async function runSecureDeliveryProductionAcceptance({
     }
 
     await admin.delete()
+
+    if (
+      identityCleanupFailure !== null
+    ) {
+      throw new Error(
+        'secure-delivery-production-acceptance-failure-cleanup-failed',
+        {
+          cause:
+            identityCleanupFailure,
+        },
+      )
+    }
 
     if (
       cleanupFailure !== null &&
