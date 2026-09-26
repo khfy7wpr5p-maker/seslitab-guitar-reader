@@ -4,13 +4,16 @@
 
 This document describes the SES-14 identity and teacher↔student grant provisioning subsystem.
 
-SES-14 does **not** activate production Firebase or Secure Delivery. The production adapter remains intentionally unavailable. The executable runner can validate a manifest locally and can use the existing Firebase emulator. Real production identities, credentials, Auth providers, rules/index deployment, hosting configuration and production deployment remain outside this package.
+SES-14 did **not** activate production Firebase or Secure Delivery. SES-15 now prepares a production provisioning target behind additional explicit gates, but no production target is accessed and no production write occurs merely by merging the readiness code. Real production identities, credentials, Auth providers, rules/index deployment, hosting configuration and production deployment remain human-gated operations.
 
 ## Safety invariants
 
 - Provisioning is dry-run by default.
 - Apply requires both the CLI `--apply` flag and `SECURE_DELIVERY_PROVISIONING_APPLY=true`.
-- In SES-14, apply is emulator-only; `--apply` without `--emulator` is rejected.
+- Emulator apply requires `--emulator --apply` plus `SECURE_DELIVERY_PROVISIONING_APPLY=true`.
+- Production state access requires `--production` plus `SECURE_DELIVERY_PROVISIONING_PRODUCTION_AUTHORIZED=true`.
+- Production apply additionally requires `--apply`, `SECURE_DELIVERY_PROVISIONING_APPLY=true`, and `SECURE_DELIVERY_PROVISIONING_PRODUCTION_APPLY=true`.
+- `--emulator` and `--production` are mutually exclusive.
 - Provider UID → stable SesliTab identity and stable SesliTab identity → provider UID are both unique.
 - A disabled identity is not deleted and its reverse binding is retained.
 - Grants are revoked, not deleted.
@@ -83,7 +86,26 @@ node scripts/secureDeliveryProvisioning.mjs \
   --apply
 ```
 
-SES-14 intentionally rejects a non-emulator apply.
+## Production dry-run and apply gates
+
+Production-state dry-run is available only after explicit authorization and approved runtime credentials:
+
+```bash
+SECURE_DELIVERY_PROVISIONING_PRODUCTION_AUTHORIZED=true \
+SECURE_DELIVERY_FIREBASE_PROJECT_ID=<approved-project-id> \
+node scripts/secureDeliveryProvisioning.mjs \
+  --manifest ./provisioning.json \
+  --production
+```
+
+A production write is not implied by that dry-run. It requires the additional `--apply` flag and both write gates:
+
+```text
+SECURE_DELIVERY_PROVISIONING_APPLY=true
+SECURE_DELIVERY_PROVISIONING_PRODUCTION_APPLY=true
+```
+
+Do not place credential values or service-account JSON in manifests, commands committed to the repository, logs, PR descriptions, Linear, or Notion. The approved runtime uses Firebase Admin Application Default Credentials. Production execution remains an SES-15 human-gated operation.
 
 ## New teacher provisioning
 
