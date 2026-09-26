@@ -2,8 +2,12 @@ import express from 'express'
 
 import { parseBearerToken } from './bearerToken.js'
 import {
+  secureDeliveryErrorStatus,
   sendSecureDeliveryError,
 } from './errorResponse.js'
+import {
+  secureDeliveryRequestOutcome,
+} from '../observability/secureDeliveryRequestObserver.js'
 
 function assertConfig(config) {
   if (
@@ -59,6 +63,7 @@ export function createSecureDeliveryRouter({
   teacherPieceService,
   studentService,
   config,
+  observeRequest,
 } = {}) {
   const trustedConfig = assertConfig(config)
 
@@ -108,6 +113,37 @@ export function createSecureDeliveryRouter({
       method,
       'studentService',
     )
+  }
+
+  if (
+    observeRequest !== undefined &&
+    typeof observeRequest !== 'function'
+  ) {
+    throw new TypeError(
+      'observeRequest must be a function when provided.',
+    )
+  }
+
+  function observe(
+    operation,
+    outcome,
+    status,
+  ) {
+    if (typeof observeRequest !== 'function') {
+      return
+    }
+    try {
+      observeRequest(
+        Object.freeze({
+          event: 'secure_delivery_request',
+          operation,
+          outcome,
+          status,
+        }),
+      )
+    } catch {
+      // Observability must never make Secure Delivery unavailable.
+    }
   }
 
   const router = express.Router()
@@ -183,17 +219,37 @@ export function createSecureDeliveryRouter({
     return decoded.uid.trim()
   }
 
-  function route(handler) {
+  function route(
+    operation,
+    handler,
+  ) {
     return async (req, res) => {
       try {
         const subject =
           await providerSubject(req)
-        return await handler(
-          req,
-          res,
-          subject,
+        const response =
+          await handler(
+            req,
+            res,
+            subject,
+          )
+        observe(
+          operation,
+          'authorized',
+          res.statusCode,
         )
+        return response
       } catch (error) {
+        const status =
+          secureDeliveryErrorStatus(error)
+        observe(
+          operation,
+          secureDeliveryRequestOutcome(
+            error,
+            status,
+          ),
+          status,
+        )
         return sendSecureDeliveryError(
           res,
           error,
@@ -206,7 +262,7 @@ export function createSecureDeliveryRouter({
     '/teacher/prepared-assignments',
     requireEnabled,
     requireWrites,
-    route(async (req, res, subject) =>
+    route('teacher_prepared_assignments_create', async (req, res, subject) =>
       success(
         res,
         await preparedService.prepareBatch({
@@ -221,7 +277,7 @@ export function createSecureDeliveryRouter({
     '/teacher/deliveries',
     requireEnabled,
     requireWrites,
-    route(async (req, res, subject) =>
+    route('teacher_deliveries_create', async (req, res, subject) =>
       success(
         res,
         await teacherService.deliverBatch({
@@ -236,7 +292,7 @@ export function createSecureDeliveryRouter({
   router.get(
     '/teacher/deliveries',
     requireEnabled,
-    route(async (_req, res, subject) =>
+    route('teacher_deliveries_list', async (_req, res, subject) =>
       success(
         res,
         await teacherService.listDeliveries({
@@ -250,7 +306,7 @@ export function createSecureDeliveryRouter({
     '/teacher/assignments/:assignmentId/actions',
     requireEnabled,
     requireWrites,
-    route(async (req, res, subject) =>
+    route('teacher_assignment_action', async (req, res, subject) =>
       success(
         res,
         await teacherService.applyAssignmentAction({
@@ -268,7 +324,7 @@ export function createSecureDeliveryRouter({
     '/teacher/pieces',
     requireEnabled,
     requireWrites,
-    route(async (req, res, subject) =>
+    route('teacher_piece_create', async (req, res, subject) =>
       success(
         res,
         await teacherPieceService.createPiece({
@@ -283,7 +339,7 @@ export function createSecureDeliveryRouter({
     '/teacher/pieces/:pieceAssignmentId/actions',
     requireEnabled,
     requireWrites,
-    route(async (req, res, subject) =>
+    route('teacher_piece_action', async (req, res, subject) =>
       success(
         res,
         await teacherPieceService.applyPieceAction({
@@ -300,7 +356,7 @@ export function createSecureDeliveryRouter({
     '/student/pool',
     requireEnabled,
     requireStudentReads,
-    route(async (_req, res, subject) =>
+    route('student_pool_list', async (_req, res, subject) =>
       success(
         res,
         await studentService.listPoolItems({
@@ -314,7 +370,7 @@ export function createSecureDeliveryRouter({
     '/student/assignments',
     requireEnabled,
     requireStudentReads,
-    route(async (_req, res, subject) =>
+    route('student_assignments_list', async (_req, res, subject) =>
       success(
         res,
         await studentService.listAssignments({
@@ -329,7 +385,7 @@ export function createSecureDeliveryRouter({
     '/student/pieces',
     requireEnabled,
     requireStudentReads,
-    route(async (_req, res, subject) =>
+    route('student_pieces_list', async (_req, res, subject) =>
       success(
         res,
         await studentService.listPieces({
@@ -343,7 +399,7 @@ export function createSecureDeliveryRouter({
     '/student/pieces/:pieceAssignmentId',
     requireEnabled,
     requireStudentReads,
-    route(async (req, res, subject) =>
+    route('student_piece_get', async (req, res, subject) =>
       success(
         res,
         await studentService.getPiece({
@@ -359,7 +415,7 @@ export function createSecureDeliveryRouter({
     '/student/assignments/:deliveryId',
     requireEnabled,
     requireStudentReads,
-    route(async (req, res, subject) =>
+    route('student_assignment_get', async (req, res, subject) =>
       success(
         res,
         await studentService.getAssignment({
