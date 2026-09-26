@@ -44,6 +44,7 @@ function response(status, body = {}) {
 
 function harness({
   failCleanup = false,
+  failCreateAfterMutation = false,
 } = {}) {
   let mapping = null
   const actions = []
@@ -86,6 +87,14 @@ function harness({
             createdAt:
               command.timestamp,
             disabledAt: null,
+          }
+
+          if (
+            failCreateAfterMutation
+          ) {
+            throw new Error(
+              'synthetic ambiguous create failure',
+            )
           }
         }
 
@@ -278,6 +287,55 @@ test('failed production acceptance fails closed when identity cleanup itself fai
   assert.match(
     joined,
     /"outcome":"failure_cleanup_failed","stage":"identity_disable_cleanup"/,
+  )
+  assert.doesNotMatch(
+    joined,
+    /ses15-production-acceptance-v1|custom-token-sensitive-value/,
+  )
+})
+
+
+test('ambiguous create failure re-reads and disables an identity that may already have committed', async () => {
+  const h = harness({
+    failCreateAfterMutation: true,
+  })
+
+  await assert.rejects(
+    () =>
+      runSecureDeliveryProductionAcceptance({
+        env: env(),
+        port: 10000,
+        factories:
+          h.factories,
+        fetchImpl:
+          h.fetchImpl,
+        write:
+          h.write,
+      }),
+    /production-acceptance-failed/i,
+  )
+
+  assert.deepEqual(
+    h.actions,
+    [
+      'CREATE_IDENTITY',
+      'DISABLE_IDENTITY',
+    ],
+  )
+  assert.equal(
+    h.mapping?.active,
+    false,
+  )
+
+  const joined =
+    h.logs.join('\n')
+  assert.match(
+    joined,
+    /"outcome":"failed","stage":"identity_provision"/,
+  )
+  assert.match(
+    joined,
+    /"outcome":"failure_cleanup_pass","stage":"identity_disable_cleanup"/,
   )
   assert.doesNotMatch(
     joined,
