@@ -5,6 +5,12 @@ import { readFileSync } from 'node:fs'
 import {
   createSecureDeliveryProductionBoundary,
 } from '../backend/delivery/production/secureDeliveryProductionBoundary.js'
+import {
+  PUBLISHED_FRONTEND_ORIGIN,
+  PUBLISHED_STUDENT_APP_ORIGIN,
+  createSecureDeliveryCorsOptions,
+  parseSecureDeliveryAllowedOrigins,
+} from '../backend/security/corsPolicy.js'
 
 function fakeStore() {
   return {
@@ -60,6 +66,7 @@ function fakeFactories(calls) {
 
 function enabledReadOnlyEnv(overrides = {}) {
   return {
+    NODE_ENV: 'production',
     SECURE_DELIVERY_PRODUCTION_ACTIVATION: 'true',
     SECURE_DELIVERY_ENABLED: 'true',
     STUDENT_DELIVERY_READS_ENABLED: 'true',
@@ -91,6 +98,12 @@ test('production boundary stays closed when only legacy Secure Delivery flags ar
 
 test('production activation refuses incomplete or write-enabled profiles before Firebase initialization', async () => {
   const cases = [
+    [
+      enabledReadOnlyEnv({
+        NODE_ENV: 'development',
+      }),
+      /node-env|production/i,
+    ],
     [
       enabledReadOnlyEnv({
         SECURE_DELIVERY_ENABLED: 'false',
@@ -224,4 +237,51 @@ test('production Firebase adapter requires an explicit authorization sentinel an
     source,
     /serviceAccount|private_key|client_email|credential\.cert/i,
   )
+})
+
+
+test('Secure Delivery CORS defaults to the permanent Student and teacher origins and permits Authorization only on this boundary', () => {
+  const allowed =
+    parseSecureDeliveryAllowedOrigins(
+      undefined,
+      'production',
+    )
+
+  assert.deepEqual(allowed, [
+    PUBLISHED_FRONTEND_ORIGIN,
+    PUBLISHED_STUDENT_APP_ORIGIN,
+  ])
+  assert.equal(
+    PUBLISHED_STUDENT_APP_ORIGIN,
+    'https://st-student-app.onrender.com',
+  )
+
+  const options =
+    createSecureDeliveryCorsOptions(
+      allowed,
+    )
+  assert.deepEqual(
+    options.allowedHeaders,
+    ['Content-Type', 'Authorization'],
+  )
+  assert.equal(
+    options.credentials,
+    false,
+  )
+})
+
+test('server mounts Secure Delivery-specific CORS before the general gateway CORS', () => {
+  const server = readFileSync(
+    new URL('../backend/server.js', import.meta.url),
+    'utf8',
+  )
+  const secureIndex = server.indexOf(
+    "createSecureDeliveryCorsOptions",
+  )
+  const generalIndex = server.indexOf(
+    "createCorsOptions(GATEWAY_CONFIG.allowedOrigins)",
+  )
+
+  assert.ok(secureIndex >= 0)
+  assert.ok(generalIndex > secureIndex)
 })
