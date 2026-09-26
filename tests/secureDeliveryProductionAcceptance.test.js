@@ -278,7 +278,17 @@ test('a previously disabled acceptance mapping makes restart idempotently comple
       factories: {
         createAdminServices() {
           return {
-            auth: {},
+            auth: {
+              async deleteUser() {
+                throw Object.assign(
+                  new Error('not found'),
+                  {
+                    code:
+                      'auth/user-not-found',
+                  },
+                )
+              },
+            },
             firestore: {},
             async delete() {
               calls.push('delete')
