@@ -1,0 +1,61 @@
+name: SES-15 production smoke
+
+on:
+  push:
+    branches:
+      - ses15-live-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Health is active read-only production
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS --fail-with-body --retry 3 --retry-delay 2             https://st-student-api.onrender.com/health             -o /tmp/health.json
+          cat /tmp/health.json
+          node - <<'NODE'
+          const fs = require('fs')
+          const body = JSON.parse(fs.readFileSync('/tmp/health.json', 'utf8'))
+          const data = body.data
+          if (!body.success) throw new Error('health success=false')
+          if (data?.status !== 'ok') throw new Error('health status not ok')
+          if (data?.mode !== 'secure-delivery-production') throw new Error('wrong mode')
+          if (data?.active !== true) throw new Error('production boundary not active')
+          if (data?.studentReadsEnabled !== true) throw new Error('student reads not enabled')
+          if (data?.writesEnabled !== false) throw new Error('writes must remain disabled')
+          NODE
+
+      - name: Unauthenticated student read fails closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(
+            curl -sS               -o /tmp/unauthorized.json               -w '%{http_code}'               https://st-student-api.onrender.com/api/secure-delivery/v1/student/assignments
+          )"
+          cat /tmp/unauthorized.json
+          test "$status" = "401"
+
+      - name: Permanent Student origin receives exact CORS allowance
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS -D /tmp/headers.txt -o /tmp/cors-body.json             -H 'Origin: https://st-student-app.onrender.com'             https://st-student-api.onrender.com/api/secure-delivery/v1/student/assignments || true
+          cat /tmp/headers.txt
+          grep -i '^access-control-allow-origin: https://st-student-app.onrender.com' /tmp/headers.txt
+
+      - name: Disallowed origin is not echoed
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS -D /tmp/headers-bad.txt -o /tmp/cors-bad-body.json             -H 'Origin: https://example.invalid'             https://st-student-api.onrender.com/api/secure-delivery/v1/student/assignments || true
+          cat /tmp/headers-bad.txt
+          if grep -qi '^access-control-allow-origin: https://example.invalid' /tmp/headers-bad.txt; then
+            echo 'unexpected disallowed origin echo'
+            exit 1
+          fi
