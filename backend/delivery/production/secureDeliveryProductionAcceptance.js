@@ -496,7 +496,9 @@ export async function runSecureDeliveryProductionAcceptance({
           },
         ],
       })
+    identityMayBeActive = false
 
+    stage = 'revoked_read'
     const revoked =
       await studentRead({
         fetchImpl,
