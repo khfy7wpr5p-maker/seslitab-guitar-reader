@@ -237,3 +237,27 @@ The server store returns only active Pool publications that are either:
 The HTTP read model strips `recipientStudentIds`, provider identity, teacher identity, Firestore paths and other internal authority data before returning Pool content.
 
 This follow-up does not activate production Firebase, deploy rules/indexes, provision identities, write to Student App, implement TD-07 Chord Board delivery, or authorize merge/deployment.
+
+
+## Privacy-safe request observability — SES-30
+
+Secure Delivery request observability is server-side and intentionally data-minimized.
+
+Each observed request emits one structured JSON line with exactly these fields:
+
+```json
+{
+  "event": "secure_delivery_request",
+  "operation": "student_assignments_list",
+  "outcome": "authorized",
+  "status": 200
+}
+```
+
+Allowed outcome classes are `authorized`, `unauthorized`, `revoked`, `not_found`, `unavailable`, and `rejected`.
+
+The observer never receives or serializes bearer tokens, Firebase/provider subjects, stable teacher/student IDs, assignment IDs, Piece IDs, credentials, secrets, request bodies, or provider error details. Observer failures are swallowed so logging cannot make Secure Delivery unavailable.
+
+For exact student reads, an already revoked assignment/Piece remains externally hidden with the same bounded not-found HTTP response. Internally, the read service uses a non-identifying revoked marker so request observability can record `outcome = revoked` without exposing which record or student was involved.
+
+Production activation remains a separate human gate. SES-30 adds the observability contract to the composable Secure Delivery server path; it does not enable Firebase, Secure Delivery flags, production credentials, or production deployment by itself.
