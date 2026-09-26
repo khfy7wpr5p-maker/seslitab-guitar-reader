@@ -474,6 +474,6 @@ test('revoked Piece is absent from student list and cannot reopen by exact ID', 
       providerSubject: 'uid-student-a',
       pieceAssignmentId: piece.pieceAssignmentId,
     }),
-    /not-found|forbidden/i,
+    /not-found.*revoked/i,
   )
 })
