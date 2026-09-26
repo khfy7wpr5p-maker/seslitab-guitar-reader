@@ -22,6 +22,12 @@ function activeEnv(subject, overrides = {}) {
       '2026-09-26T17:45:00Z',
     STUDENT08_PILOT_ALLOWED_PROVIDER_SUBJECT_HASHES:
       hash(subject),
+    SECURE_DELIVERY_PROVISIONING_PRODUCTION_AUTHORIZED:
+      'true',
+    SECURE_DELIVERY_PROVISIONING_APPLY:
+      'true',
+    SECURE_DELIVERY_PROVISIONING_PRODUCTION_APPLY:
+      'true',
     ...overrides,
   }
 }
@@ -127,6 +133,26 @@ test('pilot bootstrap never provisions a subject outside the pre-existing SES-8 
     result: 'NOT_ALLOWLISTED',
   })
   assert.deepEqual(calls, [])
+})
+
+test('active bootstrap also requires the existing production provisioning safety gates', () => {
+  for (const missing of [
+    'SECURE_DELIVERY_PROVISIONING_PRODUCTION_AUTHORIZED',
+    'SECURE_DELIVERY_PROVISIONING_APPLY',
+    'SECURE_DELIVERY_PROVISIONING_PRODUCTION_APPLY',
+  ]) {
+    const env = activeEnv('subject')
+    delete env[missing]
+
+    assert.throws(
+      () =>
+        createPilotIdentityBootstrap({
+          env,
+          firestore: {},
+        }),
+      /provisioning|safety-gate|authorized/i,
+    )
+  }
 })
 
 test('create and disable bootstrap gates are mutually exclusive and require a fixed audit timestamp', () => {
