@@ -133,11 +133,15 @@ function addSecond(timestamp) {
 async function loadFactories() {
   const [
     adminModule,
+    localSignerModule,
     runtimeStoreModule,
     provisioningStoreModule,
   ] = await Promise.all([
     import(
-      './productionAcceptanceFirebaseAdmin.js'
+      '../firebase/firebaseAdmin.js'
+    ),
+    import(
+      './secureDeliveryAcceptanceLocalSigner.js'
     ),
     import(
       '../firebase/firestoreSecureDeliveryStore.js'
@@ -150,7 +154,10 @@ async function loadFactories() {
   return Object.freeze({
     createAdminServices:
       adminModule
-        .createProductionAcceptanceAdminServices,
+        .createFirebaseAdminServices,
+    createAcceptanceLocalSigner:
+      localSignerModule
+        .createSecureDeliveryAcceptanceLocalSigner,
     createRuntimeStore:
       runtimeStoreModule
         .createFirestoreSecureDeliveryStore,
