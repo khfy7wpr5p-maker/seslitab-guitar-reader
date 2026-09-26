@@ -50,6 +50,7 @@ function harness({
   let mapping = null
   const actions = []
   const identityCommands = []
+  const adminServiceInputs = []
   const logs = []
   const customToken =
     'custom-token-sensitive-value'
@@ -152,12 +153,16 @@ function harness({
   return {
     actions,
     identityCommands,
+    adminServiceInputs,
     logs,
     get mapping() {
       return mapping
     },
     factories: {
-      createAdminServices() {
+      createAdminServices(input) {
+        adminServiceInputs.push(
+          input,
+        )
         return {
           auth: {
             async getUser() {
@@ -236,6 +241,12 @@ test('failed production acceptance logs only a privacy-safe stage and disables a
           h.write,
       }),
     /production-acceptance-failed/i,
+  )
+
+  assert.equal(
+    h.adminServiceInputs[0]
+      ?.localServiceAccountSigning,
+    true,
   )
 
   assert.deepEqual(
