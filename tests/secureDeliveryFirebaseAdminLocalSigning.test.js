@@ -15,9 +15,6 @@ import {
   createFirebaseAdminServices,
 } from '../backend/delivery/firebase/firebaseAdmin.js'
 import {
-  createProductionAcceptanceAdminServices,
-} from '../backend/delivery/production/productionAcceptanceFirebaseAdmin.js'
-import {
   createSecureDeliveryAcceptanceLocalSigner,
 } from '../backend/delivery/production/secureDeliveryAcceptanceLocalSigner.js'
 
