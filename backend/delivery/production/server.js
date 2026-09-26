@@ -60,13 +60,11 @@ export async function startSecureDeliveryServer({
       env,
     })
 
-  let acceptancePromise =
-    Promise.resolve(
-      Object.freeze({
-        ran: false,
-        outcome: 'disabled',
-      }),
-    )
+  let resolveAcceptance
+  const acceptancePromise =
+    new Promise((resolve) => {
+      resolveAcceptance = resolve
+    })
 
   const server = listen(
     app,
@@ -78,34 +76,42 @@ export async function startSecureDeliveryServer({
       )
 
       if (
-        enabled(
+        !enabled(
           env
             .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP,
         )
       ) {
-        acceptancePromise =
-          Promise.resolve()
-            .then(() =>
-              runAcceptance({
-                env,
-                port,
-              }),
-            )
-            .catch(() => {
-              console.error(
-                JSON.stringify({
-                  event:
-                    'secure_delivery_production_acceptance',
-                  outcome:
-                    'failed',
-                }),
-              )
-              return Object.freeze({
-                ran: true,
-                outcome: 'failed',
-              })
-            })
+        resolveAcceptance(
+          Object.freeze({
+            ran: false,
+            outcome: 'disabled',
+          }),
+        )
+        return
       }
+
+      Promise.resolve()
+        .then(() =>
+          runAcceptance({
+            env,
+            port,
+          }),
+        )
+        .catch(() => {
+          console.error(
+            JSON.stringify({
+              event:
+                'secure_delivery_production_acceptance',
+              outcome:
+                'failed',
+            }),
+          )
+          return Object.freeze({
+            ran: true,
+            outcome: 'failed',
+          })
+        })
+        .then(resolveAcceptance)
     },
   )
 
