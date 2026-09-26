@@ -34,9 +34,38 @@ function notFound() {
   return new Error('student-assignment-not-found')
 }
 
+function revokedNotFound() {
+  return new Error(
+    'student-assignment-not-found-revoked',
+  )
+}
+
+function isAssignmentNotFound(error) {
+  return (
+    error instanceof Error &&
+    error.message.startsWith(
+      'student-assignment-not-found',
+    )
+  )
+}
 
 function pieceNotFound() {
   return new Error('student-piece-not-found')
+}
+
+function pieceRevokedNotFound() {
+  return new Error(
+    'student-piece-not-found-revoked',
+  )
+}
+
+function isPieceNotFound(error) {
+  return (
+    error instanceof Error &&
+    error.message.startsWith(
+      'student-piece-not-found',
+    )
+  )
 }
 
 function sameRecord(left, right) {
@@ -240,10 +269,13 @@ export function createStudentDeliveryReadService({
       delivery === null ||
       !isDeliveryRecord(delivery) ||
       delivery.deliveryId !== id ||
-      delivery.studentId !== studentId ||
-      delivery.revokedAt !== null
+      delivery.studentId !== studentId
     ) {
       throw notFound()
+    }
+
+    if (delivery.revokedAt !== null) {
+      throw revokedNotFound()
     }
 
     const prepared =
@@ -272,7 +304,7 @@ export function createStudentDeliveryReadService({
         )
       }
       if (lifecycle.revokedAt !== null) {
-        throw notFound()
+        throw revokedNotFound()
       }
     }
 
@@ -350,9 +382,7 @@ export function createStudentDeliveryReadService({
         )
       } catch (error) {
         if (
-          error instanceof Error &&
-          error.message ===
-            'student-assignment-not-found'
+          isAssignmentNotFound(error)
         ) {
           continue
         }
@@ -421,7 +451,7 @@ export function createStudentDeliveryReadService({
       }
 
       if (lifecycle.revokedAt !== null) {
-        throw pieceNotFound()
+        throw pieceRevokedNotFound()
       }
     }
 
@@ -499,9 +529,7 @@ export function createStudentDeliveryReadService({
         )
       } catch (error) {
         if (
-          error instanceof Error &&
-          error.message ===
-            'student-piece-not-found'
+          isPieceNotFound(error)
         ) {
           continue
         }
