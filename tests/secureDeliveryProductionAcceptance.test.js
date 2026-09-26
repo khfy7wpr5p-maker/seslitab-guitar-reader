@@ -152,14 +152,10 @@ test('production acceptance creates an isolated student identity, exercises real
                   uid: input.uid,
                 }
               },
-              async createCustomToken(
-                subject,
-              ) {
-                assert.equal(
-                  subject,
-                  uid,
+              async createCustomToken() {
+                throw new Error(
+                  'runtime admin signer must not be used',
                 )
-                return customToken
               },
               async deleteUser(subject) {
                 calls.push([
@@ -172,6 +168,26 @@ test('production acceptance creates an isolated student identity, exercises real
             async delete() {
               calls.push([
                 'delete-admin',
+              ])
+            },
+          }
+        },
+        createAcceptanceLocalSigner() {
+          return {
+            auth: {
+              async createCustomToken(
+                subject,
+              ) {
+                assert.equal(
+                  subject,
+                  uid,
+                )
+                return customToken
+              },
+            },
+            async delete() {
+              calls.push([
+                'delete-local-signer',
               ])
             },
           }
@@ -294,6 +310,11 @@ test('a previously disabled acceptance mapping makes restart idempotently comple
               calls.push('delete')
             },
           }
+        },
+        createAcceptanceLocalSigner() {
+          throw new Error(
+            'local signer must not be created for already-complete acceptance',
+          )
         },
         createRuntimeStore() {
           return {

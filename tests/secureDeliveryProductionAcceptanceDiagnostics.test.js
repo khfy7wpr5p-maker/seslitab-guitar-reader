@@ -50,6 +50,8 @@ function harness({
   let mapping = null
   const actions = []
   const identityCommands = []
+  const adminServiceInputs = []
+  const localSignerInputs = []
   const logs = []
   const customToken =
     'custom-token-sensitive-value'
@@ -152,12 +154,17 @@ function harness({
   return {
     actions,
     identityCommands,
+    adminServiceInputs,
+    localSignerInputs,
     logs,
     get mapping() {
       return mapping
     },
     factories: {
-      createAdminServices() {
+      createAdminServices(input) {
+        adminServiceInputs.push(
+          input,
+        )
         return {
           auth: {
             async getUser() {
@@ -171,14 +178,29 @@ function harness({
             },
             async createUser() {},
             async createCustomToken() {
+              throw new Error(
+                'runtime admin signer must not be used',
+              )
+            },
+            async deleteUser() {},
+          },
+          firestore: {},
+          async delete() {},
+        }
+      },
+      createAcceptanceLocalSigner(input) {
+        localSignerInputs.push(
+          input,
+        )
+        return {
+          auth: {
+            async createCustomToken() {
               if (customTokenError) {
                 throw customTokenError
               }
               return customToken
             },
-            async deleteUser() {},
           },
-          firestore: {},
           async delete() {},
         }
       },
@@ -236,6 +258,17 @@ test('failed production acceptance logs only a privacy-safe stage and disables a
           h.write,
       }),
     /production-acceptance-failed/i,
+  )
+
+  assert.equal(
+    h.adminServiceInputs[0]
+      ?.localServiceAccountSigning,
+    undefined,
+  )
+  assert.equal(
+    h.localSignerInputs[0]
+      ?.projectId,
+    'project-a',
   )
 
   assert.deepEqual(

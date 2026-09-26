@@ -133,11 +133,15 @@ function addSecond(timestamp) {
 async function loadFactories() {
   const [
     adminModule,
+    localSignerModule,
     runtimeStoreModule,
     provisioningStoreModule,
   ] = await Promise.all([
     import(
       '../firebase/firebaseAdmin.js'
+    ),
+    import(
+      './secureDeliveryAcceptanceLocalSigner.js'
     ),
     import(
       '../firebase/firestoreSecureDeliveryStore.js'
@@ -151,6 +155,9 @@ async function loadFactories() {
     createAdminServices:
       adminModule
         .createFirebaseAdminServices,
+    createAcceptanceLocalSigner:
+      localSignerModule
+        .createSecureDeliveryAcceptanceLocalSigner,
     createRuntimeStore:
       runtimeStoreModule
         .createFirestoreSecureDeliveryStore,
@@ -398,6 +405,7 @@ export async function runSecureDeliveryProductionAcceptance({
 
   for (const method of [
     'createAdminServices',
+    'createAcceptanceLocalSigner',
     'createRuntimeStore',
     'createProvisioningStore',
   ]) {
@@ -431,6 +439,7 @@ export async function runSecureDeliveryProductionAcceptance({
   let stage = 'identity_lookup'
   let runtimeStore = null
   let provisioningService = null
+  let localSigner = null
   let identityMayBeActive = false
 
   try {
@@ -526,8 +535,14 @@ export async function runSecureDeliveryProductionAcceptance({
       config.uid,
     )
     stage = 'custom_token'
+    localSigner =
+      trustedFactories
+        .createAcceptanceLocalSigner({
+          projectId:
+            config.projectId,
+        })
     const customToken =
-      await admin.auth
+      await localSigner.auth
         .createCustomToken(
           config.uid,
         )
@@ -785,6 +800,16 @@ export async function runSecureDeliveryProductionAcceptance({
         'auth/user-not-found'
       ) {
         cleanupFailure = error
+      }
+    }
+
+    if (localSigner !== null) {
+      try {
+        await localSigner.delete()
+      } catch (error) {
+        if (cleanupFailure === null) {
+          cleanupFailure = error
+        }
       }
     }
 

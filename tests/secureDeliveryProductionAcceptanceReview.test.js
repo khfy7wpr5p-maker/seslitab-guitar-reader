@@ -92,13 +92,25 @@ function harness({
             },
             async createUser() {},
             async createCustomToken() {
-              return 'custom-value'
+              throw new Error(
+                'runtime admin signer must not be used',
+              )
             },
             async deleteUser() {
               if (cleanupError) throw cleanupError
             },
           },
           firestore: {},
+          async delete() {},
+        }
+      },
+      createAcceptanceLocalSigner() {
+        return {
+          auth: {
+            async createCustomToken() {
+              return 'custom-value'
+            },
+          },
           async delete() {},
         }
       },
