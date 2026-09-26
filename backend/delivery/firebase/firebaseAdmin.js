@@ -9,7 +9,9 @@ import { getFirestore } from 'firebase-admin/firestore'
 
 const EMULATOR_PROJECT_ID = 'demo-seslitab-td06'
 
-function productionCredential() {
+function productionCredential(
+  localServiceAccountSigning,
+) {
   const credentialPath =
     String(
       process.env
@@ -17,7 +19,10 @@ function productionCredential() {
         '',
     ).trim()
 
-  return credentialPath.length > 0
+  return (
+    localServiceAccountSigning === true &&
+    credentialPath.length > 0
+  )
     ? cert(credentialPath)
     : applicationDefault()
 }
@@ -27,6 +32,7 @@ export function createFirebaseAdminServices({
   projectId,
   appName = 'seslitab-secure-delivery',
   productionAuthorized = false,
+  localServiceAccountSigning = false,
 } = {}) {
   const normalizedProjectId =
     String(projectId ?? '').trim()
@@ -83,7 +89,9 @@ export function createFirebaseAdminServices({
           projectId:
             normalizedProjectId,
           credential:
-            productionCredential(),
+            productionCredential(
+              localServiceAccountSigning,
+            ),
         },
     appName,
   )
