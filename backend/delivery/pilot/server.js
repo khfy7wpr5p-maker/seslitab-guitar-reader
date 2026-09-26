@@ -1,10 +1,22 @@
 import {
-  selectSecureDeliveryServerModule,
+  startSelectedSecureDeliveryServer,
 } from './runtimeEntrypoint.js'
 
-const modulePath =
-  selectSecureDeliveryServerModule(
-    process.env,
-  )
+const runtime =
+  await startSelectedSecureDeliveryServer({
+    env: process.env,
+  })
 
-await import(modulePath)
+for (const signal of [
+  'SIGINT',
+  'SIGTERM',
+]) {
+  process.on(signal, async () => {
+    try {
+      await runtime.close()
+      process.exit(0)
+    } catch {
+      process.exit(1)
+    }
+  })
+}
