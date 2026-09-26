@@ -1,4 +1,5 @@
 import {
+  applicationDefault,
   deleteApp,
   initializeApp,
 } from 'firebase-admin/app'
@@ -11,28 +12,65 @@ export function createFirebaseAdminServices({
   emulator = false,
   projectId,
   appName = 'seslitab-secure-delivery',
+  productionAuthorized = false,
 } = {}) {
-  if (!emulator) {
-    throw new Error(
-      'secure-delivery-firebase-production-not-authorized',
-    )
-  }
-  if (projectId !== EMULATOR_PROJECT_ID) {
-    throw new Error(
-      'secure-delivery-firebase-emulator-project-mismatch',
-    )
-  }
-  if (
-    !process.env.FIRESTORE_EMULATOR_HOST ||
-    !process.env.FIREBASE_AUTH_EMULATOR_HOST
-  ) {
-    throw new Error(
-      'secure-delivery-firebase-emulator-hosts-required',
-    )
+  const normalizedProjectId =
+    String(projectId ?? '').trim()
+
+  if (emulator) {
+    if (
+      normalizedProjectId !==
+        EMULATOR_PROJECT_ID
+    ) {
+      throw new Error(
+        'secure-delivery-firebase-emulator-project-mismatch',
+      )
+    }
+    if (
+      !process.env.FIRESTORE_EMULATOR_HOST ||
+      !process.env.FIREBASE_AUTH_EMULATOR_HOST
+    ) {
+      throw new Error(
+        'secure-delivery-firebase-emulator-hosts-required',
+      )
+    }
+  } else {
+    if (productionAuthorized !== true) {
+      throw new Error(
+        'secure-delivery-firebase-production-not-authorized',
+      )
+    }
+    if (
+      normalizedProjectId.length === 0 ||
+      normalizedProjectId ===
+        EMULATOR_PROJECT_ID
+    ) {
+      throw new Error(
+        'secure-delivery-firebase-production-project-invalid',
+      )
+    }
+    if (
+      process.env.FIRESTORE_EMULATOR_HOST ||
+      process.env.FIREBASE_AUTH_EMULATOR_HOST
+    ) {
+      throw new Error(
+        'secure-delivery-firebase-production-emulator-hosts-forbidden',
+      )
+    }
   }
 
   const app = initializeApp(
-    { projectId },
+    emulator
+      ? {
+          projectId:
+            normalizedProjectId,
+        }
+      : {
+          projectId:
+            normalizedProjectId,
+          credential:
+            applicationDefault(),
+        },
     appName,
   )
   const auth = getAuth(app)
