@@ -25,7 +25,7 @@ The existing OMR gateway exposes the isolated path:
 /api/secure-delivery/v1
 ```
 
-Current production server wiring remains fail-closed with `createUnavailableSecureDeliveryRouter`. It does not initialize Firebase Admin or Firestore.
+The production server now routes through the SES-15 guarded production boundary. The boundary remains fail-closed and returns the unavailable router unless the independent production master gate and complete read-only activation profile are explicitly enabled. When the master gate is closed, Firebase modules are not loaded.
 
 The provider-neutral composition entry point is:
 
@@ -38,15 +38,17 @@ createSecureDeliveryComposition({
 })
 ```
 
-Firebase factories are invoked only when `SECURE_DELIVERY_ENABLED=true`. The production server does not yet call this composition.
+The production boundary invokes the composition only after `SECURE_DELIVERY_PRODUCTION_ACTIVATION=true`, `NODE_ENV=production`, `SECURE_DELIVERY_ENABLED=true`, `STUDENT_DELIVERY_READS_ENABLED=true`, `SECURE_DELIVERY_WRITES_ENABLED=false`, and an explicit non-emulator project ID have all been validated.
 
 ## Feature flags
 
 - `SECURE_DELIVERY_ENABLED`: enables the isolated Secure Delivery composition.
 - `SECURE_DELIVERY_WRITES_ENABLED`: independently enables teacher preparation/delivery/lifecycle writes.
 - `STUDENT_DELIVERY_READS_ENABLED`: independently enables Student read endpoints.
+- `SECURE_DELIVERY_PRODUCTION_ACTIVATION`: independent production master gate. Its absence keeps the production server on the unavailable/fail-closed router even if older feature flags are enabled.
+- `SECURE_DELIVERY_FIREBASE_PROJECT_ID`: explicit approved non-emulator project selection required only after the master gate is enabled.
 
-All flags are closed when absent or not exactly `true`.
+All boolean flags are closed when absent or not exactly `true`. The initial production activation contract requires writes to remain disabled.
 
 ## HTTP contract
 
@@ -261,3 +263,10 @@ The observer never receives or serializes bearer tokens, Firebase/provider subje
 For exact student reads, an already revoked assignment/Piece remains externally hidden with the same bounded not-found HTTP response. Internally, the read service uses a non-identifying revoked marker so request observability can record `outcome = revoked` without exposing which record or student was involved.
 
 Production activation remains a separate human gate. SES-30 adds the observability contract to the composable Secure Delivery server path; it does not enable Firebase, Secure Delivery flags, production credentials, or production deployment by itself.
+
+
+## SES-15 production-readiness boundary
+
+SES-15 prepares, but does not execute, the production path. Firebase Admin production initialization uses Application Default Credentials only after the guarded boundary has validated the explicit activation profile. Secure Delivery browser requests use a route-specific CORS policy that admits the permanent Student origin `https://st-student-app.onrender.com` and the published teacher origin, with `Authorization` permitted only on this route.
+
+The activation and rollback procedure is documented in `docs/secure-delivery-production-activation.md`. Production project/Auth/rules/index changes, runtime credentials, identity/grant provisioning, environment flags, deployment and live acceptance remain separate human-gated actions.
