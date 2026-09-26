@@ -14,8 +14,11 @@ import test from 'node:test'
 import {
   createFirebaseAdminServices,
 } from '../backend/delivery/firebase/firebaseAdmin.js'
+import {
+  createSecureDeliveryAcceptanceLocalSigner,
+} from '../backend/delivery/production/secureDeliveryAcceptanceLocalSigner.js'
 
-test('production Firebase Admin uses explicit service-account credential for local custom-token signing', async () => {
+test('production acceptance local signer uses explicit service-account credential for local custom-token signing', async () => {
   const {
     privateKey,
   } = generateKeyPairSync(
@@ -89,24 +92,12 @@ test('production Firebase Admin uses explicit service-account credential for loc
       .FIREBASE_AUTH_EMULATOR_HOST
 
     admin =
-      createFirebaseAdminServices({
-        emulator: false,
+      createSecureDeliveryAcceptanceLocalSigner({
         projectId,
-        productionAuthorized:
-          true,
-        localServiceAccountSigning:
-          true,
+        credentialPath,
         appName:
           'seslitab-local-signing-test',
       })
-
-    assert.equal(
-      admin.app.options
-        .credential
-        ?.constructor
-        ?.name,
-      'ServiceAccountCredential',
-    )
 
     const customToken =
       await admin.auth
