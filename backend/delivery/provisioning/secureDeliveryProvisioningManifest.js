@@ -53,6 +53,7 @@ export function parseSecureDeliveryProvisioningCliArgs(
   let manifestPath = null
   let apply = false
   let emulator = false
+  let production = false
 
   for (
     let index = 0;
@@ -107,6 +108,16 @@ export function parseSecureDeliveryProvisioningCliArgs(
       continue
     }
 
+    if (arg === '--production') {
+      if (production) {
+        throw new Error(
+          'duplicate --production argument.',
+        )
+      }
+      production = true
+      continue
+    }
+
     throw new Error(
       'unsupported provisioning CLI argument.',
     )
@@ -118,9 +129,19 @@ export function parseSecureDeliveryProvisioningCliArgs(
     )
   }
 
-  if (apply && !emulator) {
+  if (emulator && production) {
     throw new Error(
-      'SES-14 apply is emulator-only; production adapter is not authorized.',
+      '--emulator and --production are mutually exclusive.',
+    )
+  }
+
+  if (
+    apply &&
+    !emulator &&
+    !production
+  ) {
+    throw new Error(
+      '--apply requires --emulator or --production.',
     )
   }
 
@@ -128,5 +149,6 @@ export function parseSecureDeliveryProvisioningCliArgs(
     manifestPath,
     apply,
     emulator,
+    production,
   })
 }
