@@ -18,6 +18,59 @@ function enabled(value) {
   )
 }
 
+function classifyCustomTokenSigningFailure(error) {
+  const code =
+    String(
+      error?.code ?? '',
+    )
+      .trim()
+      .toLowerCase()
+  const message =
+    String(
+      error?.message ?? '',
+    )
+      .trim()
+      .toLowerCase()
+
+  if (
+    code ===
+      'auth/insufficient-permission' ||
+    message.includes(
+      'iam.serviceaccounts.signblob',
+    )
+  ) {
+    return 'signing_permission_denied'
+  }
+
+  if (
+    message.includes(
+      'failed to determine service account id',
+    )
+  ) {
+    return 'service_account_identity_unavailable'
+  }
+
+  if (
+    message.includes(
+      'private key',
+    ) ||
+    message.includes(
+      'pem',
+    )
+  ) {
+    return 'private_key_unusable'
+  }
+
+  if (
+    code ===
+    'auth/invalid-credential'
+  ) {
+    return 'credential_invalid_for_signing'
+  }
+
+  return 'signing_error_unclassified'
+}
+
 function safeWrite(
   write,
   outcome,
@@ -584,9 +637,17 @@ export async function runSecureDeliveryProductionAcceptance({
     safeWrite(
       write,
       'failed',
-      {
-        stage,
-      },
+      stage === 'custom_token'
+        ? {
+            stage,
+            reason:
+              classifyCustomTokenSigningFailure(
+                error,
+              ),
+          }
+        : {
+            stage,
+          },
     )
     throw new Error(
       'secure-delivery-production-acceptance-failed',
