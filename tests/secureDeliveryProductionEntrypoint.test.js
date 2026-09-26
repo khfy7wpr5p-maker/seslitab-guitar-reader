@@ -724,3 +724,97 @@ test('production acceptance waiter remains pending until the real listen callbac
 
   await runtime.close()
 })
+
+
+test('production runtime runs gated provisioning bootstrap only after listen and exposes its completion result', async () => {
+  const calls = []
+  const runtime =
+    await startProductionSecureDeliveryServer({
+      env: {
+        PORT: '10004',
+        SECURE_DELIVERY_PRODUCTION_PROVISIONING_BOOTSTRAP:
+          'dry-run',
+      },
+      async createHttpApp() {
+        return {
+          app: {
+            kind:
+              'production-app',
+          },
+          boundary: {
+            async close() {},
+          },
+        }
+      },
+      async runProvisioningBootstrap(input) {
+        calls.push([
+          'provisioning',
+          input.env
+            .SECURE_DELIVERY_PRODUCTION_PROVISIONING_BOOTSTRAP,
+        ])
+        return Object.freeze({
+          ran: true,
+          outcome: 'pass',
+          mode: 'DRY_RUN',
+          operationResult: 'APPLIED',
+        })
+      },
+      listen(
+        _app,
+        _port,
+        _host,
+        callback,
+      ) {
+        calls.push(['listen'])
+        callback()
+        return fakeServer()
+      },
+    })
+
+  const result =
+    await runtime
+      .waitForProvisioning()
+
+  assert.deepEqual(
+    calls,
+    [
+      ['listen'],
+      [
+        'provisioning',
+        'dry-run',
+      ],
+    ],
+  )
+  assert.deepEqual(
+    result,
+    {
+      ran: true,
+      outcome: 'pass',
+      mode: 'DRY_RUN',
+      operationResult: 'APPLIED',
+    },
+  )
+
+  await runtime.close()
+})
+
+test('production runtime refuses concurrent acceptance and provisioning bootstraps', async () => {
+  await assert.rejects(
+    () =>
+      startProductionSecureDeliveryServer({
+        env: {
+          PORT: '10005',
+          SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP:
+            'true',
+          SECURE_DELIVERY_PRODUCTION_PROVISIONING_BOOTSTRAP:
+            'apply',
+        },
+        async createHttpApp() {
+          assert.fail(
+            'mutually exclusive bootstrap modes must fail before app creation',
+          )
+        },
+      }),
+    /bootstrap-modes-mutually-exclusive/i,
+  )
+})
