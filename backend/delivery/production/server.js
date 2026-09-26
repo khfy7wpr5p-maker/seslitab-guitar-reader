@@ -4,6 +4,9 @@ import {
 import {
   runSecureDeliveryProductionAcceptance,
 } from './secureDeliveryProductionAcceptance.js'
+import {
+  runSecureDeliveryProductionProvisioningBootstrap,
+} from './secureDeliveryProductionProvisioningBootstrap.js'
 
 function enabled(value) {
   return (
@@ -13,12 +16,32 @@ function enabled(value) {
   )
 }
 
+function provisioningEnabled(value) {
+  const mode =
+    String(value ?? '')
+      .trim()
+      .toLowerCase()
+  return (
+    mode === 'dry-run' ||
+    mode === 'apply'
+  )
+}
+
+function disabledResult() {
+  return Object.freeze({
+    ran: false,
+    outcome: 'disabled',
+  })
+}
+
 export async function startSecureDeliveryServer({
   env = process.env,
   createHttpApp =
     createSecureDeliveryProductionHttpApp,
   runAcceptance =
     runSecureDeliveryProductionAcceptance,
+  runProvisioningBootstrap =
+    runSecureDeliveryProductionProvisioningBootstrap,
   listen = (
     app,
     port,
@@ -48,10 +71,32 @@ export async function startSecureDeliveryServer({
   if (
     typeof createHttpApp !== 'function' ||
     typeof runAcceptance !== 'function' ||
+    typeof runProvisioningBootstrap !==
+      'function' ||
     typeof listen !== 'function'
   ) {
     throw new TypeError(
       'secure-delivery-production-runtime-dependency-invalid',
+    )
+  }
+
+  const acceptanceRequested =
+    enabled(
+      env
+        .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP,
+    )
+  const provisioningRequested =
+    provisioningEnabled(
+      env
+        .SECURE_DELIVERY_PRODUCTION_PROVISIONING_BOOTSTRAP,
+    )
+
+  if (
+    acceptanceRequested &&
+    provisioningRequested
+  ) {
+    throw new Error(
+      'secure-delivery-production-bootstrap-modes-mutually-exclusive',
     )
   }
 
@@ -66,6 +111,12 @@ export async function startSecureDeliveryServer({
       resolveAcceptance = resolve
     })
 
+  let resolveProvisioning
+  const provisioningPromise =
+    new Promise((resolve) => {
+      resolveProvisioning = resolve
+    })
+
   const server = listen(
     app,
     port,
@@ -75,43 +126,62 @@ export async function startSecureDeliveryServer({
         '[Secure Delivery] production server listening',
       )
 
-      if (
-        !enabled(
-          env
-            .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP,
-        )
-      ) {
+      if (!acceptanceRequested) {
         resolveAcceptance(
-          Object.freeze({
-            ran: false,
-            outcome: 'disabled',
-          }),
+          disabledResult(),
         )
-        return
-      }
-
-      Promise.resolve()
-        .then(() =>
-          runAcceptance({
-            env,
-            port,
-          }),
-        )
-        .catch(() => {
-          console.error(
-            JSON.stringify({
-              event:
-                'secure_delivery_production_acceptance',
-              outcome:
-                'failed',
+      } else {
+        Promise.resolve()
+          .then(() =>
+            runAcceptance({
+              env,
+              port,
             }),
           )
-          return Object.freeze({
-            ran: true,
-            outcome: 'failed',
+          .catch(() => {
+            console.error(
+              JSON.stringify({
+                event:
+                  'secure_delivery_production_acceptance',
+                outcome:
+                  'failed',
+              }),
+            )
+            return Object.freeze({
+              ran: true,
+              outcome: 'failed',
+            })
           })
-        })
-        .then(resolveAcceptance)
+          .then(resolveAcceptance)
+      }
+
+      if (!provisioningRequested) {
+        resolveProvisioning(
+          disabledResult(),
+        )
+      } else {
+        Promise.resolve()
+          .then(() =>
+            runProvisioningBootstrap({
+              env,
+            }),
+          )
+          .catch(() => {
+            console.error(
+              JSON.stringify({
+                event:
+                  'secure_delivery_production_provisioning_bootstrap',
+                outcome:
+                  'failed',
+              }),
+            )
+            return Object.freeze({
+              ran: true,
+              outcome: 'failed',
+            })
+          })
+          .then(resolveProvisioning)
+      }
     },
   )
 
@@ -135,6 +205,8 @@ export async function startSecureDeliveryServer({
     close,
     waitForAcceptance:
       () => acceptancePromise,
+    waitForProvisioning:
+      () => provisioningPromise,
     mode:
       'secure-delivery-production',
   })
