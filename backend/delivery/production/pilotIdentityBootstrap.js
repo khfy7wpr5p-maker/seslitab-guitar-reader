@@ -154,6 +154,39 @@ export function createPilotIdentityBootstrap({
     })
   }
 
+  if (
+    !enabled(
+      env
+        .SECURE_DELIVERY_PROVISIONING_PRODUCTION_AUTHORIZED,
+    )
+  ) {
+    throw new Error(
+      'secure-delivery-production-provisioning-not-authorized-by-gate',
+    )
+  }
+
+  if (
+    !enabled(
+      env
+        .SECURE_DELIVERY_PROVISIONING_APPLY,
+    )
+  ) {
+    throw new Error(
+      'secure-delivery-provisioning-apply-disabled-by-safety-gate',
+    )
+  }
+
+  if (
+    !enabled(
+      env
+        .SECURE_DELIVERY_PROVISIONING_PRODUCTION_APPLY,
+    )
+  ) {
+    throw new Error(
+      'secure-delivery-production-apply-disabled-by-safety-gate',
+    )
+  }
+
   const timestamp =
     normalizeRequiredTimestamp(
       env
