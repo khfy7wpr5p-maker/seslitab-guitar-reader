@@ -1,5 +1,6 @@
 import {
   applicationDefault,
+  cert,
   deleteApp,
   initializeApp,
 } from 'firebase-admin/app'
@@ -7,6 +8,19 @@ import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 
 const EMULATOR_PROJECT_ID = 'demo-seslitab-td06'
+
+function productionCredential() {
+  const credentialPath =
+    String(
+      process.env
+        .GOOGLE_APPLICATION_CREDENTIALS ??
+        '',
+    ).trim()
+
+  return credentialPath.length > 0
+    ? cert(credentialPath)
+    : applicationDefault()
+}
 
 export function createFirebaseAdminServices({
   emulator = false,
@@ -69,7 +83,7 @@ export function createFirebaseAdminServices({
           projectId:
             normalizedProjectId,
           credential:
-            applicationDefault(),
+            productionCredential(),
         },
     appName,
   )
