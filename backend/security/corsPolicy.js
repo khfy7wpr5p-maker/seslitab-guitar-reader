@@ -3,6 +3,9 @@
 export const PUBLISHED_FRONTEND_ORIGIN =
   'https://seslitab-guitar-tab-bg2n.bolt.host'
 
+export const PUBLISHED_STUDENT_APP_ORIGIN =
+  'https://st-student-app.onrender.com'
+
 const DEVELOPMENT_ORIGINS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -68,6 +71,44 @@ export function parseAllowedOrigins(
   return Object.freeze(normalized)
 }
 
+export function parseSecureDeliveryAllowedOrigins(
+  rawValue,
+  nodeEnv = 'development',
+) {
+  const configured =
+    typeof rawValue === 'string'
+      ? rawValue
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : []
+
+  const defaults =
+    nodeEnv === 'production'
+      ? [
+          PUBLISHED_FRONTEND_ORIGIN,
+          PUBLISHED_STUDENT_APP_ORIGIN,
+        ]
+      : [
+          PUBLISHED_FRONTEND_ORIGIN,
+          PUBLISHED_STUDENT_APP_ORIGIN,
+          ...DEVELOPMENT_ORIGINS,
+        ]
+
+  const source =
+    configured.length > 0
+      ? configured
+      : defaults
+
+  return Object.freeze([
+    ...new Set(
+      source
+        .map(normalizeOrigin)
+        .filter(Boolean),
+    ),
+  ])
+}
+
 export function createCorsOptions(allowedOrigins) {
   const allowed = new Set(allowedOrigins)
 
@@ -88,4 +129,17 @@ export function createCorsOptions(allowedOrigins) {
     optionsSuccessStatus: 204,
     maxAge: 600,
   }
+}
+
+
+export function createSecureDeliveryCorsOptions(
+  allowedOrigins,
+) {
+  return Object.freeze({
+    ...createCorsOptions(allowedOrigins),
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+    ],
+  })
 }
