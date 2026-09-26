@@ -336,11 +336,12 @@ export async function runSecureDeliveryProductionAcceptance({
   let revokedStatus = null
   let failure = null
   let stage = 'identity_lookup'
+  let runtimeStore = null
   let provisioningService = null
   let identityMayBeActive = false
 
   try {
-    const runtimeStore =
+    runtimeStore =
       trustedFactories
         .createRuntimeStore({
           firestore:
@@ -554,10 +555,78 @@ export async function runSecureDeliveryProductionAcceptance({
     )
   } finally {
     let identityCleanupFailure = null
+
+    if (
+      failure !== null &&
+      !identityMayBeActive &&
+      stage === 'identity_provision' &&
+      runtimeStore !== null &&
+      provisioningService !== null
+    ) {
+      try {
+        const possibleMapping =
+          await runtimeStore
+            .getIdentityMapping(
+              ACCEPTANCE_UID,
+            )
+
+        if (
+          possibleMapping !== null &&
+          possibleMapping !== undefined
+        ) {
+          const isExpectedIdentity =
+            possibleMapping
+              .providerSubject ===
+              ACCEPTANCE_UID &&
+            possibleMapping.role ===
+              'STUDENT' &&
+            possibleMapping.teacherId ===
+              null &&
+            possibleMapping.studentId ===
+              ACCEPTANCE_STUDENT_ID
+
+          if (!isExpectedIdentity) {
+            throw new Error(
+              'secure-delivery-production-acceptance-failure-cleanup-identity-conflict',
+            )
+          }
+
+          if (
+            possibleMapping.active ===
+              true &&
+            possibleMapping.disabledAt ===
+              null
+          ) {
+            identityMayBeActive = true
+          } else if (
+            possibleMapping.active !==
+              false ||
+            possibleMapping.disabledAt ===
+              null
+          ) {
+            throw new Error(
+              'secure-delivery-production-acceptance-failure-cleanup-identity-state-invalid',
+            )
+          }
+        }
+      } catch (error) {
+        identityCleanupFailure = error
+        safeWrite(
+          write,
+          'failure_cleanup_failed',
+          {
+            stage:
+              'identity_lookup_cleanup',
+          },
+        )
+      }
+    }
+
     if (
       failure !== null &&
       identityMayBeActive &&
-      provisioningService !== null
+      provisioningService !== null &&
+      identityCleanupFailure === null
     ) {
       try {
         await provisioningService
