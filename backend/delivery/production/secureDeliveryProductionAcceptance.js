@@ -5,10 +5,8 @@ import {
   assertSecureDeliveryProvisioningApplyAuthorization,
 } from '../provisioning/secureDeliveryProvisioningTarget.js'
 
-const ACCEPTANCE_UID =
-  'ses15-production-acceptance-v1'
-const ACCEPTANCE_STUDENT_ID =
-  'ses15-production-acceptance-student-v1'
+const DEFAULT_ACCEPTANCE_RUN_ID =
+  'v1'
 const STUDENT_ORIGIN =
   'https://st-student-app.onrender.com'
 
@@ -33,6 +31,38 @@ function safeWrite(
       ...detail,
     }),
   )
+}
+
+function acceptanceIdentity(
+  runId,
+) {
+  if (
+    !/^[a-z0-9][a-z0-9-]{0,31}$/u.test(
+      runId,
+    )
+  ) {
+    throw new Error(
+      'secure-delivery-production-acceptance-run-id-invalid',
+    )
+  }
+
+  return Object.freeze({
+    uid:
+      'ses15-production-acceptance-' +
+      runId,
+    studentId:
+      'ses15-production-acceptance-student-' +
+      runId,
+    createOperationId:
+      'ses15-production-acceptance-create-' +
+      runId,
+    disableOperationId:
+      'ses15-production-acceptance-disable-' +
+      runId,
+    failureDisableOperationId:
+      'ses15-production-acceptance-failure-disable-' +
+      runId,
+  })
 }
 
 function addSecond(timestamp) {
@@ -140,6 +170,12 @@ function assertAcceptanceEnvironment(
         .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_TIMESTAMP ??
         '',
     ).trim()
+  const runId =
+    String(
+      env
+        .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_RUN_ID ??
+        DEFAULT_ACCEPTANCE_RUN_ID,
+    ).trim()
 
   if (!projectId) {
     throw new Error(
@@ -160,6 +196,9 @@ function assertAcceptanceEnvironment(
   return Object.freeze({
     projectId,
     apiKey,
+    ...acceptanceIdentity(
+      runId,
+    ),
     timestamp:
       new Date(
         Date.parse(timestamp),
@@ -171,10 +210,11 @@ function assertAcceptanceEnvironment(
 
 async function ensureAuthUser(
   auth,
+  uid,
 ) {
   try {
     await auth.getUser(
-      ACCEPTANCE_UID,
+      uid,
     )
     return
   } catch (error) {
@@ -187,7 +227,7 @@ async function ensureAuthUser(
   }
 
   await auth.createUser({
-    uid: ACCEPTANCE_UID,
+    uid,
     disabled: false,
   })
 }
@@ -351,7 +391,7 @@ export async function runSecureDeliveryProductionAcceptance({
     const existing =
       await runtimeStore
         .getIdentityMapping(
-          ACCEPTANCE_UID,
+          config.uid,
         )
 
     if (
@@ -392,7 +432,7 @@ export async function runSecureDeliveryProductionAcceptance({
           commands: [
             {
               operationId:
-                'ses15-production-acceptance-create-v1',
+                config.createOperationId,
               action:
                 'CREATE_IDENTITY',
               operatorId:
@@ -402,22 +442,22 @@ export async function runSecureDeliveryProductionAcceptance({
               timestamp:
                 config.timestamp,
               providerSubject:
-                ACCEPTANCE_UID,
+                config.uid,
               role: 'STUDENT',
               teacherId: null,
               studentId:
-                ACCEPTANCE_STUDENT_ID,
+                config.studentId,
             },
           ],
         })
       identityMayBeActive = true
     } else if (
       existing.providerSubject !==
-        ACCEPTANCE_UID ||
+        config.uid ||
       existing.role !==
         'STUDENT' ||
       existing.studentId !==
-        ACCEPTANCE_STUDENT_ID ||
+        config.studentId ||
       existing.active !== true
     ) {
       throw new Error(
@@ -430,12 +470,13 @@ export async function runSecureDeliveryProductionAcceptance({
     stage = 'auth_user'
     await ensureAuthUser(
       admin.auth,
+      config.uid,
     )
     stage = 'custom_token'
     const customToken =
       await admin.auth
         .createCustomToken(
-          ACCEPTANCE_UID,
+          config.uid,
         )
     stage = 'token_exchange'
     idToken =
@@ -483,7 +524,7 @@ export async function runSecureDeliveryProductionAcceptance({
         commands: [
           {
             operationId:
-              'ses15-production-acceptance-disable-v1',
+              config.disableOperationId,
             action:
               'DISABLE_IDENTITY',
             operatorId:
@@ -493,7 +534,7 @@ export async function runSecureDeliveryProductionAcceptance({
             timestamp:
               config.disableTimestamp,
             providerSubject:
-              ACCEPTANCE_UID,
+              config.uid,
           },
         ],
       })
@@ -567,7 +608,7 @@ export async function runSecureDeliveryProductionAcceptance({
         const possibleMapping =
           await runtimeStore
             .getIdentityMapping(
-              ACCEPTANCE_UID,
+              config.uid,
             )
 
         if (
@@ -577,13 +618,13 @@ export async function runSecureDeliveryProductionAcceptance({
           const isExpectedIdentity =
             possibleMapping
               .providerSubject ===
-              ACCEPTANCE_UID &&
+              config.uid &&
             possibleMapping.role ===
               'STUDENT' &&
             possibleMapping.teacherId ===
               null &&
             possibleMapping.studentId ===
-              ACCEPTANCE_STUDENT_ID
+              config.studentId
 
           if (!isExpectedIdentity) {
             throw new Error(
@@ -635,7 +676,7 @@ export async function runSecureDeliveryProductionAcceptance({
             commands: [
               {
                 operationId:
-                  'ses15-production-acceptance-failure-disable-v1',
+                  config.failureDisableOperationId,
                 action:
                   'DISABLE_IDENTITY',
                 operatorId:
@@ -645,7 +686,7 @@ export async function runSecureDeliveryProductionAcceptance({
                 timestamp:
                   config.disableTimestamp,
                 providerSubject:
-                  ACCEPTANCE_UID,
+                  config.uid,
               },
             ],
           })
@@ -675,7 +716,7 @@ export async function runSecureDeliveryProductionAcceptance({
     try {
       await admin.auth
         .deleteUser(
-          ACCEPTANCE_UID,
+          config.uid,
         )
     } catch (error) {
       if (
