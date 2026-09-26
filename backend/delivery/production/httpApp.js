@@ -10,10 +10,20 @@ import {
 import {
   createSecureDeliveryProductionBoundary,
 } from './secureDeliveryProductionBoundary.js'
+import {
+  GATEWAY_CONFIG,
+} from '../../config/gatewayConfig.js'
+import {
+  createFixedWindowRateLimiter,
+} from '../../security/rateLimitPolicy.js'
 
 export async function createSecureDeliveryProductionHttpApp({
   env = process.env,
   boundary,
+  rateLimit =
+    GATEWAY_CONFIG.rateLimit,
+  createRateLimiter =
+    createFixedWindowRateLimiter,
 } = {}) {
   const resolvedBoundary =
     boundary ??
@@ -26,6 +36,26 @@ export async function createSecureDeliveryProductionHttpApp({
       env.SECURE_DELIVERY_ALLOWED_ORIGINS,
       env.NODE_ENV,
     )
+
+  if (
+    !rateLimit ||
+    typeof rateLimit !== 'object' ||
+    typeof createRateLimiter !== 'function'
+  ) {
+    throw new TypeError(
+      'secure-delivery-rate-limit-config-invalid',
+    )
+  }
+
+  const secureDeliveryRateLimiter =
+    createRateLimiter({
+      windowMs:
+        rateLimit.windowMs,
+      maxRequests:
+        rateLimit.apiMaxRequests,
+      maxEntries:
+        rateLimit.maxEntries,
+    })
 
   const app = express()
   app.disable('x-powered-by')
@@ -65,6 +95,7 @@ export async function createSecureDeliveryProductionHttpApp({
 
   app.use(
     '/api/secure-delivery/v1',
+    secureDeliveryRateLimiter,
     resolvedBoundary.router,
   )
 
