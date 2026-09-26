@@ -94,6 +94,8 @@ test('production Firebase Admin uses explicit service-account credential for loc
         projectId,
         productionAuthorized:
           true,
+        localServiceAccountSigning:
+          true,
         appName:
           'seslitab-local-signing-test',
       })
@@ -187,5 +189,89 @@ test('production Firebase Admin uses explicit service-account credential for loc
         force: true,
       },
     )
+  }
+})
+
+
+test('production Firebase Admin preserves application-default credentials unless local signing is explicitly requested', async () => {
+  const projectId =
+    'st-student-adc-default-test'
+  const previousCredentialPath =
+    process.env
+      .GOOGLE_APPLICATION_CREDENTIALS
+  const previousFirestoreEmulatorHost =
+    process.env
+      .FIRESTORE_EMULATOR_HOST
+  const previousAuthEmulatorHost =
+    process.env
+      .FIREBASE_AUTH_EMULATOR_HOST
+  let admin
+
+  try {
+    process.env
+      .GOOGLE_APPLICATION_CREDENTIALS =
+      '/tmp/seslitab-credential-must-not-be-read.json'
+    delete process.env
+      .FIRESTORE_EMULATOR_HOST
+    delete process.env
+      .FIREBASE_AUTH_EMULATOR_HOST
+
+    admin =
+      createFirebaseAdminServices({
+        emulator: false,
+        projectId,
+        productionAuthorized:
+          true,
+        appName:
+          'seslitab-adc-default-test',
+      })
+
+    assert.equal(
+      admin.app.options
+        .credential
+        ?.constructor
+        ?.name,
+      'ApplicationDefaultCredential',
+    )
+  } finally {
+    if (admin) {
+      await admin.delete()
+    }
+
+    if (
+      previousCredentialPath ===
+      undefined
+    ) {
+      delete process.env
+        .GOOGLE_APPLICATION_CREDENTIALS
+    } else {
+      process.env
+        .GOOGLE_APPLICATION_CREDENTIALS =
+        previousCredentialPath
+    }
+
+    if (
+      previousFirestoreEmulatorHost ===
+      undefined
+    ) {
+      delete process.env
+        .FIRESTORE_EMULATOR_HOST
+    } else {
+      process.env
+        .FIRESTORE_EMULATOR_HOST =
+        previousFirestoreEmulatorHost
+    }
+
+    if (
+      previousAuthEmulatorHost ===
+      undefined
+    ) {
+      delete process.env
+        .FIREBASE_AUTH_EMULATOR_HOST
+    } else {
+      process.env
+        .FIREBASE_AUTH_EMULATOR_HOST =
+        previousAuthEmulatorHost
+    }
   }
 })
