@@ -29,6 +29,26 @@ const projectId =
       '',
   ).trim()
 
+
+function commaSeparatedValues(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+const allowedProviderSubjectHashes =
+  commaSeparatedValues(
+    process.env
+      .STUDENT08_PILOT_ALLOWED_PROVIDER_SUBJECT_HASHES,
+  )
+
+const revokedProviderSubjectHashes =
+  commaSeparatedValues(
+    process.env
+      .STUDENT08_PILOT_REVOKED_PROVIDER_SUBJECT_HASHES,
+  )
+
 const port = Number.parseInt(
   process.env.PORT ?? '10000',
   10,
@@ -52,6 +72,8 @@ const tokenVerifier =
 const app = createStudent08PilotApp({
   tokenVerifier,
   allowedOrigin,
+  allowedProviderSubjectHashes,
+  revokedProviderSubjectHashes,
 })
 
 const server = app.listen(
