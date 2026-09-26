@@ -2,59 +2,80 @@ import {
   createSecureDeliveryProductionHttpApp,
 } from './httpApp.js'
 
-const port = Number.parseInt(
-  process.env.PORT ?? '10000',
-  10,
-)
-
-if (
-  !Number.isInteger(port) ||
-  port <= 0 ||
-  port > 65535
-) {
-  throw new Error(
-    'secure-delivery-production-invalid-port',
+export async function startSecureDeliveryServer({
+  env = process.env,
+  createHttpApp =
+    createSecureDeliveryProductionHttpApp,
+  listen = (
+    app,
+    port,
+    host,
+    callback,
+  ) => app.listen(
+    port,
+    host,
+    callback,
+  ),
+} = {}) {
+  const port = Number.parseInt(
+    env.PORT ?? '10000',
+    10,
   )
-}
 
-const { app, boundary } =
-  await createSecureDeliveryProductionHttpApp({
-    env: process.env,
-  })
-
-const server = app.listen(
-  port,
-  '0.0.0.0',
-  () => {
-    console.log(
-      '[Secure Delivery] production server listening',
+  if (
+    !Number.isInteger(port) ||
+    port <= 0 ||
+    port > 65535
+  ) {
+    throw new Error(
+      'secure-delivery-production-invalid-port',
     )
-  },
-)
+  }
 
-let closing = false
+  if (
+    typeof createHttpApp !== 'function' ||
+    typeof listen !== 'function'
+  ) {
+    throw new TypeError(
+      'secure-delivery-production-runtime-dependency-invalid',
+    )
+  }
 
-async function close() {
-  if (closing) return
-  closing = true
+  const { app, boundary } =
+    await createHttpApp({
+      env,
+    })
 
-  await new Promise((resolve) => {
-    server.close(() => resolve())
-  })
+  const server = listen(
+    app,
+    port,
+    '0.0.0.0',
+    () => {
+      console.log(
+        '[Secure Delivery] production server listening',
+      )
+    },
+  )
 
-  await boundary.close()
-}
+  let closing = false
 
-for (const signal of [
-  'SIGINT',
-  'SIGTERM',
-]) {
-  process.on(signal, async () => {
-    try {
-      await close()
-      process.exit(0)
-    } catch {
-      process.exit(1)
-    }
+  async function close() {
+    if (closing) return
+    closing = true
+
+    await new Promise((resolve) => {
+      server.close(() => resolve())
+    })
+
+    await boundary.close()
+  }
+
+  return Object.freeze({
+    app,
+    boundary,
+    server,
+    close,
+    mode:
+      'secure-delivery-production',
   })
 }
