@@ -175,6 +175,7 @@ test('SES-14 provisioning stays non-HTTP, secret-free and production-disabled', 
     '../backend/delivery/provisioning/secureDeliveryProvisioningService.js',
     '../backend/delivery/provisioning/firestoreSecureDeliveryProvisioningStore.js',
     '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningTarget.js',
     '../scripts/secureDeliveryProvisioning.mjs',
   ].map((path) =>
     readFileSync(
@@ -221,6 +222,7 @@ test('SES-14 provisioning stays non-HTTP, secret-free and production-disabled', 
   const cliContract = [
     '../scripts/secureDeliveryProvisioning.mjs',
     '../backend/delivery/provisioning/secureDeliveryProvisioningManifest.js',
+    '../backend/delivery/provisioning/secureDeliveryProvisioningTarget.js',
   ].map((path) =>
     readFileSync(
       new URL(path, import.meta.url),
