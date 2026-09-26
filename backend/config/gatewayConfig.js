@@ -1,7 +1,10 @@
 // Gateway configuration.
 
 import { parseMaxPdfPages } from '../security/inputValidation.js'
-import { parseAllowedOrigins } from '../security/corsPolicy.js'
+import {
+  parseAllowedOrigins,
+  parseSecureDeliveryAllowedOrigins,
+} from '../security/corsPolicy.js'
 
 function envPath(name, fallback) {
   const v = process.env[name]
@@ -40,6 +43,12 @@ export const GATEWAY_CONFIG = {
     process.env.SESLITAB_ALLOWED_ORIGINS,
     process.env.NODE_ENV,
   ),
+  secureDeliveryAllowedOrigins:
+    parseSecureDeliveryAllowedOrigins(
+      process.env
+        .SECURE_DELIVERY_ALLOWED_ORIGINS,
+      process.env.NODE_ENV,
+    ),
   rateLimit: {
     windowMs: envInt(
       'SESLITAB_RATE_LIMIT_WINDOW_MS',
