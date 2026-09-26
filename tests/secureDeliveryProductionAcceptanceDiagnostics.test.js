@@ -328,6 +328,91 @@ test('custom-token signing failure logs a fixed privacy-safe reason without leak
   )
 })
 
+test('custom-token signing diagnostics classify common signer failures without logging raw error details', async () => {
+  const cases = [
+    {
+      error: new Error(
+        'Failed to determine service account ID. Initialize the SDK with service account credentials.',
+      ),
+      reason:
+        'service_account_identity_unavailable',
+      forbidden:
+        /determine service account ID|service account credentials/i,
+    },
+    {
+      error: new Error(
+        'Failed to parse private key: Invalid PEM formatted message.',
+      ),
+      reason:
+        'private_key_unusable',
+      forbidden:
+        /private key|PEM formatted/i,
+    },
+    {
+      error: Object.assign(
+        new Error(
+          'The credential is not valid for this operation.',
+        ),
+        {
+          code:
+            'auth/invalid-credential',
+        },
+      ),
+      reason:
+        'credential_invalid_for_signing',
+      forbidden:
+        /credential is not valid|invalid-credential/i,
+    },
+    {
+      error: new Error(
+        'synthetic unknown signer failure with detail',
+      ),
+      reason:
+        'signing_error_unclassified',
+      forbidden:
+        /synthetic unknown signer failure|detail/i,
+    },
+  ]
+
+  for (const entry of cases) {
+    const h = harness({
+      customTokenError:
+        entry.error,
+    })
+
+    await assert.rejects(
+      () =>
+        runSecureDeliveryProductionAcceptance({
+          env: env(),
+          port: 10000,
+          factories:
+            h.factories,
+          fetchImpl:
+            h.fetchImpl,
+          write:
+            h.write,
+        }),
+      /production-acceptance-failed/i,
+    )
+
+    const joined =
+      h.logs.join('\n')
+
+    assert.match(
+      joined,
+      new RegExp(
+        '"outcome":"failed","stage":"custom_token","reason":"' +
+          entry.reason +
+          '"',
+      ),
+    )
+    assert.doesNotMatch(
+      joined,
+      entry.forbidden,
+    )
+  }
+})
+
 test('failed production acceptance fails closed when identity cleanup itself fails', async () => {
   const h = harness({
     failCleanup: true,
