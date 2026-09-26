@@ -1,11 +1,24 @@
 import {
   createSecureDeliveryProductionHttpApp,
 } from './httpApp.js'
+import {
+  runSecureDeliveryProductionAcceptance,
+} from './secureDeliveryProductionAcceptance.js'
+
+function enabled(value) {
+  return (
+    String(value ?? '')
+      .trim()
+      .toLowerCase() === 'true'
+  )
+}
 
 export async function startSecureDeliveryServer({
   env = process.env,
   createHttpApp =
     createSecureDeliveryProductionHttpApp,
+  runAcceptance =
+    runSecureDeliveryProductionAcceptance,
   listen = (
     app,
     port,
@@ -34,6 +47,7 @@ export async function startSecureDeliveryServer({
 
   if (
     typeof createHttpApp !== 'function' ||
+    typeof runAcceptance !== 'function' ||
     typeof listen !== 'function'
   ) {
     throw new TypeError(
@@ -46,6 +60,12 @@ export async function startSecureDeliveryServer({
       env,
     })
 
+  let resolveAcceptance
+  const acceptancePromise =
+    new Promise((resolve) => {
+      resolveAcceptance = resolve
+    })
+
   const server = listen(
     app,
     port,
@@ -54,6 +74,44 @@ export async function startSecureDeliveryServer({
       console.log(
         '[Secure Delivery] production server listening',
       )
+
+      if (
+        !enabled(
+          env
+            .SECURE_DELIVERY_PRODUCTION_ACCEPTANCE_BOOTSTRAP,
+        )
+      ) {
+        resolveAcceptance(
+          Object.freeze({
+            ran: false,
+            outcome: 'disabled',
+          }),
+        )
+        return
+      }
+
+      Promise.resolve()
+        .then(() =>
+          runAcceptance({
+            env,
+            port,
+          }),
+        )
+        .catch(() => {
+          console.error(
+            JSON.stringify({
+              event:
+                'secure_delivery_production_acceptance',
+              outcome:
+                'failed',
+            }),
+          )
+          return Object.freeze({
+            ran: true,
+            outcome: 'failed',
+          })
+        })
+        .then(resolveAcceptance)
     },
   )
 
@@ -75,6 +133,8 @@ export async function startSecureDeliveryServer({
     boundary,
     server,
     close,
+    waitForAcceptance:
+      () => acceptancePromise,
     mode:
       'secure-delivery-production',
   })
