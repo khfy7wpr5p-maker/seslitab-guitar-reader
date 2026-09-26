@@ -420,6 +420,8 @@ export async function runSecureDeliveryProductionAcceptance({
           config.projectId,
         productionAuthorized:
           true,
+        localServiceAccountSigning:
+          true,
         appName:
           'ses15-production-acceptance',
       })
