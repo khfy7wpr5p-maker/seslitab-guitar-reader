@@ -11,6 +11,10 @@ import {
 import {
   createUnavailableSecureDeliveryRouter,
 } from '../http/router.js'
+import {
+  createPilotIdentityBootstrap,
+  wrapTokenVerifierWithPilotIdentityBootstrap,
+} from './pilotIdentityBootstrap.js'
 
 const EMULATOR_PROJECT_ID =
   'demo-seslitab-td06'
@@ -70,6 +74,7 @@ function productionFactories(
   factories,
   projectId,
 ) {
+  let bootstrap = null
   if (
     !factories ||
     typeof factories !== 'object'
@@ -81,16 +86,38 @@ function productionFactories(
 
   return Object.freeze({
     createAdminServices({ env }) {
-      return factories
-        .createAdminServices({
+      const admin =
+        factories
+          .createAdminServices({
+            env,
+            projectId,
+            productionAuthorized: true,
+          })
+
+      bootstrap =
+        createPilotIdentityBootstrap({
           env,
-          projectId,
-          productionAuthorized: true,
+          firestore:
+            admin.firestore,
         })
+
+      return admin
     },
     createTokenVerifier(input) {
-      return factories
-        .createTokenVerifier(input)
+      const verifier =
+        factories
+          .createTokenVerifier(input)
+
+      if (bootstrap === null) {
+        throw new Error(
+          'secure-delivery-production-bootstrap-not-initialized',
+        )
+      }
+
+      return wrapTokenVerifierWithPilotIdentityBootstrap({
+        tokenVerifier: verifier,
+        bootstrap,
+      })
     },
     createStore(input) {
       return factories
