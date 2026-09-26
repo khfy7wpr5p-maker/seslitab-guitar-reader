@@ -12,6 +12,9 @@ import {
   createPreparedAssignmentService,
 } from './services/preparedAssignmentService.js'
 import {
+  createSecureDeliveryRequestObserver,
+} from './observability/secureDeliveryRequestObserver.js'
+import {
   createStudentDeliveryReadService,
 } from './services/studentDeliveryReadService.js'
 import {
@@ -52,6 +55,7 @@ export function createSecureDeliveryComposition({
   firebaseFactories,
   now,
   createHistoryEventId,
+  observeRequest,
 } = {}) {
   const config =
     createSecureDeliveryConfig(env)
@@ -134,6 +138,19 @@ export function createSecureDeliveryComposition({
       store,
     })
 
+  if (
+    observeRequest !== undefined &&
+    typeof observeRequest !== 'function'
+  ) {
+    throw new TypeError(
+      'observeRequest must be a function when provided.',
+    )
+  }
+
+  const requestObserver =
+    observeRequest ??
+    createSecureDeliveryRequestObserver()
+
   const router =
     createSecureDeliveryRouter({
       tokenVerifier,
@@ -142,6 +159,7 @@ export function createSecureDeliveryComposition({
       teacherPieceService,
       studentService,
       config,
+      observeRequest: requestObserver,
     })
 
   return Object.freeze({
