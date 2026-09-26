@@ -137,7 +137,7 @@ async function loadFactories() {
     provisioningStoreModule,
   ] = await Promise.all([
     import(
-      '../firebase/firebaseAdmin.js'
+      './productionAcceptanceFirebaseAdmin.js'
     ),
     import(
       '../firebase/firestoreSecureDeliveryStore.js'
@@ -150,7 +150,7 @@ async function loadFactories() {
   return Object.freeze({
     createAdminServices:
       adminModule
-        .createFirebaseAdminServices,
+        .createProductionAcceptanceAdminServices,
     createRuntimeStore:
       runtimeStoreModule
         .createFirestoreSecureDeliveryStore,
@@ -419,8 +419,6 @@ export async function runSecureDeliveryProductionAcceptance({
         projectId:
           config.projectId,
         productionAuthorized:
-          true,
-        localServiceAccountSigning:
           true,
         appName:
           'ses15-production-acceptance',
