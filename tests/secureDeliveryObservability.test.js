@@ -335,3 +335,40 @@ test('feature gates emit privacy-safe unavailable outcomes before auth', async (
     )
   }
 })
+
+
+test('feature gates preserve request-time config evaluation', async () => {
+  const events = []
+  const d = deps(events)
+  const app =
+    appFor(
+      createSecureDeliveryRouter(d),
+    )
+
+  d.config.studentReadsEnabled =
+    false
+
+  const response = await request(
+    app,
+    '/api/secure-delivery/v1/student/assignments',
+  )
+
+  assert.equal(
+    response.status,
+    503,
+  )
+  assert.deepEqual(
+    events,
+    [
+      {
+        event:
+          'secure_delivery_request',
+        operation:
+          'student_assignments_list',
+        outcome:
+          'unavailable',
+        status: 503,
+      },
+    ],
+  )
+})
