@@ -52,6 +52,12 @@ test('production Firebase Admin uses explicit service-account credential for loc
   const previousCredentialPath =
     process.env
       .GOOGLE_APPLICATION_CREDENTIALS
+  const previousFirestoreEmulatorHost =
+    process.env
+      .FIRESTORE_EMULATOR_HOST
+  const previousAuthEmulatorHost =
+    process.env
+      .FIREBASE_AUTH_EMULATOR_HOST
   let admin
 
   try {
@@ -77,6 +83,10 @@ test('production Firebase Admin uses explicit service-account credential for loc
     process.env
       .GOOGLE_APPLICATION_CREDENTIALS =
       credentialPath
+    delete process.env
+      .FIRESTORE_EMULATOR_HOST
+    delete process.env
+      .FIREBASE_AUTH_EMULATOR_HOST
 
     admin =
       createFirebaseAdminServices({
@@ -144,6 +154,30 @@ test('production Firebase Admin uses explicit service-account credential for loc
       process.env
         .GOOGLE_APPLICATION_CREDENTIALS =
         previousCredentialPath
+    }
+
+    if (
+      previousFirestoreEmulatorHost ===
+      undefined
+    ) {
+      delete process.env
+        .FIRESTORE_EMULATOR_HOST
+    } else {
+      process.env
+        .FIRESTORE_EMULATOR_HOST =
+        previousFirestoreEmulatorHost
+    }
+
+    if (
+      previousAuthEmulatorHost ===
+      undefined
+    ) {
+      delete process.env
+        .FIREBASE_AUTH_EMULATOR_HOST
+    } else {
+      process.env
+        .FIREBASE_AUTH_EMULATOR_HOST =
+        previousAuthEmulatorHost
     }
 
     await rm(
