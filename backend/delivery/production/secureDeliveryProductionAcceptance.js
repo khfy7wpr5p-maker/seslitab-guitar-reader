@@ -335,6 +335,9 @@ export async function runSecureDeliveryProductionAcceptance({
   let authorizedStatus = null
   let revokedStatus = null
   let failure = null
+  let stage = 'identity_lookup'
+  let provisioningService = null
+  let identityMayBeActive = false
 
   try {
     const runtimeStore =
@@ -343,6 +346,7 @@ export async function runSecureDeliveryProductionAcceptance({
           firestore:
             admin.firestore,
         })
+    stage = 'identity_lookup'
     const existing =
       await runtimeStore
         .getIdentityMapping(
@@ -365,7 +369,7 @@ export async function runSecureDeliveryProductionAcceptance({
       })
     }
 
-    const provisioningService =
+    provisioningService =
       createSecureDeliveryProvisioningService({
         store:
           trustedFactories
@@ -380,6 +384,7 @@ export async function runSecureDeliveryProductionAcceptance({
       existing === null ||
       existing === undefined
     ) {
+      stage = 'identity_provision'
       await provisioningService
         .execute({
           apply: true,
@@ -404,6 +409,7 @@ export async function runSecureDeliveryProductionAcceptance({
             },
           ],
         })
+      identityMayBeActive = true
     } else if (
       existing.providerSubject !==
         ACCEPTANCE_UID ||
@@ -416,16 +422,21 @@ export async function runSecureDeliveryProductionAcceptance({
       throw new Error(
         'secure-delivery-production-acceptance-existing-identity-conflict',
       )
+    } else {
+      identityMayBeActive = true
     }
 
+    stage = 'auth_user'
     await ensureAuthUser(
       admin.auth,
     )
+    stage = 'custom_token'
     const customToken =
       await admin.auth
         .createCustomToken(
           ACCEPTANCE_UID,
         )
+    stage = 'token_exchange'
     idToken =
       await exchangeCustomToken({
         fetchImpl,
@@ -434,6 +445,7 @@ export async function runSecureDeliveryProductionAcceptance({
         customToken,
       })
 
+    stage = 'authorized_read'
     const authorized =
       await studentRead({
         fetchImpl,
@@ -463,6 +475,7 @@ export async function runSecureDeliveryProductionAcceptance({
       )
     }
 
+    stage = 'identity_disable'
     await provisioningService
       .execute({
         apply: true,
@@ -506,6 +519,7 @@ export async function runSecureDeliveryProductionAcceptance({
       )
     }
 
+    stage = 'complete'
     safeWrite(
       write,
       'pass',
@@ -526,6 +540,9 @@ export async function runSecureDeliveryProductionAcceptance({
     safeWrite(
       write,
       'failed',
+      {
+        stage,
+      },
     )
     throw new Error(
       'secure-delivery-production-acceptance-failed',
@@ -534,6 +551,55 @@ export async function runSecureDeliveryProductionAcceptance({
       },
     )
   } finally {
+    let identityCleanupFailure = null
+    if (
+      failure !== null &&
+      identityMayBeActive &&
+      provisioningService !== null
+    ) {
+      try {
+        await provisioningService
+          .execute({
+            apply: true,
+            commands: [
+              {
+                operationId:
+                  'ses15-production-acceptance-failure-disable-v1',
+                action:
+                  'DISABLE_IDENTITY',
+                operatorId:
+                  'ses15-production-acceptance',
+                reason:
+                  'SES-15 production acceptance failure cleanup.',
+                timestamp:
+                  config.disableTimestamp,
+                providerSubject:
+                  ACCEPTANCE_UID,
+              },
+            ],
+          })
+        identityMayBeActive = false
+        safeWrite(
+          write,
+          'failure_cleanup_pass',
+          {
+            stage:
+              'identity_disable_cleanup',
+          },
+        )
+      } catch (error) {
+        identityCleanupFailure = error
+        safeWrite(
+          write,
+          'failure_cleanup_failed',
+          {
+            stage:
+              'identity_disable_cleanup',
+          },
+        )
+      }
+    }
+
     let cleanupFailure = null
     try {
       await admin.auth
@@ -550,6 +616,18 @@ export async function runSecureDeliveryProductionAcceptance({
     }
 
     await admin.delete()
+
+    if (
+      identityCleanupFailure !== null
+    ) {
+      throw new Error(
+        'secure-delivery-production-acceptance-failure-cleanup-failed',
+        {
+          cause:
+            identityCleanupFailure,
+        },
+      )
+    }
 
     if (
       cleanupFailure !== null &&
