@@ -56,6 +56,37 @@ function unavailable(res) {
   )
 }
 
+function observeSafely(
+  observeRequest,
+  operation,
+  outcome,
+  status,
+) {
+  if (typeof observeRequest !== 'function') {
+    return
+  }
+  try {
+    const result =
+      observeRequest(
+        Object.freeze({
+          event: 'secure_delivery_request',
+          operation,
+          outcome,
+          status,
+        }),
+      )
+
+    if (
+      result &&
+      typeof result.catch === 'function'
+    ) {
+      result.catch(() => {})
+    }
+  } catch {
+    // Observability must never make Secure Delivery unavailable.
+  }
+}
+
 export function createSecureDeliveryRouter({
   tokenVerifier,
   preparedService,
@@ -129,59 +160,68 @@ export function createSecureDeliveryRouter({
     outcome,
     status,
   ) {
-    if (typeof observeRequest !== 'function') {
-      return
-    }
-    try {
-      observeRequest(
-        Object.freeze({
-          event: 'secure_delivery_request',
-          operation,
-          outcome,
-          status,
-        }),
-      )
-    } catch {
-      // Observability must never make Secure Delivery unavailable.
-    }
+    observeSafely(
+      observeRequest,
+      operation,
+      outcome,
+      status,
+    )
   }
 
   const router = express.Router()
 
-  function requireEnabled(_req, res, next) {
-    if (!trustedConfig.enabled) {
-      return sendSecureDeliveryError(
-        res,
-        new Error(
-          'secure-delivery-feature-disabled',
-        ),
-      )
+  function requireAvailable(
+    operation,
+    isEnabled,
+    errorMessage,
+  ) {
+    return (_req, res, next) => {
+      if (!isEnabled()) {
+        const error =
+          new Error(errorMessage)
+        const status =
+          secureDeliveryErrorStatus(error)
+
+        observe(
+          operation,
+          secureDeliveryRequestOutcome(
+            error,
+            status,
+          ),
+          status,
+        )
+
+        return sendSecureDeliveryError(
+          res,
+          error,
+        )
+      }
+      return next()
     }
-    return next()
   }
 
-  function requireWrites(_req, res, next) {
-    if (!trustedConfig.writesEnabled) {
-      return sendSecureDeliveryError(
-        res,
-        new Error(
-          'secure-delivery-writes-disabled',
-        ),
-      )
-    }
-    return next()
+  function requireEnabled(operation) {
+    return requireAvailable(
+      operation,
+      () => trustedConfig.enabled,
+      'secure-delivery-feature-disabled',
+    )
   }
 
-  function requireStudentReads(_req, res, next) {
-    if (!trustedConfig.studentReadsEnabled) {
-      return sendSecureDeliveryError(
-        res,
-        new Error(
-          'secure-delivery-student-reads-disabled',
-        ),
-      )
-    }
-    return next()
+  function requireWrites(operation) {
+    return requireAvailable(
+      operation,
+      () => trustedConfig.writesEnabled,
+      'secure-delivery-writes-disabled',
+    )
+  }
+
+  function requireStudentReads(operation) {
+    return requireAvailable(
+      operation,
+      () => trustedConfig.studentReadsEnabled,
+      'secure-delivery-student-reads-disabled',
+    )
   }
 
   async function providerSubject(req) {
@@ -260,8 +300,8 @@ export function createSecureDeliveryRouter({
 
   router.post(
     '/teacher/prepared-assignments',
-    requireEnabled,
-    requireWrites,
+    requireEnabled('teacher_prepared_assignments_create'),
+    requireWrites('teacher_prepared_assignments_create'),
     route('teacher_prepared_assignments_create', async (req, res, subject) =>
       success(
         res,
@@ -275,8 +315,8 @@ export function createSecureDeliveryRouter({
 
   router.post(
     '/teacher/deliveries',
-    requireEnabled,
-    requireWrites,
+    requireEnabled('teacher_deliveries_create'),
+    requireWrites('teacher_deliveries_create'),
     route('teacher_deliveries_create', async (req, res, subject) =>
       success(
         res,
@@ -291,7 +331,7 @@ export function createSecureDeliveryRouter({
 
   router.get(
     '/teacher/deliveries',
-    requireEnabled,
+    requireEnabled('teacher_deliveries_list'),
     route('teacher_deliveries_list', async (_req, res, subject) =>
       success(
         res,
@@ -304,8 +344,8 @@ export function createSecureDeliveryRouter({
 
   router.post(
     '/teacher/assignments/:assignmentId/actions',
-    requireEnabled,
-    requireWrites,
+    requireEnabled('teacher_assignment_action'),
+    requireWrites('teacher_assignment_action'),
     route('teacher_assignment_action', async (req, res, subject) =>
       success(
         res,
@@ -322,8 +362,8 @@ export function createSecureDeliveryRouter({
 
   router.post(
     '/teacher/pieces',
-    requireEnabled,
-    requireWrites,
+    requireEnabled('teacher_piece_create'),
+    requireWrites('teacher_piece_create'),
     route('teacher_piece_create', async (req, res, subject) =>
       success(
         res,
@@ -337,8 +377,8 @@ export function createSecureDeliveryRouter({
 
   router.post(
     '/teacher/pieces/:pieceAssignmentId/actions',
-    requireEnabled,
-    requireWrites,
+    requireEnabled('teacher_piece_action'),
+    requireWrites('teacher_piece_action'),
     route('teacher_piece_action', async (req, res, subject) =>
       success(
         res,
@@ -354,8 +394,8 @@ export function createSecureDeliveryRouter({
 
   router.get(
     '/student/pool',
-    requireEnabled,
-    requireStudentReads,
+    requireEnabled('student_pool_list'),
+    requireStudentReads('student_pool_list'),
     route('student_pool_list', async (_req, res, subject) =>
       success(
         res,
@@ -368,8 +408,8 @@ export function createSecureDeliveryRouter({
 
   router.get(
     '/student/assignments',
-    requireEnabled,
-    requireStudentReads,
+    requireEnabled('student_assignments_list'),
+    requireStudentReads('student_assignments_list'),
     route('student_assignments_list', async (_req, res, subject) =>
       success(
         res,
@@ -383,8 +423,8 @@ export function createSecureDeliveryRouter({
 
   router.get(
     '/student/pieces',
-    requireEnabled,
-    requireStudentReads,
+    requireEnabled('student_pieces_list'),
+    requireStudentReads('student_pieces_list'),
     route('student_pieces_list', async (_req, res, subject) =>
       success(
         res,
@@ -397,8 +437,8 @@ export function createSecureDeliveryRouter({
 
   router.get(
     '/student/pieces/:pieceAssignmentId',
-    requireEnabled,
-    requireStudentReads,
+    requireEnabled('student_piece_get'),
+    requireStudentReads('student_piece_get'),
     route('student_piece_get', async (req, res, subject) =>
       success(
         res,
@@ -413,8 +453,8 @@ export function createSecureDeliveryRouter({
 
   router.get(
     '/student/assignments/:deliveryId',
-    requireEnabled,
-    requireStudentReads,
+    requireEnabled('student_assignment_get'),
+    requireStudentReads('student_assignment_get'),
     route('student_assignment_get', async (req, res, subject) =>
       success(
         res,
@@ -431,11 +471,18 @@ export function createSecureDeliveryRouter({
 
 export function createUnavailableSecureDeliveryRouter({
   config,
+  observeRequest,
 } = {}) {
   assertConfig(config)
   const router = express.Router()
-  router.use((_req, res) =>
-    unavailable(res),
-  )
+  router.use((_req, res) => {
+    observeSafely(
+      observeRequest,
+      'secure_delivery_unavailable',
+      'unavailable',
+      503,
+    )
+    return unavailable(res)
+  })
   return router
 }
