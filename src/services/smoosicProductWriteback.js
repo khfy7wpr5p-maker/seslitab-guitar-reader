@@ -123,6 +123,118 @@ function replaceElementId(musicXml, tagName, fromId, toId) {
   return musicXml.replace(pattern, (_match, prefix, suffix) => `${prefix}${toId}${suffix}`)
 }
 
+function stableLocatorsExceptVoiceMatch(current, candidate) {
+  for (const field of STABLE_LOCATOR_FIELDS) {
+    if (field === 'voice') continue
+    if (!sameValue(current?.[field], candidate?.[field])) return false
+  }
+  return true
+}
+
+function normalizedVoiceNumber(value) {
+  const voice = Number(value)
+  return Number.isSafeInteger(voice) && voice > 0 ? voice : null
+}
+
+function smoosicVoiceGroupKey(note) {
+  return JSON.stringify([
+    note?.partId ?? null,
+    note?.partIndex ?? null,
+    note?.measureIndex ?? null,
+    note?.measureKey ?? null,
+    note?.staff ?? null,
+  ])
+}
+
+function normalizeSmoosicVoiceIdentity(musicXml, currentRevision) {
+  const currentNotes = currentRevision?.content
+  const parsed = parseMusicXmlToNotes(musicXml)
+  if (
+    parsed?.error
+    || !Array.isArray(parsed?.notes)
+    || !Array.isArray(currentNotes)
+    || parsed.notes.length !== currentNotes.length
+  ) {
+    return musicXml
+  }
+
+  const groups = new Map()
+  for (let index = 0; index < parsed.notes.length; index += 1) {
+    const current = currentNotes[index]
+    const candidate = parsed.notes[index]
+    if (!stableLocatorsExceptVoiceMatch(current, candidate)) return musicXml
+
+    const currentVoice = normalizedVoiceNumber(current?.voice)
+    const candidateVoice = normalizedVoiceNumber(candidate?.voice)
+    if (currentVoice === null || candidateVoice === null) return musicXml
+
+    const key = smoosicVoiceGroupKey(current)
+    if (!groups.has(key)) {
+      groups.set(key, {
+        indexes: [],
+        currentVoices: new Set(),
+        candidateVoices: new Set(),
+      })
+    }
+    const group = groups.get(key)
+    group.indexes.push(index)
+    group.currentVoices.add(currentVoice)
+    group.candidateVoices.add(candidateVoice)
+  }
+
+  const targetVoiceByIndex = new Array(parsed.notes.length)
+  let changed = false
+
+  for (const group of groups.values()) {
+    const currentVoices = [...group.currentVoices].sort((left, right) => left - right)
+    const candidateVoices = [...group.candidateVoices].sort((left, right) => left - right)
+
+    if (currentVoices.length !== candidateVoices.length) return musicXml
+    if (candidateVoices.some((voice, index) => voice !== index + 1)) return musicXml
+
+    const voiceMap = new Map(
+      candidateVoices.map((voice, index) => [voice, currentVoices[index]]),
+    )
+
+    for (const index of group.indexes) {
+      const candidateVoice = normalizedVoiceNumber(parsed.notes[index]?.voice)
+      const targetVoice = voiceMap.get(candidateVoice)
+      if (targetVoice === undefined) return musicXml
+      targetVoiceByIndex[index] = targetVoice
+      if (targetVoice !== candidateVoice) changed = true
+    }
+  }
+
+  if (!changed) return musicXml
+
+  const notePattern = /<note\b[^>]*>[\s\S]*?<\/note>/gi
+  const noteBlocks = musicXml.match(notePattern)
+  if (!noteBlocks || noteBlocks.length !== parsed.notes.length) return musicXml
+
+  let noteIndex = 0
+  let failed = false
+  const normalized = musicXml.replace(notePattern, (block) => {
+    const targetVoice = targetVoiceByIndex[noteIndex]
+    noteIndex += 1
+    if (targetVoice === undefined) {
+      failed = true
+      return block
+    }
+
+    const voicePattern = /<voice\b([^>]*)>[\s\S]*?<\/voice>/i
+    if (!voicePattern.test(block)) {
+      failed = true
+      return block
+    }
+    return block.replace(
+      voicePattern,
+      (_match, attributes) => `<voice${attributes}>${targetVoice}</voice>`,
+    )
+  })
+
+  return failed || noteIndex !== parsed.notes.length ? musicXml : normalized
+}
+
 function normalizeSinglePartIdentity(musicXml, currentRevision) {
   const parsed = parseMusicXmlToNotes(musicXml)
   if (parsed?.error || !Array.isArray(parsed?.notes)) return musicXml
@@ -287,7 +399,11 @@ export function applySmoosicProductWriteback({
     })
   }
 
-  const normalizedMusicXml = normalizeSinglePartIdentity(musicXml, currentRevision)
+  const partNormalizedMusicXml = normalizeSinglePartIdentity(musicXml, currentRevision)
+  const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
+    partNormalizedMusicXml,
+    currentRevision,
+  )
 
   let changeSet
   try {
