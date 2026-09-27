@@ -9,11 +9,13 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   normalizeS16ProductionTarget,
   verifyS16DeployedManifest,
   verifyS16MountedSurfaceSnapshot,
 } from './s16DeployedCompositionContract.js'
+import { createS16ReadOnlyRequestGuard } from './s16ReadOnlyRequestGuard.js'
 
 const evidencePath = resolve('artifacts', 's16-deployed-composition.json')
 const SHA_PATTERN = /^[a-f0-9]{40}$/u
@@ -189,10 +191,11 @@ async function evaluate(cdp, expression) {
   return result?.result?.value
 }
 
-async function waitFor(cdp, expression, label, timeoutMs = 120000) {
+async function waitFor(cdp, expression, label, timeoutMs = 120000, assertSafe = null) {
   const deadline = Date.now() + timeoutMs
   let lastError = null
   while (Date.now() < deadline) {
+    assertSafe?.()
     try {
       const value = await evaluate(cdp, expression)
       if (value) return value
@@ -201,6 +204,7 @@ async function waitFor(cdp, expression, label, timeoutMs = 120000) {
     }
     await delay(100)
   }
+  assertSafe?.()
   throw new Error(`${label} timed out${lastError ? `: ${lastError.message}` : ''}`)
 }
 
@@ -245,7 +249,7 @@ async function fetchManifest(target, expectedRevision) {
   }, { expectedRevision })
 }
 
-async function runBrowserProbe({ chrome, target }) {
+export async function runBrowserProbe({ chrome, target }) {
   const userDataDir = mkdtempSync(join(tmpdir(), 'seslitab-s16-production-'))
   const child = spawn(chrome, [
     '--headless=new',
@@ -266,7 +270,6 @@ async function runBrowserProbe({ chrome, target }) {
     cdp = await connectCdp(await findPageTarget(debugPort))
     const pageErrors = []
     const consoleErrors = []
-    const nonGetRequests = []
 
     cdp.on('Runtime.exceptionThrown', ({ exceptionDetails }) => {
       pageErrors.push(
@@ -281,20 +284,23 @@ async function runBrowserProbe({ chrome, target }) {
     cdp.on('Log.entryAdded', ({ entry }) => {
       if (entry?.level === 'error') consoleErrors.push(String(entry.text ?? 'Browser log error'))
     })
-    cdp.on('Network.requestWillBeSent', ({ request }) => {
-      const method = String(request?.method ?? '')
-      if (method && method !== 'GET') nonGetRequests.push(`${method} ${String(request?.url ?? '')}`)
-    })
-
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
     await cdp.send('Network.enable')
     await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
     await cdp.send('Log.enable')
+    const requestGuard = createS16ReadOnlyRequestGuard(cdp)
+    await requestGuard.enable()
+    const waitForSafe = (expression, label, timeoutMs) => waitFor(
+      cdp,
+      expression,
+      label,
+      timeoutMs,
+      requestGuard.assertSafe,
+    )
     await cdp.send('Page.navigate', { url: target.href })
 
-    await waitFor(
-      cdp,
+    await waitForSafe(
       `document.readyState === 'complete'
         && !!document.getElementById('discovery-search-form')
         && !!document.getElementById('musicxml-tab-btn')
@@ -307,20 +313,17 @@ async function runBrowserProbe({ chrome, target }) {
     if (!await evaluate(cdp, uploadExpression(fixtureXml, 's16-production-composition.musicxml'))) {
       throw new Error('S16 production MusicXML input is missing.')
     }
-    await waitFor(
-      cdp,
+    await waitForSafe(
       `document.getElementById('musicxml-open-btn')?.disabled === false`,
       'S16 production MusicXML selection',
     )
     await evaluate(cdp, `document.getElementById('musicxml-open-btn').click(); true`)
-    await waitFor(
-      cdp,
+    await waitForSafe(
       `String(document.getElementById('xml-output')?.textContent || '').includes('<step>C</step>')
         && String(document.getElementById('musicxml-file-name')?.textContent || '').includes('s16-production-composition.musicxml')`,
       'S16 production MusicXML acceptance',
     )
-    await waitFor(
-      cdp,
+    await waitForSafe(
       `(() => {
         const panel = document.getElementById('tab-guitar-tab');
         const state = String(panel?.getAttribute('data-guitar-tab-state') || '');
@@ -330,14 +333,12 @@ async function runBrowserProbe({ chrome, target }) {
     )
 
     await evaluate(cdp, `document.getElementById('smoosic-tab-btn').click(); true`)
-    await waitFor(
-      cdp,
+    await waitForSafe(
       `!!document.getElementById('smoosic-apply-btn')
         && !!document.getElementById('smoosic-editor-frame')`,
       'S16 production Smoosic host controls',
     )
-    await waitFor(
-      cdp,
+    await waitForSafe(
       `(() => {
         const status = document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status');
         const text = String(status?.textContent || '');
@@ -349,6 +350,7 @@ async function runBrowserProbe({ chrome, target }) {
       'S16 production Smoosic handoff',
     )
 
+    await requestGuard.settle()
     const rawSnapshot = await evaluate(cdp, `(() => {
       const guitarPanel = document.getElementById('tab-guitar-tab');
       const guitarState = String(guitarPanel?.getAttribute('data-guitar-tab-state') || '');
@@ -365,9 +367,6 @@ async function runBrowserProbe({ chrome, target }) {
         },
       };
     })()`)
-    if (nonGetRequests.length > 0) {
-      throw new Error(`S16 production probe observed a non-GET request: ${nonGetRequests.join(' | ')}`)
-    }
     return verifyS16MountedSurfaceSnapshot({
       ...rawSnapshot,
       pageErrors,
@@ -410,9 +409,11 @@ async function main() {
   console.log(`Evidence: ${evidencePath}`)
 }
 
-try {
-  await main()
-} catch (error) {
-  console.error(`S16 deployed composition probe failed closed: ${error?.message ?? error}`)
-  process.exitCode = 1
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try {
+    await main()
+  } catch (error) {
+    console.error(`S16 deployed composition probe failed closed: ${error?.message ?? error}`)
+    process.exitCode = 1
+  }
 }
