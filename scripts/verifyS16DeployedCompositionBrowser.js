@@ -387,6 +387,7 @@ export async function runBrowserProbe({ chrome, target }) {
 }
 
 async function main() {
+  rmSync(evidencePath, { force: true })
   const targetValue = requiredEnvironment('SESLITAB_PRODUCTION_URL')
   const expectedRevision = resolveExpectedRevision()
   const target = normalizeS16ProductionTarget(targetValue)
