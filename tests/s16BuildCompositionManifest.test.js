@@ -223,3 +223,25 @@ test('S16 refuses to write provenance before the production bundle exists', { sk
   )
   assert.deepEqual(await readdir(distRoot), [])
 })
+
+test('S16 build and required CI verify provenance without deploying', async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  )
+  const workflow = await readFile(
+    new URL('../.github/workflows/ci.yml', import.meta.url),
+    'utf8',
+  )
+
+  assert.equal(
+    packageJson.scripts.build,
+    'npm run runtime:prepare && npm run smoosic:prepare && vite build && node scripts/writeS16BuildCompositionManifest.js',
+  )
+  assert.match(
+    workflow,
+    /- name: Verify S16 build composition identity\s+run: node scripts\/verifyS16BuildCompositionManifest\.js/u,
+  )
+  assert.match(workflow, /name: seslitab-build-composition/u)
+  assert.match(workflow, /path: dist\/seslitab-build\.json/u)
+  assert.doesNotMatch(workflow, /\bdeploy(?:ment)?\b|render\.com|RENDER_API|render deploy/iu)
+})
