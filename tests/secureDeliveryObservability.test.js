@@ -372,3 +372,40 @@ test('feature gates preserve request-time config evaluation', async () => {
     ],
   )
 })
+
+
+test('closed composition master gate emits a privacy-safe unavailable request event', async () => {
+  const {
+    createSecureDeliveryComposition,
+  } = await import(
+    '../backend/delivery/composition.js'
+  )
+  const events = []
+  const composition =
+    createSecureDeliveryComposition({
+      env: {},
+      observeRequest(event) {
+        events.push(event)
+      },
+    })
+  const app =
+    appFor(composition.router)
+
+  const response = await request(
+    app,
+    '/api/secure-delivery/v1/student/assignments',
+  )
+
+  assert.equal(response.status, 503)
+  assert.deepEqual(events, [
+    {
+      event:
+        'secure_delivery_request',
+      operation:
+        'secure_delivery_unavailable',
+      outcome:
+        'unavailable',
+      status: 503,
+    },
+  ])
+})
