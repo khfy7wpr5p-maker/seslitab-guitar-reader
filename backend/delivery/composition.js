@@ -61,12 +61,19 @@ export function createSecureDeliveryComposition({
     createSecureDeliveryConfig(env)
 
   if (!config.enabled) {
+    const requestObserver =
+      typeof observeRequest === 'function'
+        ? observeRequest
+        : createSecureDeliveryRequestObserver()
+
     return Object.freeze({
       enabled: false,
       config,
       router:
         createUnavailableSecureDeliveryRouter({
           config,
+          observeRequest:
+            requestObserver,
         }),
       async close() {},
     })
