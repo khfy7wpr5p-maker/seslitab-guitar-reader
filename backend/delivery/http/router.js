@@ -56,6 +56,37 @@ function unavailable(res) {
   )
 }
 
+function observeSafely(
+  observeRequest,
+  operation,
+  outcome,
+  status,
+) {
+  if (typeof observeRequest !== 'function') {
+    return
+  }
+  try {
+    const result =
+      observeRequest(
+        Object.freeze({
+          event: 'secure_delivery_request',
+          operation,
+          outcome,
+          status,
+        }),
+      )
+
+    if (
+      result &&
+      typeof result.catch === 'function'
+    ) {
+      result.catch(() => {})
+    }
+  } catch {
+    // Observability must never make Secure Delivery unavailable.
+  }
+}
+
 export function createSecureDeliveryRouter({
   tokenVerifier,
   preparedService,
@@ -129,29 +160,12 @@ export function createSecureDeliveryRouter({
     outcome,
     status,
   ) {
-    if (typeof observeRequest !== 'function') {
-      return
-    }
-    try {
-      const result =
-        observeRequest(
-          Object.freeze({
-            event: 'secure_delivery_request',
-            operation,
-            outcome,
-            status,
-          }),
-        )
-
-      if (
-        result &&
-        typeof result.catch === 'function'
-      ) {
-        result.catch(() => {})
-      }
-    } catch {
-      // Observability must never make Secure Delivery unavailable.
-    }
+    observeSafely(
+      observeRequest,
+      operation,
+      outcome,
+      status,
+    )
   }
 
   const router = express.Router()
@@ -457,11 +471,18 @@ export function createSecureDeliveryRouter({
 
 export function createUnavailableSecureDeliveryRouter({
   config,
+  observeRequest,
 } = {}) {
   assertConfig(config)
   const router = express.Router()
-  router.use((_req, res) =>
-    unavailable(res),
-  )
+  router.use((_req, res) => {
+    observeSafely(
+      observeRequest,
+      'secure_delivery_unavailable',
+      'unavailable',
+      503,
+    )
+    return unavailable(res)
+  })
   return router
 }
