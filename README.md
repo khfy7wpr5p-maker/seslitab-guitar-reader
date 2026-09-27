@@ -71,7 +71,7 @@ The target product architecture separates the following surfaces:
 - Simplified Rhythm Mode — outside the current production scope
 - Mobile / PWA Productisation — covered narrow-browser presentation only; native/manual device certification is outside the current production scope
 
-The production frontend source of truth is this GitHub repository. Bolt may be used only as a disposable prototype/reference environment and is not the authoritative application source.
+The production frontend source of truth is this GitHub repository. Bolt may be used only as a disposable prototype/reference environment and is not the authoritative application source. Production promotion must follow the exact-revision, existing-service-only process in [S16 Production Composition Stabilization](docs/s16-production-composition-stabilization.md).
 
 ## Roadmap Position
 
@@ -103,6 +103,8 @@ A later change must not inherit an older approval or authorization automatically
 ## Protected OMR / Deployment Boundary
 
 The current Audiveris OMR path and the existing Render connection are established infrastructure boundaries. Routine UI, music-engine, teacher-revision, TAB, violin, MIDI, chord, tuner or sharing-domain work must not rewrite or reconfigure them unless a separate, explicitly approved package requires it.
+
+S16 uses only the existing `seslitab-app` frontend service. Frontend merge/deployment and any `seslitab-omr` resume or change are separate human approval gates; no new Render service or automatic deployment is authorized.
 
 In particular, current application work does not silently change:
 
