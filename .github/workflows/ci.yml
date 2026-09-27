@@ -46,6 +46,17 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+      - name: Verify S16 build composition identity
+        run: node scripts/verifyS16BuildCompositionManifest.js
+
+      - name: Upload S16 build composition evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seslitab-build-composition
+          path: dist/seslitab-build.json
+          if-no-files-found: warn
+
       - name: Verify S14 core score runtime in real browser
         run: node scripts/verifyS14CoreRuntimeBrowser.js
 
