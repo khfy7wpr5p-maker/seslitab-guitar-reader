@@ -807,6 +807,7 @@ try {
     unsupportedStructureRejected: true,
     publishRetryWithoutSecondExport: true,
     editorRemainedUsable: true,
+    smoosicVoiceIdentityNormalizationVerified: true,
     physicalIphoneSafariVerified: false,
   }, null, 2) + '\n')
 
