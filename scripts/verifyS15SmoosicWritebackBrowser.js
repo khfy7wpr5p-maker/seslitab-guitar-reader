@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname, join, resolve, sep } from 'node:path'
+import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
 
 const repoRoot = resolve('.')
 const distRoot = resolve(repoRoot, 'dist')
@@ -69,6 +70,13 @@ const staleCandidateXml = sourceXml
 const voiceIdentitySourceXml = sourceXml
   .replace('<work-title>S15 C</work-title>', '<work-title>S15 voice identity</work-title>')
   .replace('<voice>1</voice>', '<voice>2</voice>')
+
+const realOmrDiagnosticXml = readFileSync(
+  resolve(repoRoot, 'tests', 'fixtures', 'real-omr', 'gesi-clean.xml'),
+  'utf8',
+)
+const realOmrDiagnosticFirstStep =
+  realOmrDiagnosticXml.match(/<step>([^<]+)<\/step>/)?.[1] || 'C'
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -794,6 +802,91 @@ try {
     })()`)
     throw new Error(`${error.message} | voice-identity diagnostic=${JSON.stringify(diagnostic)}`)
   }
+
+  // SES-43 second-root-cause diagnostic.
+  // Exercise a real OMR fixture with chords and multiple voices through the
+  // bundled Smoosic import/export path, then report exact stable-locator drift.
+  await openMusicXml(
+    cdp,
+    realOmrDiagnosticXml,
+    's15-real-omr-gesi.musicxml',
+    realOmrDiagnosticFirstStep,
+  )
+  await evaluate(cdp, `document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(
+    cdp,
+    `(() => {
+      const text = String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '');
+      return text.startsWith('Yüklendi:') && text.includes('s15-real-omr-gesi.musicxml');
+    })()`,
+    'real OMR Smoosic handoff',
+  )
+
+  await evaluate(cdp, `(() => {
+    window.__S15_FIRST_EXPORT__ = null;
+    document.getElementById('smoosic-apply-btn').click();
+    return true;
+  })()`)
+  const realOmrExport = await waitFor(
+    cdp,
+    `(() => {
+      const value = window.__S15_FIRST_EXPORT__;
+      return value?.musicXml ? {
+        musicXml: String(value.musicXml),
+        error: String(value.error || ''),
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+      } : null;
+    })()`,
+    'real OMR Smoosic export',
+    30000,
+  )
+
+  const sourceParsed = parseMusicXmlToNotes(realOmrDiagnosticXml)
+  const candidateParsed = parseMusicXmlToNotes(realOmrExport.musicXml)
+  if (sourceParsed?.error || candidateParsed?.error) {
+    throw new Error(`real-fixture parse diagnostic failed source=${sourceParsed?.error || ''} candidate=${candidateParsed?.error || ''}`)
+  }
+
+  const stableFields = [
+    'partId',
+    'partIndex',
+    'measureIndex',
+    'measureKey',
+    'voice',
+    'staff',
+    'isGrace',
+    'isChordNote',
+  ]
+  const fieldCounts = Object.fromEntries(stableFields.map((field) => [field, 0]))
+  const firstMismatches = []
+  const limit = Math.min(sourceParsed.notes.length, candidateParsed.notes.length)
+  for (let index = 0; index < limit; index += 1) {
+    const source = sourceParsed.notes[index]
+    const candidate = candidateParsed.notes[index]
+    for (const field of stableFields) {
+      if (Object.is(source?.[field] ?? null, candidate?.[field] ?? null)) continue
+      fieldCounts[field] += 1
+      if (firstMismatches.length < 24) {
+        firstMismatches.push({
+          index,
+          field,
+          source: source?.[field] ?? null,
+          candidate: candidate?.[field] ?? null,
+          sourcePitch: source?.noteName ?? null,
+          candidatePitch: candidate?.noteName ?? null,
+        })
+      }
+    }
+  }
+
+  throw new Error(`SES-43 real-fixture locator diagnostic=${JSON.stringify({
+    sourceNotes: sourceParsed.notes.length,
+    candidateNotes: candidateParsed.notes.length,
+    fieldCounts,
+    firstMismatches,
+    hostStatus: realOmrExport.hostStatus,
+    exportError: realOmrExport.error,
+  })}`)
 
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
   writeFileSync(evidencePath, JSON.stringify({
