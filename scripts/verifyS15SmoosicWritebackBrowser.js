@@ -619,17 +619,24 @@ try {
     const frame = document.getElementById('smoosic-editor-frame');
     const payload = ${JSON.stringify({
       type: 'seslitab:smoosic-export-result',
-      version: 1,
+      version: 2,
       requestId: '__REQUEST_ID__',
       sourceRevision: -1,
       fileName: 's15-stale.musicxml',
       musicXml: staleCandidateXml,
+      paddingRestProvenance: {
+        version: 1,
+        sourceRevision: -1,
+        rawNoteCount: 1,
+        entries: [],
+      },
       roundTripOk: true,
       shapeOk: true,
       semanticOk: true,
     })};
     payload.requestId = ${JSON.stringify(pendingRequest.requestId)};
     payload.sourceRevision = ${Number(pendingRequest.sourceRevision)};
+    payload.paddingRestProvenance.sourceRevision = payload.sourceRevision;
     const script = frame.contentDocument.createElement('script');
     script.textContent = 'parent.postMessage(' + JSON.stringify(payload).replace(/</g, '\\u003c') + ', location.origin);';
     frame.contentDocument.body.appendChild(script);
@@ -662,11 +669,17 @@ try {
       const frame = document.getElementById('smoosic-editor-frame');
       const payload = ${JSON.stringify({
         type: 'seslitab:smoosic-export-result',
-        version: 1,
+        version: 2,
         requestId: request.requestId,
         sourceRevision: request.sourceRevision,
         fileName: 's15-negative.musicxml',
         musicXml,
+        paddingRestProvenance: {
+          version: 1,
+          sourceRevision: request.sourceRevision,
+          rawNoteCount: (String(musicXml).match(/<note\b/g) || []).length,
+          entries: [],
+        },
         roundTripOk: true,
         shapeOk: true,
         semanticOk: true,

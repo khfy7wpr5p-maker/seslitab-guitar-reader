@@ -574,6 +574,7 @@ test('S15 unsupported structural edit remains exportable instead of becoming can
 
 
 const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+const browserProof = readFileSync(new URL('../scripts/verifyS15SmoosicWritebackBrowser.js', import.meta.url), 'utf8')
 
 test('S15 gesi-clean browser fixture retains the independently counted source contract', () => {
   const xml = readFileSync(new URL('./fixtures/real-omr/gesi-clean.xml', import.meta.url), 'utf8')
@@ -589,6 +590,11 @@ test('S15 real-browser proof is part of protected CI after source lifecycle acce
   assert.ok(s15Index > sourceLifecycleIndex)
   assert.match(ci, /node scripts\/verifyS15SmoosicWritebackBrowser\.js/)
   assert.match(ci, /s15-smoosic-writeback/)
+})
+
+test('S15 browser negative candidates use correlated v2 results with revision-bound provenance', () => {
+  assert.match(browserProof, /type: 'seslitab:smoosic-export-result',[\s\S]*version: 2,[\s\S]*paddingRestProvenance:/)
+  assert.match(browserProof, /sourceRevision: request\.sourceRevision,[\s\S]*rawNoteCount:/)
 })
 
 
