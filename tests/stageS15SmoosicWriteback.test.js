@@ -57,13 +57,14 @@ function editorExportHarness({ rawXml = EXPORT_RAW_XML, trackerState = 'valid' }
   const tracker = createSmoosicPaddingRestTracker(measure)
   const imported = tracker.runDuringImport(() => ({ staves: [{ partInfo: { stavesBefore: 0, stavesAfter: 0 }, measures: [{ voices: [{ notes: [measure.createRestNoteWithDuration(8)] }] }] }] }))
   const score = trackerState === 'stale' ? { ...imported } : imported
+  const storeScore = { ...score }
   if (trackerState === 'unprovable') imported.staves[0].measures[0].voices[0].notes[0].tickCount = 16
   const parent = { postMessage(message, origin) { posts.push({ message, origin }) } }
   const context = vm.createContext({
     require(name) {
       if (name === 'smoosic') return {
         SmoMeasure: measure,
-        SmoToXml: { convert(value) { assert.equal(value, score); conversions += 1; return rawXml } },
+        SmoToXml: { convert(value) { assert.ok(value === score || value === storeScore); conversions += 1; return rawXml } },
         XmlToSmo: { convert() { return score } },
       }
       if (name === './seslitab-padding-rest-provenance') return { createSmoosicPaddingRestTracker }
@@ -80,8 +81,12 @@ function editorExportHarness({ rawXml = EXPORT_RAW_XML, trackerState = 'valid' }
   })
   vm.runInContext(editor, context)
   context.stopNativePlayback = () => {}
-  vm.runInContext('editorReady = true; applicationInstance = { view: { storeScore: globalThis.testScore } }; activePaddingRestTracker = globalThis.testTracker',
-    Object.assign(context, { testScore: score, testTracker: trackerState === 'missing' ? null : tracker }))
+  vm.runInContext('editorReady = true; applicationInstance = { view: { score: globalThis.testScore, storeScore: globalThis.testStoreScore } }; activePaddingRestTracker = globalThis.testTracker',
+    Object.assign(context, {
+      testScore: score,
+      testStoreScore: storeScore,
+      testTracker: trackerState === 'missing' ? null : tracker,
+    }))
   const request = (overrides = {}) => context.handleSesliTabExportRequest({
     source: parent,
     origin: 'https://seslitab.test',

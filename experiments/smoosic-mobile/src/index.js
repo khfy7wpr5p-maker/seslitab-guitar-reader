@@ -841,7 +841,7 @@ async function handleSesliTabExportRequest(event) {
   try {
     await awaitEditorStable();
     const score = applicationInstance && applicationInstance.view
-      ? applicationInstance.view.storeScore || applicationInstance.view.score : null;
+      ? applicationInstance.view.score : null;
     const serialized = createSesliTabWritebackExport({
       score, sourceRevision: message.sourceRevision, tracker: activePaddingRestTracker
     });
