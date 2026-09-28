@@ -137,6 +137,41 @@ test('applies one pitch edit as one new immutable revision without inheriting ap
 })
 
 
+
+test('normalizes Smoosic canonical single-voice labels before structural classification', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const sourceXml = SOURCE_XML.replaceAll('<voice>1</voice>', '<voice>2</voice>')
+  const root = await authority({
+    xml: sourceXml,
+    sourceId: 's15-voice-source',
+    automaticRevisionId: 's15-voice-auto',
+    historyId: 's15-voice-history',
+  })
+  const candidate = sourceXml
+    .replaceAll('<voice>2</voice>', '<voice>1</voice>')
+    .replace('<step>C</step>', '<step>G</step>')
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidate,
+    revisionId: 's15-voice-edit',
+    eventId: 's15-voice-event',
+    operationIdPrefix: 's15-voice-op',
+    createdAt: '2026-09-27T20:30:00Z',
+    DOMParserCtor: ProductDOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.equal(result.revision.content[0].voice, 2)
+  assert.match(result.musicXml, /<voice>2<\/voice>/)
+  assert.doesNotMatch(result.musicXml, /<voice>1<\/voice>/)
+})
+
+
 test('normalizes Smoosic single-part id rewrite before strict product revalidation', async () => {
   const {
     SMOOSIC_WRITEBACK_STATUS,

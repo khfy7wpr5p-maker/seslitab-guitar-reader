@@ -66,6 +66,10 @@ const staleCandidateXml = sourceXml
   .replace('<work-title>S15 C</work-title>', '<work-title>S15 stale E</work-title>')
   .replace('<step>C</step>', '<step>E</step>')
 
+const voiceIdentitySourceXml = sourceXml
+  .replace('<work-title>S15 C</work-title>', '<work-title>S15 voice identity</work-title>')
+  .replace('<voice>1</voice>', '<voice>2</voice>')
+
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -730,6 +734,67 @@ try {
     return true;
   })()`)
 
+  // Regression proof for real Smoosic voice-ID normalization:
+  // MusicXML voice identifiers are arbitrary labels. Smoosic imports a
+  // single source voice "2" as its first logical voice and exports it as
+  // canonical voice "1". A pitch-only edit must not be misclassified as a
+  // structural relocation solely because that label was normalized.
+  await openMusicXml(cdp, voiceIdentitySourceXml, 's15-voice-identity.musicxml', 'C')
+  await evaluate(cdp, `document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(
+    cdp,
+    `(() => {
+      const text = String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '');
+      return text.startsWith('Yüklendi:') && text.includes('s15-voice-identity.musicxml');
+    })()`,
+    'Smoosic voice-identity source handoff',
+  )
+
+  const voicePitchTriggered = await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const button = frame?.contentDocument?.querySelector('button[data-key="d"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`)
+  if (!voicePitchTriggered) throw new Error('Smoosic voice-identity pitch edit could not be triggered.')
+
+  await evaluate(cdp, `(() => {
+    window.__S15_FIRST_EXPORT__ = null;
+    document.getElementById('smoosic-apply-btn').click();
+    return true;
+  })()`)
+
+  try {
+    await waitFor(
+      cdp,
+      `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
+      'Smoosic voice-identity pitch write-back',
+      15000,
+    )
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `(() => {
+      const source = String(document.getElementById('xml-output')?.textContent || '');
+      const candidate = String(window.__S15_FIRST_EXPORT__?.musicXml || '');
+      const voiceOf = (xml) => {
+        if (!xml) return '';
+        const parsed = new DOMParser().parseFromString(xml, 'text/xml');
+        return String(parsed.querySelector('part > measure > note > voice')?.textContent || '');
+      };
+      return {
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        sourceVoice: voiceOf(source),
+        candidateVoice: voiceOf(candidate),
+        candidateStep: (() => {
+          if (!candidate) return '';
+          const parsed = new DOMParser().parseFromString(candidate, 'text/xml');
+          return String(parsed.querySelector('part > measure > note pitch > step')?.textContent || '');
+        })(),
+      };
+    })()`)
+    throw new Error(`${error.message} | voice-identity diagnostic=${JSON.stringify(diagnostic)}`)
+  }
+
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
   writeFileSync(evidencePath, JSON.stringify({
     documentType: 'S15SmoosicWritebackEvidence',
@@ -742,6 +807,7 @@ try {
     unsupportedStructureRejected: true,
     publishRetryWithoutSecondExport: true,
     editorRemainedUsable: true,
+    smoosicVoiceIdentityNormalizationVerified: true,
     physicalIphoneSafariVerified: false,
   }, null, 2) + '\n')
 
