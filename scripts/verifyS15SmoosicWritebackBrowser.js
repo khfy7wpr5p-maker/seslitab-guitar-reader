@@ -880,9 +880,52 @@ try {
     }
   }
 
+  const summarizeMeasures = (notes) => {
+    const byMeasure = new Map()
+    for (const note of notes) {
+      const key = String(note?.measureIndex ?? 'unknown')
+      if (!byMeasure.has(key)) {
+        byMeasure.set(key, { total: 0, rests: 0, pitched: 0, voices: new Set() })
+      }
+      const summary = byMeasure.get(key)
+      summary.total += 1
+      if (note?.isRest) summary.rests += 1
+      else summary.pitched += 1
+      summary.voices.add(note?.voice ?? null)
+    }
+    return Object.fromEntries([...byMeasure.entries()].map(([key, value]) => [
+      key,
+      {
+        total: value.total,
+        rests: value.rests,
+        pitched: value.pitched,
+        voices: [...value.voices].sort((a, b) => Number(a) - Number(b)),
+      },
+    ]))
+  }
+  const sourceMeasures = summarizeMeasures(sourceParsed.notes)
+  const candidateMeasures = summarizeMeasures(candidateParsed.notes)
+  const measureDeltas = []
+  for (const key of new Set([...Object.keys(sourceMeasures), ...Object.keys(candidateMeasures)])) {
+    const source = sourceMeasures[key] || { total: 0, rests: 0, pitched: 0, voices: [] }
+    const candidate = candidateMeasures[key] || { total: 0, rests: 0, pitched: 0, voices: [] }
+    if (
+      source.total !== candidate.total
+      || source.rests !== candidate.rests
+      || source.pitched !== candidate.pitched
+    ) {
+      measureDeltas.push({ measureIndex: Number(key), source, candidate })
+    }
+  }
+
   throw new Error(`SES-43 real-fixture locator diagnostic=${JSON.stringify({
     sourceNotes: sourceParsed.notes.length,
     candidateNotes: candidateParsed.notes.length,
+    sourceRests: sourceParsed.notes.filter((note) => note?.isRest).length,
+    candidateRests: candidateParsed.notes.filter((note) => note?.isRest).length,
+    sourcePitched: sourceParsed.notes.filter((note) => !note?.isRest).length,
+    candidatePitched: candidateParsed.notes.filter((note) => !note?.isRest).length,
+    measureDeltas,
     fieldCounts,
     firstMismatches,
     hostStatus: realOmrExport.hostStatus,
