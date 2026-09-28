@@ -440,6 +440,52 @@ function normalizeSinglePartIdentity(musicXml, currentRevision) {
     : musicXml
 }
 
+export function diagnoseSmoosicWritebackNormalization({
+  musicXml,
+  currentRevision,
+} = {}) {
+  if (typeof musicXml !== 'string' || !Array.isArray(currentRevision?.content)) {
+    throw new TypeError('Diagnostic requires MusicXML and current revision content.')
+  }
+  const partNormalized = normalizeSinglePartIdentity(musicXml, currentRevision)
+  const voiceNormalized = normalizeSmoosicVoiceIdentity(partNormalized, currentRevision)
+  const paddingNormalized = normalizeSmoosicPaddingRests(voiceNormalized, currentRevision)
+  const stages = [
+    ['input', musicXml],
+    ['part', partNormalized],
+    ['voice', voiceNormalized],
+    ['padding', paddingNormalized],
+  ].map(([name, xml]) => {
+    const parsed = parseMusicXmlToNotes(xml)
+    const notes = Array.isArray(parsed?.notes) ? parsed.notes : []
+    let firstStableMismatch = null
+    if (notes.length === currentRevision.content.length) {
+      outer:
+      for (let index = 0; index < notes.length; index += 1) {
+        for (const field of STABLE_LOCATOR_FIELDS) {
+          if (!sameValue(currentRevision.content[index]?.[field], notes[index]?.[field])) {
+            firstStableMismatch = Object.freeze({
+              index,
+              field,
+              current: currentRevision.content[index]?.[field] ?? null,
+              candidate: notes[index]?.[field] ?? null,
+            })
+            break outer
+          }
+        }
+      }
+    }
+    return Object.freeze({
+      name,
+      changed: name === 'input' ? false : xml !== musicXml,
+      noteCount: notes.length,
+      error: parsed?.error ?? null,
+      firstStableMismatch,
+    })
+  })
+  return Object.freeze(stages)
+}
+
 function parseCandidate(musicXml, DOMParserCtor) {
   const parsed = parseMusicXmlToNotes(musicXml)
   if (parsed?.error || !Array.isArray(parsed?.notes) || parsed.notes.length === 0) {
