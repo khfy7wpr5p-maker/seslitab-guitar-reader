@@ -843,6 +843,17 @@ try {
     30000,
   )
 
+  const authorityDiagnostic = await evaluate(cdp, `(() => {
+    const value = window.__SES43_SMOOSIC_AUTHORITY_DIAGNOSTIC__;
+    if (!value) return null;
+    return {
+      fileName: value.fileName,
+      sourceLength: value.sourceLength,
+      noteCount: value.noteCount,
+      affected: (value.notes || []).filter((note) => [7, 18, 19].includes(Number(note.measureIndex))),
+    };
+  })()`)
+
   const sourceParsed = parseMusicXmlToNotes(realOmrDiagnosticXml)
   const candidateParsed = parseMusicXmlToNotes(realOmrExport.musicXml)
   const normalizationStages = diagnoseSmoosicWritebackNormalization({
@@ -962,6 +973,7 @@ try {
     hostStatus: realOmrExport.hostStatus,
     exportError: realOmrExport.error,
     normalizationStages,
+    authorityDiagnostic,
   })}`)
 
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
