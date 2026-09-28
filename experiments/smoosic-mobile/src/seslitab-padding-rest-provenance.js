@@ -8,6 +8,16 @@ function identity(note) {
   return id
 }
 
+function pitchSignature(note) {
+  const pitches = Array.isArray(note?.pitches) ? note.pitches : []
+  return JSON.stringify(pitches.map((pitch) => ({
+    letter: String(pitch?.letter || ''),
+    octave: Number(pitch?.octave || 0),
+    accidental: String(pitch?.accidental || ''),
+    cents: Number(pitch?.cents || 0),
+  })))
+}
+
 function orderedNotes(score) {
   if (!Array.isArray(score?.staves)) throw new Error('Invalid imported score')
   const result = []
@@ -128,12 +138,12 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       const importedId = identity(importedEntry.note)
       const renderedId = identity(renderedEntry.note)
       if (renderedIds.has(renderedId)
-        || importedId !== renderedId
         || importedEntry.note.noteType !== renderedEntry.note.noteType
         || importedEntry.note.tickCount !== renderedEntry.note.tickCount
+        || pitchSignature(importedEntry.note) !== pitchSignature(renderedEntry.note)
         || Object.keys(renderedEntry).some((key) => key !== 'note'
           && importedEntry[key] !== renderedEntry[key])) {
-        throw new Error('Rendered score clone identity or locator changed')
+        throw new Error('Rendered score clone semantics or locator changed')
       }
       renderedIds.add(renderedId)
 
@@ -144,7 +154,11 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
         throw new Error('Imported padding rest identity or locator changed')
       }
       Object.defineProperty(renderedEntry.note, importMarker, { value: token, configurable: true })
-      adopted.set(renderedEntry.note, record)
+      adopted.set(renderedEntry.note, {
+        noteIdentity: renderedId,
+        durationTicks: record.durationTicks,
+        locator: record.locator,
+      })
     })
     if (adopted.size !== captured.size) {
       throw new Error('Rendered score clone is missing padding rest identity')
