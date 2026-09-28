@@ -926,6 +926,32 @@ try {
     sourcePitched: sourceParsed.notes.filter((note) => !note?.isRest).length,
     candidatePitched: candidateParsed.notes.filter((note) => !note?.isRest).length,
     measureDeltas,
+    affectedSource: sourceParsed.notes
+      .filter((note) => [7, 18, 19].includes(Number(note?.measureIndex)))
+      .map((note) => ({
+        measureIndex: note.measureIndex,
+        startBeat: note.startBeat,
+        beats: note.beats,
+        durationValue: note.durationValue,
+        voice: note.voice,
+        staff: note.staff,
+        isRest: note.isRest,
+        isChordNote: note.isChordNote,
+        noteName: note.noteName,
+      })),
+    affectedCandidate: candidateParsed.notes
+      .filter((note) => [7, 18, 19].includes(Number(note?.measureIndex)))
+      .map((note) => ({
+        measureIndex: note.measureIndex,
+        startBeat: note.startBeat,
+        beats: note.beats,
+        durationValue: note.durationValue,
+        voice: note.voice,
+        staff: note.staff,
+        isRest: note.isRest,
+        isChordNote: note.isChordNote,
+        noteName: note.noteName,
+      })),
     fieldCounts,
     firstMismatches,
     hostStatus: realOmrExport.hostStatus,
