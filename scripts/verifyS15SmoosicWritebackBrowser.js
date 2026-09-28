@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { extname, join, resolve, sep } from 'node:path'
 import './runOmrQualityReport.js'
 import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
+import { diagnoseSmoosicWritebackNormalization } from '../src/services/smoosicProductWriteback.js'
 
 const repoRoot = resolve('.')
 const distRoot = resolve(repoRoot, 'dist')
@@ -844,6 +845,10 @@ try {
 
   const sourceParsed = parseMusicXmlToNotes(realOmrDiagnosticXml)
   const candidateParsed = parseMusicXmlToNotes(realOmrExport.musicXml)
+  const normalizationStages = diagnoseSmoosicWritebackNormalization({
+    musicXml: realOmrExport.musicXml,
+    currentRevision: { content: sourceParsed.notes },
+  })
   if (sourceParsed?.error || candidateParsed?.error) {
     throw new Error(`real-fixture parse diagnostic failed source=${sourceParsed?.error || ''} candidate=${candidateParsed?.error || ''}`)
   }
@@ -956,6 +961,7 @@ try {
     firstMismatches,
     hostStatus: realOmrExport.hostStatus,
     exportError: realOmrExport.error,
+    normalizationStages,
   })}`)
 
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
