@@ -18,7 +18,8 @@ const LOAD_TIMEOUT_MS = 45000
 const WRITEBACK_TIMEOUT_MS = 45000
 const WRITEBACK_REQUEST = 'seslitab:smoosic-export-request'
 const WRITEBACK_RESULT = 'seslitab:smoosic-export-result'
-const WRITEBACK_VERSION = 1
+const WRITEBACK_REQUEST_VERSION = 1
+const WRITEBACK_VERSION = 2
 
 const states = new WeakMap()
 
@@ -261,7 +262,7 @@ function requestEditorMusicXml(root) {
 
     frame.contentWindow.postMessage({
       type: WRITEBACK_REQUEST,
-      version: WRITEBACK_VERSION,
+      version: WRITEBACK_REQUEST_VERSION,
       requestId,
       sourceRevision,
     }, win.location.origin)
@@ -338,15 +339,23 @@ async function applyEditorWriteback(root) {
       return false
     }
 
-    const result = applySmoosicProductWriteback({
+    const proof = candidate.paddingRestProvenance
+    const proofMatchesSource = proof && typeof proof === 'object' && !Array.isArray(proof)
+      && proof.version === 1
+      && proof.sourceRevision === startingSourceRevision
+      && Number.isSafeInteger(proof.rawNoteCount) && proof.rawNoteCount >= 0
+      && Array.isArray(proof.entries) && proof.entries.length <= proof.rawNoteCount
+    const result = proofMatchesSource ? applySmoosicProductWriteback({
       authority,
       musicXml: candidate.musicXml,
+      paddingRestProvenance: proof,
+      sourceRevision: startingSourceRevision,
       revisionId: secureId(root, 'smoosic-revision'),
       eventId: secureId(root, 'smoosic-edit-event'),
       operationIdPrefix: secureId(root, 'smoosic-operation'),
       createdAt: new Date().toISOString(),
       DOMParserCtor: root.defaultView?.DOMParser ?? globalThis.DOMParser,
-    })
+    }) : Object.freeze({ status: SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE, authority })
 
     if (result.status === SMOOSIC_WRITEBACK_STATUS.NO_CHANGE) {
       setHostStatus(root, 'SesliTab’a uygulanacak yeni bir müzikal değişiklik yok.', 'info')

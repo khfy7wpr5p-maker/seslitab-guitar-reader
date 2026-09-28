@@ -1,4 +1,6 @@
 import { MAX_MUSIC_XML_FILE_SIZE } from './musicXmlFile.js'
+import { inspectMusicXml } from '../../musicXmlSecurity.js'
+import { normalizeSmoosicPaddingRests } from './smoosicPaddingRestNormalization.js'
 import { parseMusicXmlToNotes } from './musicEngine.js'
 import { extractPrDProductNotationByIndex } from './editorPrDNotationBridge.js'
 import {
@@ -330,6 +332,19 @@ function changedIndexesFor({
       JSON.stringify(current.notation[index] ?? null)
       !== JSON.stringify(candidate.notation[index] ?? null)
 
+    // Proof can remove editor padding, but cannot change source rest topology.
+    // Compare canonical positions after normalization; do not infer provenance
+    // from a rest's duration, voice, or visual shape.
+    if (
+      (current.notes[index]?.isRest === true || candidate.notes[index]?.isRest === true)
+      && (semanticChanged || notationChanged)
+    ) {
+      return Object.freeze({
+        supported: false,
+        changedIndexes: Object.freeze([]),
+      })
+    }
+
     if (semanticChanged || notationChanged) changedIndexes.push(index)
   }
 
@@ -374,6 +389,8 @@ export function createSmoosicProductAuthority({
 export function applySmoosicProductWriteback({
   authority,
   musicXml,
+  paddingRestProvenance,
+  sourceRevision,
   revisionId,
   eventId,
   operationIdPrefix,
@@ -383,7 +400,7 @@ export function applySmoosicProductWriteback({
   if (!authority?.workspace) {
     throw new TypeError('Smoosic product authority is required.')
   }
-  if (!validMusicXml(musicXml)) {
+  if (!validMusicXml(musicXml) || !inspectMusicXml(musicXml).ok) {
     return Object.freeze({
       status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
       authority,
@@ -399,7 +416,21 @@ export function applySmoosicProductWriteback({
     })
   }
 
-  const partNormalizedMusicXml = normalizeSinglePartIdentity(musicXml, currentRevision)
+  let paddingNormalizedMusicXml
+  try {
+    paddingNormalizedMusicXml = normalizeSmoosicPaddingRests({
+      musicXml,
+      provenance: paddingRestProvenance,
+      sourceRevision,
+    }).musicXml
+  } catch {
+    return Object.freeze({
+      status: SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE,
+      authority,
+    })
+  }
+
+  const partNormalizedMusicXml = normalizeSinglePartIdentity(paddingNormalizedMusicXml, currentRevision)
   const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
     partNormalizedMusicXml,
     currentRevision,

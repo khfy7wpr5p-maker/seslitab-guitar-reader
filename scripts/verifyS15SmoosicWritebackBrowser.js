@@ -7,6 +7,7 @@ import { extname, join, resolve, sep } from 'node:path'
 const repoRoot = resolve('.')
 const distRoot = resolve(repoRoot, 'dist')
 const evidencePath = resolve(repoRoot, 'artifacts', 's15-smoosic-writeback.json')
+const gesiSourceXml = readFileSync(resolve(repoRoot, 'tests', 'fixtures', 'real-omr', 'gesi-clean.xml'), 'utf8')
 
 const candidates = [
   process.env.CHROME_BIN,
@@ -83,6 +84,19 @@ const mimeTypes = {
 
 function delay(ms) {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
+}
+
+function musicXmlCounts(xml) {
+  return Object.freeze({
+    total: (String(xml).match(/<note\b/g) ?? []).length,
+    pitched: (String(xml).match(/<pitch\b/g) ?? []).length,
+    rests: (String(xml).match(/<rest\b/g) ?? []).length,
+    forwards: (String(xml).match(/<forward\b/g) ?? []).length,
+  })
+}
+
+function requireEvidence(condition, message) {
+  if (!condition) throw new Error(`gesi-clean evidence mismatch: ${message}`)
 }
 
 function safeDistPath(pathname) {
@@ -795,6 +809,96 @@ try {
     throw new Error(`${error.message} | voice-identity diagnostic=${JSON.stringify(diagnostic)}`)
   }
 
+  // SES-68 deterministic padding-rest provenance proof against the real OMR
+  // fixture. The first source pitch is D5, so select E to guarantee one
+  // supported pitch-only edit rather than a no-op.
+  await openMusicXml(cdp, gesiSourceXml, 'gesi-clean.xml', 'D')
+  await evaluate(cdp, `document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(
+    cdp,
+    `(() => {
+      const text = String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '');
+      return text.startsWith('Yüklendi:') && text.includes('gesi-clean.xml');
+    })()`,
+    'gesi-clean Smoosic handoff',
+  )
+  await waitFor(
+    cdp,
+    `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      return [...(frame?.contentDocument?.querySelectorAll('#smoo .vf-notehead') || [])]
+        .some((head) => {
+          const rect = head.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+    })()`,
+    'gesi-clean rendered notehead',
+  )
+
+  const gesiPitchTriggered = await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const button = frame?.contentDocument?.querySelector('button[data-key="e"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`)
+  if (!gesiPitchTriggered) throw new Error('gesi-clean E pitch control could not be triggered.')
+
+  await evaluate(cdp, `(() => {
+    window.__S15_FIRST_EXPORT__ = null;
+    document.getElementById('smoosic-apply-btn').click();
+    return true;
+  })()`)
+  await waitFor(
+    cdp,
+    `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
+    'supported gesi-clean write-back',
+  )
+
+  const gesiSnapshot = await evaluate(cdp, `(() => ({
+    rawMusicXml: String(window.__S15_FIRST_EXPORT__?.musicXml || ''),
+    provenance: window.__S15_FIRST_EXPORT__?.paddingRestProvenance || null,
+    normalizedMusicXml: String(document.getElementById('xml-output')?.textContent || ''),
+    terminalStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+  }))()`)
+  const sourceCounts = musicXmlCounts(gesiSourceXml)
+  const rawCounts = musicXmlCounts(gesiSnapshot?.rawMusicXml)
+  const normalizedCounts = musicXmlCounts(gesiSnapshot?.normalizedMusicXml)
+  const provenanceEntries = gesiSnapshot?.provenance?.entries ?? []
+  const measureIndexes = [...new Set(provenanceEntries.map((entry) => entry.measureIndex))].sort((a, b) => a - b)
+
+  requireEvidence(sourceCounts.total === 112, `source total ${sourceCounts.total} !== 112`)
+  requireEvidence(sourceCounts.pitched === 104, `source pitched ${sourceCounts.pitched} !== 104`)
+  requireEvidence(sourceCounts.rests === 8, `source rests ${sourceCounts.rests} !== 8`)
+  requireEvidence(rawCounts.total === 126, `raw total ${rawCounts.total} !== 126`)
+  requireEvidence(rawCounts.pitched === 104, `raw pitched ${rawCounts.pitched} !== 104`)
+  requireEvidence(rawCounts.rests === 22, `raw rests ${rawCounts.rests} !== 22`)
+  requireEvidence(provenanceEntries.length === 14, `certified entries ${provenanceEntries.length} !== 14`)
+  requireEvidence(JSON.stringify(measureIndexes) === JSON.stringify([7, 18, 19]), `measure indexes ${JSON.stringify(measureIndexes)}`)
+  requireEvidence(
+    provenanceEntries.every((entry) => Number.isInteger(entry.rawNoteOrdinal) && typeof entry.noteIdentity === 'string' && entry.noteIdentity),
+    'one or more certified entries lost ordinal/object identity',
+  )
+  requireEvidence(normalizedCounts.total === 112, `normalized total ${normalizedCounts.total} !== 112`)
+  requireEvidence(normalizedCounts.pitched === 104, `normalized pitched ${normalizedCounts.pitched} !== 104`)
+  requireEvidence(normalizedCounts.rests === 8, `normalized rests ${normalizedCounts.rests} !== 8`)
+
+  const gesiEvidence = Object.freeze({
+    fixture: 'tests/fixtures/real-omr/gesi-clean.xml',
+    editClass: 'PITCH_ONLY',
+    terminalStatus: 'APPLIED',
+    identityValidatedAfterEdit: true,
+    source: sourceCounts,
+    raw: rawCounts,
+    normalized: normalizedCounts,
+    provenance: {
+      version: gesiSnapshot.provenance.version,
+      sourceRevision: gesiSnapshot.provenance.sourceRevision,
+      rawNoteCount: gesiSnapshot.provenance.rawNoteCount,
+      entries: provenanceEntries,
+    },
+  })
+
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
   writeFileSync(evidencePath, JSON.stringify({
     documentType: 'S15SmoosicWritebackEvidence',
@@ -808,6 +912,7 @@ try {
     publishRetryWithoutSecondExport: true,
     editorRemainedUsable: true,
     smoosicVoiceIdentityNormalizationVerified: true,
+    gesiClean: gesiEvidence,
     physicalIphoneSafariVerified: false,
   }, null, 2) + '\n')
 

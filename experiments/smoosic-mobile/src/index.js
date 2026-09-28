@@ -2,6 +2,7 @@ const {
   SuiApplication,
   SuiSampleMedia,
   SmoScore,
+  SmoMeasure,
   XmlToSmo,
   SmoToXml,
   SuiOscillator,
@@ -11,8 +12,10 @@ const {
   SmoSelection,
   ScoreRoadMapBuilder
 } = require('smoosic');
+const { createSmoosicPaddingRestTracker } = require('./seslitab-padding-rest-provenance');
 
 let applicationInstance = null;
+let activePaddingRestTracker = null;
 let editorReady = false;
 let activePlaybackInstrument = 'piano';
 let nativeAudioBridgeInstalled = false;
@@ -226,11 +229,25 @@ async function loadMusicXmlFile(file) {
   const xml = parser.parseFromString(text, 'text/xml');
   if (xml.querySelector('parsererror')) throw new Error('MusicXML ayrıştırılamadı');
 
-  const score = XmlToSmo.convert(xml);
-  if (score && score.layoutManager && typeof score.layoutManager.zoomToWidth === 'function') {
-    score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
+  const candidateTracker = createSmoosicPaddingRestTracker(SmoMeasure);
+  let score;
+  try {
+    score = candidateTracker.runDuringImport(() => XmlToSmo.convert(xml));
+  } catch (error) {
+    candidateTracker.clear();
+    throw error;
   }
-  await applicationInstance.view.changeScore(score);
+  try {
+    if (score && score.layoutManager && typeof score.layoutManager.zoomToWidth === 'function') {
+      score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
+    }
+    await applicationInstance.view.changeScore(score);
+  } catch (error) {
+    candidateTracker.clear();
+    throw error;
+  }
+  if (activePaddingRestTracker) activePaddingRestTracker.clear();
+  activePaddingRestTracker = candidateTracker;
   await applicationInstance.view.moveHome({
     ctrlKey: true,
     shiftKey: false,
@@ -724,13 +741,13 @@ function sameSemanticScore(a, b) {
   return JSON.stringify(semanticScoreSignature(a)) === JSON.stringify(semanticScoreSignature(b));
 }
 
-function serializeCurrentMusicXml() {
+function serializeCurrentMusicXml(score) {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
   }
 
   stopNativePlayback();
-  const sourceScore = applicationInstance.view.storeScore || applicationInstance.view.score;
+  const sourceScore = score || applicationInstance.view.storeScore || applicationInstance.view.score;
   const xmlDom = SmoToXml.convert(sourceScore);
   const xmlText = new XMLSerializer().serializeToString(xmlDom);
   if (!xmlText || !xmlText.includes('<score-')) throw new Error('MusicXML üretilemedi');
@@ -788,7 +805,27 @@ async function exportMusicXml() {
 
 const SESLITAB_EXPORT_REQUEST = 'seslitab:smoosic-export-request';
 const SESLITAB_EXPORT_RESULT = 'seslitab:smoosic-export-result';
-const SESLITAB_EXPORT_VERSION = 1;
+const SESLITAB_EXPORT_VERSION = 2;
+// Match the 10 MiB MusicXML input limit used by the host write-back path.
+const SESLITAB_EXPORT_MAX_XML_BYTES = 10 * 1024 * 1024;
+
+function createSesliTabWritebackExport({ score, sourceRevision, tracker }) {
+  if (!tracker || typeof tracker.createExportManifest !== 'function') {
+    throw new Error('Imported score provenance is unavailable');
+  }
+  const serialized = serializeCurrentMusicXml(score);
+  if (new TextEncoder().encode(serialized.musicXml).length > SESLITAB_EXPORT_MAX_XML_BYTES) {
+    throw new Error('MusicXML exceeds host payload size limit');
+  }
+  const paddingRestProvenance = tracker.createExportManifest({
+    score, rawMusicXml: serialized.musicXml, sourceRevision
+  });
+  if (paddingRestProvenance.sourceRevision !== sourceRevision
+    || paddingRestProvenance.entries.length > paddingRestProvenance.rawNoteCount) {
+    throw new Error('Invalid padding rest provenance');
+  }
+  return { ...serialized, paddingRestProvenance };
+}
 
 async function handleSesliTabExportRequest(event) {
   if (event.source !== parent) return;
@@ -803,7 +840,11 @@ async function handleSesliTabExportRequest(event) {
 
   try {
     await awaitEditorStable();
-    const serialized = serializeCurrentMusicXml();
+    const score = applicationInstance && applicationInstance.view
+      ? applicationInstance.view.storeScore || applicationInstance.view.score : null;
+    const serialized = createSesliTabWritebackExport({
+      score, sourceRevision: message.sourceRevision, tracker: activePaddingRestTracker
+    });
     event.source.postMessage({
       type: SESLITAB_EXPORT_RESULT,
       version: SESLITAB_EXPORT_VERSION,
@@ -811,6 +852,7 @@ async function handleSesliTabExportRequest(event) {
       sourceRevision: message.sourceRevision,
       fileName: serialized.fileName,
       musicXml: serialized.musicXml,
+      paddingRestProvenance: serialized.paddingRestProvenance,
       roundTripOk: serialized.roundTripOk,
       shapeOk: serialized.shapeOk,
       semanticOk: serialized.semanticOk
@@ -823,7 +865,7 @@ async function handleSesliTabExportRequest(event) {
       sourceRevision: message.sourceRevision,
       fileName: `${currentScoreBaseName}-edited.musicxml`,
       musicXml: '',
-      error: String(error && error.message ? error.message : 'MusicXML üretilemedi')
+      error: String(error && error.message ? error.message : 'MusicXML üretilemedi').slice(0, 256)
     }, event.origin);
   }
 }
