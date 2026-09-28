@@ -111,6 +111,52 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     }
   }
 
+  function adoptRenderedScore(renderedScore) {
+    if (!score) throw new Error('Imported score registry is unavailable or stale')
+    if (renderedScore === score) return renderedScore
+
+    const importedNotes = orderedNotes(score)
+    const renderedNotes = orderedNotes(renderedScore)
+    if (renderedNotes.length !== importedNotes.length) {
+      throw new Error('Rendered score clone note count changed')
+    }
+
+    const adopted = new Map()
+    const renderedIds = new Set()
+    importedNotes.forEach((importedEntry, ordinal) => {
+      const renderedEntry = renderedNotes[ordinal]
+      const importedId = identity(importedEntry.note)
+      const renderedId = identity(renderedEntry.note)
+      if (renderedIds.has(renderedId)
+        || importedId !== renderedId
+        || importedEntry.note.noteType !== renderedEntry.note.noteType
+        || importedEntry.note.tickCount !== renderedEntry.note.tickCount
+        || Object.keys(renderedEntry).some((key) => key !== 'note'
+          && importedEntry[key] !== renderedEntry[key])) {
+        throw new Error('Rendered score clone identity or locator changed')
+      }
+      renderedIds.add(renderedId)
+
+      const record = captured.get(importedEntry.note)
+      if (!record) return
+      if (record.noteIdentity !== importedId || record.durationTicks !== importedEntry.note.tickCount
+        || Object.keys(record.locator).some((key) => record.locator[key] !== importedEntry[key])) {
+        throw new Error('Imported padding rest identity or locator changed')
+      }
+      Object.defineProperty(renderedEntry.note, importMarker, { value: token, configurable: true })
+      adopted.set(renderedEntry.note, record)
+    })
+    if (adopted.size !== captured.size) {
+      throw new Error('Rendered score clone is missing padding rest identity')
+    }
+    for (const note of captured.keys()) {
+      if (note[importMarker] === token) delete note[importMarker]
+    }
+    captured = adopted
+    score = renderedScore
+    return renderedScore
+  }
+
   function createExportManifest({ score: currentScore, rawMusicXml, sourceRevision }) {
     if (!score || currentScore !== score) throw new Error('Imported score registry is unavailable or stale')
     if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0) throw new Error('Invalid source revision')
@@ -147,7 +193,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       entries: Object.freeze(entries) })
   }
 
-  return { runDuringImport, createExportManifest, clear }
+  return { runDuringImport, adoptRenderedScore, createExportManifest, clear }
 }
 
 exports.createSmoosicPaddingRestTracker = createSmoosicPaddingRestTracker

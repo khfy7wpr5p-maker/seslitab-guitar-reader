@@ -109,3 +109,31 @@ test('maps two marked objects to sorted raw ordinals while retaining source and 
   score.staves[0].measures[0].voices[0].notes[2] = sourceRest('replacement', 16)
   assert.throws(() => manifest(tracker, score, raw), /identity|locator|missing/i)
 })
+
+test('adopts only the exact deterministic score clone produced by the rendered part view', () => {
+  const measure = factory()
+  const tracker = createSmoosicPaddingRestTracker(measure)
+  const imported = tracker.runDuringImport(() => scoreOf([
+    pitched('pitch'), measure.createRestNoteWithDuration(8), sourceRest('authored'),
+  ]))
+  const rendered = structuredClone(imported)
+
+  tracker.adoptRenderedScore(rendered)
+  assert.deepEqual(manifest(tracker, rendered, [
+    { rest: false }, { rest: true }, { rest: true },
+  ]).entries.map((entry) => entry.rawNoteOrdinal), [1])
+  assert.throws(() => manifest(tracker, imported, [
+    { rest: false }, { rest: true }, { rest: true },
+  ]), /score|registry|stale/i)
+
+  const nextTracker = createSmoosicPaddingRestTracker(measure)
+  const nextImported = nextTracker.runDuringImport(() => scoreOf([
+    pitched('pitch'), measure.createRestNoteWithDuration(8), sourceRest('authored'),
+  ]))
+  const changedClone = structuredClone(nextImported)
+  changedClone.staves[0].measures[0].voices[0].notes[2].attrs.id = 'different-authored-rest'
+  assert.throws(() => nextTracker.adoptRenderedScore(changedClone), /clone|identity|score/i)
+  assert.deepEqual(manifest(nextTracker, nextImported, [
+    { rest: false }, { rest: true }, { rest: true },
+  ]).entries.map((entry) => entry.rawNoteOrdinal), [1])
+})

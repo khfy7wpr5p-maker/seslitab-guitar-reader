@@ -242,6 +242,7 @@ async function loadMusicXmlFile(file) {
       score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
     }
     await applicationInstance.view.changeScore(score);
+    candidateTracker.adoptRenderedScore(applicationInstance.view.score);
   } catch (error) {
     candidateTracker.clear();
     throw error;
