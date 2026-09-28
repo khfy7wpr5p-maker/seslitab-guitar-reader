@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname, join, resolve, sep } from 'node:path'
+import './runOmrQualityReport.js'
 import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
 
 const repoRoot = resolve('.')
