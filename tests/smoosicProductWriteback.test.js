@@ -138,6 +138,76 @@ test('applies one pitch edit as one new immutable revision without inheriting ap
 
 
 
+test('normalizes Smoosic synthetic voice-padding rests before structural classification', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+
+  const sourceXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Padding</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes>
+      <divisions>1</divisions>
+      <time><beats>4</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef>
+    </attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <backup><duration>4</duration></backup>
+    <note><pitch><step>G</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice><type>half</type></note>
+  </measure></part>
+</score-partwise>`
+
+  const candidateXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P0"><part-name>Padding</part-name></score-part></part-list>
+  <part id="P0"><measure number="1">
+    <attributes>
+      <divisions>1</divisions>
+      <time><beats>4</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef>
+    </attributes>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    <backup><duration>4</duration></backup>
+    <note><pitch><step>G</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice><type>half</type></note>
+    <note><rest/><duration>2</duration><voice>2</voice><type>half</type></note>
+  </measure></part>
+</score-partwise>`
+
+  const root = await authority({
+    xml: sourceXml,
+    sourceId: 's15-padding-source',
+    automaticRevisionId: 's15-padding-auto',
+    historyId: 's15-padding-history',
+  })
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidateXml,
+    revisionId: 's15-padding-edit',
+    eventId: 's15-padding-event',
+    operationIdPrefix: 's15-padding-op',
+    createdAt: '2026-09-28T06:55:00Z',
+    DOMParserCtor: ProductDOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.equal(result.revision.content.length, 5)
+  assert.equal(result.revision.content[0].step, 'A')
+  const reparsed = parseNotes(result.musicXml)
+  assert.equal(reparsed.length, 5)
+  assert.match(result.musicXml, /<forward>/)
+})
+
+
 test('normalizes Smoosic canonical single-voice labels before structural classification', async () => {
   const {
     SMOOSIC_WRITEBACK_STATUS,
