@@ -620,9 +620,9 @@ test('S15 waits for native Smoosic pitch edits before exporting to SesliTab', ()
 })
 
 
-test('S15 primes the Smoosic cursor before adopting the final rendered score identity', () => {
+test('S15 primes the Smoosic cursor after every accepted MusicXML load', () => {
   assert.match(
     editor,
-    /await applicationInstance\.view\.changeScore\(score\)[\s\S]*await applicationInstance\.view\.moveHome\(\{[\s\S]*ctrlKey: true[\s\S]*shiftKey: false[\s\S]*altKey: false[\s\S]*\}\)[\s\S]*candidateTracker\.adoptRenderedScore\(applicationInstance\.view\.score\)/,
+    /await applicationInstance\.view\.changeScore\(score\)[\s\S]*await applicationInstance\.view\.moveHome\(\{[\s\S]*ctrlKey: true[\s\S]*shiftKey: false[\s\S]*altKey: false[\s\S]*\}\)/,
   )
 })
