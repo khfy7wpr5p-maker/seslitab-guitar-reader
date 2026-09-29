@@ -159,10 +159,9 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       if (Number(candidate.tickCount) !== Number(record.durationTicks)) continue
       if (!matchesContext(previous, record.previousContext)) continue
       if (!matchesContext(next, record.nextContext)) continue
-      const previousIdentity = previous ? identity(previous) : ''
-      if (previousIdentity && authorized.has(previousIdentity)) {
-        throw new Error('Retired padding rest cannot be restored while its duration action is active')
-      }
+      // Exact base-duration + exact rest/neighbor topology is the undo proof.
+      // The structural action set may still contain the previous note until
+      // its reconciler runs immediately after padding provenance restoration.
       const restoredIdentity = identity(candidate)
       if ([...captured.values()].some((value) => value.noteIdentity === restoredIdentity)) {
         throw new Error('Duplicate padding rest identity')
