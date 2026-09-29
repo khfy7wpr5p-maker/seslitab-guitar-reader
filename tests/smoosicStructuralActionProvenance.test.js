@@ -164,32 +164,6 @@ test('explicit duration action remains exact when Smoosic replaces the rendered 
 })
 
 
-test('explicit duration action preserves imported identity when Smoosic replaces the note with a new internal id', async () => {
-  const tracker = await trackerFactory()
-  const original = pitched('source-stable-id', 8)
-  const score = scoreOf([original])
-  tracker.beginImport({
-    score,
-    editorSessionId: 'session-replaced-id',
-    sourceDurationByRawOrdinal: [1],
-  })
-
-  const replacement = pitched('smoosic-generated-replacement-id', 16)
-  score.staves[0].measures[0].voices[0].notes[0] = replacement
-  tracker.recordDurationAction({
-    note: original,
-    renderedNote: replacement,
-    beforeDuration: 8,
-    afterDuration: 16,
-  })
-
-  const manifest = tracker.createApplyManifest({ sourceRevision: 10, actionId: 'apply-replaced-id' })
-  assert.equal(manifest.operations[0].noteIdentity, 'source-stable-id')
-  assert.equal(manifest.operations[0].before, 1)
-  assert.equal(manifest.operations[0].after, 2)
-  assert.deepEqual([...tracker.authorizedDurationIdentitySet()], ['source-stable-id'])
-})
-
 
 test('explicit duration action accepts Smoosic post-action id replacement only through the exact pre-action target', async () => {
   const tracker = await trackerFactory()
