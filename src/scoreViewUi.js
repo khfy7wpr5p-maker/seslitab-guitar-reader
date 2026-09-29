@@ -141,6 +141,8 @@ export async function syncCorrectionMeasureOverlays(
 
   const expectedEvidence = getCurrentScoreRenderEvidence(rendererRuntime)
   if (!expectedEvidence || typeof musicxml !== 'string' || currentMusicXml(root) !== musicxml) return false
+  const registeredAtStart = scoreRuntimeHosts.get(root)
+  if (registeredAtStart !== undefined && registeredAtStart !== rendererRuntime) return false
   const sourceId = expectedEvidence.sourceId ?? `seslitab-render:${expectedEvidence.renderEpoch}`
 
   const runtime = analysisRuntime ?? await loadCorrectionAnalysisRuntime(root)
@@ -149,7 +151,7 @@ export async function syncCorrectionMeasureOverlays(
     return false
   }
   if (
-    scoreRuntimeHosts.get(root) !== rendererRuntime
+    (registeredAtStart !== undefined && scoreRuntimeHosts.get(root) !== rendererRuntime)
     || !sameRenderEvidence(expectedEvidence, getCurrentScoreRenderEvidence(rendererRuntime))
     || currentMusicXml(root) !== musicxml
   ) {
@@ -168,7 +170,7 @@ export async function syncCorrectionMeasureOverlays(
   }
 
   if (
-    scoreRuntimeHosts.get(root) !== rendererRuntime
+    (registeredAtStart !== undefined && scoreRuntimeHosts.get(root) !== rendererRuntime)
     || !sameRenderEvidence(expectedEvidence, getCurrentScoreRenderEvidence(rendererRuntime))
     || currentMusicXml(root) !== musicxml
   ) {
