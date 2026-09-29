@@ -1,6 +1,13 @@
 import { MAX_MUSIC_XML_FILE_SIZE } from './musicXmlFile.js'
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
 import { normalizeSmoosicPaddingRests } from './smoosicPaddingRestNormalization.js'
+import { validateTeacherStructuralActionManifest } from './smoosicStructuralActionManifest.js'
+import { createSmoosicCeStructIdentityBridge } from './smoosicCeStructIdentityBridge.js'
+import { processSmoosicStructuralEdit } from './smoosicCeStructBridge.js'
+import {
+  buildCandidateCeStructGraph,
+  verifyCeStructCandidateConformance,
+} from './smoosicCeStructConformance.js'
 import { parseMusicXmlToNotes } from './musicEngine.js'
 import {
   alignMusicXmlNotesToProductRevision,
@@ -23,8 +30,16 @@ import {
 
 export const SMOOSIC_WRITEBACK_STATUS = Object.freeze({
   APPLIED: 'APPLIED',
+  APPLIED_STRUCTURAL: 'APPLIED_STRUCTURAL',
   NO_CHANGE: 'NO_CHANGE',
   UNSUPPORTED_STRUCTURE: 'UNSUPPORTED_STRUCTURE',
+  INVALID_ACTION_PROVENANCE: 'INVALID_ACTION_PROVENANCE',
+  AMBIGUOUS_IDENTITY: 'AMBIGUOUS_IDENTITY',
+  CE_RUNTIME_UNAVAILABLE: 'CE_RUNTIME_UNAVAILABLE',
+  CE_CONTRACT_MISMATCH: 'CE_CONTRACT_MISMATCH',
+  CE_PROJECTION_FAILED: 'CE_PROJECTION_FAILED',
+  CE_REVALIDATION_FAILED: 'CE_REVALIDATION_FAILED',
+  CONFORMANCE_FAILED: 'CONFORMANCE_FAILED',
   INVALID_XML: 'INVALID_XML',
   CONFLICT: 'CONFLICT',
   STALE_SOURCE: 'STALE_SOURCE',
@@ -39,7 +54,11 @@ export function createSmoosicWritebackOutcome(status, {
   if (status === SMOOSIC_WRITEBACK_STATUS.PUBLISH_FAILED) {
     return Object.freeze({ status, revision, musicXml })
   }
-  if (status === SMOOSIC_WRITEBACK_STATUS.APPLIED && retriedPublication) {
+  if (
+    (status === SMOOSIC_WRITEBACK_STATUS.APPLIED
+      || status === SMOOSIC_WRITEBACK_STATUS.APPLIED_STRUCTURAL)
+    && retriedPublication
+  ) {
     return Object.freeze({ status, revision, musicXml, retriedPublication })
   }
   return Object.freeze({ status })
@@ -650,14 +669,173 @@ export function createSmoosicProductAuthority({
   return Object.freeze({ workspace })
 }
 
-export function applySmoosicProductWriteback({
+const STRUCTURAL_BRIDGE_FAILURE_STATUSES = new Set([
+  SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE,
+  SMOOSIC_WRITEBACK_STATUS.INVALID_ACTION_PROVENANCE,
+  SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE,
+  SMOOSIC_WRITEBACK_STATUS.AMBIGUOUS_IDENTITY,
+  SMOOSIC_WRITEBACK_STATUS.CE_RUNTIME_UNAVAILABLE,
+  SMOOSIC_WRITEBACK_STATUS.CE_CONTRACT_MISMATCH,
+  SMOOSIC_WRITEBACK_STATUS.CE_PROJECTION_FAILED,
+  SMOOSIC_WRITEBACK_STATUS.CE_REVALIDATION_FAILED,
+  SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED,
+  SMOOSIC_WRITEBACK_STATUS.CONFLICT,
+])
+
+function structuralFailure(status, authority) {
+  return Object.freeze({
+    status: STRUCTURAL_BRIDGE_FAILURE_STATUSES.has(status)
+      ? status
+      : SMOOSIC_WRITEBACK_STATUS.CE_CONTRACT_MISMATCH,
+    authority,
+  })
+}
+
+function structuralManifestFailureStatus(error) {
+  const message = error instanceof Error ? error.message : ''
+  if (/source revision is stale/i.test(message)) {
+    return SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE
+  }
+  if (/base mapping fingerprint mismatch/i.test(message)) {
+    return SMOOSIC_WRITEBACK_STATUS.AMBIGUOUS_IDENTITY
+  }
+  return SMOOSIC_WRITEBACK_STATUS.INVALID_ACTION_PROVENANCE
+}
+
+function applySmoosicStructuralProductWriteback({
   authority,
-  musicXml,
-  paddingRestProvenance,
+  currentRevision,
+  currentMusicXml,
+  candidateMusicXml,
+  structuralActionManifest,
+  ceStructRuntime,
   sourceRevision,
   revisionId,
   eventId,
   operationIdPrefix,
+  structuralPatchSetId,
+  createdAt,
+  DOMParserCtor,
+} = {}) {
+  let identityBridge
+  try {
+    identityBridge = createSmoosicCeStructIdentityBridge({
+      currentRevision,
+      currentMusicXml,
+    })
+  } catch {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.AMBIGUOUS_IDENTITY, authority)
+  }
+
+  let manifest
+  try {
+    manifest = validateTeacherStructuralActionManifest(
+      structuralActionManifest,
+      {
+        sourceRevision,
+        baseMappingFingerprint: identityBridge.baseMappingFingerprint,
+      },
+    )
+  } catch (error) {
+    return structuralFailure(structuralManifestFailureStatus(error), authority)
+  }
+
+  const ceResult = processSmoosicStructuralEdit({
+    runtime: ceStructRuntime,
+    currentRevision,
+    currentMusicXml,
+    manifest,
+    identityBridge,
+    ids: { patchSetId: structuralPatchSetId },
+  })
+  if (ceResult?.ok !== true) {
+    return structuralFailure(ceResult?.status, authority)
+  }
+
+  try {
+    const candidateGraph = buildCandidateCeStructGraph({
+      candidateMusicXml,
+      baseGraph: ceResult.baseGraph,
+      identityBridge,
+      manifest,
+      runtime: ceStructRuntime,
+    })
+    verifyCeStructCandidateConformance({
+      projectedGraph: ceResult.projectedGraph,
+      candidateGraph,
+    })
+  } catch {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED, authority)
+  }
+
+  let changeSet
+  try {
+    changeSet = changedIndexesFor({
+      currentRevision,
+      currentMusicXml,
+      candidateMusicXml,
+      DOMParserCtor,
+    })
+  } catch {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED, authority)
+  }
+  if (!changeSet.supported || changeSet.changedIndexes.length === 0) {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED, authority)
+  }
+
+  let revalidated
+  try {
+    revalidated = revalidatePrDEditorMusicXml({
+      musicXml: candidateMusicXml,
+      currentRevision,
+      changedIndexes: changeSet.changedIndexes,
+      structuralBaselineMusicXml: currentMusicXml,
+      DOMParserCtor,
+    })
+  } catch {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED, authority)
+  }
+
+  const committed = commitPrDProductRevision({
+    workspace: authority.workspace,
+    revalidated,
+    revisionId,
+    eventId,
+    operationIdPrefix,
+    createdAt,
+  })
+  if (!committed.ok) {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFLICT, authority)
+  }
+
+  const nextWorkspace = refreshTeacherWorkspace(
+    withTeacherWorkspaceAuthoritativeHistory({
+      workspace: authority.workspace,
+      history: committed.result.history,
+    }),
+  )
+  const nextAuthority = Object.freeze({ workspace: nextWorkspace })
+
+  return Object.freeze({
+    status: SMOOSIC_WRITEBACK_STATUS.APPLIED_STRUCTURAL,
+    authority: nextAuthority,
+    revision: committed.revision,
+    musicXml: committed.musicXml,
+    changedIndexes: changeSet.changedIndexes,
+  })
+}
+
+export function applySmoosicProductWriteback({
+  authority,
+  musicXml,
+  paddingRestProvenance,
+  structuralActionManifest,
+  ceStructRuntime,
+  sourceRevision,
+  revisionId,
+  eventId,
+  operationIdPrefix,
+  structuralPatchSetId,
   createdAt = null,
   DOMParserCtor = globalThis.DOMParser,
   XMLSerializerCtor = globalThis.XMLSerializer,
@@ -704,6 +882,24 @@ export function applySmoosicProductWriteback({
     divisionsNormalizedMusicXml,
     currentRevision,
   )
+
+  if (structuralActionManifest !== undefined) {
+    return applySmoosicStructuralProductWriteback({
+      authority,
+      currentRevision,
+      currentMusicXml: currentRecord.musicXml,
+      candidateMusicXml: normalizedMusicXml,
+      structuralActionManifest,
+      ceStructRuntime,
+      sourceRevision,
+      revisionId,
+      eventId,
+      operationIdPrefix,
+      structuralPatchSetId,
+      createdAt,
+      DOMParserCtor,
+    })
+  }
 
   let changeSet
   try {
