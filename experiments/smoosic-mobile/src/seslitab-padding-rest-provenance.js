@@ -110,6 +110,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
   }
 
   function restoreExactUndoPadding(record, notes, authorized, currentScore) {
+    if (!retired.has(record)) return null
     const previous = notes[record.locator.noteIndex - 1] ?? null
     const shiftedNext = notes[record.locator.noteIndex] ?? null
     const previousIdentity = previous ? identity(previous) : ''
@@ -177,8 +178,6 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
 
       if (note[importMarker] === token) delete note[importMarker]
       captured.delete(note)
-
-      if (restoreExactUndoPadding(record, notes, authorized, currentScore)) continue
 
       if (!consumedExactly) {
         throw new Error('Certified padding rest disappeared without exact authorized duration consumption')
