@@ -157,6 +157,43 @@ jobs:
           }
           NODE
 
+      - name: Report SonarCloud main reliability issues
+        if: steps.sonar-config.outputs.mode == 'cloud' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail \
+            -u "${SONAR_TOKEN}:" \
+            --get \
+            --data-urlencode "componentKeys=khfy7wpr5p-maker_seslitab-guitar-reader" \
+            --data-urlencode "branch=main" \
+            --data-urlencode "issueStatuses=OPEN,CONFIRMED" \
+            --data-urlencode "ps=100" \
+            "https://sonarcloud.io/api/issues/search" > /tmp/sonar-main-issues.json
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const data = JSON.parse(fs.readFileSync('/tmp/sonar-main-issues.json', 'utf8'))
+          const reliability = (data.issues ?? []).filter((issue) =>
+            (issue.impacts ?? []).some((impact) => impact.softwareQuality === 'RELIABILITY')
+            || issue.type === 'BUG'
+          )
+          console.log(`Sonar main reliability issue count: ${reliability.length}`)
+          for (const issue of reliability) {
+            console.log(JSON.stringify({
+              key: issue.key,
+              rule: issue.rule,
+              severity: issue.severity,
+              type: issue.type,
+              impacts: issue.impacts,
+              component: issue.component,
+              line: issue.line ?? issue.textRange?.startLine ?? null,
+              message: issue.message,
+            }))
+          }
+          NODE
+
       - name: Explain disabled SonarQube scan
         if: steps.sonar-config.outputs.mode == 'disabled'
         run: |
