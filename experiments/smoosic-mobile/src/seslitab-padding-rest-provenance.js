@@ -121,7 +121,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     }
   }
 
-  function adoptRenderedScore(renderedScore) {
+  function adoptRenderedScore(renderedScore, { allowPitchChanges = false } = {}) {
     if (!score) throw new Error('Imported score registry is unavailable or stale')
     if (renderedScore === score) return renderedScore
 
@@ -146,7 +146,8 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       if (importedEntry.note.tickCount !== renderedEntry.note.tickCount) {
         throw new Error(`Rendered score clone semantics changed: duration at ordinal ${ordinal}`)
       }
-      if (pitchSignature(importedEntry.note) !== pitchSignature(renderedEntry.note)) {
+      if (!allowPitchChanges
+        && pitchSignature(importedEntry.note) !== pitchSignature(renderedEntry.note)) {
         throw new Error(`Rendered score clone semantics changed: pitch at ordinal ${ordinal}`)
       }
       if (Object.keys(renderedEntry).some((key) => key !== 'note'
