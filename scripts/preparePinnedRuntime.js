@@ -89,9 +89,6 @@ export function verifyPinnedRuntimeArtifact(manifest, artifact, spec) {
   if (sha256(bytes) !== verified.sha256) {
     throw new Error(`${spec.label} runtime digest does not match manifest.`)
   }
-  if (spec.reviewedArtifactSha256 && verified.sha256 !== spec.reviewedArtifactSha256) {
-    throw new Error(`${spec.label} reviewed artifact digest mismatch.`)
-  }
   return true
 }
 
@@ -130,6 +127,9 @@ export async function preparePinnedRuntime(rawSpec, { io = defaultIo } = {}) {
     const manifest = verifyPinnedRuntimeManifest(JSON.parse(manifestBytes.toString('utf8')), spec)
     const artifact = await io.readFile(artifactPath)
     verifyPinnedRuntimeArtifact(manifest, artifact, spec)
+    if (spec.reviewedArtifactSha256 && manifest.sha256 !== spec.reviewedArtifactSha256) {
+      throw new Error(`${spec.label} reviewed artifact digest mismatch.`)
+    }
 
     await io.mkdir(path.dirname(spec.publicRuntimeRoot), { recursive: true })
     await io.cp(spec.generatedRuntimeRoot, spec.publicRuntimeRoot, { recursive: true, force: true })
