@@ -143,6 +143,32 @@ test('adopts only the deterministic score clone produced by the rendered part vi
   ]).entries.map((entry) => entry.rawNoteOrdinal), [1])
 })
 
+test('allows supported pitch-only clone adoption at export while keeping import adoption strict', () => {
+  const measure = factory()
+  const tracker = createSmoosicPaddingRestTracker(measure)
+  const imported = tracker.runDuringImport(() => scoreOf([
+    {
+      ...pitched('pitch'),
+      pitches: [{ letter: 'c', octave: 4, accidental: 'n', cents: 0 }],
+    },
+    measure.createRestNoteWithDuration(8),
+  ]))
+  const editedClone = structuredClone(imported)
+  editedClone.staves[0].measures[0].voices[0].notes.forEach((note, index) => {
+    note.attrs.id = `rendered-${index}`
+  })
+  editedClone.staves[0].measures[0].voices[0].notes[0].pitches[0].letter = 'd'
+
+  assert.throws(() => tracker.adoptRenderedScore(editedClone), /pitch|semantics|clone/i)
+  tracker.adoptRenderedScore(editedClone, { allowPitchChanges: true })
+
+  const adopted = manifest(tracker, editedClone, [
+    { rest: false }, { rest: true },
+  ])
+  assert.deepEqual(adopted.entries.map((entry) => entry.rawNoteOrdinal), [1])
+  assert.equal(adopted.entries[0].noteIdentity, 'rendered-1')
+})
+
 test('maps a multi-pitch Smoosic note across its exact MusicXML chord expansion', () => {
   const measure = factory()
   const tracker = createSmoosicPaddingRestTracker(measure)
