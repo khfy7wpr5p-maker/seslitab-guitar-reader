@@ -263,3 +263,23 @@ test('no structural manifest remains on the existing S15 nonstructural APPLIED l
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
   assert.equal(result.revision.revisionKind, 'teacher_corrected')
 })
+
+
+test('mixed pitch plus declared duration fails conformance before immutable commit', () => {
+  const root = rootAuthority()
+  const mixed = CANDIDATE_XML.replace('<step>C</step>', '<step>E</step>')
+  const result = applyStructural(root, { musicXml: mixed, paddingRestProvenance: paddingProof(mixed) })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED)
+  assert.equal(result.authority, root)
+  assert.equal(root.workspace.history.revisions.length, 1)
+})
+
+test('missing CE runtime fails closed before immutable commit', () => {
+  const root = rootAuthority()
+  const result = applyStructural(root, { ceStructRuntime: null })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.CE_RUNTIME_UNAVAILABLE)
+  assert.equal(result.authority, root)
+  assert.equal(root.workspace.history.revisions.length, 1)
+})
