@@ -99,6 +99,9 @@ async function packageLocalAudiverisEvidence({
   assertVersionEvidence(engineVersion, versionEvidenceText)
   assertExpectedSha256(sha256(pdfBytes), expectedSourceSha256, 'Source')
   if (referenceBytes) assertExpectedSha256(sha256(referenceBytes), expectedReferenceSha256, 'Reference')
+  if (!referenceBytes || !referenceBytes.toString('utf8').includes(licenseId)) {
+    throw new TypeError('Pinned reference does not contain the declared license evidence.')
+  }
   if (!/<score-(partwise|timewise)([\s>])/u.test(musicXmlBytes.toString('utf8'))) {
     throw new TypeError('Audiveris output is not valid MusicXML.')
   }
@@ -120,8 +123,9 @@ async function packageLocalAudiverisEvidence({
       sourceRevisionId,
       licenseId,
       rightsEvidence: {
-        kind: 'TEACHER_VERIFIED_GOLDEN_REFERENCE',
+        kind: 'REFERENCE_RIGHTS_DECLARATION',
         referenceSha256: referenceBytes ? sha256(referenceBytes) : null,
+        licenseId,
       },
     },
     source: {
