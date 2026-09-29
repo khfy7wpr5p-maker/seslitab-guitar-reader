@@ -173,7 +173,10 @@ async function runRuntimeUnavailableProof() {
 
     await clickEditorKey(session, '.')
     const probe = await probeEditorExport(session)
-    if (!probe?.structuralActionManifest) throw new Error('Runtime-unavailable fixture did not create explicit structuralActionManifest.')
+    if (!probe?.structuralActionManifest) {
+      const editorStatus = await evaluate(`String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '')`)
+      throw new Error(`Runtime-unavailable fixture did not create explicit structuralActionManifest. editorStatus=${editorStatus} probeError=${String(probe?.error || '')}`)
+    }
     await clickApply(session)
     const status = await waitFor(
       `(() => {
