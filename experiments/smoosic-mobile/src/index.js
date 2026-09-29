@@ -135,6 +135,10 @@ async function runMobileKeyAction(button) {
       beforeDuration,
       afterDuration: Number(updated.note.tickCount)
     });
+    activePaddingRestTracker?.adoptRenderedScore(view.score, {
+      allowPitchChanges: true,
+      authorizedDurationIdentities: activeStructuralActionTracker.authorizedDurationIdentitySet()
+    });
     return;
   }
 
