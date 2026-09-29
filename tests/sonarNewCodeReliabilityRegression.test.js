@@ -6,16 +6,32 @@ async function repositorySource(path) {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 }
 
-test('Sonar S1143 regression: production acceptance never throws from finally cleanup', async () => {
+test('Sonar S1143 regression: production acceptance defers cleanup failures outside finally', async () => {
   const source = await repositorySource(
     'backend/delivery/production/secureDeliveryProductionAcceptance.js',
   )
-  const finallyIndex = source.indexOf('} finally {')
-  assert.notEqual(finallyIndex, -1, 'expected production acceptance finally block')
+
+  assert.match(
+    source,
+    /identityCleanupFailure\s*=\s*new Error\(\s*'secure-delivery-production-acceptance-failure-cleanup-identity-conflict'/,
+  )
+  assert.match(
+    source,
+    /identityCleanupFailure\s*=\s*new Error\(\s*'secure-delivery-production-acceptance-failure-cleanup-identity-state-invalid'/,
+  )
   assert.doesNotMatch(
-    source.slice(finallyIndex),
-    /\bthrow\s+new\s+Error\s*\(/,
-    'cleanup must defer failures until control has left finally',
+    source,
+    /throw new Error\(\s*'secure-delivery-production-acceptance-failure-cleanup-identity-(?:conflict|state-invalid)'/,
+  )
+  assert.match(
+    source,
+    /\n  \}\n\n  if \(\n    identityCleanupFailure !== null\n  \) \{\n    throw new Error\(\n      'secure-delivery-production-acceptance-failure-cleanup-failed'/,
+    'identity cleanup failure must be thrown only after finally exits',
+  )
+  assert.match(
+    source,
+    /\n  \}\n\n  if \(\n    identityCleanupFailure !== null[\s\S]*?secure-delivery-production-acceptance-cleanup-failed/,
+    'ordinary cleanup failure decision must also occur after finally exits',
   )
 })
 
