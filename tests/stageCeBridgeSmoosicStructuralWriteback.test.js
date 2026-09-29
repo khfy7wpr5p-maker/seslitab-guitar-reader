@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
 import { publishPackage3Notes, clearPackage3Notes } from '../package3MeasureBridge.js'
 import { createSmoosicProductAuthority } from '../src/services/smoosicProductWriteback.js'
@@ -476,4 +476,28 @@ test('Task 7 rejects candidate XML that does not conform to the CE projection', 
   assert.equal(status.dataset.kind, 'error')
   assert.match(status.textContent, /Editör sonucu doğrulanan yapısal değişiklikle eşleşmiyor/)
   assert.equal(root.xmlOutput.textContent, STRUCT_SOURCE_XML)
+})
+
+
+test('Task 7 protected CI runs a dedicated real-browser structural proof after S15', () => {
+  const scriptUrl = new URL('../scripts/verifyCeBridgeStructuralBrowser.js', import.meta.url)
+  const fixtureUrl = new URL('./fixtures/ce-bridge-structural-browser-proof.html', import.meta.url)
+  assert.equal(existsSync(scriptUrl), true)
+  assert.equal(existsSync(fixtureUrl), true)
+
+  const script = readFileSync(scriptUrl, 'utf8')
+  const fixture = readFileSync(fixtureUrl, 'utf8')
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+
+  assert.match(script, /2× süre/)
+  assert.match(script, /structuralActionManifest/)
+  assert.match(script, /CONFORMANCE_FAILED/)
+  assert.match(script, /CE_RUNTIME_UNAVAILABLE/)
+  assert.match(script, /undo/i)
+  assert.match(fixture, /CE-BRIDGE structural browser proof/)
+
+  const s15 = ci.indexOf('node scripts/verifyS15SmoosicWritebackBrowser.js')
+  const ce = ci.indexOf('node scripts/verifyCeBridgeStructuralBrowser.js')
+  const downstream = ci.indexOf('node scripts/verifySti17CrossRealmBrowser.js')
+  assert.ok(s15 >= 0 && ce > s15 && downstream > ce)
 })
