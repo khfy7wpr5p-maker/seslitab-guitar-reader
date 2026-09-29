@@ -53,8 +53,14 @@ function rawLocators(document, notes) {
       const voiceIndex = positiveXmlInteger(note, 'voice') - 1
       if (voiceIndex < lastVoiceIndex) throw new Error('Ambiguous padding rest voice locator order')
       lastVoiceIndex = voiceIndex
-      const noteIndex = noteIndexes.get(voiceIndex) ?? 0
-      noteIndexes.set(voiceIndex, noteIndex + 1)
+      const chordMarkers = directChildren(note, 'chord')
+      if (chordMarkers.length > 1) throw new Error('Ambiguous MusicXML chord expansion')
+      const nextNoteIndex = noteIndexes.get(voiceIndex) ?? 0
+      if (chordMarkers.length && nextNoteIndex === 0) {
+        throw new Error('MusicXML chord continuation has no root note')
+      }
+      const noteIndex = chordMarkers.length ? nextNoteIndex - 1 : nextNoteIndex
+      if (!chordMarkers.length) noteIndexes.set(voiceIndex, nextNoteIndex + 1)
       locators.push({ note, staffIndex: 0, measureIndex, voiceIndex, noteIndex })
     }
   }

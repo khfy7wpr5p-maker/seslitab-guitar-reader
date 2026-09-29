@@ -279,6 +279,123 @@ function normalizeSinglePartIdentity(musicXml, currentRevision) {
     : musicXml
 }
 
+function positiveIntegerText(value) {
+  const text = String(value).trim()
+  const number = Number(text)
+  return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(number) ? number : null
+}
+
+function divisionsDeclaration(measureXml) {
+  const matches = [...measureXml.matchAll(/<divisions\b[^>]*>([\s\S]*?)<\/divisions>/gi)]
+  if (matches.length > 1) return Object.freeze({ ambiguous: true, value: null })
+  if (matches.length === 0) return Object.freeze({ ambiguous: false, value: null })
+  return Object.freeze({
+    ambiguous: false,
+    value: positiveIntegerText(matches[0][1]),
+  })
+}
+
+function projectMeasureDurations(measureXml, sourceDivisions, candidateDivisions) {
+  if (sourceDivisions === candidateDivisions) return measureXml
+  let invalid = false
+  const projected = measureXml.replace(
+    /(<duration\b[^>]*>)([\s\S]*?)(<\/duration>)/gi,
+    (_match, opening, rawValue, closing) => {
+      const value = positiveIntegerText(rawValue)
+      if (value === null) {
+        invalid = true
+        return _match
+      }
+      const sourceValue = Math.round((value * sourceDivisions) / candidateDivisions)
+      const timingError = Math.abs(
+        (value / candidateDivisions) - (sourceValue / sourceDivisions),
+      )
+      // Smoosic uses an integer 4096-tick grid. Tuplets can therefore be at
+      // most one candidate tick away from the exact source rational.
+      if (
+        !Number.isSafeInteger(sourceValue)
+        || sourceValue <= 0
+        || timingError > (1 / candidateDivisions) + Number.EPSILON
+      ) {
+        invalid = true
+        return _match
+      }
+      return `${opening}${sourceValue}${closing}`
+    },
+  )
+  return invalid ? null : projected
+}
+
+function projectPartDivisions(partXml, sourcePartXml) {
+  const candidateMeasures = [...partXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
+  const sourceMeasures = [...sourcePartXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
+  if (candidateMeasures.length !== sourceMeasures.length) return null
+
+  let sourceDivisions = null
+  let candidateDivisions = null
+  let measureIndex = 0
+  let failed = false
+  const projected = partXml.replace(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi, (measureXml) => {
+    const sourceMeasure = sourceMeasures[measureIndex]?.[0]
+    measureIndex += 1
+    const sourceDeclaration = divisionsDeclaration(sourceMeasure)
+    const candidateDeclaration = divisionsDeclaration(measureXml)
+    if (
+      sourceDeclaration.ambiguous
+      || candidateDeclaration.ambiguous
+      || (sourceDeclaration.value === null && /<divisions\b/i.test(sourceMeasure))
+      || (candidateDeclaration.value === null && /<divisions\b/i.test(measureXml))
+    ) {
+      failed = true
+      return measureXml
+    }
+    if (sourceDeclaration.value !== null) sourceDivisions = sourceDeclaration.value
+    if (candidateDeclaration.value !== null) candidateDivisions = candidateDeclaration.value
+    if (sourceDivisions === null || candidateDivisions === null) {
+      failed = true
+      return measureXml
+    }
+    if (sourceDeclaration.value !== null && candidateDeclaration.value === null) {
+      failed = true
+      return measureXml
+    }
+
+    const durations = projectMeasureDurations(
+      measureXml,
+      sourceDivisions,
+      candidateDivisions,
+    )
+    if (durations === null) {
+      failed = true
+      return measureXml
+    }
+    if (candidateDeclaration.value === null || sourceDeclaration.value === null) return durations
+    return durations.replace(
+      /(<divisions\b[^>]*>)[\s\S]*?(<\/divisions>)/i,
+      `$1${sourceDeclaration.value}$2`,
+    )
+  })
+  return failed || measureIndex !== candidateMeasures.length ? null : projected
+}
+
+function normalizeSmoosicDivisionsIdentity(musicXml, currentMusicXml) {
+  const candidateParts = [...musicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
+  const sourceParts = [...currentMusicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
+  if (candidateParts.length === 0 || candidateParts.length !== sourceParts.length) return musicXml
+  let partIndex = 0
+  let failed = false
+  const projected = musicXml.replace(/<part\b[^>]*>[\s\S]*?<\/part>/gi, (partXml) => {
+    const value = projectPartDivisions(partXml, sourceParts[partIndex]?.[0])
+    partIndex += 1
+    if (value === null) {
+      failed = true
+      return partXml
+    }
+    return value
+  })
+  return failed || partIndex !== candidateParts.length ? musicXml : projected
+}
+
 function parseCandidate(musicXml, DOMParserCtor) {
   const parsed = parseMusicXmlToNotes(musicXml)
   if (parsed?.error || !Array.isArray(parsed?.notes) || parsed.notes.length === 0) {
@@ -431,8 +548,12 @@ export function applySmoosicProductWriteback({
   }
 
   const partNormalizedMusicXml = normalizeSinglePartIdentity(paddingNormalizedMusicXml, currentRevision)
-  const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
+  const divisionsNormalizedMusicXml = normalizeSmoosicDivisionsIdentity(
     partNormalizedMusicXml,
+    currentRecord.musicXml,
+  )
+  const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
+    divisionsNormalizedMusicXml,
     currentRevision,
   )
 

@@ -134,6 +134,17 @@ test('matches certified locators across voice groups and measure boundaries', ()
   assert.equal((result.musicXml.match(/<forward>/g) ?? []).length, 2)
 })
 
+test('counts MusicXML chord members as one Smoosic model note locator', () => {
+  const chordRoot = '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice></note>'
+  const chordMember = '<note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice></note>'
+  const musicXml = xml(chordRoot, chordMember, rest())
+  const certified = { ...entry(2), noteIndex: 1 }
+  const result = normalize(musicXml, proof(3, [certified]))
+  assert.equal(result.convertedCount, 1)
+  assert.match(result.musicXml, /<note><chord\/><pitch>/)
+  assert.match(result.musicXml, /<forward><duration>8<\/duration><voice>1<\/voice><\/forward>/)
+})
+
 test('preserves visible, hidden and teacher-authored source rests identical to certified padding', () => {
   const visible = rest('8', ' id="source-visible"')
   const hidden = rest('8', ' id="source-hidden" print-object="no"')

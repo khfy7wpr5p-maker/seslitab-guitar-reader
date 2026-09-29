@@ -334,6 +334,56 @@ test('normalizes Smoosic single-part id rewrite before strict product revalidati
   assert.equal(result.revision.content[0].partId, 'P1')
 })
 
+test('projects Smoosic divisions and one-tick tuplet rounding onto the source grid', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const sourceXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Tuplet</part-name></score-part></part-list>
+  <part id="P1"><measure number="1">
+    <attributes><divisions>12</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>12</duration><voice>1</voice><type>quarter</type></note>
+    <note><rest/><duration>12</duration><voice>1</voice><type>quarter</type></note>
+    <note><pitch><step>D</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>
+    <note><pitch><step>F</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>
+  </measure></part>
+</score-partwise>`
+  const candidate = sourceXml
+    .replace('<divisions>12</divisions>', '<divisions>4096</divisions>')
+    .replaceAll('<duration>12</duration>', '<duration>4096</duration>')
+    .replaceAll('<duration>8</duration>', '<duration>2730</duration>')
+    .replace('<step>C</step>', '<step>G</step>')
+  const root = await authority({
+    xml: sourceXml,
+    sourceId: 's15-divisions-source',
+    automaticRevisionId: 's15-divisions-auto',
+    historyId: 's15-divisions-history',
+  })
+  const current = getTeacherWorkspaceCurrentRevision(root.workspace)
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidate,
+    revisionId: 's15-divisions-edit',
+    sourceRevision: 7,
+    paddingRestProvenance: emptyProof(candidate),
+    eventId: 's15-divisions-event',
+    operationIdPrefix: 's15-divisions-op',
+    DOMParserCtor: ProductDOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.equal(result.revision.content[0].step, 'G')
+  assert.deepEqual(result.revision.content[1], current.content[1])
+  assert.match(result.musicXml, /<divisions>12<\/divisions>/)
+  assert.equal((result.musicXml.match(/<duration>8<\/duration>/g) ?? []).length, 3)
+  assert.doesNotMatch(result.musicXml, /<divisions>4096<\/divisions>|<duration>2730<\/duration>/)
+})
+
 
 test('returns NO_CHANGE without creating a revision for exact current MusicXML', async () => {
   const {
