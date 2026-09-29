@@ -69,6 +69,76 @@ async function delay(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function packageLocalAudiverisEvidence({
+  pdfPath,
+  referencePath = null,
+  musicXmlPath,
+  omrPath = null,
+  versionPath,
+  outDir,
+  engineVersion,
+  expectedSourceSha256 = null,
+  expectedReferenceSha256 = null,
+}) {
+  if (!pdfPath || !musicXmlPath || !versionPath || !outDir) {
+    throw new TypeError('pdfPath, musicXmlPath, versionPath and outDir are required.')
+  }
+  const pdfBytes = await readPdf(pdfPath)
+  const referenceBytes = await readReference(referencePath)
+  const musicXmlBytes = await fs.readFile(musicXmlPath)
+  const versionEvidenceBytes = await fs.readFile(versionPath)
+  const versionEvidenceText = versionEvidenceBytes.toString('utf8')
+  const omrBytes = omrPath ? await fs.readFile(omrPath) : null
+
+  assertVersionEvidence(engineVersion, versionEvidenceText)
+  assertExpectedSha256(sha256(pdfBytes), expectedSourceSha256, 'Source')
+  if (referenceBytes) assertExpectedSha256(sha256(referenceBytes), expectedReferenceSha256, 'Reference')
+  if (!/<score-(partwise|timewise)([\s>])/u.test(musicXmlBytes.toString('utf8'))) {
+    throw new TypeError('Audiveris output is not valid MusicXML.')
+  }
+
+  await fs.mkdir(outDir, { recursive: true })
+  await fs.writeFile(path.join(outDir, path.basename(pdfPath)), pdfBytes)
+  if (referenceBytes) await fs.writeFile(path.join(outDir, path.basename(referencePath)), referenceBytes)
+  await fs.writeFile(path.join(outDir, 'output.musicxml'), musicXmlBytes)
+  if (omrBytes?.length) await fs.writeFile(path.join(outDir, 'project.omr'), omrBytes)
+  await fs.writeFile(path.join(outDir, 'audiveris-version.txt'), versionEvidenceBytes)
+
+  const manifest = {
+    documentType: DOCUMENT_TYPE,
+    contractVersion: CONTRACT_VERSION,
+    evidenceClass: EVIDENCE_CLASS,
+    reviewState: REVIEW_STATE,
+    source: {
+      fileName: path.basename(pdfPath),
+      sha256: sha256(pdfBytes),
+      byteLength: pdfBytes.byteLength,
+    },
+    reference: referenceBytes ? {
+      fileName: path.basename(referencePath),
+      sha256: sha256(referenceBytes),
+      byteLength: referenceBytes.byteLength,
+    } : null,
+    engine: {
+      id: 'audiveris',
+      version: engineVersion,
+      versionEvidenceSha256: sha256(versionEvidenceBytes),
+    },
+    musicXml: {
+      fileName: 'output.musicxml',
+      sha256: sha256(musicXmlBytes),
+      byteLength: musicXmlBytes.byteLength,
+    },
+    omr: omrBytes?.length ? {
+      fileName: 'project.omr',
+      sha256: sha256(omrBytes),
+      byteLength: omrBytes.byteLength,
+    } : null,
+  }
+  const manifestPath = path.join(outDir, 'evidence.json')
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  return { manifestPath, manifest }
+}
 async function captureLocalAudiverisEvidence({
   pdfPath,
   referencePath = null,
@@ -191,6 +261,8 @@ function parseCliArgs(argv) {
     else if (flag === '--reference') options.referencePath = value
     else if (flag === '--engine-version') options.engineVersion = value
     else if (flag === '--engine-version-file') options.engineVersionFile = value
+    else if (flag === '--musicxml') options.musicXmlPath = value
+    else if (flag === '--omr') options.omrPath = value
     else if (flag === '--expected-source-sha256') options.expectedSourceSha256 = value
     else if (flag === '--expected-reference-sha256') options.expectedReferenceSha256 = value
     else throw new TypeError(`Unknown argument: ${flag}`)
@@ -201,11 +273,18 @@ function parseCliArgs(argv) {
 async function runCli() {
   const options = parseCliArgs(process.argv.slice(2))
   if (!options.pdfPath || !options.outDir || !options.engineVersion || !options.engineVersionFile) {
-    throw new TypeError('Usage: node scripts/local-audiveris-evidence-capture.js <source.pdf> --out <dir> --engine-version <version> --engine-version-file <file> [--reference <musicxml>] [--expected-source-sha256 <sha256>] [--expected-reference-sha256 <sha256>] [--gateway <loopback-url>]')
+    throw new TypeError('Usage: node scripts/local-audiveris-evidence-capture.js <source.pdf> --out <dir> --engine-version <version> --engine-version-file <file> [--reference <musicxml>] [--musicxml <generated.musicxml>] [--omr <project.omr>] [--expected-source-sha256 <sha256>] [--expected-reference-sha256 <sha256>] [--gateway <loopback-url>]')
   }
-  options.engineVersionOutput = await fs.readFile(options.engineVersionFile, 'utf8')
-  delete options.engineVersionFile
-  const result = await captureLocalAudiverisEvidence(options)
+  let result
+  if (options.musicXmlPath) {
+    options.versionPath = options.engineVersionFile
+    delete options.engineVersionFile
+    result = await packageLocalAudiverisEvidence(options)
+  } else {
+    options.engineVersionOutput = await fs.readFile(options.engineVersionFile, 'utf8')
+    delete options.engineVersionFile
+    result = await captureLocalAudiverisEvidence(options)
+  }
   process.stdout.write(`${result.manifestPath}\n`)
 }
 
@@ -217,4 +296,4 @@ if (isMain) {
   })
 }
 
-export { captureLocalAudiverisEvidence, assertLoopbackGateway, assertVersionEvidence, sha256 }
+export { captureLocalAudiverisEvidence, packageLocalAudiverisEvidence, assertLoopbackGateway, assertVersionEvidence, sha256 }
