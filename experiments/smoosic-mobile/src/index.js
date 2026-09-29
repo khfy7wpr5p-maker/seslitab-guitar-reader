@@ -13,9 +13,11 @@ const {
   ScoreRoadMapBuilder
 } = require('smoosic');
 const { createSmoosicPaddingRestTracker } = require('./seslitab-padding-rest-provenance');
+const { createSmoosicStructuralActionTracker } = require('./seslitab-structural-action-provenance');
 
 let applicationInstance = null;
 let activePaddingRestTracker = null;
+let activeStructuralActionTracker = null;
 let editorReady = false;
 let activePlaybackInstrument = 'piano';
 let nativeAudioBridgeInstalled = false;
@@ -96,6 +98,64 @@ async function runMobileKeyAction(button) {
   const shiftKey = button.dataset.shift === 'true';
 
   if (
+    (key === ',' || key === '.')
+    && !ctrlKey
+    && !altKey
+    && !shiftKey
+    && applicationInstance
+    && applicationInstance.view
+  ) {
+    const view = applicationInstance.view;
+    if (!view.tracker?.selections?.length) {
+      await view.moveHome({ ctrlKey: true, shiftKey: false, altKey: false });
+    }
+    const selected = view.tracker.selections[0];
+    const locator = selected?.selector;
+    const current = locator && SmoSelection.noteSelection(
+      view.score, locator.staff, locator.measure, locator.voice, locator.tick
+    );
+    if (!current?.note) throw new Error('Seçili nota bulunamadı.');
+    if (!activeStructuralActionTracker) throw new Error('Yapısal düzenleme kaynağı hazır değil.');
+
+    const beforeDuration = Number(current.note.tickCount);
+    sendKey(key, { ctrlKey, altKey, shiftKey });
+    await Promise.resolve();
+    const renderer = view.renderer;
+    if (renderer && typeof renderer.updatePromise === 'function') {
+      await renderer.updatePromise();
+    }
+
+    const updated = SmoSelection.noteSelection(
+      view.score, locator.staff, locator.measure, locator.voice, locator.tick
+    );
+    if (!updated?.note) throw new Error('Süre düzenlemesi sonrası nota bulunamadı.');
+    activeStructuralActionTracker.recordDurationAction({
+      note: updated.note,
+      beforeDuration,
+      afterDuration: Number(updated.note.tickCount)
+    });
+    return;
+  }
+
+  if (
+    key.toLowerCase() === 'z'
+    && ctrlKey
+    && !altKey
+    && !shiftKey
+    && applicationInstance
+    && applicationInstance.view
+  ) {
+    sendKey(key, { ctrlKey, altKey, shiftKey });
+    await Promise.resolve();
+    const renderer = applicationInstance.view.renderer;
+    if (renderer && typeof renderer.updatePromise === 'function') {
+      await renderer.updatePromise();
+    }
+    activeStructuralActionTracker?.reconcileRenderedScore(applicationInstance.view.score);
+    return;
+  }
+
+  if (
     /^[a-g]$/.test(key)
     && !ctrlKey
     && !altKey
@@ -138,7 +198,6 @@ async function runMobileKeyAction(button) {
     await renderer.updatePromise();
   }
 }
-
 function setStatus(text) {
   const status = document.getElementById('poc-status');
   if (status) status.textContent = text;
@@ -230,11 +289,20 @@ async function loadMusicXmlFile(file) {
   if (xml.querySelector('parsererror')) throw new Error('MusicXML ayrıştırılamadı');
 
   const candidateTracker = createSmoosicPaddingRestTracker(SmoMeasure);
+  const candidateStructuralTracker = createSmoosicStructuralActionTracker({
+    isPaddingRest: (note) => candidateTracker.isCertifiedPaddingRest(note)
+  });
+  const editorSessionId = window.crypto && typeof window.crypto.randomUUID === 'function'
+    ? `smoosic-session-${window.crypto.randomUUID()}`
+    : null;
+  if (!editorSessionId) throw new Error('Güvenli yapısal düzenleme oturumu oluşturulamadı');
   let score;
   try {
     score = candidateTracker.runDuringImport(() => XmlToSmo.convert(xml));
+    candidateStructuralTracker.beginImport({ score, editorSessionId });
   } catch (error) {
     candidateTracker.clear();
+    candidateStructuralTracker.clear();
     throw error;
   }
   try {
@@ -243,12 +311,16 @@ async function loadMusicXmlFile(file) {
     }
     await applicationInstance.view.changeScore(score);
     candidateTracker.adoptRenderedScore(applicationInstance.view.score);
+    candidateStructuralTracker.reconcileRenderedScore(applicationInstance.view.score);
   } catch (error) {
     candidateTracker.clear();
+    candidateStructuralTracker.clear();
     throw error;
   }
   if (activePaddingRestTracker) activePaddingRestTracker.clear();
+  if (activeStructuralActionTracker) activeStructuralActionTracker.clear();
   activePaddingRestTracker = candidateTracker;
+  activeStructuralActionTracker = candidateStructuralTracker;
   await applicationInstance.view.moveHome({
     ctrlKey: true,
     shiftKey: false,
@@ -810,13 +882,17 @@ const SESLITAB_EXPORT_VERSION = 2;
 // Match the 10 MiB MusicXML input limit used by the host write-back path.
 const SESLITAB_EXPORT_MAX_XML_BYTES = 10 * 1024 * 1024;
 
-function createSesliTabWritebackExport({ score, sourceRevision, tracker }) {
+function createSesliTabWritebackExport({ score, sourceRevision, tracker, structuralTracker, actionId }) {
   if (!tracker
     || typeof tracker.adoptRenderedScore !== 'function'
     || typeof tracker.createExportManifest !== 'function') {
     throw new Error('Imported score provenance is unavailable');
   }
-  tracker.adoptRenderedScore(score, { allowPitchChanges: true });
+  structuralTracker?.reconcileRenderedScore(score);
+  tracker.adoptRenderedScore(score, {
+    allowPitchChanges: true,
+    authorizedDurationIdentities: structuralTracker?.authorizedDurationIdentitySet() ?? null
+  });
   const serialized = serializeCurrentMusicXml(score);
   if (new TextEncoder().encode(serialized.musicXml).length > SESLITAB_EXPORT_MAX_XML_BYTES) {
     throw new Error('MusicXML exceeds host payload size limit');
@@ -828,7 +904,13 @@ function createSesliTabWritebackExport({ score, sourceRevision, tracker }) {
     || paddingRestProvenance.entries.length > paddingRestProvenance.rawNoteCount) {
     throw new Error('Invalid padding rest provenance');
   }
-  return { ...serialized, paddingRestProvenance };
+  const structuralActionManifest = structuralTracker?.createApplyManifest({
+    sourceRevision,
+    actionId
+  }) ?? null;
+  return structuralActionManifest
+    ? { ...serialized, paddingRestProvenance, structuralActionManifest }
+    : { ...serialized, paddingRestProvenance };
 }
 
 async function handleSesliTabExportRequest(event) {
@@ -847,7 +929,11 @@ async function handleSesliTabExportRequest(event) {
     const score = applicationInstance && applicationInstance.view
       ? applicationInstance.view.score : null;
     const serialized = createSesliTabWritebackExport({
-      score, sourceRevision: message.sourceRevision, tracker: activePaddingRestTracker
+      score,
+      sourceRevision: message.sourceRevision,
+      tracker: activePaddingRestTracker,
+      structuralTracker: activeStructuralActionTracker,
+      actionId: message.requestId
     });
     event.source.postMessage({
       type: SESLITAB_EXPORT_RESULT,
@@ -859,7 +945,10 @@ async function handleSesliTabExportRequest(event) {
       paddingRestProvenance: serialized.paddingRestProvenance,
       roundTripOk: serialized.roundTripOk,
       shapeOk: serialized.shapeOk,
-      semanticOk: serialized.semanticOk
+      semanticOk: serialized.semanticOk,
+      ...(serialized.structuralActionManifest
+        ? { structuralActionManifest: serialized.structuralActionManifest }
+        : {})
     }, event.origin);
   } catch (error) {
     event.source.postMessage({
