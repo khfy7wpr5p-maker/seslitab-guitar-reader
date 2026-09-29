@@ -269,6 +269,16 @@ function stopNativePlayback() {
   stopActiveSoundfont();
 }
 
+function sourceMusicXmlDurationByRawOrdinal(xml) {
+  const notes = Array.from(xml?.querySelectorAll?.('part > measure > note') ?? [])
+  return notes.map((note) => {
+    const duration = Array.from(note?.children ?? [])
+      .find((child) => String(child?.localName || child?.tagName || '').toLowerCase() === 'duration')
+    const value = Number(duration?.textContent)
+    return Number.isFinite(value) && value > 0 ? value : null
+  })
+}
+
 async function loadMusicXmlFile(file) {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
@@ -299,7 +309,11 @@ async function loadMusicXmlFile(file) {
   let score;
   try {
     score = candidateTracker.runDuringImport(() => XmlToSmo.convert(xml));
-    candidateStructuralTracker.beginImport({ score, editorSessionId });
+    candidateStructuralTracker.beginImport({
+      score,
+      editorSessionId,
+      sourceDurationByRawOrdinal: sourceMusicXmlDurationByRawOrdinal(xml)
+    });
   } catch (error) {
     candidateTracker.clear();
     candidateStructuralTracker.clear();
