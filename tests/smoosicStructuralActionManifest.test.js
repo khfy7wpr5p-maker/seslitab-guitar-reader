@@ -130,3 +130,139 @@ test('host recognizes but does not admit non-duration CE operations in this mile
     )
   }
 })
+
+
+test('host fails closed across malformed manifest and duration-operation edge cases', async () => {
+  const { validateTeacherStructuralActionManifest } = await api()
+  const context = (value) => ({
+    sourceRevision: 7,
+    baseMappingFingerprint: value?.baseMappingFingerprint ?? '0123456789abcdef',
+  })
+
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(null, context(null)),
+    /shape is invalid/i,
+  )
+
+  const inherited = validManifest()
+  Object.setPrototypeOf(inherited, { inherited: true })
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(inherited, context(inherited)),
+    /shape is invalid/i,
+  )
+
+  const wrongVersion = validManifest()
+  wrongVersion.version = 2
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(wrongVersion, context(wrongVersion)),
+    /version is unsupported/i,
+  )
+
+  const emptySession = validManifest()
+  emptySession.editorSessionId = ' '
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(emptySession, context(emptySession)),
+    /editorSessionId.*non-empty/i,
+  )
+
+  const badExpectedRevision = validManifest()
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(badExpectedRevision, {
+      sourceRevision: -1,
+      baseMappingFingerprint: badExpectedRevision.baseMappingFingerprint,
+    }),
+    /expected source revision.*non-negative/i,
+  )
+
+  const badFingerprint = validManifest()
+  badFingerprint.baseMappingFingerprint = 'xyz'
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(badFingerprint, {
+      sourceRevision: 7,
+      baseMappingFingerprint: 'xyz',
+    }),
+    /fingerprint mismatch/i,
+  )
+
+  const noApply = validManifest()
+  noApply.createdFromExplicitTeacherApply = false
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(noApply, context(noApply)),
+    /explicit teacher Apply provenance/i,
+  )
+
+  const emptyOperations = validManifest()
+  emptyOperations.operations = []
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(emptyOperations, context(emptyOperations)),
+    /operations must be non-empty/i,
+  )
+
+  const symbolOperations = validManifest()
+  symbolOperations.operations[Symbol('hidden')] = true
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(symbolOperations, context(symbolOperations)),
+    /operations contain symbol keys/i,
+  )
+
+  const tooManyOperations = validManifest()
+  tooManyOperations.operations = Array.from({ length: 129 }, (_, order) => ({
+    ...validManifest().operations[0],
+    order,
+    rawNoteOrdinal: order,
+    noteIndex: order,
+  }))
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(tooManyOperations, context(tooManyOperations)),
+    /operation limit exceeded/i,
+  )
+
+  const sparseOperations = validManifest()
+  sparseOperations.operations = Array(1)
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(sparseOperations, context(sparseOperations)),
+    /operations must be dense/i,
+  )
+
+  const unknownOperation = validManifest()
+  unknownOperation.operations[0].operation = 'UNKNOWN'
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(unknownOperation, context(unknownOperation)),
+    /Unsupported structural operation/i,
+  )
+
+  const wrongOrder = validManifest()
+  wrongOrder.operations[0].order = 1
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(wrongOrder, context(wrongOrder)),
+    /operation order is invalid/i,
+  )
+
+  const negativeLocator = validManifest()
+  negativeLocator.operations[0].measureIndex = -1
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(negativeLocator, context(negativeLocator)),
+    /measureIndex.*non-negative/i,
+  )
+
+  const emptyIdentity = validManifest()
+  emptyIdentity.operations[0].noteIdentity = ''
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(emptyIdentity, context(emptyIdentity)),
+    /noteIdentity.*non-empty/i,
+  )
+
+  const zeroDuration = validManifest()
+  zeroDuration.operations[0].before = 0
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(zeroDuration, context(zeroDuration)),
+    /before.*positive finite/i,
+  )
+
+  const unchangedDuration = validManifest()
+  unchangedDuration.operations[0].after = unchangedDuration.operations[0].before
+  assert.throws(
+    () => validateTeacherStructuralActionManifest(unchangedDuration, context(unchangedDuration)),
+    /must change duration/i,
+  )
+})

@@ -77,4 +77,35 @@ test('CE-STRUCT runtime pin and manifest verifier preserve the reviewed boundary
     () => runtime.verifyCeStructRuntimeArtifact(manifest, Buffer.from('tampered')),
     /byte size does not match|digest does not match/,
   )
+
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest(null), /manifest is invalid/i)
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest([]), /manifest is invalid/i)
+
+  const wrongContract = structuredClone(manifest)
+  wrongContract.contract = 'OTHER'
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest(wrongContract), /contract mismatch/i)
+
+  const wrongVersion = structuredClone(manifest)
+  wrongVersion.runtimeVersion = '9.9.9'
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest(wrongVersion), /version mismatch/i)
+
+  const wrongSurface = structuredClone(manifest)
+  wrongSurface.artifact = 'other-runtime.js'
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest(wrongSurface), /export surface mismatch/i)
+
+  const invalidBytes = structuredClone(manifest)
+  invalidBytes.bytes = 0
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest(invalidBytes), /byte size is invalid/i)
+
+  const invalidDigest = structuredClone(manifest)
+  invalidDigest.sha256 = 'not-a-digest'
+  assert.throws(() => runtime.verifyCeStructRuntimeManifest(invalidDigest), /digest is invalid/i)
+
+  const sameLengthTampered = Buffer.from(artifact)
+  sameLengthTampered[0] = sameLengthTampered[0] === 0x67 ? 0x68 : 0x67
+  assert.equal(sameLengthTampered.byteLength, artifact.byteLength)
+  assert.throws(
+    () => runtime.verifyCeStructRuntimeArtifact(manifest, sameLengthTampered),
+    /digest does not match/i,
+  )
 })
