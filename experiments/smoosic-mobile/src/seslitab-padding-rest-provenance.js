@@ -127,7 +127,10 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       throw new Error('Smoosic padding rest factory could not restore exact undo padding')
     }
     const restoredIdentity = identity(restored)
-    if ([...captured.values()].some((value) => value.noteIdentity === restoredIdentity)) {
+    if (
+      [...captured.values()].some((value) => value.noteIdentity === restoredIdentity)
+      || orderedNotes(currentScore).some(({ note }) => identity(note) === restoredIdentity)
+    ) {
       throw new Error('Duplicate padding rest identity')
     }
     Object.defineProperty(restored, importMarker, { value: token, configurable: true })
