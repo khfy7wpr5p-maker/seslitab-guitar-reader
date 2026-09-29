@@ -44,7 +44,7 @@ function assertExpectedSha256(actual, expected, label) {
   }
   if (actual !== expected) throw new TypeError(`${label} SHA-256 mismatch.`)
 }
-async function readPdf(async function readPdf(pdfPath) {
+async function readPdf(pdfPath) {
   const bytes = await fs.readFile(pdfPath)
   if (path.extname(pdfPath).toLowerCase() !== '.pdf' || bytes.subarray(0, 5).toString() !== '%PDF-') {
     throw new TypeError('Source must be a valid PDF.')
