@@ -4,6 +4,7 @@ import path from 'node:path'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'score-runtime-browser-proof.html')
+const ceInteg01FixturePath = path.join(repoRoot, 'tests', 'fixtures', 'ce-integ-01-suspicious-measure-browser-proof.html')
 const stageFFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-corrected-musicxml-browser-proof.html')
 const stageFDurationFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-f-duration-hit-test-browser-proof.html')
 const stageIInstrumentFixturePath = path.join(repoRoot, 'tests', 'fixtures', 'stage-i-instrument-product-browser-proof.html')
@@ -74,6 +75,25 @@ function runProof(label, viewportArg = null) {
   }
   if (!dom.includes('data-score-note-highlight-pass="true"') || !dom.includes('data-st-score-highlight="true"') || !dom.includes('seslitab-note-focus')) {
     fail(label, 'exact renderer note highlight evidence missing.', dom)
+  }
+}
+
+
+function runCeInteg01SuspiciousMeasureProof() {
+  const label = 'CE-INTEG-01 suspicious measure browser proof'
+  const dom = runChrome(label, ceInteg01FixturePath)
+  for (const marker of [
+    'data-ce-analysis-pass="true"',
+    'data-ce-overlay-pass="true"',
+    'data-ce-no-note-recolor-pass="true"',
+    'data-ce-clear-pass="true"',
+    'data-ce-source-immutable-pass="true"',
+    'data-ce-authority-pass="true"',
+  ]) {
+    if (!dom.includes(marker)) fail(label, `CE-INTEG-01 evidence missing: ${marker}`, dom)
+  }
+  if (dom.includes('data-st-score-highlight="true"')) {
+    fail(label, 'note-level renderer highlight leaked into suspicious-measure proof.', dom)
   }
 }
 
@@ -245,6 +265,7 @@ function runStageLShareReadinessProof() {
 
 runProof('Desktop score browser proof')
 runProof('Narrow viewport score browser proof', '--window-size=390,844')
+runCeInteg01SuspiciousMeasureProof()
 runStageFCorrectedMusicXmlProof()
 runStageFDurationHitProof()
 runStageIInstrumentProductProof()
@@ -253,4 +274,4 @@ runStageS11TeacherWorkflowProof()
 runStageJDiscoveryPresentationProof()
 runStageKTunerPresentationProof()
 runStageLShareReadinessProof()
-console.log(`Desktop + narrow viewport score runtime, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, S10 educational chords, S11 teacher workflow, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)
+console.log(`Desktop + narrow viewport score runtime, CE-INTEG-01 suspicious-measure overlay, corrected MusicXML, Stage F duration hit-test, Stage I instrument product, S10 educational chords, S11 teacher workflow, Stage J Discovery presentation, Stage K compact tuner, and Stage L share-readiness browser proofs PASS using ${chrome}`)
