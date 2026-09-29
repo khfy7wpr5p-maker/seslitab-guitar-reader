@@ -115,7 +115,6 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       noteIndex: record.noteIndex,
       rawSpan: record.rawSpan,
       isRest: record.isRest,
-      duration: record.baseDuration,
     })))
     baseScore = score
     return score
