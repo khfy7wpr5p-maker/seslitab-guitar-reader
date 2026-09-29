@@ -11,6 +11,9 @@ class Element {
   }
   get children() { return this.childNodes.filter((child) => child instanceof Element) }
   get textContent() { return this.childNodes.map((child) => typeof child === 'string' ? child : child.textContent).join('') }
+  set textContent(value) {
+    this.childNodes = [String(value)]
+  }
   getAttribute(name) {
     return this.attributes.match(new RegExp(`(?:^|\\s)${name}=["']([^"']*)["']`))?.[1] ?? null
   }
