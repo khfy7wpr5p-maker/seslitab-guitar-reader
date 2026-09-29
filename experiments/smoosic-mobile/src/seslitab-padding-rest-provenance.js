@@ -137,13 +137,21 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       const renderedEntry = renderedNotes[ordinal]
       const importedId = identity(importedEntry.note)
       const renderedId = identity(renderedEntry.note)
-      if (renderedIds.has(renderedId)
-        || importedEntry.note.noteType !== renderedEntry.note.noteType
-        || importedEntry.note.tickCount !== renderedEntry.note.tickCount
-        || pitchSignature(importedEntry.note) !== pitchSignature(renderedEntry.note)
-        || Object.keys(renderedEntry).some((key) => key !== 'note'
-          && importedEntry[key] !== renderedEntry[key])) {
-        throw new Error('Rendered score clone semantics or locator changed')
+      if (renderedIds.has(renderedId)) {
+        throw new Error(`Rendered score clone semantics changed: duplicate identity at ordinal ${ordinal}`)
+      }
+      if (importedEntry.note.noteType !== renderedEntry.note.noteType) {
+        throw new Error(`Rendered score clone semantics changed: note type at ordinal ${ordinal}`)
+      }
+      if (importedEntry.note.tickCount !== renderedEntry.note.tickCount) {
+        throw new Error(`Rendered score clone semantics changed: duration at ordinal ${ordinal}`)
+      }
+      if (pitchSignature(importedEntry.note) !== pitchSignature(renderedEntry.note)) {
+        throw new Error(`Rendered score clone semantics changed: pitch at ordinal ${ordinal}`)
+      }
+      if (Object.keys(renderedEntry).some((key) => key !== 'note'
+        && importedEntry[key] !== renderedEntry[key])) {
+        throw new Error(`Rendered score clone locator changed at ordinal ${ordinal}`)
       }
       renderedIds.add(renderedId)
 
