@@ -125,6 +125,38 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
+      - name: Report SonarCloud PR issues
+        if: steps.sonar-config.outputs.mode == 'cloud' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail \
+            -u "${SONAR_TOKEN}:" \
+            --get \
+            --data-urlencode "componentKeys=khfy7wpr5p-maker_seslitab-guitar-reader" \
+            --data-urlencode "pullRequest=${PR_NUMBER}" \
+            --data-urlencode "issueStatuses=OPEN,CONFIRMED" \
+            --data-urlencode "ps=100" \
+            "https://sonarcloud.io/api/issues/search" > /tmp/sonar-pr-issues.json
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const data = JSON.parse(fs.readFileSync('/tmp/sonar-pr-issues.json', 'utf8'))
+          console.log(`Sonar PR issue count: ${data.total ?? data.issues?.length ?? 0}`)
+          for (const issue of data.issues ?? []) {
+            console.log(JSON.stringify({
+              rule: issue.rule,
+              severity: issue.severity,
+              type: issue.type,
+              component: issue.component,
+              line: issue.line ?? issue.textRange?.startLine ?? null,
+              message: issue.message,
+            }))
+          }
+          NODE
+
       - name: Explain disabled SonarQube scan
         if: steps.sonar-config.outputs.mode == 'disabled'
         run: |
