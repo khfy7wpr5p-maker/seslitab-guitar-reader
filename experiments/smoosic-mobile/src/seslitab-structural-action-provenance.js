@@ -102,7 +102,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       const baseDuration = positiveDuration(entry.note?.tickCount, 'import duration')
       const sourceDurationValue = Array.isArray(sourceDurationByRawOrdinal)
         ? Number(sourceDurationByRawOrdinal[rawNoteOrdinal])
-        : NaN
+        : Number.NaN
       const record = {
         ...entry,
         rawNoteOrdinal,
