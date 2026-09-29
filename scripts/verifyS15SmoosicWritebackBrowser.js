@@ -937,6 +937,125 @@ try {
   requireEvidence(normalizedCounts.pitched === 104, `normalized pitched ${normalizedCounts.pitched} !== 104`)
   requireEvidence(normalizedCounts.rests === 8, `normalized rests ${normalizedCounts.rests} !== 8`)
 
+  const acceptedGesiXml = gesiSnapshot.normalizedMusicXml
+  const firstRestBlock = acceptedGesiXml.match(/<note\b[^>]*>[\s\S]*?<rest\b[^>]*>[\s\S]*?<\/note>/i)?.[0] ?? ''
+  requireEvidence(Boolean(firstRestBlock), 'accepted fixture lost every source-authored rest')
+  const changedSourceRestBlock = firstRestBlock
+    .replace(/<note\b/i, '<note print-object="no"')
+    .replace(/<duration\b([^>]*)>\s*\d+\s*<\/duration>/i, '<duration$1>12</duration>')
+  const sourceRestMutationXml = acceptedGesiXml.replace(firstRestBlock, changedSourceRestBlock)
+  const teacherRestInsertionXml = acceptedGesiXml.replace(
+    /<\/measure>/i,
+    '<note><rest/><duration>12</duration><voice>1</voice><type>quarter</type></note></measure>',
+  )
+  const deletedNoteXml = acceptedGesiXml.replace(/<note\b[^>]*>[\s\S]*?<\/note>/i, '')
+  const voiceRelocationXml = acceptedGesiXml.replace(
+    /<voice\b([^>]*)>\s*(\d+)\s*<\/voice>/i,
+    (_match, attributes, voice) => `<voice${attributes}>${Number(voice) + 10}</voice>`,
+  )
+  const tamperedProvenance = JSON.parse(JSON.stringify(gesiSnapshot.provenance))
+  tamperedProvenance.entries[0].rawNoteOrdinal += 1
+
+  await evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const original = frame.contentWindow.postMessage.bind(frame.contentWindow);
+    window.__S15_ORIGINAL_POSTMESSAGE__ = original;
+    window.__S15_PENDING_REQUEST__ = null;
+    frame.contentWindow.postMessage = function(message, targetOrigin, transfer) {
+      if (message?.type === 'seslitab:smoosic-export-request') {
+        window.__S15_PENDING_REQUEST__ = message;
+        return;
+      }
+      return original(message, targetOrigin, transfer);
+    };
+    return true;
+  })()`)
+
+  const runGesiCapturedCase = async ({ name, musicXml, provenance = null, expectedText }) => {
+    await evaluate(cdp, `(() => {
+      window.__S15_PENDING_REQUEST__ = null;
+      const status = document.getElementById('smoosic-editor-host-status');
+      status.textContent = ${JSON.stringify(`S15 ${name} pending`)};
+      document.getElementById('smoosic-apply-btn').click();
+      return true;
+    })()`)
+    const request = await waitFor(cdp, `window.__S15_PENDING_REQUEST__ || null`, `${name} request`)
+    const proof = provenance ?? {
+      version: 1,
+      sourceRevision: request.sourceRevision,
+      rawNoteCount: (musicXml.match(/<note\b/g) ?? []).length,
+      entries: [],
+    }
+    proof.sourceRevision = request.sourceRevision
+    await evaluate(cdp, `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const payload = ${JSON.stringify({
+        type: 'seslitab:smoosic-export-result',
+        version: 2,
+        requestId: request.requestId,
+        sourceRevision: request.sourceRevision,
+        fileName: 'gesi-negative.musicxml',
+        musicXml,
+        paddingRestProvenance: proof,
+        roundTripOk: true,
+        shapeOk: true,
+        semanticOk: true,
+      })};
+      const script = frame.contentDocument.createElement('script');
+      script.textContent = 'parent.postMessage(' + JSON.stringify(payload).replace(/</g, '\\u003c') + ', location.origin);';
+      frame.contentDocument.body.appendChild(script);
+      script.remove();
+      return true;
+    })()`)
+    await waitFor(
+      cdp,
+      `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes(${JSON.stringify(expectedText)}) && document.getElementById('smoosic-apply-btn')?.disabled === false`,
+      `${name} outcome`,
+    )
+    const snapshot = await evaluate(cdp, `(() => ({
+      status: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+      musicXml: String(document.getElementById('xml-output')?.textContent || ''),
+    }))()`)
+    requireEvidence(snapshot.musicXml === acceptedGesiXml, `${name} changed the accepted revision`)
+    return Object.freeze({
+      name,
+      sourceRevision: request.sourceRevision,
+      status: snapshot.status,
+      acceptedRevisionUnchanged: true,
+    })
+  }
+
+  const gesiNegativeOutcomes = []
+  gesiNegativeOutcomes.push(await runGesiCapturedCase({
+    name: 'no-change',
+    musicXml: acceptedGesiXml,
+    expectedText: 'yeni bir müzikal değişiklik yok',
+  }))
+  for (const [name, musicXml, provenance] of [
+    ['source-authored-hidden-genuine-rest-mutation', sourceRestMutationXml, null],
+    ['teacher-rest-insertion', teacherRestInsertionXml, null],
+    ['note-deletion', deletedNoteXml, null],
+    ['voice-relocation', voiceRelocationXml, null],
+    ['tampered-padding-ordinal', gesiSnapshot.rawMusicXml, tamperedProvenance],
+  ]) {
+    gesiNegativeOutcomes.push(await runGesiCapturedCase({
+      name,
+      musicXml,
+      provenance,
+      expectedText: 'yapısal düzenleme',
+    }))
+  }
+  requireEvidence(
+    gesiNegativeOutcomes.every((outcome) => outcome.sourceRevision === gesiNegativeOutcomes[0].sourceRevision),
+    'a rejected/no-change case advanced the committed source revision',
+  )
+  await evaluate(cdp, `(() => {
+    document.getElementById('smoosic-editor-frame').contentWindow.postMessage = window.__S15_ORIGINAL_POSTMESSAGE__;
+    delete window.__S15_ORIGINAL_POSTMESSAGE__;
+    delete window.__S15_PENDING_REQUEST__;
+    return true;
+  })()`)
+
   const gesiEvidence = Object.freeze({
     fixture: 'tests/fixtures/real-omr/gesi-clean.xml',
     editClass: 'PITCH_ONLY',
@@ -951,6 +1070,8 @@ try {
       rawNoteCount: gesiSnapshot.provenance.rawNoteCount,
       entries: provenanceEntries,
     },
+    sourceAuthoredRestsPreserved: true,
+    negativeOutcomes: gesiNegativeOutcomes,
   })
 
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
@@ -966,6 +1087,13 @@ try {
     publishRetryWithoutSecondExport: true,
     editorRemainedUsable: true,
     smoosicVoiceIdentityNormalizationVerified: true,
+    noChangeTruthful: true,
+    sourceAuthoredRestMutationRejected: true,
+    teacherRestInsertionRejected: true,
+    noteDeletionRejected: true,
+    voiceRelocationRejected: true,
+    tamperedOrdinalRejected: true,
+    rejectedCasesPreservedAcceptedRevision: true,
     gesiClean: gesiEvidence,
     physicalIphoneSafariVerified: false,
   }, null, 2) + '\n')

@@ -285,6 +285,14 @@ function positiveIntegerText(value) {
   return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(number) ? number : null
 }
 
+function positiveDurationText(value) {
+  const text = String(value).trim()
+  const number = Number(text)
+  return /^(?:[1-9]\d*)(?:\.\d+)?$/.test(text) && Number.isFinite(number)
+    ? number
+    : null
+}
+
 function divisionsDeclaration(measureXml) {
   const matches = [...measureXml.matchAll(/<divisions\b[^>]*>([\s\S]*?)<\/divisions>/gi)]
   if (matches.length > 1) return Object.freeze({ ambiguous: true, value: null })
@@ -301,7 +309,11 @@ function projectMeasureDurations(measureXml, sourceDivisions, candidateDivisions
   const projected = measureXml.replace(
     /(<duration\b[^>]*>)([\s\S]*?)(<\/duration>)/gi,
     (_match, opening, rawValue, closing) => {
-      const value = positiveIntegerText(rawValue)
+      // Smoosic serializes exact tuplets as fractional 4096-grid durations
+      // (for example 2730.6666666666665). MusicXML's source grid remains
+      // integral, so accept a bounded positive decimal only at this
+      // representation-normalization seam and project it immediately.
+      const value = positiveDurationText(rawValue)
       if (value === null) {
         invalid = true
         return _match

@@ -354,7 +354,8 @@ test('projects Smoosic divisions and one-tick tuplet rounding onto the source gr
   const candidate = sourceXml
     .replace('<divisions>12</divisions>', '<divisions>4096</divisions>')
     .replaceAll('<duration>12</duration>', '<duration>4096</duration>')
-    .replaceAll('<duration>8</duration>', '<duration>2730</duration>')
+    .replaceAll('<duration>8</duration>', '<duration>2730.6666666666665</duration>')
+    .replace('<duration>2730.6666666666665</duration>', '<duration>2730</duration>')
     .replace('<step>C</step>', '<step>G</step>')
   const root = await authority({
     xml: sourceXml,
@@ -381,7 +382,7 @@ test('projects Smoosic divisions and one-tick tuplet rounding onto the source gr
   assert.deepEqual(result.revision.content[1], current.content[1])
   assert.match(result.musicXml, /<divisions>12<\/divisions>/)
   assert.equal((result.musicXml.match(/<duration>8<\/duration>/g) ?? []).length, 3)
-  assert.doesNotMatch(result.musicXml, /<divisions>4096<\/divisions>|<duration>2730<\/duration>/)
+  assert.doesNotMatch(result.musicXml, /<divisions>4096<\/divisions>|<duration>2730(?:\.6666666666665)?<\/duration>/)
 })
 
 
