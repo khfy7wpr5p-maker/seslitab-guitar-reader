@@ -90,10 +90,7 @@ test('CE analysis runtime has a separate exact-source-bound preparation lane', a
     bytes: artifact.byteLength,
     sha256: createHash('sha256').update(artifact).digest('hex'),
   }
-  assert.throws(
-    () => preparer.verifyCeAnalysisRuntimeArtifact(artifactManifest, artifact),
-    /reviewed artifact digest mismatch/i,
-  )
+  assert.equal(preparer.verifyCeAnalysisRuntimeArtifact(artifactManifest, artifact), true)
 
   const unsafe = { ...manifest, automaticApplyAuthority: true }
   assert.throws(() => preparer.verifyCeAnalysisRuntimeManifest(unsafe), /forbidden authority/i)
@@ -169,6 +166,11 @@ test('shared pinned runtime preparer is deterministic, verifies bytes, writes pr
   assert.equal(provenance.engineSourceRevision, spec.revision)
   assert.equal(provenance.files[0].sha256, digest)
   assert.equal(provenance.files[1].path, spec.manifestName)
+
+  await assert.rejects(
+    () => preparePinnedRuntime({ ...spec, reviewedArtifactSha256: '0'.repeat(64) }, { io }),
+    /reviewed artifact digest mismatch/i,
+  )
 
   const failingIo = {
     ...io,
