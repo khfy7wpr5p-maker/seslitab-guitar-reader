@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="tr">
+<head><meta charset="utf-8"><title>CE-BRIDGE structural browser proof</title></head>
+<body>
+  <p id="ce-bridge-fixture-status" role="status" aria-live="polite">CE runtime yükleniyor</p>
+  <script src="/st-omr-correction-engine-runtime/ce-struct-browser-runtime.js"></script>
+  <script>
+    (() => {
+      const runtime = window.STOmrCorrectionCeStructRuntime
+      const ok = Boolean(
+        runtime
+        && runtime.contract === 'ST_OMR_CORRECTION_ENGINE_CE_STRUCT_BROWSER'
+        && runtime.contractVersion === '1.0.0'
+        && runtime.runtimeVersion === '1.0.0'
+        && runtime.patchSchemaVersion === 'teacher-structural-patch-set-v1'
+      )
+      document.documentElement.dataset.ceStructRuntimeReady = ok ? 'true' : 'false'
+      const status = document.getElementById('ce-bridge-fixture-status')
+      status.textContent = ok ? 'CE runtime hazır' : 'CE runtime doğrulanamadı'
+      if (!ok) {
+        status.setAttribute('role', 'alert')
+        status.setAttribute('aria-live', 'assertive')
+      }
+    })()
+  </script>
+</body>
+</html>
