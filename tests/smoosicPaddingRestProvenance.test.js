@@ -218,15 +218,17 @@ test('same-object authorized duration consumption retires and exact undo restore
     { rest: false, duration: 16 },
   ]).entries, [])
 
-  const restored = measure.createRestNoteWithDuration(8)
-  restored.attrs.id = 'pad-restored'
   lead.tickCount = 8
-  score.staves[0].measures[0].voices[0].notes = [lead, restored, tail]
+  // Real Smoosic Ctrl+Z restores the selected note duration but does not
+  // recreate the import-only padding rest that the duration edit consumed.
+  score.staves[0].measures[0].voices[0].notes = [lead, tail]
   tracker.adoptRenderedScore(score, {
-    // Ctrl+Z restores the exact base duration/rest shape before the structural
-    // tracker has had a chance to retire its still-active duration identity.
     authorizedDurationIdentities: new Set(['lead']),
   })
+  const undoNotes = score.staves[0].measures[0].voices[0].notes
+  assert.equal(undoNotes.length, 3)
+  assert.equal(undoNotes[1].noteType, 'r')
+  assert.equal(undoNotes[1].tickCount, 8)
   const restoredProof = manifest(tracker, score, [
     { rest: false },
     { rest: true },
@@ -234,7 +236,7 @@ test('same-object authorized duration consumption retires and exact undo restore
   ])
   assert.equal(restoredProof.entries.length, 1)
   assert.equal(restoredProof.entries[0].rawNoteOrdinal, 1)
-  assert.equal(restoredProof.entries[0].noteIdentity, 'pad-restored')
+  assert.equal(restoredProof.entries[0].noteIdentity, undoNotes[1].attrs.id)
 
   const unsafeTracker = createSmoosicPaddingRestTracker(measure)
   const unsafeScore = unsafeTracker.runDuringImport(() => scoreOf([
