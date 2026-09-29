@@ -505,10 +505,6 @@ const PITCH_FALLBACK_INVARIANT_FIELDS = Object.freeze([
   'startBeat',
   'durationValue',
   'beats',
-  'string',
-  'stringLetter',
-  'stringNumber',
-  'fret',
 ])
 
 function directXmlChild(element, name) {
@@ -542,6 +538,17 @@ function sourcePreservingPitchFallback({
     return null
   }
 
+  const candidateAligned = alignMusicXmlNotesToProductRevision(
+    candidateMusicXml,
+    currentRevision,
+    { DOMParserCtor },
+  )
+  const sourceAligned = alignMusicXmlNotesToProductRevision(
+    currentMusicXml,
+    currentRevision,
+    { DOMParserCtor },
+  )
+
   const changedIndexes = []
   for (let index = 0; index < parsed.notes.length; index += 1) {
     const current = currentRevision.content[index]
@@ -558,6 +565,12 @@ function sourcePreservingPitchFallback({
     )
     if (!pitchChanged) continue
     if (
+      sourceAligned.notes[index]?.querySelector?.('technical')
+      || candidateAligned.notes[index]?.querySelector?.('technical')
+    ) {
+      return null
+    }
+    if (
       current?.isRest === true
       || candidate?.isRest === true
       || !/^[A-G]$/.test(String(candidate?.step ?? ''))
@@ -572,11 +585,7 @@ function sourcePreservingPitchFallback({
 
   if (changedIndexes.length === 0) return null
 
-  const aligned = alignMusicXmlNotesToProductRevision(
-    currentMusicXml,
-    currentRevision,
-    { DOMParserCtor },
-  )
+  const aligned = sourceAligned
 
   for (const index of changedIndexes) {
     const xmlNote = aligned.notes[index]
