@@ -77,11 +77,17 @@ async function packageLocalAudiverisEvidence({
   versionPath,
   outDir,
   engineVersion,
+  sourceRepository,
+  sourceRevisionId,
+  licenseId,
   expectedSourceSha256 = null,
   expectedReferenceSha256 = null,
 }) {
   if (!pdfPath || !musicXmlPath || !versionPath || !outDir) {
     throw new TypeError('pdfPath, musicXmlPath, versionPath and outDir are required.')
+  }
+  for (const [value, label] of [[sourceRepository, 'sourceRepository'], [sourceRevisionId, 'sourceRevisionId'], [licenseId, 'licenseId']]) {
+    if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${label} is required for direct evidence packaging.`)
   }
   const pdfBytes = await readPdf(pdfPath)
   const referenceBytes = await readReference(referencePath)
@@ -109,6 +115,15 @@ async function packageLocalAudiverisEvidence({
     contractVersion: CONTRACT_VERSION,
     evidenceClass: EVIDENCE_CLASS,
     reviewState: REVIEW_STATE,
+    provenance: {
+      sourceRepository,
+      sourceRevisionId,
+      licenseId,
+      rightsEvidence: {
+        kind: 'TEACHER_VERIFIED_GOLDEN_REFERENCE',
+        referenceSha256: referenceBytes ? sha256(referenceBytes) : null,
+      },
+    },
     source: {
       fileName: path.basename(pdfPath),
       sha256: sha256(pdfBytes),
@@ -263,6 +278,9 @@ function parseCliArgs(argv) {
     else if (flag === '--engine-version-file') options.engineVersionFile = value
     else if (flag === '--musicxml') options.musicXmlPath = value
     else if (flag === '--omr') options.omrPath = value
+    else if (flag === '--source-repository') options.sourceRepository = value
+    else if (flag === '--source-revision-id') options.sourceRevisionId = value
+    else if (flag === '--license-id') options.licenseId = value
     else if (flag === '--expected-source-sha256') options.expectedSourceSha256 = value
     else if (flag === '--expected-reference-sha256') options.expectedReferenceSha256 = value
     else throw new TypeError(`Unknown argument: ${flag}`)
@@ -273,7 +291,7 @@ function parseCliArgs(argv) {
 async function runCli() {
   const options = parseCliArgs(process.argv.slice(2))
   if (!options.pdfPath || !options.outDir || !options.engineVersion || !options.engineVersionFile) {
-    throw new TypeError('Usage: node scripts/local-audiveris-evidence-capture.js <source.pdf> --out <dir> --engine-version <version> --engine-version-file <file> [--reference <musicxml>] [--musicxml <generated.musicxml>] [--omr <project.omr>] [--expected-source-sha256 <sha256>] [--expected-reference-sha256 <sha256>] [--gateway <loopback-url>]')
+    throw new TypeError('Usage: node scripts/local-audiveris-evidence-capture.js <source.pdf> --out <dir> --engine-version <version> --engine-version-file <file> [--reference <musicxml>] [--musicxml <generated.musicxml>] [--omr <project.omr>] [--source-repository <owner/repo>] [--source-revision-id <sha>] [--license-id <id>] [--expected-source-sha256 <sha256>] [--expected-reference-sha256 <sha256>] [--gateway <loopback-url>]')
   }
   let result
   if (options.musicXmlPath) {
