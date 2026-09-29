@@ -152,7 +152,12 @@ async function runMobileKeyAction(button) {
     if (renderer && typeof renderer.updatePromise === 'function') {
       await renderer.updatePromise();
     }
-    activeStructuralActionTracker?.reconcileRenderedScore(applicationInstance.view.score);
+    const renderedScore = applicationInstance.view.score;
+    activePaddingRestTracker?.adoptRenderedScore(renderedScore, {
+      allowPitchChanges: true,
+      authorizedDurationIdentities: activeStructuralActionTracker?.authorizedDurationIdentitySet() ?? null
+    });
+    activeStructuralActionTracker?.reconcileRenderedScore(renderedScore);
     return;
   }
 
