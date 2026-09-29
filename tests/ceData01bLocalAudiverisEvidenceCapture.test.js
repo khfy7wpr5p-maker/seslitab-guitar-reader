@@ -177,6 +177,8 @@ test('Docker smoke workflow captures CE-DATA-01B evidence only through the local
   assert.ok(workflow.includes('plan0-cc0-4measure-expected.musicxml'))
   assert.ok(workflow.includes('http://127.0.0.1:8080'))
   assert.ok(workflow.includes('ce-data-01b-local-audiveris-capture'))
+  assert.ok(workflow.includes('--expected-source-sha256 c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed'))
+  assert.ok(workflow.includes('--expected-reference-sha256 7004b4ac37711cca340c63e2f2436dd70e0f630f4e891cb311caff159b5d9d94'))
   assert.ok(workflow.includes('actions/upload-artifact@v4'))
   assert.equal(workflow.includes('seslitab-omr.onrender.com'), false)
 })
