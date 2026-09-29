@@ -293,7 +293,7 @@ test('packages direct-container Audiveris outputs as pre-label evidence', async 
   const versionPath = path.join(root, 'audiveris-version.txt')
   const outDir = path.join(root, 'capture')
   const pdf = Buffer.from('%PDF-1.4\nsource\n%%EOF\n')
-  const reference = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"/>')
+  const reference = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"><identification><rights>CC0-1.0</rights></identification></score-partwise>')
   const musicXml = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"><part-list/></score-partwise>')
   const omr = Buffer.from('direct-omr-bytes')
   const version = Buffer.from('Audiveris 5.11.0\n')
