@@ -6,10 +6,14 @@ on:
     paths:
       - 'Dockerfile'
       - '.github/workflows/audiveris-docker-smoke-test.yml'
+      - 'scripts/local-audiveris-evidence-capture.js'
+      - 'scripts/run-local-audiveris-provider.js'
   pull_request:
     paths:
       - 'Dockerfile'
       - '.github/workflows/audiveris-docker-smoke-test.yml'
+      - 'scripts/local-audiveris-evidence-capture.js'
+      - 'scripts/run-local-audiveris-provider.js'
 
 jobs:
   smoke-test:
