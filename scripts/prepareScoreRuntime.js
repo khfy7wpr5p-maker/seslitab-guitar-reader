@@ -54,6 +54,12 @@ export function verifyRuntimeFeatureSources({ bootstrap, browserHost } = {}) {
   if (!browserHost.includes('renderEpoch')) {
     throw new Error('ST score runtime renderEpoch feature is missing.')
   }
+  if (!bootstrap.includes('highlightMeasure') || !bootstrap.includes('clearMeasureHighlights')) {
+    throw new Error('ST score runtime measure highlight feature is missing.')
+  }
+  if (!browserHost.includes('highlightMeasure') || !browserHost.includes('clearMeasureHighlights')) {
+    throw new Error('ST score runtime browser-host measure highlight feature is missing.')
+  }
   return true
 }
 
