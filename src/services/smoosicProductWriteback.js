@@ -609,6 +609,7 @@ export function applySmoosicProductWriteback({
       musicXml: normalizedMusicXml,
       currentRevision,
       changedIndexes: changeSet.changedIndexes,
+      structuralBaselineMusicXml: currentRecord.musicXml,
       DOMParserCtor,
     })
   } catch {

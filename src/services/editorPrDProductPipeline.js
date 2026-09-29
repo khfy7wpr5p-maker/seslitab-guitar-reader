@@ -125,7 +125,7 @@ export function changedPrDProductIndexes({ baseSession, nextSession, mapping } =
   return Object.freeze([...new Set(changed)])
 }
 
-function structuralRevalidation(musicXml) {
+function structuralValidationState(musicXml) {
   const parsed = parseMusicXmlWithStructure(musicXml)
   if (parsed?.error) throw new Error('Editor materialized MusicXML failed SesliTab structural parsing.')
   const evidence = extractMusicXmlStructuralEvidence(musicXml)
@@ -136,16 +136,42 @@ function structuralRevalidation(musicXml) {
   } catch {
     throw new Error('Editor materialized MusicXML structural evidence could not be attached.')
   }
-  const validation = validateStructuralRhythm(score)
-  if (
-    validation?.valid !== true ||
-    validation.summary?.totalFindings !== 0 ||
-    validation.summary?.errors !== 0 ||
-    validation.summary?.warnings !== 0
-  ) {
-    throw new Error('Editor materialized MusicXML failed SesliTab structural/rhythmic revalidation.')
+  return Object.freeze({
+    evidence,
+    validation: validateStructuralRhythm(score),
+  })
+}
+
+function structuralValidationFingerprint(validation) {
+  return JSON.stringify({
+    findings: validation?.findings ?? null,
+    measureReport: validation?.measureReport ?? null,
+    timeline: validation?.timeline ?? null,
+  })
+}
+
+function structuralRevalidation(musicXml, baselineMusicXml = null) {
+  const candidate = structuralValidationState(musicXml)
+  const validation = candidate.validation
+  const clean =
+    validation?.valid === true &&
+    validation.summary?.totalFindings === 0 &&
+    validation.summary?.errors === 0 &&
+    validation.summary?.warnings === 0
+
+  if (clean) return candidate
+
+  if (typeof baselineMusicXml === 'string' && baselineMusicXml.trim() !== '') {
+    const baseline = structuralValidationState(baselineMusicXml)
+    if (
+      structuralValidationFingerprint(validation) ===
+      structuralValidationFingerprint(baseline.validation)
+    ) {
+      return candidate
+    }
   }
-  return Object.freeze({ evidence, validation })
+
+  throw new Error('Editor materialized MusicXML failed SesliTab structural/rhythmic revalidation.')
 }
 
 function candidateContent({ musicXml, currentRevision, changedIndexes, DOMParserCtor }) {
@@ -170,12 +196,13 @@ export function revalidatePrDEditorMusicXml({
   musicXml,
   currentRevision,
   changedIndexes,
+  structuralBaselineMusicXml = null,
   DOMParserCtor = globalThis.DOMParser,
 } = {}) {
   if (!currentRevision || !Array.isArray(currentRevision.content) || !Array.isArray(changedIndexes) || changedIndexes.length === 0) {
     throw new Error('Current product revision and a non-empty exact change set are required.')
   }
-  const structural = structuralRevalidation(musicXml)
+  const structural = structuralRevalidation(musicXml, structuralBaselineMusicXml)
   const content = candidateContent({ musicXml, currentRevision, changedIndexes, DOMParserCtor })
   if (dataEqual(content, currentRevision.content)) throw new Error('Editor action produced no product-semantic change after revalidation.')
   return Object.freeze({

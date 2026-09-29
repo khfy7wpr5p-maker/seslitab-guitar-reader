@@ -605,3 +605,72 @@ test('duration redistribution commits every note whose semantic timeline changes
   assert.equal(result.revision.content[1].startBeat, 2)
   assert.equal(result.revision.content[2].startBeat, 3)
 })
+
+
+test('preserves unchanged pre-existing structural findings for a pitch edit without promoting them', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const extraNote = '<note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>'
+  const sourceXml = SOURCE_XML.replace('</measure>', `${extraNote}</measure>`)
+  const candidateXml = sourceXml.replace('<step>C</step>', '<step>A</step>')
+  const root = await authority({
+    xml: sourceXml,
+    sourceId: 's15-existing-findings-source',
+    automaticRevisionId: 's15-existing-findings-auto',
+    historyId: 's15-existing-findings-history',
+  })
+  const current = getTeacherWorkspaceCurrentRevision(root.workspace)
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidateXml,
+    sourceRevision: 7,
+    paddingRestProvenance: emptyProof(candidateXml),
+    revisionId: 's15-existing-findings-edit',
+    eventId: 's15-existing-findings-event',
+    operationIdPrefix: 's15-existing-findings-op',
+    DOMParserCtor: ProductDOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.equal(result.revision.content[0].step, 'A')
+  assert.equal(result.authority.workspace.history.revisions.length, 2)
+  assert.equal(root.workspace.history.revisions.length, 1)
+  assert.equal(getTeacherWorkspaceApplicableApproval(result.authority.workspace), null)
+  assert.equal(current.content.length, result.revision.content.length)
+})
+
+test('fails closed when structural state drifts from a baseline that already has findings', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const extraNote = '<note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>'
+  const sourceXml = SOURCE_XML.replace('</measure>', `${extraNote}</measure>`)
+  const candidateXml = sourceXml
+    .replace('<step>C</step>', '<step>A</step>')
+    .replace('<duration>1</duration>', '<duration>2</duration>')
+  const root = await authority({
+    xml: sourceXml,
+    sourceId: 's15-existing-findings-drift-source',
+    automaticRevisionId: 's15-existing-findings-drift-auto',
+    historyId: 's15-existing-findings-drift-history',
+  })
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidateXml,
+    sourceRevision: 7,
+    paddingRestProvenance: emptyProof(candidateXml),
+    revisionId: 's15-existing-findings-drift-edit',
+    eventId: 's15-existing-findings-drift-event',
+    operationIdPrefix: 's15-existing-findings-drift-op',
+    DOMParserCtor: ProductDOMParser,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.INVALID_XML)
+  assert.equal(root.workspace.history.revisions.length, 1)
+})
