@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import test from 'node:test'
 
@@ -7,6 +8,7 @@ import {
   verifyRuntimeFeatureSources,
 } from '../scripts/prepareScoreRuntime.js'
 import * as rendererConsumer from '../src/services/scoreRendererConsumer.js'
+import { preparePinnedRuntime } from '../scripts/preparePinnedRuntime.js'
 import { syncCorrectionMeasureOverlays } from '../src/scoreViewUi.js'
 
 const EXPECTED_RENDERER_REVISION = '3955250a0a1407d3a13de5f72b106b5234db10b6'
@@ -60,6 +62,7 @@ test('CE analysis runtime has a separate exact-source-bound preparation lane', a
   assert.equal(preparer.CE_ANALYSIS_BROWSER_CONTRACT_VERSION, '1.0.0')
   assert.equal(preparer.CE_ANALYSIS_RUNTIME_VERSION, '1.0.0')
   assert.equal(preparer.CE_ANALYSIS_RUNTIME_GLOBAL, 'STOmrCorrectionAnalysisRuntime')
+  assert.equal(preparer.CE_ANALYSIS_ARTIFACT_SHA256, '2fb9762d05d6164f9a595736adc58fed08a7b40733b969cd54bd7db41bbb41aa')
 
   const manifest = {
     contract: preparer.CE_ANALYSIS_BROWSER_CONTRACT,
@@ -81,9 +84,104 @@ test('CE analysis runtime has a separate exact-source-bound preparation lane', a
     sha256: 'a'.repeat(64),
   }
   assert.equal(preparer.verifyCeAnalysisRuntimeManifest(manifest), manifest)
+  const artifact = Buffer.from('abc')
+  const artifactManifest = {
+    ...manifest,
+    bytes: artifact.byteLength,
+    sha256: createHash('sha256').update(artifact).digest('hex'),
+  }
+  assert.throws(
+    () => preparer.verifyCeAnalysisRuntimeArtifact(artifactManifest, artifact),
+    /reviewed artifact digest mismatch/i,
+  )
 
   const unsafe = { ...manifest, automaticApplyAuthority: true }
   assert.throws(() => preparer.verifyCeAnalysisRuntimeManifest(unsafe), /forbidden authority/i)
+})
+
+test('shared pinned runtime preparer is deterministic, verifies bytes, writes provenance and always cleans up', async () => {
+  const artifact = Buffer.from('runtime-bytes')
+  const digest = createHash('sha256').update(artifact).digest('hex')
+  const manifest = {
+    contract: 'TEST_CONTRACT',
+    contractVersion: '1.0.0',
+    runtimeVersion: '1.0.0',
+    engineSourceRevision: 'a'.repeat(40),
+    artifact: 'runtime.js',
+    format: 'iife',
+    target: 'es2022',
+    global: 'TestRuntime',
+    externalImports: 0,
+    networkCapable: false,
+    automaticApplyAuthority: false,
+    bytes: artifact.byteLength,
+    sha256: digest,
+  }
+  const spec = {
+    label: 'Test browser',
+    repository: 'https://example.invalid/repo.git',
+    revision: 'a'.repeat(40),
+    repoRoot: '/repo',
+    buildRoot: '/repo/.build',
+    checkoutRoot: '/repo/.build/engine',
+    generatedRuntimeRoot: '/repo/.build/engine/dist/browser',
+    publicRuntimeRoot: '/repo/public/runtime',
+    buildScript: 'build:browser',
+    artifactName: 'runtime.js',
+    manifestName: 'runtime.manifest.json',
+    provenanceName: 'provenance.json',
+    contract: 'TEST_CONTRACT',
+    contractVersion: '1.0.0',
+    runtimeVersion: '1.0.0',
+    global: 'TestRuntime',
+    sourceRevisionField: 'engineSourceRevision',
+    provenanceRevisionField: 'engineSourceRevision',
+    reviewedArtifactSha256: digest,
+    forbiddenFlags: ['networkCapable', 'automaticApplyAuthority'],
+  }
+  const calls = []
+  const writes = []
+  const io = {
+    async rm(...args) { calls.push(['rm', ...args]) },
+    async mkdir(...args) { calls.push(['mkdir', ...args]) },
+    async cp(...args) { calls.push(['cp', ...args]) },
+    async readFile(filePath) {
+      calls.push(['readFile', filePath])
+      return filePath.endsWith('runtime.manifest.json')
+        ? Buffer.from(JSON.stringify(manifest))
+        : artifact
+    },
+    async writeFile(...args) { writes.push(args); calls.push(['writeFile', args[0]]) },
+    run(...args) { calls.push(['run', ...args]) },
+  }
+
+  const result = await preparePinnedRuntime(spec, { io })
+  assert.deepEqual(result, {
+    destination: spec.publicRuntimeRoot,
+    revision: spec.revision,
+    runtimeVersion: '1.0.0',
+    artifactSha256: digest,
+  })
+  assert.equal(calls.filter((entry) => entry[0] === 'run').length, 6)
+  assert.equal(calls.filter((entry) => entry[0] === 'rm' && entry[1] === spec.buildRoot).length, 2)
+  assert.equal(writes.length, 1)
+  const provenance = JSON.parse(writes[0][1])
+  assert.equal(provenance.engineSourceRevision, spec.revision)
+  assert.equal(provenance.files[0].sha256, digest)
+  assert.equal(provenance.files[1].path, spec.manifestName)
+
+  const failingIo = {
+    ...io,
+    async readFile(filePath) {
+      if (filePath.endsWith('runtime.manifest.json')) {
+        return Buffer.from(JSON.stringify({ ...manifest, sha256: '0'.repeat(64) }))
+      }
+      return artifact
+    },
+  }
+  await assert.rejects(() => preparePinnedRuntime(spec, { io: failingIo }), /digest does not match/i)
+  assert.ok(calls.filter((entry) => entry[0] === 'rm' && entry[1] === spec.buildRoot).length >= 3)
+  await assert.rejects(() => preparePinnedRuntime(null, { io }), /spec is invalid/i)
 })
 
 test('CE analysis consumer validates shadow-only source identity and authority', async () => {
