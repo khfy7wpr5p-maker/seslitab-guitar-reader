@@ -34,12 +34,23 @@ class Element {
     if (deep) this.childNodes.forEach((child) => clone.appendChild(typeof child === 'string' ? child : child.cloneNode(true)))
     return clone
   }
-  querySelectorAll(tag) {
+  querySelectorAll(selector) {
+    const direct = String(selector).match(/^:scope\\s*>\\s*([\\w:-]+)$/)
+    if (direct) return this.children.filter((child) => child.tagName === direct[1])
+
+    const descendant = String(selector).trim().split(/\\s+/)
+    if (descendant.length === 2) {
+      const [ancestorTag, childTag] = descendant
+      return this.querySelectorAll(ancestorTag)
+        .flatMap((ancestor) => ancestor.querySelectorAll(childTag))
+    }
+
+    const tag = String(selector)
     return this.children.flatMap((child) => [
       ...(child.tagName === tag ? [child] : []), ...child.querySelectorAll(tag),
     ])
   }
-  querySelector(tag) { return this.querySelectorAll(tag)[0] ?? null }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null }
 }
 
 class Document extends Element {
