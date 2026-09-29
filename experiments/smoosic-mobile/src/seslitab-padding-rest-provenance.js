@@ -121,7 +121,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     }
   }
 
-  function adoptRenderedScore(renderedScore, { allowPitchChanges = false } = {}) {
+  function adoptRenderedScore(renderedScore, { allowPitchChanges = false, authorizedDurationIdentities = null } = {}) {
     if (!score) throw new Error('Imported score registry is unavailable or stale')
     if (renderedScore === score) return renderedScore
 
@@ -144,7 +144,12 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
         throw new Error(`Rendered score clone semantics changed: note type at ordinal ${ordinal}`)
       }
       if (importedEntry.note.tickCount !== renderedEntry.note.tickCount) {
-        throw new Error(`Rendered score clone semantics changed: duration at ordinal ${ordinal}`)
+        const importedPadding = captured.has(importedEntry.note)
+        const durationAuthorized = authorizedDurationIdentities instanceof Set
+          && authorizedDurationIdentities.has(renderedId)
+        if (importedPadding || !durationAuthorized) {
+          throw new Error(`Rendered score clone semantics changed: duration at ordinal ${ordinal}`)
+        }
       }
       if (!allowPitchChanges
         && pitchSignature(importedEntry.note) !== pitchSignature(renderedEntry.note)) {
@@ -225,7 +230,11 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       entries: Object.freeze(entries) })
   }
 
-  return { runDuringImport, adoptRenderedScore, createExportManifest, clear }
+  function isCertifiedPaddingRest(note) {
+    return Boolean(note && captured.has(note) && note[importMarker] === token)
+  }
+
+  return { runDuringImport, adoptRenderedScore, createExportManifest, clear, isCertifiedPaddingRest }
 }
 
 exports.createSmoosicPaddingRestTracker = createSmoosicPaddingRestTracker
