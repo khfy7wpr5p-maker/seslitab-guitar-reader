@@ -499,11 +499,47 @@ try {
     return true;
   })()`)
   await clickApply(cdp)
-  await waitFor(
-    cdp,
-    `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yapısal doğrulama motoru kullanılamıyor')`,
-    'CE runtime unavailable fail-closed status',
-  )
+  try {
+    await waitFor(
+      cdp,
+      `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yapısal doğrulama motoru kullanılamıyor')`,
+      'CE runtime unavailable fail-closed status',
+      15000,
+    )
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `(() => {
+      const status = document.getElementById('smoosic-editor-host-status');
+      const exported = window.__CE_BRIDGE_LAST_EXPORT__;
+      const manifest = exported?.structuralActionManifest;
+      const frame = document.getElementById('smoosic-editor-frame');
+      return {
+        hostStatus: String(status?.textContent || ''),
+        hostKind: String(status?.dataset?.kind || ''),
+        applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+        editorStatus: String(frame?.contentDocument?.getElementById('poc-status')?.textContent || ''),
+        hasExport: Boolean(exported),
+        exportError: String(exported?.error || ''),
+        hasManifest: Boolean(manifest),
+        manifestBefore: manifest?.operations?.[0]?.before ?? null,
+        manifestAfter: manifest?.operations?.[0]?.after ?? null,
+        manifestFingerprint: String(manifest?.baseMappingFingerprint || ''),
+        candidateDuration: (() => {
+          const xml = String(exported?.musicXml || '');
+          if (!xml) return null;
+          const parsed = new DOMParser().parseFromString(xml, 'text/xml');
+          return Number(parsed.querySelector('part > measure > note > duration')?.textContent || NaN);
+        })(),
+        visibleDuration: (() => {
+          const xml = String(document.getElementById('xml-output')?.textContent || '');
+          const parsed = new DOMParser().parseFromString(xml, 'text/xml');
+          return Number(parsed.querySelector('part > measure > note > duration')?.textContent || NaN);
+        })(),
+        runtimePresent: Boolean(window.STOmrCorrectionCeStructRuntime),
+        runtimeScriptCount: document.querySelectorAll('script[data-seslitab-ce-struct-runtime]').length,
+      };
+    })()`)
+    throw new Error(`${error.message} | diagnostic=${JSON.stringify(diagnostic)}`)
+  }
   await expectSourceUnchanged(cdp, 'runtime unavailable')
   const unavailableA11y = await evaluate(cdp, `(() => {
     const s = document.getElementById('smoosic-editor-host-status');
