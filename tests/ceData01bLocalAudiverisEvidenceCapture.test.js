@@ -90,7 +90,7 @@ test('captures exact local Audiveris evidence without manufacturing teacher deci
   const referencePath = path.join(root, 'reference.musicxml')
   const outDir = path.join(root, 'capture')
   const pdf = Buffer.from('%PDF-1.4\nrights-safe test source\n%%EOF\n')
-  const reference = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"/>')
+  const reference = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"><identification><rights>CC0-1.0</rights></identification></score-partwise>')
   await writeFile(pdfPath, pdf)
   await writeFile(referencePath, reference)
 
@@ -172,6 +172,8 @@ test('fails closed when runtime version evidence does not contain the pinned eng
 test('Docker smoke workflow captures CE-DATA-01B evidence only through the local container', async () => {
   const workflow = await readFile(new URL('../.github/workflows/audiveris-docker-smoke-test.yml', import.meta.url), 'utf8')
   assert.ok(workflow.includes('actions/setup-node@v4'))
+  assert.ok(workflow.includes("      - 'scripts/local-audiveris-evidence-capture.js'"))
+  assert.ok(workflow.includes("      - 'scripts/run-local-audiveris-provider.js'"))
   assert.ok(workflow.includes('scripts/local-audiveris-evidence-capture.js'))
   assert.ok(workflow.includes('plan0-cc0-4measure-source.pdf'))
   assert.ok(workflow.includes('plan0-cc0-4measure-expected.musicxml'))
@@ -319,12 +321,44 @@ test('packages direct-container Audiveris outputs as pre-label evidence', async 
       sourceRevisionId: 'fcfa70da2d81891d98dc1029862671c35217c00f',
       licenseId: 'CC0-1.0',
       rightsEvidence: {
-        kind: 'TEACHER_VERIFIED_GOLDEN_REFERENCE',
+        kind: 'REFERENCE_RIGHTS_DECLARATION',
         referenceSha256: sha256(reference),
+        licenseId: 'CC0-1.0',
       },
     })
     assert.equal(Object.hasOwn(result.manifest, 'teacherDecision'), false)
     assert.deepEqual(await readFile(path.join(outDir, 'output.musicxml')), musicXml)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('direct packaging refuses to manufacture license provenance absent from the pinned reference', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ce-data-license-'))
+  const pdfPath = path.join(root, 'source.pdf')
+  const referencePath = path.join(root, 'reference.musicxml')
+  const musicXmlPath = path.join(root, 'generated.musicxml')
+  const versionPath = path.join(root, 'audiveris-version.txt')
+  const outDir = path.join(root, 'capture')
+  const pdf = Buffer.from('%PDF-1.4\nsource\n%%EOF\n')
+  const reference = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"/>')
+  await writeFile(pdfPath, pdf)
+  await writeFile(referencePath, reference)
+  await writeFile(musicXmlPath, Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"/>'))
+  await writeFile(versionPath, Buffer.from('Audiveris 5.11.0\n'))
+  try {
+    await assert.rejects(
+      () => packageLocalAudiverisEvidence({
+        pdfPath, referencePath, musicXmlPath, versionPath, outDir,
+        engineVersion: '5.11.0',
+        sourceRepository: 'khfy7wpr5p-maker/seslitab-guitar-reader',
+        sourceRevisionId: 'fcfa70da2d81891d98dc1029862671c35217c00f',
+        licenseId: 'CC0-1.0',
+        expectedSourceSha256: sha256(pdf),
+        expectedReferenceSha256: sha256(reference),
+      }),
+      /license evidence/i,
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }
