@@ -6,6 +6,7 @@ import '../scripts/runOmrQualityReport.js'
 import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
 import { publishPackage3Notes, clearPackage3Notes } from '../package3MeasureBridge.js'
 import { createSmoosicPaddingRestTracker } from '../experiments/smoosic-mobile/src/seslitab-padding-rest-provenance.js'
+import { createSmoosicStructuralActionTracker } from '../experiments/smoosic-mobile/src/seslitab-structural-action-provenance.js'
 import { SmoosicTestDOMParser, SmoosicTestXMLSerializer } from './support/smoosicXmlDom.js'
 
 globalThis.DOMParser = SmoosicTestDOMParser
@@ -68,6 +69,7 @@ function editorExportHarness({ rawXml = EXPORT_RAW_XML, trackerState = 'valid' }
         XmlToSmo: { convert() { return score } },
       }
       if (name === './seslitab-padding-rest-provenance') return { createSmoosicPaddingRestTracker }
+      if (name === './seslitab-structural-action-provenance') return { createSmoosicStructuralActionTracker }
       throw new Error(`Unexpected require: ${name}`)
     },
     document: { addEventListener() {}, getElementById() { return null } },
@@ -627,9 +629,9 @@ test('S15 primes the Smoosic cursor after every accepted MusicXML load', () => {
   )
 })
 
-test('S15 strictly re-adopts the current rendered score with pitch-only allowance before provenance export', () => {
+test('S15 re-adopts rendered score with explicit structural duration identities before provenance export', () => {
   assert.match(
     editor,
-    /function createSesliTabWritebackExport\(\{ score, sourceRevision, tracker \}\)[\s\S]*tracker\.adoptRenderedScore\(score, \{ allowPitchChanges: true \}\)[\s\S]*tracker\.createExportManifest\(/,
+    /function createSesliTabWritebackExport\(\{ score, sourceRevision, tracker, structuralTracker, actionId \}\)[\s\S]*structuralTracker\?\.reconcileRenderedScore\(score\)[\s\S]*authorizedDurationIdentities:[\s\S]*structuralTracker\?\.authorizedDurationIdentitySet\(\)[\s\S]*tracker\.createExportManifest\(/,
   )
 })
