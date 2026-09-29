@@ -17,7 +17,7 @@ function noteIdentity(note) {
   return requiredString(note?.attrs?.id, 'note identity')
 }
 
-function orderedNotes(score) {
+function orderedNotes(score, excludeNote = () => false) {
   if (!Array.isArray(score?.staves)) throw new Error('Invalid imported score')
   const result = []
   for (let staffIndex = 0; staffIndex < score.staves.length; staffIndex += 1) {
@@ -35,7 +35,9 @@ function orderedNotes(score) {
         if (!Array.isArray(voices)) throw new Error('Missing score voices')
         voices.forEach((voice, voiceIndex) => {
           if (!Array.isArray(voice?.notes)) throw new Error('Missing score notes')
-          voice.notes.forEach((note, noteIndex) => {
+          let noteIndex = 0
+          voice.notes.forEach((note) => {
+            if (excludeNote(note)) return
             const isRest = note?.noteType === 'r'
             const rawSpan = isRest ? 1 : Math.max(1, Array.isArray(note?.pitches) ? note.pitches.length : 0)
             result.push({
@@ -47,6 +49,7 @@ function orderedNotes(score) {
               rawSpan,
               isRest,
             })
+            noteIndex += 1
           })
         })
       }
@@ -92,8 +95,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
 
   function beginImport({ score, editorSessionId: sessionId, sourceDurationByRawOrdinal = null } = {}) {
     clear()
-    const ordered = orderedNotes(score).filter((entry) => !isPaddingRest(entry.note))
-    if (!ordered.length) throw new Error('Imported score contains no structural notes')
+    const ordered = orderedNotes(score, isPaddingRest)
     editorSessionId = requiredString(sessionId, 'editorSessionId')
     let rawNoteOrdinal = 0
     baseRecords = ordered.map((entry) => {
@@ -129,7 +131,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
 
   function reconcileRenderedScore(renderedScore) {
     if (!baseScore || !baseRecords.length) throw new Error('Structural action import registry is unavailable')
-    const rendered = orderedNotes(renderedScore).filter((entry) => !isPaddingRest(entry.note))
+    const rendered = orderedNotes(renderedScore, isPaddingRest)
     if (rendered.length !== baseRecords.length) throw new Error('Rendered score structural shape changed without explicit action')
 
     const nextMap = new Map()
