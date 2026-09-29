@@ -242,6 +242,11 @@ async function loadMusicXmlFile(file) {
       score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
     }
     await applicationInstance.view.changeScore(score);
+    await applicationInstance.view.moveHome({
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false
+    });
     candidateTracker.adoptRenderedScore(applicationInstance.view.score);
   } catch (error) {
     candidateTracker.clear();
@@ -249,11 +254,6 @@ async function loadMusicXmlFile(file) {
   }
   if (activePaddingRestTracker) activePaddingRestTracker.clear();
   activePaddingRestTracker = candidateTracker;
-  await applicationInstance.view.moveHome({
-    ctrlKey: true,
-    shiftKey: false,
-    altKey: false
-  });
   currentScoreBaseName = stripMusicXmlExtension(name);
   window.dispatchEvent(new Event('resize'));
   document.getElementById('poc-status')?.setAttribute('data-loaded-file-name', name);
