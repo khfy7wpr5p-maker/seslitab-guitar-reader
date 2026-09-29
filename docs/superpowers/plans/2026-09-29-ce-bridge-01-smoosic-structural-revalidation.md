@@ -267,6 +267,7 @@
   - Any failure before commit leaves the exact authority/workspace/current revision unchanged.
   - Structural success creates exactly one new `TEACHER_CORRECTED` revision and registers the exact conformed candidate MusicXML.
   - Prior approval/readiness does not transfer to the new revision.
+  - Publishing the committed revision through the existing SesliTab result path triggers fresh quality analysis for the new exact revision; no previous quality decision is reused by revision identity.
   - No T4 structural revalidation evidence is fabricated.
   - A publication/UI failure after immutable commit remains retryable without creating a second revision, preserving current S15 publication semantics.
 
@@ -326,7 +327,7 @@
   - Do not interpret candidate XML structure as an implicit action manifest.
 
 - [ ] **Step 5: Add real-browser protected proof**
-  - Exercise one explicit `2× süre` action → Apply → CE PASS → exact candidate conformance → one `teacher_corrected` revision → rerender.
+  - Exercise one explicit `2× süre` action → Apply → CE PASS → exact candidate conformance → one `teacher_corrected` revision → fresh SesliTab quality analysis → rerender.
   - Exercise undo-before-Apply → no structural revision.
   - Exercise undeclared mixed pitch+duration → fail closed and old revision remains.
   - Exercise malformed/stale manifest, CE runtime unavailable, and candidate mismatch.
