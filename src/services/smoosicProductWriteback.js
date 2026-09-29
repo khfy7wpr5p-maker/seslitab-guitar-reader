@@ -123,27 +123,29 @@ function replaceElementId(musicXml, tagName, fromId, toId) {
   return musicXml.replace(pattern, (_match, prefix, suffix) => `${prefix}${toId}${suffix}`)
 }
 
-function stableLocatorsExceptVoiceMatch(current, candidate) {
-  for (const field of STABLE_LOCATOR_FIELDS) {
-    if (field === 'voice') continue
-    if (!sameValue(current?.[field], candidate?.[field])) return false
-  }
-  return true
-}
-
 function normalizedVoiceNumber(value) {
   const voice = Number(value)
   return Number.isSafeInteger(voice) && voice > 0 ? voice : null
 }
 
-function smoosicVoiceGroupKey(note) {
+function voiceGroupKey(note) {
   return JSON.stringify([
-    note?.partId ?? null,
     note?.partIndex ?? null,
     note?.measureIndex ?? null,
-    note?.measureKey ?? null,
     note?.staff ?? null,
   ])
+}
+
+function voiceSetsByGroup(notes) {
+  const groups = new Map()
+  for (const note of notes) {
+    const voice = normalizedVoiceNumber(note?.voice)
+    if (voice === null) return null
+    const key = voiceGroupKey(note)
+    if (!groups.has(key)) groups.set(key, new Set())
+    groups.get(key).add(voice)
+  }
+  return groups
 }
 
 function normalizeSmoosicVoiceIdentity(musicXml, currentRevision) {
@@ -153,59 +155,43 @@ function normalizeSmoosicVoiceIdentity(musicXml, currentRevision) {
     parsed?.error
     || !Array.isArray(parsed?.notes)
     || !Array.isArray(currentNotes)
-    || parsed.notes.length !== currentNotes.length
   ) {
     return musicXml
   }
 
-  const groups = new Map()
-  for (let index = 0; index < parsed.notes.length; index += 1) {
-    const current = currentNotes[index]
-    const candidate = parsed.notes[index]
-    if (!stableLocatorsExceptVoiceMatch(current, candidate)) return musicXml
-
-    const currentVoice = normalizedVoiceNumber(current?.voice)
-    const candidateVoice = normalizedVoiceNumber(candidate?.voice)
-    if (currentVoice === null || candidateVoice === null) return musicXml
-
-    const key = smoosicVoiceGroupKey(current)
-    if (!groups.has(key)) {
-      groups.set(key, {
-        indexes: [],
-        currentVoices: new Set(),
-        candidateVoices: new Set(),
-      })
-    }
-    const group = groups.get(key)
-    group.indexes.push(index)
-    group.currentVoices.add(currentVoice)
-    group.candidateVoices.add(candidateVoice)
+  const currentGroups = voiceSetsByGroup(currentNotes)
+  const candidateGroups = voiceSetsByGroup(parsed.notes)
+  if (!currentGroups || !candidateGroups || currentGroups.size !== candidateGroups.size) {
+    return musicXml
   }
 
-  const targetVoiceByIndex = new Array(parsed.notes.length)
+  const voiceMapByGroup = new Map()
   let changed = false
+  for (const [key, currentSet] of currentGroups) {
+    const candidateSet = candidateGroups.get(key)
+    if (!candidateSet) return musicXml
 
-  for (const group of groups.values()) {
-    const currentVoices = [...group.currentVoices].sort((left, right) => left - right)
-    const candidateVoices = [...group.candidateVoices].sort((left, right) => left - right)
-
+    const currentVoices = [...currentSet].sort((left, right) => left - right)
+    const candidateVoices = [...candidateSet].sort((left, right) => left - right)
     if (currentVoices.length !== candidateVoices.length) return musicXml
     if (candidateVoices.some((voice, index) => voice !== index + 1)) return musicXml
 
     const voiceMap = new Map(
       candidateVoices.map((voice, index) => [voice, currentVoices[index]]),
     )
-
-    for (const index of group.indexes) {
-      const candidateVoice = normalizedVoiceNumber(parsed.notes[index]?.voice)
-      const targetVoice = voiceMap.get(candidateVoice)
-      if (targetVoice === undefined) return musicXml
-      targetVoiceByIndex[index] = targetVoice
-      if (targetVoice !== candidateVoice) changed = true
+    voiceMapByGroup.set(key, voiceMap)
+    for (const [candidateVoice, currentVoice] of voiceMap) {
+      if (candidateVoice !== currentVoice) changed = true
     }
   }
 
   if (!changed) return musicXml
+
+  const targetVoiceByIndex = parsed.notes.map((note) => {
+    const voiceMap = voiceMapByGroup.get(voiceGroupKey(note))
+    return voiceMap?.get(normalizedVoiceNumber(note?.voice)) ?? null
+  })
+  if (targetVoiceByIndex.some((voice) => voice === null)) return musicXml
 
   const notePattern = /<note\b[^>]*>[\s\S]*?<\/note>/gi
   const noteBlocks = musicXml.match(notePattern)
@@ -216,11 +202,6 @@ function normalizeSmoosicVoiceIdentity(musicXml, currentRevision) {
   const normalized = musicXml.replace(notePattern, (block) => {
     const targetVoice = targetVoiceByIndex[noteIndex]
     noteIndex += 1
-    if (targetVoice === undefined) {
-      failed = true
-      return block
-    }
-
     const voicePattern = /<voice\b([^>]*)>[\s\S]*?<\/voice>/i
     if (!voicePattern.test(block)) {
       failed = true
@@ -235,10 +216,192 @@ function normalizeSmoosicVoiceIdentity(musicXml, currentRevision) {
   return failed || noteIndex !== parsed.notes.length ? musicXml : normalized
 }
 
+const PADDING_EPSILON = 1e-9
+
+function finiteInterval(note) {
+  const start = Number(note?.startBeat)
+  const beats = Number(note?.beats)
+  if (!Number.isFinite(start) || !Number.isFinite(beats) || beats < 0) return null
+  return Object.freeze({ start, end: start + beats })
+}
+
+function paddingGroupKey(note) {
+  return JSON.stringify([
+    note?.partId ?? null,
+    note?.partIndex ?? null,
+    note?.measureIndex ?? null,
+    note?.measureKey ?? null,
+    note?.voice ?? null,
+    note?.staff ?? null,
+  ])
+}
+
+function measureStaffKey(note) {
+  return JSON.stringify([
+    note?.partId ?? null,
+    note?.partIndex ?? null,
+    note?.measureIndex ?? null,
+    note?.measureKey ?? null,
+    note?.staff ?? null,
+  ])
+}
+
+function sourceStructuralKey(note) {
+  return JSON.stringify([
+    paddingGroupKey(note),
+    Number(note?.startBeat),
+    Number(note?.beats),
+    Boolean(note?.isRest),
+    Boolean(note?.isGrace),
+    Boolean(note?.isChordNote),
+  ])
+}
+
+function sourceSilentIntervals(notes) {
+  const maxEndByMeasureStaff = new Map()
+  const occupiedByVoice = new Map()
+
+  for (const note of notes) {
+    if (note?.isGrace || note?.isChordNote) continue
+    const interval = finiteInterval(note)
+    if (!interval) return null
+
+    const measureKey = measureStaffKey(note)
+    maxEndByMeasureStaff.set(
+      measureKey,
+      Math.max(maxEndByMeasureStaff.get(measureKey) ?? 0, interval.end),
+    )
+
+    const key = paddingGroupKey(note)
+    if (!occupiedByVoice.has(key)) occupiedByVoice.set(key, [])
+    occupiedByVoice.get(key).push(interval)
+  }
+
+  const gapsByVoice = new Map()
+  for (const [key, intervals] of occupiedByVoice) {
+    const sample = notes.find((note) => paddingGroupKey(note) === key)
+    if (!sample) return null
+    const measureEnd = maxEndByMeasureStaff.get(measureStaffKey(sample))
+    if (!Number.isFinite(measureEnd)) return null
+
+    const sorted = [...intervals].sort((left, right) =>
+      left.start - right.start || left.end - right.end
+    )
+    const gaps = []
+    let cursor = 0
+    for (const interval of sorted) {
+      if (interval.start > cursor + PADDING_EPSILON) {
+        gaps.push(Object.freeze({ start: cursor, end: interval.start }))
+      }
+      cursor = Math.max(cursor, interval.end)
+    }
+    if (measureEnd > cursor + PADDING_EPSILON) {
+      gaps.push(Object.freeze({ start: cursor, end: measureEnd }))
+    }
+    gapsByVoice.set(key, Object.freeze(gaps))
+  }
+
+  return gapsByVoice
+}
+
+function intervalInsideGap(interval, gaps) {
+  if (!interval || !Array.isArray(gaps)) return false
+  return gaps.some((gap) =>
+    interval.start >= gap.start - PADDING_EPSILON
+    && interval.end <= gap.end + PADDING_EPSILON
+    && interval.end > interval.start + PADDING_EPSILON
+  )
+}
+
+function noteBlockToForward(block) {
+  const duration = block.match(/<duration\b[^>]*>[\s\S]*?<\/duration>/i)?.[0]
+  if (!duration) return null
+  const voice = block.match(/<voice\b[^>]*>[\s\S]*?<\/voice>/i)?.[0] ?? ''
+  const staff = block.match(/<staff\b[^>]*>[\s\S]*?<\/staff>/i)?.[0] ?? ''
+  return `<forward>${duration}${voice}${staff}</forward>`
+}
+
+function normalizeSmoosicPaddingRests(musicXml, currentRevision) {
+  const currentNotes = currentRevision?.content
+  const parsed = parseMusicXmlToNotes(musicXml)
+  if (
+    parsed?.error
+    || !Array.isArray(parsed?.notes)
+    || !Array.isArray(currentNotes)
+    || parsed.notes.length <= currentNotes.length
+  ) {
+    return musicXml
+  }
+
+  const remainingSource = new Map()
+  for (const note of currentNotes) {
+    const key = sourceStructuralKey(note)
+    remainingSource.set(key, (remainingSource.get(key) ?? 0) + 1)
+  }
+
+  const silentIntervals = sourceSilentIntervals(currentNotes)
+  if (!silentIntervals) return musicXml
+
+  const syntheticIndexes = new Set()
+  for (let index = 0; index < parsed.notes.length; index += 1) {
+    const candidate = parsed.notes[index]
+    const key = sourceStructuralKey(candidate)
+    const remaining = remainingSource.get(key) ?? 0
+    if (remaining > 0) {
+      remainingSource.set(key, remaining - 1)
+      continue
+    }
+
+    if (
+      !candidate?.isRest
+      || candidate?.isGrace
+      || candidate?.isChordNote
+      || !intervalInsideGap(
+        finiteInterval(candidate),
+        silentIntervals.get(paddingGroupKey(candidate)),
+      )
+    ) {
+      return musicXml
+    }
+    syntheticIndexes.add(index)
+  }
+
+  if ([...remainingSource.values()].some((count) => count !== 0)) return musicXml
+  if (syntheticIndexes.size !== parsed.notes.length - currentNotes.length) return musicXml
+
+  const notePattern = /<note\b[^>]*>[\s\S]*?<\/note>/gi
+  const noteBlocks = musicXml.match(notePattern)
+  if (!noteBlocks || noteBlocks.length !== parsed.notes.length) return musicXml
+
+  let noteIndex = 0
+  let failed = false
+  const normalized = musicXml.replace(notePattern, (block) => {
+    const index = noteIndex
+    noteIndex += 1
+    if (!syntheticIndexes.has(index)) return block
+    const forward = noteBlockToForward(block)
+    if (!forward) {
+      failed = true
+      return block
+    }
+    return forward
+  })
+  if (failed || noteIndex !== parsed.notes.length) return musicXml
+
+  const reparsed = parseMusicXmlToNotes(normalized)
+  if (
+    reparsed?.error
+    || !Array.isArray(reparsed?.notes)
+    || reparsed.notes.length !== currentNotes.length
+  ) {
+    return musicXml
+  }
+  return normalized
+}
+
 function normalizeSinglePartIdentity(musicXml, currentRevision) {
   const parsed = parseMusicXmlToNotes(musicXml)
   if (parsed?.error || !Array.isArray(parsed?.notes)) return musicXml
-  if (parsed.notes.length !== currentRevision.content.length) return musicXml
 
   const currentPartIds = uniqueValues(currentRevision.content, 'partId')
   const candidatePartIds = uniqueValues(parsed.notes, 'partId')
@@ -275,6 +438,52 @@ function normalizeSinglePartIdentity(musicXml, currentRevision) {
   return normalizedScorePart !== musicXml && normalizedPart !== normalizedScorePart
     ? normalizedPart
     : musicXml
+}
+
+export function diagnoseSmoosicWritebackNormalization({
+  musicXml,
+  currentRevision,
+} = {}) {
+  if (typeof musicXml !== 'string' || !Array.isArray(currentRevision?.content)) {
+    throw new TypeError('Diagnostic requires MusicXML and current revision content.')
+  }
+  const partNormalized = normalizeSinglePartIdentity(musicXml, currentRevision)
+  const voiceNormalized = normalizeSmoosicVoiceIdentity(partNormalized, currentRevision)
+  const paddingNormalized = normalizeSmoosicPaddingRests(voiceNormalized, currentRevision)
+  const stages = [
+    ['input', musicXml],
+    ['part', partNormalized],
+    ['voice', voiceNormalized],
+    ['padding', paddingNormalized],
+  ].map(([name, xml]) => {
+    const parsed = parseMusicXmlToNotes(xml)
+    const notes = Array.isArray(parsed?.notes) ? parsed.notes : []
+    let firstStableMismatch = null
+    if (notes.length === currentRevision.content.length) {
+      outer:
+      for (let index = 0; index < notes.length; index += 1) {
+        for (const field of STABLE_LOCATOR_FIELDS) {
+          if (!sameValue(currentRevision.content[index]?.[field], notes[index]?.[field])) {
+            firstStableMismatch = Object.freeze({
+              index,
+              field,
+              current: currentRevision.content[index]?.[field] ?? null,
+              candidate: notes[index]?.[field] ?? null,
+            })
+            break outer
+          }
+        }
+      }
+    }
+    return Object.freeze({
+      name,
+      changed: name === 'input' ? false : xml !== musicXml,
+      noteCount: notes.length,
+      error: parsed?.error ?? null,
+      firstStableMismatch,
+    })
+  })
+  return Object.freeze(stages)
 }
 
 function parseCandidate(musicXml, DOMParserCtor) {
@@ -400,8 +609,12 @@ export function applySmoosicProductWriteback({
   }
 
   const partNormalizedMusicXml = normalizeSinglePartIdentity(musicXml, currentRevision)
-  const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
+  const voiceNormalizedMusicXml = normalizeSmoosicVoiceIdentity(
     partNormalizedMusicXml,
+    currentRevision,
+  )
+  const normalizedMusicXml = normalizeSmoosicPaddingRests(
+    voiceNormalizedMusicXml,
     currentRevision,
   )
 

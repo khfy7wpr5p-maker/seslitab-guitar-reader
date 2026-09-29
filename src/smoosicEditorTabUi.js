@@ -151,6 +151,27 @@ function createAuthorityForAcceptedSource(root) {
   const state = stateFor(root)
   const source = acceptedSource(root)
   const snapshot = getPackage3MeasureSnapshot()
+  if (root?.defaultView && Array.isArray(snapshot?.notes)) {
+    root.defaultView.__SES43_SMOOSIC_AUTHORITY_DIAGNOSTIC__ = {
+      fileName: source?.fileName ?? null,
+      sourceLength: source?.xml?.length ?? 0,
+      noteCount: snapshot.notes.length,
+      notes: snapshot.notes.map((note) => ({
+        partId: note?.partId ?? null,
+        partIndex: note?.partIndex ?? null,
+        measureIndex: note?.measureIndex ?? null,
+        measureKey: note?.measureKey ?? null,
+        startBeat: note?.startBeat ?? null,
+        beats: note?.beats ?? null,
+        voice: note?.voice ?? null,
+        staff: note?.staff ?? null,
+        isRest: Boolean(note?.isRest),
+        isGrace: Boolean(note?.isGrace),
+        isChordNote: Boolean(note?.isChordNote),
+        noteName: note?.noteName ?? null,
+      })),
+    }
+  }
   if (!source || !Array.isArray(snapshot?.notes) || snapshot.notes.length === 0) {
     throw new Error('SesliTab current nota verisi düzenleme için hazır değil.')
   }

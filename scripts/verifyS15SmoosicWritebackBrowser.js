@@ -3,6 +3,9 @@ import { createServer } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname, join, resolve, sep } from 'node:path'
+import './runOmrQualityReport.js'
+import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
+import { diagnoseSmoosicWritebackNormalization } from '../src/services/smoosicProductWriteback.js'
 
 const repoRoot = resolve('.')
 const distRoot = resolve(repoRoot, 'dist')
@@ -69,6 +72,13 @@ const staleCandidateXml = sourceXml
 const voiceIdentitySourceXml = sourceXml
   .replace('<work-title>S15 C</work-title>', '<work-title>S15 voice identity</work-title>')
   .replace('<voice>1</voice>', '<voice>2</voice>')
+
+const realOmrDiagnosticXml = readFileSync(
+  resolve(repoRoot, 'tests', 'fixtures', 'real-omr', 'gesi-clean.xml'),
+  'utf8',
+)
+const realOmrDiagnosticFirstStep =
+  realOmrDiagnosticXml.match(/<step>([^<]+)<\/step>/)?.[1] || 'C'
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -794,6 +804,177 @@ try {
     })()`)
     throw new Error(`${error.message} | voice-identity diagnostic=${JSON.stringify(diagnostic)}`)
   }
+
+  // SES-43 second-root-cause diagnostic.
+  // Exercise a real OMR fixture with chords and multiple voices through the
+  // bundled Smoosic import/export path, then report exact stable-locator drift.
+  await openMusicXml(
+    cdp,
+    realOmrDiagnosticXml,
+    's15-real-omr-gesi.musicxml',
+    realOmrDiagnosticFirstStep,
+  )
+  await evaluate(cdp, `document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(
+    cdp,
+    `(() => {
+      const text = String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '');
+      return text.startsWith('Yüklendi:') && text.includes('s15-real-omr-gesi.musicxml');
+    })()`,
+    'real OMR Smoosic handoff',
+  )
+
+  await evaluate(cdp, `(() => {
+    window.__S15_FIRST_EXPORT__ = null;
+    document.getElementById('smoosic-apply-btn').click();
+    return true;
+  })()`)
+  const realOmrExport = await waitFor(
+    cdp,
+    `(() => {
+      const value = window.__S15_FIRST_EXPORT__;
+      return value?.musicXml ? {
+        musicXml: String(value.musicXml),
+        error: String(value.error || ''),
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+      } : null;
+    })()`,
+    'real OMR Smoosic export',
+    30000,
+  )
+
+  const authorityDiagnostic = await evaluate(cdp, `(() => {
+    const value = window.__SES43_SMOOSIC_AUTHORITY_DIAGNOSTIC__;
+    if (!value) return null;
+    return {
+      fileName: value.fileName,
+      sourceLength: value.sourceLength,
+      noteCount: value.noteCount,
+      affected: (value.notes || []).filter((note) => [7, 18, 19].includes(Number(note.measureIndex))),
+    };
+  })()`)
+
+  const sourceParsed = parseMusicXmlToNotes(realOmrDiagnosticXml)
+  const candidateParsed = parseMusicXmlToNotes(realOmrExport.musicXml)
+  const normalizationStages = diagnoseSmoosicWritebackNormalization({
+    musicXml: realOmrExport.musicXml,
+    currentRevision: { content: sourceParsed.notes },
+  })
+  if (sourceParsed?.error || candidateParsed?.error) {
+    throw new Error(`real-fixture parse diagnostic failed source=${sourceParsed?.error || ''} candidate=${candidateParsed?.error || ''}`)
+  }
+
+  const stableFields = [
+    'partId',
+    'partIndex',
+    'measureIndex',
+    'measureKey',
+    'voice',
+    'staff',
+    'isGrace',
+    'isChordNote',
+  ]
+  const fieldCounts = Object.fromEntries(stableFields.map((field) => [field, 0]))
+  const firstMismatches = []
+  const limit = Math.min(sourceParsed.notes.length, candidateParsed.notes.length)
+  for (let index = 0; index < limit; index += 1) {
+    const source = sourceParsed.notes[index]
+    const candidate = candidateParsed.notes[index]
+    for (const field of stableFields) {
+      if (Object.is(source?.[field] ?? null, candidate?.[field] ?? null)) continue
+      fieldCounts[field] += 1
+      if (firstMismatches.length < 24) {
+        firstMismatches.push({
+          index,
+          field,
+          source: source?.[field] ?? null,
+          candidate: candidate?.[field] ?? null,
+          sourcePitch: source?.noteName ?? null,
+          candidatePitch: candidate?.noteName ?? null,
+        })
+      }
+    }
+  }
+
+  const summarizeMeasures = (notes) => {
+    const byMeasure = new Map()
+    for (const note of notes) {
+      const key = String(note?.measureIndex ?? 'unknown')
+      if (!byMeasure.has(key)) {
+        byMeasure.set(key, { total: 0, rests: 0, pitched: 0, voices: new Set() })
+      }
+      const summary = byMeasure.get(key)
+      summary.total += 1
+      if (note?.isRest) summary.rests += 1
+      else summary.pitched += 1
+      summary.voices.add(note?.voice ?? null)
+    }
+    return Object.fromEntries([...byMeasure.entries()].map(([key, value]) => [
+      key,
+      {
+        total: value.total,
+        rests: value.rests,
+        pitched: value.pitched,
+        voices: [...value.voices].sort((a, b) => Number(a) - Number(b)),
+      },
+    ]))
+  }
+  const sourceMeasures = summarizeMeasures(sourceParsed.notes)
+  const candidateMeasures = summarizeMeasures(candidateParsed.notes)
+  const measureDeltas = []
+  for (const key of new Set([...Object.keys(sourceMeasures), ...Object.keys(candidateMeasures)])) {
+    const source = sourceMeasures[key] || { total: 0, rests: 0, pitched: 0, voices: [] }
+    const candidate = candidateMeasures[key] || { total: 0, rests: 0, pitched: 0, voices: [] }
+    if (
+      source.total !== candidate.total
+      || source.rests !== candidate.rests
+      || source.pitched !== candidate.pitched
+    ) {
+      measureDeltas.push({ measureIndex: Number(key), source, candidate })
+    }
+  }
+
+  throw new Error(`SES-43 real-fixture locator diagnostic=${JSON.stringify({
+    sourceNotes: sourceParsed.notes.length,
+    candidateNotes: candidateParsed.notes.length,
+    sourceRests: sourceParsed.notes.filter((note) => note?.isRest).length,
+    candidateRests: candidateParsed.notes.filter((note) => note?.isRest).length,
+    sourcePitched: sourceParsed.notes.filter((note) => !note?.isRest).length,
+    candidatePitched: candidateParsed.notes.filter((note) => !note?.isRest).length,
+    measureDeltas,
+    affectedSource: sourceParsed.notes
+      .filter((note) => [7, 18, 19].includes(Number(note?.measureIndex)))
+      .map((note) => ({
+        measureIndex: note.measureIndex,
+        startBeat: note.startBeat,
+        beats: note.beats,
+        durationValue: note.durationValue,
+        voice: note.voice,
+        staff: note.staff,
+        isRest: note.isRest,
+        isChordNote: note.isChordNote,
+        noteName: note.noteName,
+      })),
+    affectedCandidate: candidateParsed.notes
+      .filter((note) => [7, 18, 19].includes(Number(note?.measureIndex)))
+      .map((note) => ({
+        measureIndex: note.measureIndex,
+        startBeat: note.startBeat,
+        beats: note.beats,
+        durationValue: note.durationValue,
+        voice: note.voice,
+        staff: note.staff,
+        isRest: note.isRest,
+        isChordNote: note.isChordNote,
+        noteName: note.noteName,
+      })),
+    fieldCounts,
+    firstMismatches,
+    hostStatus: realOmrExport.hostStatus,
+    exportError: realOmrExport.error,
+    normalizationStages,
+    authorityDiagnostic,
+  })}`)
 
   mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
   writeFileSync(evidencePath, JSON.stringify({
