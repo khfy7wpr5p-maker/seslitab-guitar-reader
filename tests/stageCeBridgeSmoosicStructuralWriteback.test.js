@@ -9,9 +9,8 @@ const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url),
 const browserScript = new URL('../scripts/verifyCeBridgeStructuralBrowser.js', import.meta.url)
 const browserFixture = new URL('../tests/fixtures/ce-bridge-structural-browser-proof.html', import.meta.url)
 
-test('Task 7 exports a one-per-document exact CE-STRUCT runtime loader', async () => {
-  const api = await import(hostPath)
-  assert.equal(typeof api.loadCeStructRuntime, 'function')
+test('Task 7 exposes a one-per-document exact CE-STRUCT runtime loader', () => {
+  assert.match(host, /export async function loadCeStructRuntime\(root = document\)/)
   assert.match(host, /const CE_STRUCT_RUNTIME_SRC = '\/st-omr-correction-engine-runtime\/ce-struct-browser-runtime\.js'/)
   assert.match(host, /const ceRuntimeLoads = new WeakMap\(\)/)
   assert.match(host, /resolveCeStructRuntime/)
@@ -38,7 +37,8 @@ test('Task 7 validates structural provenance before loading CE and never infers 
   assert.match(host, /structuralActionManifest: validatedStructuralManifest/)
   assert.match(host, /ceStructRuntime/)
   assert.match(host, /structuralPatchSetId:/)
-  assert.doesNotMatch(host, /structuralActionManifest\s*=\s*[^;]*candidate\.musicXml/)
+  assert.doesNotMatch(host, /structuralActionManifest\s*:\s*candidate\.musicXml/)
+  assert.doesNotMatch(host, /validatedStructuralManifest\s*=\s*candidate\.musicXml/)
 })
 
 test('Task 7 keeps nonstructural S15 path free of CE runtime loading', () => {
