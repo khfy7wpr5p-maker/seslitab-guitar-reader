@@ -862,11 +862,38 @@ try {
     document.getElementById('smoosic-apply-btn').click();
     return true;
   })()`)
-  await waitFor(
-    cdp,
-    `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
-    'supported gesi-clean write-back',
-  )
+  try {
+    await waitFor(
+      cdp,
+      `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
+      'supported gesi-clean write-back',
+    )
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const result = window.__S15_FIRST_EXPORT__ || null;
+      const raw = String(result?.musicXml || '');
+      const visible = String(document.getElementById('xml-output')?.textContent || '');
+      const counts = (xml) => ({
+        total: (xml.match(/<note\\b/g) || []).length,
+        pitched: (xml.match(/<pitch\\b/g) || []).length,
+        rests: (xml.match(/<rest\\b/g) || []).length,
+      });
+      return {
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        hostKind: String(document.getElementById('smoosic-editor-host-status')?.dataset?.kind || ''),
+        editorStatus: String(frame?.contentDocument?.getElementById('poc-status')?.textContent || ''),
+        exportVersion: result?.version ?? null,
+        exportError: String(result?.error || ''),
+        raw: counts(raw),
+        visible: counts(visible),
+        provenanceEntries: result?.paddingRestProvenance?.entries?.length ?? null,
+        provenanceRawNoteCount: result?.paddingRestProvenance?.rawNoteCount ?? null,
+        applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+      };
+    })()`)
+    throw new Error(`${error.message} | gesi-clean diagnostic=${JSON.stringify(diagnostic)}`)
+  }
 
   const gesiSnapshot = await evaluate(cdp, `(() => ({
     rawMusicXml: String(window.__S15_FIRST_EXPORT__?.musicXml || ''),
