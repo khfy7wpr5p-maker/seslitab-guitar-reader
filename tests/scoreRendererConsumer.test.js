@@ -11,7 +11,7 @@ import {
   clearScoreHighlights,
   clearScoreView,
   getCurrentScoreRenderEvidence,
-  highlightScoreNote,
+  highlightScoreMeasure,\n  highlightScoreNote,
   hitTestScoreNote,
   hitTestScoreNoteDetailed,
   moveScoreCursor,
@@ -23,7 +23,7 @@ import {
 
 test('score renderer consumer pins the reviewed ST boundary', () => {
   assert.equal(ST_SCORE_RENDERER_CONTRACT_VERSION, '0.2.0')
-  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a')
+  assert.equal(ST_SCORE_RENDERER_REVIEWED_REVISION, '3955250a0a1407d3a13de5f72b106b5234db10b6')
 })
 
 test('MusicXML validation is bounded and fail closed', () => {
@@ -56,7 +56,7 @@ test('runtime resolution requires the reviewed detailed-hit ST-owned host shape'
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: {} }), null)
   assert.equal(resolveStScoreRuntime({
     __ST_SCORE_RENDER_HOST__: {
-      renderMusicXml() {}, moveCursor() {}, hitTestNote() {}, highlight() {}, clearHighlights() {}, dispose() {},
+      renderMusicXml() {}, moveCursor() {}, hitTestNote() {}, highlight() {}, clearHighlights() {}, highlightMeasure() {}, clearMeasureHighlights() {}, dispose() {},
     },
   }), null)
 
@@ -184,6 +184,24 @@ test('note highlight accepts exact voice-present or voice-omitted ScoreNoteRef w
   assert.equal(await clearScoreHighlights(host), true)
   assert.equal(cleared, 1)
   await assert.rejects(() => highlightScoreNote(host, { ...ref, pitch: 'C4' }), TypeError)
+})
+
+test('measure highlight uses only exact part and measure identity and clears independently', async () => {
+  let payload = null
+  let cleared = 0
+  const host = {
+    async highlightMeasure(value) { payload = value },
+    async clearMeasureHighlights() { cleared += 1 },
+  }
+
+  await highlightScoreMeasure(host, { partId: ' P1 ', measureIndex: 2, ignored: true })
+  assert.deepEqual(payload, {
+    target: { partId: 'P1', measureIndex: 2 },
+    className: 'st-score-suspicious-measure',
+  })
+  assert.equal(await clearScoreMeasureHighlights(host), true)
+  assert.equal(cleared, 1)
+  await assert.rejects(() => highlightScoreMeasure(host, { partId: 'P1', measureIndex: -1 }), RangeError)
 })
 
 test('renderScoreView rejects missing runtime and malformed tickets', async () => {
