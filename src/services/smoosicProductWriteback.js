@@ -796,14 +796,19 @@ function applySmoosicStructuralProductWriteback({
     return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED, authority)
   }
 
-  const committed = commitPrDProductRevision({
-    workspace: authority.workspace,
-    revalidated,
-    revisionId,
-    eventId,
-    operationIdPrefix,
-    createdAt,
-  })
+  let committed
+  try {
+    committed = commitPrDProductRevision({
+      workspace: authority.workspace,
+      revalidated,
+      revisionId,
+      eventId,
+      operationIdPrefix,
+      createdAt,
+    })
+  } catch {
+    return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFLICT, authority)
+  }
   if (!committed.ok) {
     return structuralFailure(SMOOSIC_WRITEBACK_STATUS.CONFLICT, authority)
   }
