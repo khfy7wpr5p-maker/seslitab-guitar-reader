@@ -349,11 +349,16 @@ test('projects Smoosic divisions and one-tick tuplet rounding onto the source gr
     <note><pitch><step>D</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>
     <note><pitch><step>E</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>
     <note><pitch><step>F</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>
+  </measure><measure number="2">
+    <attributes><divisions>12</divisions></attributes>
+    <note><pitch><step>C</step><octave>5</octave></pitch><duration>48</duration><voice>1</voice><type>whole</type></note>
   </measure></part>
 </score-partwise>`
   const candidate = sourceXml
-    .replace('<divisions>12</divisions>', '<divisions>4096</divisions>')
+    .replaceAll('<divisions>12</divisions>', '<divisions>4096</divisions>')
+    .replace('<attributes><divisions>4096</divisions></attributes>', '<attributes></attributes>')
     .replaceAll('<duration>12</duration>', '<duration>4096</duration>')
+    .replace('<duration>48</duration>', '<duration>16384</duration>')
     .replaceAll('<duration>8</duration>', '<duration>2730.6666666666665</duration>')
     .replace('<duration>2730.6666666666665</duration>', '<duration>2730</duration>')
     .replace('<step>C</step>', '<step>G</step>')

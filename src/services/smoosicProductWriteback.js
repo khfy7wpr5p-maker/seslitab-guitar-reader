@@ -352,6 +352,7 @@ function projectPartDivisions(partXml, sourcePartXml) {
     measureIndex += 1
     const sourceDeclaration = divisionsDeclaration(sourceMeasure)
     const candidateDeclaration = divisionsDeclaration(measureXml)
+    const previousSourceDivisions = sourceDivisions
     if (
       sourceDeclaration.ambiguous
       || candidateDeclaration.ambiguous
@@ -367,7 +368,11 @@ function projectPartDivisions(partXml, sourcePartXml) {
       failed = true
       return measureXml
     }
-    if (sourceDeclaration.value !== null && candidateDeclaration.value === null) {
+    if (
+      sourceDeclaration.value !== null
+      && candidateDeclaration.value === null
+      && sourceDeclaration.value !== previousSourceDivisions
+    ) {
       failed = true
       return measureXml
     }
