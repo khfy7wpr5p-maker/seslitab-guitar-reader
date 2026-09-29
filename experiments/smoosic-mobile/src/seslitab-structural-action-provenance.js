@@ -166,15 +166,19 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
     return renderedScore
   }
 
-  function recordDurationAction({ note, beforeDuration, afterDuration } = {}) {
+  function recordDurationAction({ note, renderedNote = note, beforeDuration, afterDuration } = {}) {
     const record = recordByNote.get(note)
     if (!record) throw new Error('Duration target is not part of the explicit imported mapping')
-    if (isPaddingRest(note)) throw new Error('Certified padding rest cannot be a structural duration target')
+    if (isPaddingRest(note) || isPaddingRest(renderedNote)) throw new Error('Certified padding rest cannot be a structural duration target')
+    const sourceIdentity = noteIdentity(note)
+    if (noteIdentity(renderedNote) !== sourceIdentity) {
+      throw new Error('Duration action rendered note identity changed')
+    }
 
     const before = positiveDuration(beforeDuration, 'beforeDuration')
     const after = positiveDuration(afterDuration, 'afterDuration')
     if (before !== record.currentDuration) throw new Error('Duration before state is stale')
-    if (Number(note?.tickCount) !== after) throw new Error('Duration after state does not match rendered note')
+    if (Number(renderedNote?.tickCount) !== after) throw new Error('Duration after state does not match rendered note')
 
     const existing = active.get(record.rawNoteOrdinal)
     const originalBeforeTicks = existing?.beforeTicks ?? before
@@ -197,13 +201,18 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       measureIndex: record.measureIndex,
       voiceIndex: record.voiceIndex,
       noteIndex: record.noteIndex,
-      noteIdentity: noteIdentity(note),
+      noteIdentity: sourceIdentity,
       beforeTicks: originalBeforeTicks,
       afterTicks: after,
       before: originalBefore,
       after: normalizedAfter,
     }
     active.set(record.rawNoteOrdinal, value)
+    if (renderedNote !== note) {
+      recordByNote.delete(note)
+      record.note = renderedNote
+      recordByNote.set(renderedNote, record)
+    }
     return freezeOperation(value)
   }
 
