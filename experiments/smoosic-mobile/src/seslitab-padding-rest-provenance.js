@@ -61,6 +61,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
   if (typeof SmoMeasure?.createRestNoteWithDuration !== 'function') {
     throw new Error('Smoosic rest factory is unavailable')
   }
+  const restFactory = SmoMeasure.createRestNoteWithDuration
   let score = null
   let captured = new Map()
   let retired = new Set()
@@ -108,6 +109,37 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     record.nextContext = contextOf(notes[record.locator.noteIndex + 1])
   }
 
+  function restoreExactUndoPadding(record, notes, authorized) {
+    const previous = notes[record.locator.noteIndex - 1] ?? null
+    const shiftedNext = notes[record.locator.noteIndex] ?? null
+    const previousIdentity = previous ? identity(previous) : ''
+    const exactUndoGap = previous
+      && authorized.has(previousIdentity)
+      && matchesContext(previous, record.previousContext)
+      && matchesContext(shiftedNext, record.nextContext)
+
+    if (!exactUndoGap) return null
+
+    const restored = restFactory.call(SmoMeasure, record.durationTicks)
+    if (!restored || typeof restored !== 'object'
+      || restored.noteType !== 'r'
+      || Number(restored.tickCount) !== Number(record.durationTicks)) {
+      throw new Error('Smoosic padding rest factory could not restore exact undo padding')
+    }
+    const restoredIdentity = identity(restored)
+    if ([...captured.values()].some((value) => value.noteIdentity === restoredIdentity)) {
+      throw new Error('Duplicate padding rest identity')
+    }
+    Object.defineProperty(restored, importMarker, { value: token, configurable: true })
+    notes.splice(record.locator.noteIndex, 0, restored)
+    record.note = restored
+    record.noteIdentity = restoredIdentity
+    captured.set(restored, record)
+    retired.delete(record)
+    refreshRecordContext(record, currentScore)
+    return restored
+  }
+
   function reconcileSameScore(currentScore, authorizedDurationIdentities) {
     const located = orderedNotes(currentScore)
     const entryByNote = new Map(located.map((entry) => [entry.note, entry]))
@@ -140,12 +172,15 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
         )
         && matchesContext(shiftedNext, record.nextContext)
 
+      if (note[importMarker] === token) delete note[importMarker]
+      captured.delete(note)
+
+      if (restoreExactUndoPadding(record, notes, authorized)) continue
+
       if (!consumedExactly) {
         throw new Error('Certified padding rest disappeared without exact authorized duration consumption')
       }
 
-      if (note[importMarker] === token) delete note[importMarker]
-      captured.delete(note)
       record.note = null
       retired.add(record)
     }
@@ -155,7 +190,10 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       const candidate = notes[record.locator.noteIndex] ?? null
       const previous = notes[record.locator.noteIndex - 1] ?? null
       const next = notes[record.locator.noteIndex + 1] ?? null
-      if (!candidate || candidate.noteType !== 'r') continue
+      if (!candidate || candidate.noteType !== 'r') {
+        restoreExactUndoPadding(record, notes, authorized)
+        continue
+      }
       if (Number(candidate.tickCount) !== Number(record.durationTicks)) continue
       if (!matchesContext(previous, record.previousContext)) continue
       if (!matchesContext(next, record.nextContext)) continue
