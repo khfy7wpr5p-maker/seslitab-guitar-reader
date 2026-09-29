@@ -105,6 +105,8 @@ export function resolveStScoreRuntime(globalScope = globalThis) {
   if (typeof host.hitTestNoteDetailed !== 'function') return null
   if (typeof host.highlight !== 'function') return null
   if (typeof host.clearHighlights !== 'function') return null
+  if (typeof host.highlightMeasure !== 'function') return null
+  if (typeof host.clearMeasureHighlights !== 'function') return null
   if (typeof host.dispose !== 'function') return null
   return host
 }
@@ -238,7 +240,23 @@ export async function highlightScoreNote(host, target) {
   return host.highlight(payload)
 }
 
-export async function highlightScoreMeasure(host, target) {\n  if (!host || typeof host.highlightMeasure !== 'function') {\n    throw new TypeError('ST score renderer measure highlight runtime bağlı değil.')\n  }\n  const validated = validateScoreCursorTarget(target)\n  const hostTarget = createRealmPlainObjectFor(host, validated)\n  const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'st-score-suspicious-measure' })\n  return host.highlightMeasure(payload)\n}\n\nexport async function clearScoreMeasureHighlights(host) {\n  if (!host || typeof host.clearMeasureHighlights !== 'function') return false\n  await host.clearMeasureHighlights()\n  return true\n}\n\nexport async function clearScoreHighlights(host) {
+export async function highlightScoreMeasure(host, target) {
+  if (!host || typeof host.highlightMeasure !== 'function') {
+    throw new TypeError('ST score renderer measure highlight runtime bağlı değil.')
+  }
+  const validated = validateScoreCursorTarget(target)
+  const hostTarget = createRealmPlainObjectFor(host, validated)
+  const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'st-score-suspicious-measure' })
+  return host.highlightMeasure(payload)
+}
+
+export async function clearScoreMeasureHighlights(host) {
+  if (!host || typeof host.clearMeasureHighlights !== 'function') return false
+  await host.clearMeasureHighlights()
+  return true
+}
+
+export async function clearScoreHighlights(host) {
   if (!host || typeof host.clearHighlights !== 'function') return false
   await host.clearHighlights()
   return true
