@@ -19,6 +19,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -84,9 +89,30 @@ jobs:
             exit 1
           fi
 
-      - name: Run Audiveris -version inside container
+      - name: Capture exact Audiveris version evidence
         run: |
-          docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -version
+          docker exec seslitab-smoke /opt/audiveris/bin/Audiveris -version > /tmp/audiveris-version.txt
+          cat /tmp/audiveris-version.txt
+          grep -F '5.11.0' /tmp/audiveris-version.txt
+
+      - name: Capture CE-DATA-01B local Audiveris evidence
+        run: |
+          node scripts/local-audiveris-evidence-capture.js \
+            tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-source.pdf \
+            --reference tests/fixtures/golden-reference/plan0-cc0-4measure/plan0-cc0-4measure-expected.musicxml \
+            --gateway http://127.0.0.1:8080 \
+            --engine-version 5.11.0 \
+            --engine-version-file /tmp/audiveris-version.txt \
+            --out artifacts/ce-data-01b-local-audiveris-capture
+
+      - name: Upload CE-DATA-01B local evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ce-data-01b-local-audiveris-capture
+          path: artifacts/ce-data-01b-local-audiveris-capture/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Cleanup
         if: always()
