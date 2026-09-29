@@ -283,3 +283,19 @@ test('missing CE runtime fails closed before immutable commit', () => {
   assert.equal(result.authority, root)
   assert.equal(root.workspace.history.revisions.length, 1)
 })
+
+
+test('invalid immutable commit identity returns typed CONFLICT without mutation', () => {
+  const root = rootAuthority()
+  const current = getTeacherWorkspaceCurrentRevision(root.workspace)
+  const before = JSON.stringify(root)
+
+  const result = applyStructural(root, { revisionId: '' })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.CONFLICT)
+  assert.equal(result.authority, root)
+  assert.equal(JSON.stringify(root), before)
+  assert.equal(getTeacherWorkspaceCurrentRevision(root.workspace), current)
+  assert.equal(root.workspace.history.revisions.length, 1)
+  assert.equal(resolvePrDProductMusicXml(current)?.musicXml, SOURCE_XML)
+})
