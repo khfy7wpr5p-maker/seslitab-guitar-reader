@@ -189,3 +189,59 @@ test('explicit duration action preserves imported identity when Smoosic replaces
   assert.equal(manifest.operations[0].after, 2)
   assert.deepEqual([...tracker.authorizedDurationIdentitySet()], ['source-stable-id'])
 })
+
+
+test('explicit duration action accepts Smoosic post-action id replacement only through the exact pre-action target', async () => {
+  const tracker = await trackerFactory()
+  const original = pitched('pre-action-id', 8)
+  const score = scoreOf([original])
+  tracker.beginImport({
+    score,
+    editorSessionId: 'session-post-id',
+    sourceDurationByRawOrdinal: [1],
+  })
+
+  const replacement = pitched('post-action-id', 16)
+  score.staves[0].measures[0].voices[0].notes[0] = replacement
+  tracker.recordDurationAction({
+    note: original,
+    renderedNote: replacement,
+    beforeDuration: 8,
+    afterDuration: 16,
+  })
+
+  const manifest = tracker.createApplyManifest({ sourceRevision: 10, actionId: 'apply-post-id' })
+  assert.equal(manifest.operations[0].noteIdentity, 'post-action-id')
+  assert.equal(manifest.operations[0].before, 1)
+  assert.equal(manifest.operations[0].after, 2)
+  assert.deepEqual([...tracker.authorizedDurationIdentitySet()], ['post-action-id'])
+})
+
+test('certified padding rests are outside structural identity and may disappear after explicit duration action', async () => {
+  const original = pitched('real-a', 8)
+  const pad = rest('padding-rest', 8)
+  const second = pitched('real-b', 16)
+  const tracker = await trackerFactory({ isPaddingRest: (note) => note?.attrs?.id === 'padding-rest' })
+  const score = scoreOf([original, pad, second])
+  tracker.beginImport({
+    score,
+    editorSessionId: 'session-padding-excluded',
+    sourceDurationByRawOrdinal: [1, 2],
+  })
+
+  const replacement = pitched('real-a-after', 16)
+  score.staves[0].measures[0].voices[0].notes = [replacement, second]
+  tracker.recordDurationAction({
+    note: original,
+    renderedNote: replacement,
+    beforeDuration: 8,
+    afterDuration: 16,
+  })
+  assert.doesNotThrow(() => tracker.reconcileRenderedScore(score))
+
+  const manifest = tracker.createApplyManifest({ sourceRevision: 11, actionId: 'apply-padding-excluded' })
+  assert.equal(manifest.operations.length, 1)
+  assert.equal(manifest.operations[0].rawNoteOrdinal, 0)
+  assert.equal(manifest.operations[0].before, 1)
+  assert.equal(manifest.operations[0].after, 2)
+})
