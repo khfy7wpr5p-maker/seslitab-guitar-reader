@@ -319,6 +319,16 @@ async function runMainProof() {
     await clickEditorKey(session, '.')
     await clickEditorKey(session, 'z', { ctrl: true })
     const undoProbe = await probeEditorExport(session)
+    if (undoProbe?.error) {
+      const editorStatus = await session.evaluate(`String(document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')?.textContent || '')`)
+      throw new Error(`Undo export probe failed: ${String(undoProbe.error)}. editorStatus=${editorStatus}`)
+    }
+    if (typeof undoProbe?.musicXml !== 'string' || !undoProbe.musicXml.trim()) {
+      throw new Error('Undo export probe returned no MusicXML.')
+    }
+    if (!undoProbe?.paddingRestProvenance) {
+      throw new Error('Undo export probe returned no padding-rest provenance.')
+    }
     if (undoProbe?.structuralActionManifest !== undefined) {
       throw new Error('Undo-before-Apply retained a structuralActionManifest.')
     }
