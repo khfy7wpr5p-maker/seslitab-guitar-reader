@@ -1,6 +1,11 @@
 import { MAX_MUSIC_XML_FILE_SIZE } from './musicXmlFile.js'
+import { inspectMusicXml } from '../../musicXmlSecurity.js'
+import { normalizeSmoosicPaddingRests } from './smoosicPaddingRestNormalization.js'
 import { parseMusicXmlToNotes } from './musicEngine.js'
-import { extractPrDProductNotationByIndex } from './editorPrDNotationBridge.js'
+import {
+  alignMusicXmlNotesToProductRevision,
+  extractPrDProductNotationByIndex,
+} from './editorPrDNotationBridge.js'
 import {
   commitPrDProductRevision,
   revalidatePrDEditorMusicXml,
@@ -277,6 +282,140 @@ function normalizeSinglePartIdentity(musicXml, currentRevision) {
     : musicXml
 }
 
+function positiveIntegerText(value) {
+  const text = String(value).trim()
+  const number = Number(text)
+  return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(number) ? number : null
+}
+
+function positiveDurationText(value) {
+  const text = String(value).trim()
+  const number = Number(text)
+  return /^(?:[1-9]\d*)(?:\.\d+)?$/.test(text) && Number.isFinite(number)
+    ? number
+    : null
+}
+
+function divisionsDeclaration(measureXml) {
+  const matches = [...measureXml.matchAll(/<divisions\b[^>]*>([\s\S]*?)<\/divisions>/gi)]
+  if (matches.length > 1) return Object.freeze({ ambiguous: true, value: null })
+  if (matches.length === 0) return Object.freeze({ ambiguous: false, value: null })
+  return Object.freeze({
+    ambiguous: false,
+    value: positiveIntegerText(matches[0][1]),
+  })
+}
+
+function projectMeasureDurations(measureXml, sourceDivisions, candidateDivisions) {
+  if (sourceDivisions === candidateDivisions) return measureXml
+  let invalid = false
+  const projected = measureXml.replace(
+    /(<duration\b[^>]*>)([\s\S]*?)(<\/duration>)/gi,
+    (_match, opening, rawValue, closing) => {
+      // Smoosic serializes exact tuplets as fractional 4096-grid durations
+      // (for example 2730.6666666666665). MusicXML's source grid remains
+      // integral, so accept a bounded positive decimal only at this
+      // representation-normalization seam and project it immediately.
+      const value = positiveDurationText(rawValue)
+      if (value === null) {
+        invalid = true
+        return _match
+      }
+      const sourceValue = Math.round((value * sourceDivisions) / candidateDivisions)
+      const timingError = Math.abs(
+        (value / candidateDivisions) - (sourceValue / sourceDivisions),
+      )
+      // Smoosic uses an integer 4096-tick grid. Tuplets can therefore be at
+      // most one candidate tick away from the exact source rational.
+      if (
+        !Number.isSafeInteger(sourceValue)
+        || sourceValue <= 0
+        || timingError > (1 / candidateDivisions) + Number.EPSILON
+      ) {
+        invalid = true
+        return _match
+      }
+      return `${opening}${sourceValue}${closing}`
+    },
+  )
+  return invalid ? null : projected
+}
+
+function projectPartDivisions(partXml, sourcePartXml) {
+  const candidateMeasures = [...partXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
+  const sourceMeasures = [...sourcePartXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
+  if (candidateMeasures.length !== sourceMeasures.length) return null
+
+  let sourceDivisions = null
+  let candidateDivisions = null
+  let measureIndex = 0
+  let failed = false
+  const projected = partXml.replace(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi, (measureXml) => {
+    const sourceMeasure = sourceMeasures[measureIndex]?.[0]
+    measureIndex += 1
+    const sourceDeclaration = divisionsDeclaration(sourceMeasure)
+    const candidateDeclaration = divisionsDeclaration(measureXml)
+    const previousSourceDivisions = sourceDivisions
+    if (
+      sourceDeclaration.ambiguous
+      || candidateDeclaration.ambiguous
+      || (sourceDeclaration.value === null && /<divisions\b/i.test(sourceMeasure))
+      || (candidateDeclaration.value === null && /<divisions\b/i.test(measureXml))
+    ) {
+      failed = true
+      return measureXml
+    }
+    if (sourceDeclaration.value !== null) sourceDivisions = sourceDeclaration.value
+    if (candidateDeclaration.value !== null) candidateDivisions = candidateDeclaration.value
+    if (sourceDivisions === null || candidateDivisions === null) {
+      failed = true
+      return measureXml
+    }
+    if (
+      sourceDeclaration.value !== null
+      && candidateDeclaration.value === null
+      && sourceDeclaration.value !== previousSourceDivisions
+    ) {
+      failed = true
+      return measureXml
+    }
+
+    const durations = projectMeasureDurations(
+      measureXml,
+      sourceDivisions,
+      candidateDivisions,
+    )
+    if (durations === null) {
+      failed = true
+      return measureXml
+    }
+    if (candidateDeclaration.value === null || sourceDeclaration.value === null) return durations
+    return durations.replace(
+      /(<divisions\b[^>]*>)[\s\S]*?(<\/divisions>)/i,
+      `$1${sourceDeclaration.value}$2`,
+    )
+  })
+  return failed || measureIndex !== candidateMeasures.length ? null : projected
+}
+
+function normalizeSmoosicDivisionsIdentity(musicXml, currentMusicXml) {
+  const candidateParts = [...musicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
+  const sourceParts = [...currentMusicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
+  if (candidateParts.length === 0 || candidateParts.length !== sourceParts.length) return musicXml
+  let partIndex = 0
+  let failed = false
+  const projected = musicXml.replace(/<part\b[^>]*>[\s\S]*?<\/part>/gi, (partXml) => {
+    const value = projectPartDivisions(partXml, sourceParts[partIndex]?.[0])
+    partIndex += 1
+    if (value === null) {
+      failed = true
+      return partXml
+    }
+    return value
+  })
+  return failed || partIndex !== candidateParts.length ? musicXml : projected
+}
+
 function parseCandidate(musicXml, DOMParserCtor) {
   const parsed = parseMusicXmlToNotes(musicXml)
   if (parsed?.error || !Array.isArray(parsed?.notes) || parsed.notes.length === 0) {
@@ -330,11 +469,151 @@ function changedIndexesFor({
       JSON.stringify(current.notation[index] ?? null)
       !== JSON.stringify(candidate.notation[index] ?? null)
 
+    // Proof can remove editor padding, but cannot change source rest topology.
+    // Compare canonical positions after normalization; do not infer provenance
+    // from a rest's duration, voice, or visual shape.
+    if (
+      (current.notes[index]?.isRest === true || candidate.notes[index]?.isRest === true)
+      && (semanticChanged || notationChanged)
+    ) {
+      return Object.freeze({
+        supported: false,
+        changedIndexes: Object.freeze([]),
+      })
+    }
+
     if (semanticChanged || notationChanged) changedIndexes.push(index)
   }
 
   return Object.freeze({
     supported: true,
+    changedIndexes: Object.freeze(changedIndexes),
+  })
+}
+
+
+const PITCH_FALLBACK_INVARIANT_FIELDS = Object.freeze([
+  'partId',
+  'partIndex',
+  'measureIndex',
+  'measureKey',
+  'voice',
+  'staff',
+  'isRest',
+  'isGrace',
+  'isChordNote',
+  'startBeat',
+  'durationValue',
+  'beats',
+])
+
+function directXmlChild(element, name) {
+  return [...(element?.children ?? [])].find(
+    (child) => (child.localName ?? child.tagName ?? '') === name,
+  ) ?? null
+}
+
+function createXmlElementLike(doc, parent, name) {
+  const namespace = parent?.namespaceURI ?? doc.documentElement?.namespaceURI ?? null
+  return namespace && typeof doc.createElementNS === 'function'
+    ? doc.createElementNS(namespace, name)
+    : doc.createElement(name)
+}
+
+function sourcePreservingPitchFallback({
+  currentRevision,
+  currentMusicXml,
+  candidateMusicXml,
+  DOMParserCtor,
+  XMLSerializerCtor,
+}) {
+  if (typeof XMLSerializerCtor !== 'function') return null
+  const parsed = parseMusicXmlToNotes(candidateMusicXml)
+  if (
+    parsed?.error
+    || !Array.isArray(parsed?.notes)
+    || parsed.notes.length !== currentRevision.content.length
+    || !stableLocatorsMatch(currentRevision, parsed.notes)
+  ) {
+    return null
+  }
+
+  const candidateAligned = alignMusicXmlNotesToProductRevision(
+    candidateMusicXml,
+    currentRevision,
+    { DOMParserCtor },
+  )
+  const sourceAligned = alignMusicXmlNotesToProductRevision(
+    currentMusicXml,
+    currentRevision,
+    { DOMParserCtor },
+  )
+
+  const changedIndexes = []
+  for (let index = 0; index < parsed.notes.length; index += 1) {
+    const current = currentRevision.content[index]
+    const candidate = parsed.notes[index]
+
+    if (PITCH_FALLBACK_INVARIANT_FIELDS.some(
+      (field) => !sameValue(current?.[field], candidate?.[field]),
+    )) {
+      return null
+    }
+
+    const pitchChanged = ['step', 'alter', 'octave'].some(
+      (field) => !sameValue(current?.[field], candidate?.[field]),
+    )
+    if (!pitchChanged) continue
+    if (
+      sourceAligned.notes[index]?.querySelector?.('technical')
+      || candidateAligned.notes[index]?.querySelector?.('technical')
+    ) {
+      return null
+    }
+    if (
+      current?.isRest === true
+      || candidate?.isRest === true
+      || !/^[A-G]$/.test(String(candidate?.step ?? ''))
+      || !Number.isSafeInteger(Number(candidate?.octave))
+      || !Number.isSafeInteger(Number(candidate?.alter ?? 0))
+      || Math.abs(Number(candidate?.alter ?? 0)) > 2
+    ) {
+      return null
+    }
+    changedIndexes.push(index)
+  }
+
+  if (changedIndexes.length === 0) return null
+
+  const aligned = sourceAligned
+
+  for (const index of changedIndexes) {
+    const xmlNote = aligned.notes[index]
+    const target = parsed.notes[index]
+    if (directXmlChild(xmlNote, 'rest') || directXmlChild(xmlNote, 'accidental')) return null
+    const pitch = directXmlChild(xmlNote, 'pitch')
+    const step = directXmlChild(pitch, 'step')
+    const octave = directXmlChild(pitch, 'octave')
+    if (!pitch || !step || !octave) return null
+
+    step.textContent = target.step
+    octave.textContent = String(target.octave)
+
+    let alter = directXmlChild(pitch, 'alter')
+    const targetAlter = Number(target.alter ?? 0)
+    if (targetAlter === 0) {
+      alter?.remove?.()
+    } else {
+      if (!alter) {
+        alter = createXmlElementLike(aligned.doc, pitch, 'alter')
+        pitch.insertBefore(alter, octave)
+      }
+      alter.textContent = String(targetAlter)
+    }
+  }
+
+  return Object.freeze({
+    musicXml: new XMLSerializerCtor().serializeToString(aligned.doc),
     changedIndexes: Object.freeze(changedIndexes),
   })
 }
@@ -374,16 +653,19 @@ export function createSmoosicProductAuthority({
 export function applySmoosicProductWriteback({
   authority,
   musicXml,
+  paddingRestProvenance,
+  sourceRevision,
   revisionId,
   eventId,
   operationIdPrefix,
   createdAt = null,
   DOMParserCtor = globalThis.DOMParser,
+  XMLSerializerCtor = globalThis.XMLSerializer,
 } = {}) {
   if (!authority?.workspace) {
     throw new TypeError('Smoosic product authority is required.')
   }
-  if (!validMusicXml(musicXml)) {
+  if (!validMusicXml(musicXml) || !inspectMusicXml(musicXml).ok) {
     return Object.freeze({
       status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
       authority,
@@ -399,9 +681,27 @@ export function applySmoosicProductWriteback({
     })
   }
 
-  const partNormalizedMusicXml = normalizeSinglePartIdentity(musicXml, currentRevision)
-  const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
+  let paddingNormalizedMusicXml
+  try {
+    paddingNormalizedMusicXml = normalizeSmoosicPaddingRests({
+      musicXml,
+      provenance: paddingRestProvenance,
+      sourceRevision,
+    }).musicXml
+  } catch {
+    return Object.freeze({
+      status: SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE,
+      authority,
+    })
+  }
+
+  const partNormalizedMusicXml = normalizeSinglePartIdentity(paddingNormalizedMusicXml, currentRevision)
+  const divisionsNormalizedMusicXml = normalizeSmoosicDivisionsIdentity(
     partNormalizedMusicXml,
+    currentRecord.musicXml,
+  )
+  const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
+    divisionsNormalizedMusicXml,
     currentRevision,
   )
 
@@ -440,14 +740,49 @@ export function applySmoosicProductWriteback({
       musicXml: normalizedMusicXml,
       currentRevision,
       changedIndexes: changeSet.changedIndexes,
+      structuralBaselineMusicXml: currentRecord.musicXml,
       DOMParserCtor,
     })
   } catch {
-    return Object.freeze({
-      status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
-      authority,
-      changedIndexes: changeSet.changedIndexes,
-    })
+    let fallback
+    try {
+      fallback = sourcePreservingPitchFallback({
+        currentRevision,
+        currentMusicXml: currentRecord.musicXml,
+        candidateMusicXml: normalizedMusicXml,
+        DOMParserCtor,
+        XMLSerializerCtor,
+      })
+    } catch {
+      fallback = null
+    }
+    if (!fallback) {
+      return Object.freeze({
+        status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
+        authority,
+        changedIndexes: changeSet.changedIndexes,
+      })
+    }
+
+    try {
+      revalidated = revalidatePrDEditorMusicXml({
+        musicXml: fallback.musicXml,
+        currentRevision,
+        changedIndexes: fallback.changedIndexes,
+        structuralBaselineMusicXml: currentRecord.musicXml,
+        DOMParserCtor,
+      })
+      changeSet = Object.freeze({
+        supported: true,
+        changedIndexes: fallback.changedIndexes,
+      })
+    } catch {
+      return Object.freeze({
+        status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
+        authority,
+        changedIndexes: fallback.changedIndexes,
+      })
+    }
   }
 
   const committed = commitPrDProductRevision({
