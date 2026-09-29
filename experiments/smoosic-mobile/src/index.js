@@ -130,7 +130,8 @@ async function runMobileKeyAction(button) {
     );
     if (!updated?.note) throw new Error('Süre düzenlemesi sonrası nota bulunamadı.');
     activeStructuralActionTracker.recordDurationAction({
-      note: updated.note,
+      note: current.note,
+      renderedNote: updated.note,
       beforeDuration,
       afterDuration: Number(updated.note.tickCount)
     });
