@@ -180,3 +180,92 @@ test('Docker smoke workflow captures CE-DATA-01B evidence only through the local
   assert.ok(workflow.includes('actions/upload-artifact@v4'))
   assert.equal(workflow.includes('seslitab-omr.onrender.com'), false)
 })
+
+
+test('fails closed before network use when approved source hash drifts', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ce-data-source-hash-'))
+  const pdfPath = path.join(root, 'source.pdf')
+  const outDir = path.join(root, 'capture')
+  await writeFile(pdfPath, Buffer.from('%PDF-1.4\nchanged bytes\n%%EOF\n'))
+  try {
+    await assert.rejects(
+      () => captureLocalAudiverisEvidence({
+        pdfPath,
+        outDir,
+        gatewayUrl: 'http://127.0.0.1:9',
+        engineVersion: '5.11.0',
+        engineVersionOutput: 'Audiveris 5.11.0',
+        expectedSourceSha256: '0'.repeat(64),
+      }),
+      /source SHA-256 mismatch/i,
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('fails closed before network use when approved reference hash drifts', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ce-data-reference-hash-'))
+  const pdfPath = path.join(root, 'source.pdf')
+  const referencePath = path.join(root, 'reference.musicxml')
+  const outDir = path.join(root, 'capture')
+  const pdf = Buffer.from('%PDF-1.4\nsource\n%%EOF\n')
+  await writeFile(pdfPath, pdf)
+  await writeFile(referencePath, Buffer.from('<score-partwise version="4.0"/>'))
+  try {
+    await assert.rejects(
+      () => captureLocalAudiverisEvidence({
+        pdfPath,
+        referencePath,
+        outDir,
+        gatewayUrl: 'http://127.0.0.1:9',
+        engineVersion: '5.11.0',
+        engineVersionOutput: 'Audiveris 5.11.0',
+        expectedSourceSha256: sha256(pdf),
+        expectedReferenceSha256: '0'.repeat(64),
+      }),
+      /reference SHA-256 mismatch/i,
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('version evidence requires the exact pinned version token', async () => {
+  await assert.rejects(
+    () => captureLocalAudiverisEvidence({
+      pdfPath: '/tmp/unused.pdf',
+      outDir: '/tmp/unused-output',
+      gatewayUrl: 'http://127.0.0.1:8080',
+      engineVersion: '5.11.0',
+      engineVersionOutput: 'Audiveris 15.11.0',
+    }),
+    /version evidence/i,
+  )
+})
+
+test('manifest hashes the exact persisted Audiveris version evidence bytes', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ce-data-version-hash-'))
+  const pdfPath = path.join(root, 'source.pdf')
+  const outDir = path.join(root, 'capture')
+  const pdf = Buffer.from('%PDF-1.4\nsource\n%%EOF\n')
+  await writeFile(pdfPath, pdf)
+  try {
+    await withFakeGateway(async ({ gatewayUrl }) => {
+      const result = await captureLocalAudiverisEvidence({
+        pdfPath,
+        outDir,
+        gatewayUrl,
+        engineVersion: '5.11.0',
+        engineVersionOutput: '  Audiveris 5.11.0  \n',
+        expectedSourceSha256: sha256(pdf),
+        pollIntervalMs: 1,
+        maxPollAttempts: 2,
+      })
+      const persisted = await readFile(path.join(outDir, 'audiveris-version.txt'))
+      assert.equal(result.manifest.engine.versionEvidenceSha256, sha256(persisted))
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
