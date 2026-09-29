@@ -116,3 +116,72 @@ test('pitch-only mutation creates no structural manifest', async () => {
   tracker.reconcileRenderedScore(score)
   assert.equal(tracker.createApplyManifest({ sourceRevision: 5, actionId: 'apply-6' }), null)
 })
+
+
+test('explicit duration action rebinds a Smoosic replacement note only through the exact pre-action mapped object', async () => {
+  const tracker = await trackerFactory()
+  const score = scoreOf([pitched('source-a'), pitched('source-b')])
+  tracker.beginImport({ score, editorSessionId: 'session-replacement' })
+
+  const before = score.staves[0].measures[0].voices[0].notes[0]
+  const replacement = pitched('replacement-a', 16)
+  score.staves[0].measures[0].voices[0].notes[0] = replacement
+
+  tracker.recordDurationAction({
+    sourceNote: before,
+    note: replacement,
+    beforeDuration: 8,
+    afterDuration: 16,
+  })
+  tracker.reconcileRenderedScore(score)
+
+  const manifest = tracker.createApplyManifest({ sourceRevision: 8, actionId: 'replacement-apply' })
+  assert.deepEqual(manifest.operations, [{
+    order: 0,
+    operation: 'CHANGE_EVENT_DURATION',
+    rawNoteOrdinal: 0,
+    staffIndex: 0,
+    measureIndex: 0,
+    voiceIndex: 0,
+    noteIndex: 0,
+    noteIdentity: 'replacement-a',
+    before: 8,
+    after: 16,
+  }])
+})
+
+test('certified editor padding rests never enter structural identity and may disappear during an explicit duration action', async () => {
+  const padding = rest('padding', 8)
+  const tracker = await trackerFactory({ isPaddingRest: (note) => note === padding })
+  const imported = scoreOf([pitched('source-a'), padding, pitched('source-b')])
+  tracker.beginImport({ score: imported, editorSessionId: 'session-padding-gap' })
+
+  const first = imported.staves[0].measures[0].voices[0].notes[0]
+  const replacement = pitched('replacement-a', 16)
+  const after = scoreOf([replacement, pitched('source-b')])
+
+  tracker.recordDurationAction({
+    sourceNote: first,
+    note: replacement,
+    beforeDuration: 8,
+    afterDuration: 16,
+  })
+  assert.doesNotThrow(() => tracker.reconcileRenderedScore(after))
+
+  const manifest = tracker.createApplyManifest({ sourceRevision: 9, actionId: 'padding-gap-apply' })
+  assert.equal(manifest.operations.length, 1)
+  assert.equal(manifest.operations[0].rawNoteOrdinal, 0)
+  assert.equal(manifest.operations[0].noteIndex, 0)
+  assert.equal(manifest.baseMappingFingerprint, (() => {
+    const comparison = createSmoosicStructuralActionTracker()
+    const withoutPadding = scoreOf([pitched('source-a'), pitched('source-b')])
+    comparison.beginImport({ score: withoutPadding, editorSessionId: 'comparison' })
+    const comparisonManifestSeed = (() => {
+      const note = withoutPadding.staves[0].measures[0].voices[0].notes[0]
+      note.tickCount = 16
+      comparison.recordDurationAction({ note, beforeDuration: 8, afterDuration: 16 })
+      return comparison.createApplyManifest({ sourceRevision: 9, actionId: 'comparison-apply' })
+    })()
+    return comparisonManifestSeed.baseMappingFingerprint
+  })())
+})
