@@ -167,3 +167,16 @@ test('fails closed when runtime version evidence does not contain the pinned eng
     /version evidence/i,
   )
 })
+
+
+test('Docker smoke workflow captures CE-DATA-01B evidence only through the local container', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/audiveris-docker-smoke-test.yml', import.meta.url), 'utf8')
+  assert.ok(workflow.includes('actions/setup-node@v4'))
+  assert.ok(workflow.includes('scripts/local-audiveris-evidence-capture.js'))
+  assert.ok(workflow.includes('plan0-cc0-4measure-source.pdf'))
+  assert.ok(workflow.includes('plan0-cc0-4measure-expected.musicxml'))
+  assert.ok(workflow.includes('http://127.0.0.1:8080'))
+  assert.ok(workflow.includes('ce-data-01b-local-audiveris-capture'))
+  assert.ok(workflow.includes('actions/upload-artifact@v4'))
+  assert.equal(workflow.includes('seslitab-omr.onrender.com'), false)
+})
