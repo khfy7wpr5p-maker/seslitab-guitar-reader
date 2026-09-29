@@ -938,7 +938,8 @@ try {
   requireEvidence(normalizedCounts.rests === 8, `normalized rests ${normalizedCounts.rests} !== 8`)
 
   const acceptedGesiXml = gesiSnapshot.normalizedMusicXml
-  const firstRestBlock = acceptedGesiXml.match(/<note\b[^>]*>[\s\S]*?<rest\b[^>]*>[\s\S]*?<\/note>/i)?.[0] ?? ''
+  const firstRestBlock = (acceptedGesiXml.match(/<note\b[^>]*>[\s\S]*?<\/note>/gi) ?? [])
+    .find((block) => /<rest\b/i.test(block)) ?? ''
   requireEvidence(Boolean(firstRestBlock), 'accepted fixture lost every source-authored rest')
   const changedSourceRestBlock = firstRestBlock
     .replace(/<note\b/i, '<note print-object="no"')
