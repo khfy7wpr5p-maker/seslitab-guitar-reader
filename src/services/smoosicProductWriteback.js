@@ -2,7 +2,10 @@ import { MAX_MUSIC_XML_FILE_SIZE } from './musicXmlFile.js'
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
 import { normalizeSmoosicPaddingRests } from './smoosicPaddingRestNormalization.js'
 import { parseMusicXmlToNotes } from './musicEngine.js'
-import { extractPrDProductNotationByIndex } from './editorPrDNotationBridge.js'
+import {
+  alignMusicXmlNotesToProductRevision,
+  extractPrDProductNotationByIndex,
+} from './editorPrDNotationBridge.js'
 import {
   commitPrDProductRevision,
   revalidatePrDEditorMusicXml,
@@ -488,6 +491,124 @@ function changedIndexesFor({
   })
 }
 
+
+const PITCH_FALLBACK_INVARIANT_FIELDS = Object.freeze([
+  'partId',
+  'partIndex',
+  'measureIndex',
+  'measureKey',
+  'voice',
+  'staff',
+  'isRest',
+  'isGrace',
+  'isChordNote',
+  'startBeat',
+  'durationValue',
+  'beats',
+  'string',
+  'stringLetter',
+  'stringNumber',
+  'fret',
+])
+
+function directXmlChild(element, name) {
+  return [...(element?.children ?? [])].find(
+    (child) => (child.localName ?? child.tagName ?? '') === name,
+  ) ?? null
+}
+
+function createXmlElementLike(doc, parent, name) {
+  const namespace = parent?.namespaceURI ?? doc.documentElement?.namespaceURI ?? null
+  return namespace && typeof doc.createElementNS === 'function'
+    ? doc.createElementNS(namespace, name)
+    : doc.createElement(name)
+}
+
+function sourcePreservingPitchFallback({
+  currentRevision,
+  currentMusicXml,
+  candidateMusicXml,
+  DOMParserCtor,
+  XMLSerializerCtor,
+}) {
+  if (typeof XMLSerializerCtor !== 'function') return null
+  const parsed = parseMusicXmlToNotes(candidateMusicXml)
+  if (
+    parsed?.error
+    || !Array.isArray(parsed?.notes)
+    || parsed.notes.length !== currentRevision.content.length
+    || !stableLocatorsMatch(currentRevision, parsed.notes)
+  ) {
+    return null
+  }
+
+  const changedIndexes = []
+  for (let index = 0; index < parsed.notes.length; index += 1) {
+    const current = currentRevision.content[index]
+    const candidate = parsed.notes[index]
+
+    if (PITCH_FALLBACK_INVARIANT_FIELDS.some(
+      (field) => !sameValue(current?.[field], candidate?.[field]),
+    )) {
+      return null
+    }
+
+    const pitchChanged = ['step', 'alter', 'octave'].some(
+      (field) => !sameValue(current?.[field], candidate?.[field]),
+    )
+    if (!pitchChanged) continue
+    if (
+      current?.isRest === true
+      || candidate?.isRest === true
+      || !/^[A-G]$/.test(String(candidate?.step ?? ''))
+      || !Number.isSafeInteger(Number(candidate?.octave))
+      || !Number.isSafeInteger(Number(candidate?.alter ?? 0))
+      || Math.abs(Number(candidate?.alter ?? 0)) > 2
+    ) {
+      return null
+    }
+    changedIndexes.push(index)
+  }
+
+  if (changedIndexes.length === 0) return null
+
+  const aligned = alignMusicXmlNotesToProductRevision(
+    currentMusicXml,
+    currentRevision,
+    { DOMParserCtor },
+  )
+
+  for (const index of changedIndexes) {
+    const xmlNote = aligned.notes[index]
+    const target = parsed.notes[index]
+    if (directXmlChild(xmlNote, 'rest') || directXmlChild(xmlNote, 'accidental')) return null
+    const pitch = directXmlChild(xmlNote, 'pitch')
+    const step = directXmlChild(pitch, 'step')
+    const octave = directXmlChild(pitch, 'octave')
+    if (!pitch || !step || !octave) return null
+
+    step.textContent = target.step
+    octave.textContent = String(target.octave)
+
+    let alter = directXmlChild(pitch, 'alter')
+    const targetAlter = Number(target.alter ?? 0)
+    if (targetAlter === 0) {
+      alter?.remove?.()
+    } else {
+      if (!alter) {
+        alter = createXmlElementLike(aligned.doc, pitch, 'alter')
+        pitch.insertBefore(alter, octave)
+      }
+      alter.textContent = String(targetAlter)
+    }
+  }
+
+  return Object.freeze({
+    musicXml: new XMLSerializerCtor().serializeToString(aligned.doc),
+    changedIndexes: Object.freeze(changedIndexes),
+  })
+}
+
 export function createSmoosicProductAuthority({
   notes,
   musicXml,
@@ -530,6 +651,7 @@ export function applySmoosicProductWriteback({
   operationIdPrefix,
   createdAt = null,
   DOMParserCtor = globalThis.DOMParser,
+  XMLSerializerCtor = globalThis.XMLSerializer,
 } = {}) {
   if (!authority?.workspace) {
     throw new TypeError('Smoosic product authority is required.')
@@ -613,11 +735,45 @@ export function applySmoosicProductWriteback({
       DOMParserCtor,
     })
   } catch {
-    return Object.freeze({
-      status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
-      authority,
-      changedIndexes: changeSet.changedIndexes,
-    })
+    let fallback
+    try {
+      fallback = sourcePreservingPitchFallback({
+        currentRevision,
+        currentMusicXml: currentRecord.musicXml,
+        candidateMusicXml: normalizedMusicXml,
+        DOMParserCtor,
+        XMLSerializerCtor,
+      })
+    } catch {
+      fallback = null
+    }
+    if (!fallback) {
+      return Object.freeze({
+        status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
+        authority,
+        changedIndexes: changeSet.changedIndexes,
+      })
+    }
+
+    try {
+      revalidated = revalidatePrDEditorMusicXml({
+        musicXml: fallback.musicXml,
+        currentRevision,
+        changedIndexes: fallback.changedIndexes,
+        structuralBaselineMusicXml: currentRecord.musicXml,
+        DOMParserCtor,
+      })
+      changeSet = Object.freeze({
+        supported: true,
+        changedIndexes: fallback.changedIndexes,
+      })
+    } catch {
+      return Object.freeze({
+        status: SMOOSIC_WRITEBACK_STATUS.INVALID_XML,
+        authority,
+        changedIndexes: fallback.changedIndexes,
+      })
+    }
   }
 
   const committed = commitPrDProductRevision({

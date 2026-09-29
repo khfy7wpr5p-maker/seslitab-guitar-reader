@@ -674,3 +674,39 @@ test('fails closed when structural state drifts from a baseline that already has
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.INVALID_XML)
   assert.equal(root.workspace.history.revisions.length, 1)
 })
+
+
+test('falls back to exact source MusicXML for supported pitch write-back when Smoosic cursor serialization is unsafe', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const root = await authority({
+    sourceId: 's15-source-preserving-source',
+    automaticRevisionId: 's15-source-preserving-auto',
+    historyId: 's15-source-preserving-history',
+  })
+  const candidate = SOURCE_XML
+    .replace('<step>C</step>', '<step>G</step>')
+    .replace('</measure>', '<backup><duration>5</duration></backup></measure>')
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidate,
+    sourceRevision: 7,
+    paddingRestProvenance: emptyProof(candidate),
+    revisionId: 's15-source-preserving-edit',
+    eventId: 's15-source-preserving-event',
+    operationIdPrefix: 's15-source-preserving-op',
+    DOMParserCtor: ProductDOMParser,
+    XMLSerializerCtor: SmoosicTestXMLSerializer,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.equal(result.revision.content[0].step, 'G')
+  assert.doesNotMatch(result.musicXml, /<backup>/)
+  assert.equal(root.workspace.history.revisions.length, 1)
+  assert.equal(result.authority.workspace.history.revisions.length, 2)
+  assert.equal(getTeacherWorkspaceApplicableApproval(result.authority.workspace), null)
+})
