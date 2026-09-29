@@ -223,7 +223,9 @@ test('same-object authorized duration consumption retires and exact undo restore
   lead.tickCount = 8
   score.staves[0].measures[0].voices[0].notes = [lead, restored, tail]
   tracker.adoptRenderedScore(score, {
-    authorizedDurationIdentities: new Set(),
+    // Ctrl+Z restores the exact base duration/rest shape before the structural
+    // tracker has had a chance to retire its still-active duration identity.
+    authorizedDurationIdentities: new Set(['lead']),
   })
   const restoredProof = manifest(tracker, score, [
     { rest: false },
