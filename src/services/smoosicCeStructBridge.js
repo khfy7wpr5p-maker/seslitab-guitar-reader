@@ -87,8 +87,6 @@ function eventMetadata(note, sourceOrder) {
   const metadata = {
     sourceOrder,
     grace: note?.isGrace === true,
-    sourceDurationValue: note?.durationValue ?? null,
-    sourceDivisions: note?.divisions ?? null,
   }
   const ties = tieTypes(note)
   if (ties.length) metadata.tieTypes = Object.freeze(ties)
