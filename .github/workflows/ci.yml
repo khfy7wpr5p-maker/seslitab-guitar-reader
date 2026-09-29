@@ -83,6 +83,17 @@ jobs:
           path: artifacts/s15-smoosic-writeback.json
           if-no-files-found: warn
 
+      - name: Verify CE-BRIDGE structural write-back in real browser
+        run: node scripts/verifyCeBridgeStructuralBrowser.js
+
+      - name: Upload CE-BRIDGE structural browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ce-bridge-structural-browser
+          path: artifacts/ce-bridge-structural-browser.json
+          if-no-files-found: warn
+
       - name: Verify STI-17 cross-realm iframe renderer in real browser
         run: node scripts/verifySti17CrossRealmBrowser.js
 
