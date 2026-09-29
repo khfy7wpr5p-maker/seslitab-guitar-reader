@@ -35,10 +35,10 @@ class Element {
     return clone
   }
   querySelectorAll(selector) {
-    const direct = String(selector).match(/^:scope\\s*>\\s*([\\w:-]+)$/)
+    const direct = String(selector).match(/^:scope\s*>\s*([\w:-]+)$/)
     if (direct) return this.children.filter((child) => child.tagName === direct[1])
 
-    const descendant = String(selector).trim().split(/\\s+/)
+    const descendant = String(selector).trim().split(/\s+/)
     if (descendant.length === 2) {
       const [ancestorTag, childTag] = descendant
       return this.querySelectorAll(ancestorTag)
