@@ -31,7 +31,7 @@ function validManifest() {
 test('score runtime manifest accepts exact reviewed provenance', () => {
   const manifest = validManifest()
   assert.equal(verifyRuntimeManifest(manifest), manifest)
-  assert.equal(SCORE_RENDERER_REVISION, 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a')
+  assert.equal(SCORE_RENDERER_REVISION, '3955250a0a1407d3a13de5f72b106b5234db10b6')
 })
 
 test('score runtime manifest rejects renderer revision drift', () => {
