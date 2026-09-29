@@ -12,7 +12,9 @@ import {
 } from '../package3MeasureBridge.js'
 import {
   clearScoreHighlights,
+  clearScoreMeasureHighlights,
   clearScoreView,
+  getCurrentScoreRenderEvidence,
   highlightScoreNote,
   hitTestScoreNote,
   moveScoreCursor,
@@ -23,14 +25,22 @@ import {
 import { deriveCanonicalNoteSelection } from './services/canonicalNoteSelection.js'
 import { resolveCanonicalNoteFromScoreRef } from './services/scoreNoteIdentity.js'
 import { deriveScoreMeasureSelection } from './services/scoreMeasureSync.js'
+import {
+  analyzeSuspiciousMeasures,
+  resolveCorrectionAnalysisRuntime,
+} from './services/correctionAnalysisConsumer.js'
+import { replaceSuspiciousMeasureOverlays } from './services/correctionMeasureOverlay.js'
 
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
+const CE_ANALYSIS_RUNTIME_URL = '/st-omr-correction-analysis-runtime/ce-analysis-browser-runtime.js'
+const CE_ANALYSIS_RUNTIME_READY_TIMEOUT_MS = 10000
 const scoreMeasureSubscriptions = new WeakMap()
 const scoreRuntimeHosts = new WeakMap()
 const scoreCursorSelections = new WeakMap()
 const scoreHighlightSelections = new WeakMap()
 const scoreNoteBindings = new WeakMap()
+const correctionAnalysisLoads = new WeakMap()
 let ticketCounter = 0
 
 function nextTicket() {
@@ -65,6 +75,118 @@ function currentMusicXml(root) {
   return value
 }
 
+function sameRenderEvidence(left, right) {
+  if (!left || !right || left.renderEpoch !== right.renderEpoch) return false
+  return left.sourceId === right.sourceId
+}
+
+function setCorrectionOverlayState(root, state, count = 0) {
+  const surface = root?.getElementById?.('score-view-surface')
+  if (!surface?.dataset) return
+  surface.dataset.correctionOverlayState = state
+  surface.dataset.correctionOverlayCount = String(count)
+}
+
+async function loadCorrectionAnalysisRuntime(root, timeoutMs = CE_ANALYSIS_RUNTIME_READY_TIMEOUT_MS) {
+  const scope = root?.defaultView ?? globalThis
+  const connected = resolveCorrectionAnalysisRuntime(scope)
+  if (connected) return connected
+  if (!root || typeof root.createElement !== 'function' || !root.head?.appendChild) return null
+
+  const pending = correctionAnalysisLoads.get(root)
+  if (pending) return pending
+
+  const promise = new Promise((resolve) => {
+    let settled = false
+    let timer = null
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      if (timer !== null) clearTimeout(timer)
+      resolve(value)
+    }
+
+    let script = root.querySelector?.('script[data-seslitab-ce-analysis-runtime="true"]') ?? null
+    const created = !script
+    if (!script) {
+      script = root.createElement('script')
+      script.src = CE_ANALYSIS_RUNTIME_URL
+      script.async = true
+      script.dataset.seslitabCeAnalysisRuntime = 'true'
+    }
+    script.addEventListener?.('load', () => finish(resolveCorrectionAnalysisRuntime(scope)), { once: true })
+    script.addEventListener?.('error', () => finish(null), { once: true })
+    timer = setTimeout(() => finish(resolveCorrectionAnalysisRuntime(scope)), timeoutMs)
+    if (created) root.head.appendChild(script)
+    else {
+      const ready = resolveCorrectionAnalysisRuntime(scope)
+      if (ready) finish(ready)
+    }
+  })
+
+  correctionAnalysisLoads.set(root, promise)
+  const runtime = await promise
+  if (!runtime) correctionAnalysisLoads.delete(root)
+  return runtime
+}
+
+export async function syncCorrectionMeasureOverlays(
+  root,
+  rendererRuntime,
+  musicxml,
+  analysisRuntime = null,
+) {
+  try { await clearScoreMeasureHighlights(rendererRuntime) } catch {}
+  setCorrectionOverlayState(root, 'cleared', 0)
+
+  const expectedEvidence = getCurrentScoreRenderEvidence(rendererRuntime)
+  if (!expectedEvidence || typeof musicxml !== 'string' || currentMusicXml(root) !== musicxml) return false
+  const sourceId = expectedEvidence.sourceId ?? `seslitab-render:${expectedEvidence.renderEpoch}`
+
+  const runtime = analysisRuntime ?? await loadCorrectionAnalysisRuntime(root)
+  if (!runtime) {
+    setCorrectionOverlayState(root, 'unavailable', 0)
+    return false
+  }
+  if (
+    scoreRuntimeHosts.get(root) !== rendererRuntime
+    || !sameRenderEvidence(expectedEvidence, getCurrentScoreRenderEvidence(rendererRuntime))
+    || currentMusicXml(root) !== musicxml
+  ) {
+    try { await clearScoreMeasureHighlights(rendererRuntime) } catch {}
+    setCorrectionOverlayState(root, 'stale', 0)
+    return false
+  }
+
+  let result
+  try {
+    result = analyzeSuspiciousMeasures(runtime, { musicxml, sourceId })
+  } catch {
+    try { await clearScoreMeasureHighlights(rendererRuntime) } catch {}
+    setCorrectionOverlayState(root, 'unavailable', 0)
+    return false
+  }
+
+  if (
+    scoreRuntimeHosts.get(root) !== rendererRuntime
+    || !sameRenderEvidence(expectedEvidence, getCurrentScoreRenderEvidence(rendererRuntime))
+    || currentMusicXml(root) !== musicxml
+  ) {
+    try { await clearScoreMeasureHighlights(rendererRuntime) } catch {}
+    setCorrectionOverlayState(root, 'stale', 0)
+    return false
+  }
+
+  const applied = await replaceSuspiciousMeasureOverlays(rendererRuntime, result, { expectedSourceId: sourceId })
+  if (!applied) {
+    setCorrectionOverlayState(root, 'rejected', 0)
+    return false
+  }
+  const count = new Set(result.suspiciousMeasures.map((measure) => `${result.partId}\u0000${measure.measureIndex}`)).size
+  setCorrectionOverlayState(root, 'ready', count)
+  return true
+}
+
 function removeRuntimeFrame(root) {
   const frame = root?.getElementById?.('score-view-runtime-frame')
   frame?.remove?.()
@@ -83,6 +205,7 @@ async function resetScoreRuntime(root, runtime) {
   scoreRuntimeHosts.delete(root)
   scoreCursorSelections.delete(root)
   scoreHighlightSelections.delete(root)
+  try { await clearScoreMeasureHighlights(runtime) } catch {}
   try { await clearScoreView(runtime) } catch {}
   removeRuntimeFrame(root)
 }
@@ -379,6 +502,7 @@ export async function activateScoreView(root = document) {
 
   if (status) status.textContent = 'Nota görünümü hazırlanıyor…'
   try {
+    try { await clearScoreMeasureHighlights(runtime) } catch {}
     await renderScoreView(runtime, musicxml, { ticket: nextTicket() })
     scoreRuntimeHosts.set(root, runtime)
     scoreCursorSelections.delete(root)
@@ -388,6 +512,7 @@ export async function activateScoreView(root = document) {
     const snapshot = getPackage3MeasureSnapshot()
     await syncScoreMeasureCursor(root, snapshot, runtime)
     await syncScoreNoteHighlight(root, snapshot, runtime)
+    await syncCorrectionMeasureOverlays(root, runtime, musicxml)
     return true
   } catch (error) {
     await resetScoreRuntime(root, runtime)
