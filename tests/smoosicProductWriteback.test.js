@@ -710,3 +710,37 @@ test('falls back to exact source MusicXML for supported pitch write-back when Sm
   assert.equal(result.authority.workspace.history.revisions.length, 2)
   assert.equal(getTeacherWorkspaceApplicableApproval(result.authority.workspace), null)
 })
+
+
+test('rejects explicit technical position changes during source-preserving pitch fallback', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    applySmoosicProductWriteback,
+  } = await loadWriteback()
+  const root = await authority({
+    sourceId: 's15-technical-fallback-source',
+    automaticRevisionId: 's15-technical-fallback-auto',
+    historyId: 's15-technical-fallback-history',
+  })
+  const candidate = SOURCE_XML
+    .replace(
+      '<pitch><step>C</step><octave>4</octave></pitch>',
+      '<pitch><step>G</step><octave>4</octave></pitch><notations><technical><string>6</string><fret>1</fret></technical></notations>',
+    )
+    .replace('<type>quarter</type>', '<type>quarter</type><beam number="1">continue</beam>')
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: candidate,
+    sourceRevision: 7,
+    paddingRestProvenance: emptyProof(candidate),
+    revisionId: 's15-technical-fallback-edit',
+    eventId: 's15-technical-fallback-event',
+    operationIdPrefix: 's15-technical-fallback-op',
+    DOMParserCtor: ProductDOMParser,
+    XMLSerializerCtor: SmoosicTestXMLSerializer,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.INVALID_XML)
+  assert.equal(root.workspace.history.revisions.length, 1)
+})
