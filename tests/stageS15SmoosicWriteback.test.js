@@ -635,3 +635,46 @@ test('S15 re-adopts rendered score with explicit structural duration identities 
     /function createSesliTabWritebackExport\(\{ score, sourceRevision, tracker, structuralTracker, actionId \}\)[\s\S]*structuralTracker\?\.reconcileRenderedScore\(score\)[\s\S]*authorizedDurationIdentities:[\s\S]*structuralTracker\?\.authorizedDurationIdentitySet\(\)[\s\S]*tracker\.createExportManifest\(/,
   )
 })
+
+
+test('Task 6 structural outcomes extend writeback status without changing S15 publication semantics', async () => {
+  const {
+    SMOOSIC_WRITEBACK_STATUS,
+    createSmoosicWritebackOutcome,
+  } = await import('../src/services/smoosicProductWriteback.js')
+
+  assert.equal(SMOOSIC_WRITEBACK_STATUS.APPLIED, 'APPLIED')
+  assert.equal(SMOOSIC_WRITEBACK_STATUS.APPLIED_STRUCTURAL, 'APPLIED_STRUCTURAL')
+  for (const status of [
+    'INVALID_ACTION_PROVENANCE',
+    'AMBIGUOUS_IDENTITY',
+    'CE_RUNTIME_UNAVAILABLE',
+    'CE_CONTRACT_MISMATCH',
+    'CE_PROJECTION_FAILED',
+    'CE_REVALIDATION_FAILED',
+    'CONFORMANCE_FAILED',
+  ]) {
+    assert.equal(SMOOSIC_WRITEBACK_STATUS[status], status)
+  }
+
+  const revision = Object.freeze({ revisionId: 'structural-revision-1' })
+  const retried = createSmoosicWritebackOutcome(
+    SMOOSIC_WRITEBACK_STATUS.APPLIED_STRUCTURAL,
+    {
+      revision,
+      musicXml: '<score-partwise/>',
+      retriedPublication: true,
+    },
+  )
+  assert.deepEqual(retried, {
+    status: 'APPLIED_STRUCTURAL',
+    revision,
+    musicXml: '<score-partwise/>',
+    retriedPublication: true,
+  })
+
+  assert.match(host, /if \(state\.pendingPublication\)/)
+  assert.match(host, /retryPendingPublication\(root\)/)
+  assert.match(host, /publishCommittedRevision\(root, pendingPublication\)/)
+  assert.match(host, /applyRevalidatedMusicXmlRevision\(committed\.revision\.content, committed\.musicXml\)/)
+})
