@@ -6,6 +6,11 @@ import {
   createSmoosicWritebackOutcome,
   createSmoosicProductAuthority,
 } from './services/smoosicProductWriteback.js'
+import { validateTeacherStructuralActionManifest } from './services/smoosicStructuralActionManifest.js'
+import { createSmoosicCeStructIdentityBridge } from './services/smoosicCeStructIdentityBridge.js'
+import { resolveCeStructRuntime } from './services/smoosicCeStructBridge.js'
+import { getTeacherWorkspaceCurrentRevision } from './services/teacherWorkspaceModel.js'
+import { resolvePrDProductMusicXml } from './services/editorPrDRevisionMusicXmlRegistry.js'
 
 const TAB_ID = 'smoosic-tab-btn'
 const PANEL_ID = 'smoosic-panel'
@@ -13,6 +18,7 @@ const FRAME_ID = 'smoosic-editor-frame'
 const STATUS_ID = 'smoosic-editor-host-status'
 const APPLY_ID = 'smoosic-apply-btn'
 const EDITOR_URL = '/smoosic-editor/index.html'
+const CE_STRUCT_RUNTIME_SRC = '/st-omr-correction-engine-runtime/ce-struct-browser-runtime.js'
 const READY_TIMEOUT_MS = 60000
 const LOAD_TIMEOUT_MS = 45000
 const WRITEBACK_TIMEOUT_MS = 45000
@@ -22,6 +28,66 @@ const WRITEBACK_REQUEST_VERSION = 1
 const WRITEBACK_VERSION = 2
 
 const states = new WeakMap()
+const ceStructRuntimeLoads = new WeakMap()
+
+async function loadCeStructRuntime(root) {
+  const globalScope = root?.defaultView ?? globalThis
+  const existing = resolveCeStructRuntime(globalScope)
+  if (existing) return existing
+  if (!root?.createElement) return null
+  if (ceStructRuntimeLoads.has(root)) return ceStructRuntimeLoads.get(root)
+
+  const promise = new Promise((resolve) => {
+    const script = root.createElement('script')
+    script.src = CE_STRUCT_RUNTIME_SRC
+    script.async = true
+    script.setAttribute?.('data-seslitab-ce-struct-runtime', 'true')
+    script.addEventListener?.('load', () => resolve(resolveCeStructRuntime(globalScope)), { once: true })
+    script.addEventListener?.('error', () => resolve(null), { once: true })
+    const parent = root.head ?? root.body ?? root.documentElement
+    if (!parent?.appendChild) resolve(null)
+    else parent.appendChild(script)
+  })
+  ceStructRuntimeLoads.set(root, promise)
+  return promise
+}
+
+function validateStructuralApplyManifest(authority, candidate, sourceRevision) {
+  const currentRevision = getTeacherWorkspaceCurrentRevision(authority.workspace)
+  const currentRecord = resolvePrDProductMusicXml(currentRevision)
+  if (!currentRecord?.musicXml) throw new Error('Current structural MusicXML authority is unavailable.')
+  const identityBridge = createSmoosicCeStructIdentityBridge({
+    currentRevision,
+    currentMusicXml: currentRecord.musicXml,
+  })
+  return validateTeacherStructuralActionManifest(candidate.structuralActionManifest, {
+    sourceRevision,
+    baseMappingFingerprint: identityBridge.baseMappingFingerprint,
+  })
+}
+
+function structuralFailureMessage(status) {
+  switch (status) {
+    case SMOOSIC_WRITEBACK_STATUS.INVALID_ACTION_PROVENANCE:
+      return 'Düzenleme kanıtı doğrulanamadı; mevcut SesliTab sürümü korunuyor.'
+    case SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE:
+      return 'Kaynak değişti; önceki düzenleme isteği geçersiz.'
+    case SMOOSIC_WRITEBACK_STATUS.AMBIGUOUS_IDENTITY:
+      return 'Düzenlenen nota güvenli biçimde eşleştirilemedi; mevcut sürüm korunuyor.'
+    case SMOOSIC_WRITEBACK_STATUS.CE_RUNTIME_UNAVAILABLE:
+      return 'Yapısal doğrulama motoru yüklenemedi; mevcut sürüm korunuyor.'
+    case SMOOSIC_WRITEBACK_STATUS.CE_CONTRACT_MISMATCH:
+      return 'Yapısal doğrulama motoru sürümü uyuşmuyor; mevcut sürüm korunuyor.'
+    case SMOOSIC_WRITEBACK_STATUS.CE_PROJECTION_FAILED:
+      return 'Yapısal düzenleme güvenli olarak uygulanamadı; mevcut sürüm korunuyor.'
+    case SMOOSIC_WRITEBACK_STATUS.CE_REVALIDATION_FAILED:
+      return 'Yapısal düzenleme yeniden doğrulanamadı; mevcut sürüm korunuyor.'
+    case SMOOSIC_WRITEBACK_STATUS.CONFORMANCE_FAILED:
+      return 'Editör sonucu doğrulanan yapısal değişiklikle eşleşmiyor; mevcut sürüm korunuyor.'
+    default:
+      return null
+  }
+}
 
 function stateFor(root) {
   let state = states.get(root)
@@ -300,7 +366,7 @@ function retryPendingPublication(root) {
     'Düzenleme SesliTab\'a uygulandı. Yeni sürüm doğrulandı ve çıktılar güncellendi.',
     'ready',
   )
-  return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.APPLIED, {
+  return createSmoosicWritebackOutcome(pendingPublication.status ?? SMOOSIC_WRITEBACK_STATUS.APPLIED, {
     revision: pendingPublication.revision,
     musicXml: pendingPublication.musicXml,
     retriedPublication: true,
@@ -345,6 +411,41 @@ async function applyEditorWriteback(root) {
       && proof.sourceRevision === startingSourceRevision
       && Number.isSafeInteger(proof.rawNoteCount) && proof.rawNoteCount >= 0
       && Array.isArray(proof.entries) && proof.entries.length <= proof.rawNoteCount
+    let structuralOptions = {}
+    if (candidate.structuralActionManifest !== undefined) {
+      try {
+        const structuralActionManifest = validateStructuralApplyManifest(
+          authority,
+          candidate,
+          startingSourceRevision,
+        )
+        const ceStructRuntime = await loadCeStructRuntime(root)
+        if (!ceStructRuntime) {
+          const result = Object.freeze({
+            status: SMOOSIC_WRITEBACK_STATUS.CE_RUNTIME_UNAVAILABLE,
+            authority,
+          })
+          setHostStatus(root, structuralFailureMessage(result.status), 'error')
+          return result
+        }
+        structuralOptions = {
+          structuralActionManifest,
+          ceStructRuntime,
+          structuralPatchSetId: secureId(root, 'smoosic-structural-patch-set'),
+        }
+      } catch (error) {
+        const message = String(error?.message || '')
+        const status = /source revision is stale/i.test(message)
+          ? SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE
+          : /base mapping fingerprint mismatch|identity drift|ambiguous/i.test(message)
+            ? SMOOSIC_WRITEBACK_STATUS.AMBIGUOUS_IDENTITY
+            : SMOOSIC_WRITEBACK_STATUS.INVALID_ACTION_PROVENANCE
+        const result = Object.freeze({ status, authority })
+        setHostStatus(root, structuralFailureMessage(status), 'error')
+        return result
+      }
+    }
+
     const result = proofMatchesSource ? applySmoosicProductWriteback({
       authority,
       musicXml: candidate.musicXml,
@@ -355,6 +456,7 @@ async function applyEditorWriteback(root) {
       operationIdPrefix: secureId(root, 'smoosic-operation'),
       createdAt: new Date().toISOString(),
       DOMParserCtor: root.defaultView?.DOMParser ?? globalThis.DOMParser,
+      ...structuralOptions,
     }) : Object.freeze({ status: SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE, authority })
 
     if (result.status === SMOOSIC_WRITEBACK_STATUS.NO_CHANGE) {
@@ -371,13 +473,22 @@ async function applyEditorWriteback(root) {
       return result
     }
 
-    if (result.status !== SMOOSIC_WRITEBACK_STATUS.APPLIED) {
-      setHostStatus(root, 'Düzenleme doğrulanamadı; mevcut SesliTab sürümü korunuyor.', 'error')
+    if (
+      result.status !== SMOOSIC_WRITEBACK_STATUS.APPLIED
+      && result.status !== SMOOSIC_WRITEBACK_STATUS.APPLIED_STRUCTURAL
+    ) {
+      setHostStatus(
+        root,
+        structuralFailureMessage(result.status)
+          || 'Düzenleme doğrulanamadı; mevcut SesliTab sürümü korunuyor.',
+        'error',
+      )
       return result
     }
 
     state.authority = result.authority
     state.pendingPublication = Object.freeze({
+      status: result.status,
       revision: result.revision,
       musicXml: result.musicXml,
     })
