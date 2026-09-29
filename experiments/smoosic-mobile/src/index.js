@@ -811,9 +811,12 @@ const SESLITAB_EXPORT_VERSION = 2;
 const SESLITAB_EXPORT_MAX_XML_BYTES = 10 * 1024 * 1024;
 
 function createSesliTabWritebackExport({ score, sourceRevision, tracker }) {
-  if (!tracker || typeof tracker.createExportManifest !== 'function') {
+  if (!tracker
+    || typeof tracker.adoptRenderedScore !== 'function'
+    || typeof tracker.createExportManifest !== 'function') {
     throw new Error('Imported score provenance is unavailable');
   }
+  tracker.adoptRenderedScore(score);
   const serialized = serializeCurrentMusicXml(score);
   if (new TextEncoder().encode(serialized.musicXml).length > SESLITAB_EXPORT_MAX_XML_BYTES) {
     throw new Error('MusicXML exceeds host payload size limit');
