@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { captureLocalAudiverisEvidence } from '../scripts/local-audiveris-evidence-capture.js'
+import { captureLocalAudiverisEvidence, packageLocalAudiverisEvidence } from '../scripts/local-audiveris-evidence-capture.js'
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
@@ -175,7 +175,12 @@ test('Docker smoke workflow captures CE-DATA-01B evidence only through the local
   assert.ok(workflow.includes('scripts/local-audiveris-evidence-capture.js'))
   assert.ok(workflow.includes('plan0-cc0-4measure-source.pdf'))
   assert.ok(workflow.includes('plan0-cc0-4measure-expected.musicxml'))
-  assert.ok(workflow.includes('http://127.0.0.1:8080'))
+  assert.ok(workflow.includes('createAudiverisProvider'))
+  assert.ok(workflow.includes('docker exec --user seslitab'))
+  assert.ok(workflow.includes('/app/tmp/ce-data-01b/output.musicxml'))
+  assert.ok(workflow.includes('--musicxml /tmp/ce-data-01b/output.musicxml'))
+  assert.equal(workflow.includes('http://127.0.0.1:8080'), false)
+  assert.equal(workflow.includes('/health'), false)
   assert.ok(workflow.includes('ce-data-01b-local-audiveris-capture'))
   assert.ok(workflow.includes('--expected-source-sha256 c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed'))
   assert.ok(workflow.includes('--expected-reference-sha256 7004b4ac37711cca340c63e2f2436dd70e0f630f4e891cb311caff159b5d9d94'))
@@ -267,6 +272,42 @@ test('manifest hashes the exact persisted Audiveris version evidence bytes', asy
       const persisted = await readFile(path.join(outDir, 'audiveris-version.txt'))
       assert.equal(result.manifest.engine.versionEvidenceSha256, sha256(persisted))
     })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('packages direct-container Audiveris outputs as pre-label evidence', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ce-data-direct-package-'))
+  const pdfPath = path.join(root, 'source.pdf')
+  const referencePath = path.join(root, 'reference.musicxml')
+  const musicXmlPath = path.join(root, 'generated.musicxml')
+  const omrPath = path.join(root, 'generated.omr')
+  const versionPath = path.join(root, 'audiveris-version.txt')
+  const outDir = path.join(root, 'capture')
+  const pdf = Buffer.from('%PDF-1.4\nsource\n%%EOF\n')
+  const reference = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"/>')
+  const musicXml = Buffer.from('<?xml version="1.0"?><score-partwise version="4.0"><part-list/></score-partwise>')
+  const omr = Buffer.from('direct-omr-bytes')
+  const version = Buffer.from('Audiveris 5.11.0\n')
+  await writeFile(pdfPath, pdf)
+  await writeFile(referencePath, reference)
+  await writeFile(musicXmlPath, musicXml)
+  await writeFile(omrPath, omr)
+  await writeFile(versionPath, version)
+  try {
+    const result = await packageLocalAudiverisEvidence({
+      pdfPath, referencePath, musicXmlPath, omrPath, versionPath, outDir,
+      engineVersion: '5.11.0',
+      expectedSourceSha256: sha256(pdf),
+      expectedReferenceSha256: sha256(reference),
+    })
+    assert.equal(result.manifest.reviewState, 'PENDING_TEACHER_REVIEW')
+    assert.equal(result.manifest.musicXml.sha256, sha256(musicXml))
+    assert.equal(result.manifest.omr.sha256, sha256(omr))
+    assert.equal(result.manifest.engine.versionEvidenceSha256, sha256(version))
+    assert.equal(Object.hasOwn(result.manifest, 'teacherDecision'), false)
+    assert.deepEqual(await readFile(path.join(outDir, 'output.musicxml')), musicXml)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
