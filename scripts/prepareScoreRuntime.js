@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const SCORE_RENDERER_REPOSITORY = 'https://github.com/khfy7wpr5p-maker/st-score-rendering-layer.git'
-export const SCORE_RENDERER_REVISION = 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a'
+export const SCORE_RENDERER_REVISION = '3955250a0a1407d3a13de5f72b106b5234db10b6'
 export const SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
 export const SCORE_RENDERER_OSMD_VERSION = '2.1.2'
 
