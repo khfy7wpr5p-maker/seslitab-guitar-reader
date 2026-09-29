@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../src/smoosicEditorTabUi.js', import.meta.ur
 test('CE bridge host loads the pinned browser runtime only for explicit structural Apply', () => {
   assert.match(host, /CE_STRUCT_RUNTIME_SRC\s*=\s*['"]\/st-omr-correction-engine-runtime\/ce-struct-browser-runtime\.js['"]/)
   assert.match(host, /async function loadCeStructRuntime\(root\)/)
-  assert.match(host, /STOmrCorrectionCeStructRuntime/)
+  assert.match(host, /resolveCeStructRuntime\(globalScope\)/)
   assert.match(host, /structuralActionManifest/)
   assert.match(host, /validateTeacherStructuralActionManifest/)
   assert.match(host, /createSmoosicCeStructIdentityBridge/)
