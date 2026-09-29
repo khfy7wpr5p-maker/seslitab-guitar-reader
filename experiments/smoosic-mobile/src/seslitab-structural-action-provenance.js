@@ -92,8 +92,8 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
 
   function beginImport({ score, editorSessionId: sessionId, sourceDurationByRawOrdinal = null } = {}) {
     clear()
-    const ordered = orderedNotes(score)
-    if (!ordered.length) throw new Error('Imported score contains no notes')
+    const ordered = orderedNotes(score).filter((entry) => !isPaddingRest(entry.note))
+    if (!ordered.length) throw new Error('Imported score contains no structural notes')
     editorSessionId = requiredString(sessionId, 'editorSessionId')
     let rawNoteOrdinal = 0
     baseRecords = ordered.map((entry) => {
@@ -129,7 +129,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
 
   function reconcileRenderedScore(renderedScore) {
     if (!baseScore || !baseRecords.length) throw new Error('Structural action import registry is unavailable')
-    const rendered = orderedNotes(renderedScore)
+    const rendered = orderedNotes(renderedScore).filter((entry) => !isPaddingRest(entry.note))
     if (rendered.length !== baseRecords.length) throw new Error('Rendered score structural shape changed without explicit action')
 
     const nextMap = new Map()
@@ -167,11 +167,13 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
   }
 
   function recordDurationAction({ note, renderedNote = note, beforeDuration, afterDuration } = {}) {
+    if (isPaddingRest(note) || isPaddingRest(renderedNote)) {
+      throw new Error('Certified padding rest cannot be a structural duration target')
+    }
     const record = recordByNote.get(note)
     if (!record) throw new Error('Duration target is not part of the explicit imported mapping')
-    if (isPaddingRest(note) || isPaddingRest(renderedNote)) throw new Error('Certified padding rest cannot be a structural duration target')
-    const sourceIdentity = noteIdentity(note)
-    noteIdentity(renderedNote)
+    noteIdentity(note)
+    const renderedIdentity = noteIdentity(renderedNote)
 
     const before = positiveDuration(beforeDuration, 'beforeDuration')
     const after = positiveDuration(afterDuration, 'afterDuration')
@@ -199,7 +201,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       measureIndex: record.measureIndex,
       voiceIndex: record.voiceIndex,
       noteIndex: record.noteIndex,
-      noteIdentity: sourceIdentity,
+      noteIdentity: renderedIdentity,
       beforeTicks: originalBeforeTicks,
       afterTicks: after,
       before: originalBefore,
