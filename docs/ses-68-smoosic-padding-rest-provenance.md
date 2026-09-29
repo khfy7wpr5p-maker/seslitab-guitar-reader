@@ -44,11 +44,13 @@ All other rests remain notes.
 
 Smoosic canonicalizes a single part id, voice labels, and the MusicXML timing
 grid. The host accepts those representations only after topology is proven.
-Candidate durations are projected from the Smoosic divisions grid to the
-source grid; an integer result or the documented one-candidate-tick tuplet
-rounding is required. The normal structural/rhythmic validator runs on the
-projected MusicXML. This timing-grid conversion is not rest provenance and
-does not identify or remove any event.
+Candidate durations are projected from the Smoosic 4096-divisions grid to the
+source grid. Smoosic may serialize an exact tuplet as a positive fractional
+tick value (for example `2730.6666666666665`); the projection must produce a
+positive source integer exactly or be within the documented one-candidate-tick
+rounding bound. The normal structural/rhythmic validator runs on the projected
+MusicXML. This timing-grid conversion is not rest provenance and does not
+identify or remove any event.
 
 ## Fail-closed conditions
 
