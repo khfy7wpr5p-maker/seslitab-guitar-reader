@@ -104,7 +104,7 @@ test('maps two marked objects to sorted raw ordinals while retaining source and 
   assert.deepEqual(proof.entries.map((entry) => [entry.voiceIndex, entry.noteIndex]), [[0, 2], [1, 1]])
   assert.equal(proof.rawNoteCount, 5)
   assert.ok(Object.isFrozen(proof) && Object.isFrozen(proof.entries))
-  assert.throws(() => manifest(tracker, score, raw.slice(1)), /count/i)
+  assert.throws(() => manifest(tracker, score, raw.slice(1)), /count|order/i)
   assert.throws(() => manifest(tracker, score, [raw[0], raw[1], raw[3], raw[2], raw[4]]), /order|rest|duration/i)
   score.staves[0].measures[0].voices[0].notes[2] = sourceRest('replacement', 16)
   assert.throws(() => manifest(tracker, score, raw), /identity|locator|missing/i)
@@ -141,4 +141,31 @@ test('adopts only the deterministic score clone produced by the rendered part vi
   assert.deepEqual(manifest(nextTracker, nextImported, [
     { rest: false }, { rest: true }, { rest: true },
   ]).entries.map((entry) => entry.rawNoteOrdinal), [1])
+})
+
+test('maps a multi-pitch Smoosic note across its exact MusicXML chord expansion', () => {
+  const measure = factory()
+  const tracker = createSmoosicPaddingRestTracker(measure)
+  const score = tracker.runDuringImport(() => scoreOf([{
+    ...pitched('chord'),
+    pitches: [
+      { letter: 'c', octave: 4, accidental: 'n', cents: 0 },
+      { letter: 'e', octave: 4, accidental: 'n', cents: 0 },
+    ],
+  }, measure.createRestNoteWithDuration(8)]))
+  const raw = `<score-partwise><part id="P1"><measure number="1">
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice></note>
+    <note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice></note>
+    <note><rest/><duration>8</duration><voice>1</voice></note>
+  </measure></part></score-partwise>`
+
+  const proof = tracker.createExportManifest({ score, rawMusicXml: raw, sourceRevision: 7 })
+  assert.equal(proof.rawNoteCount, 3)
+  assert.equal(proof.entries[0].rawNoteOrdinal, 2)
+
+  const missingChordMember = raw.replace(/\s*<note><chord\/>[\s\S]*?<\/note>/, '')
+  assert.throws(
+    () => tracker.createExportManifest({ score, rawMusicXml: missingChordMember, sourceRevision: 7 }),
+    /count|chord|order/i,
+  )
 })

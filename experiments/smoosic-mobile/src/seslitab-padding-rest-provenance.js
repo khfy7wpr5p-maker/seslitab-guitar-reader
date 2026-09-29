@@ -176,32 +176,41 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0) throw new Error('Invalid source revision')
     const ordered = orderedNotes(score)
     const raw = rawNotesFrom(rawMusicXml)
-    if (raw.length !== ordered.length) throw new Error('Raw/model note count mismatch')
     const found = new Set()
     const ids = new Set()
     const entries = []
-    ordered.forEach(({ note, ...locator }, ordinal) => {
-      const rawNote = raw[ordinal]
-      const rawDuration = Number(rawNote.querySelector('duration')?.textContent)
-      const rawVoice = Number(rawNote.querySelector('voice')?.textContent)
-      if (Boolean(rawNote.querySelector('rest')) !== (note.noteType === 'r')
-        || !Number.isFinite(rawDuration) || rawDuration !== note.tickCount
-        || rawVoice !== locator.voiceIndex + 1) {
-        throw new Error('Raw/model note order or duration mismatch')
+    let rawOrdinal = 0
+    ordered.forEach(({ note, ...locator }) => {
+      const isRest = note.noteType === 'r'
+      const rawSpan = isRest ? 1 : Math.max(1, Array.isArray(note.pitches) ? note.pitches.length : 0)
+      for (let offset = 0; offset < rawSpan; offset += 1) {
+        const rawNote = raw[rawOrdinal + offset]
+        const rawDuration = Number(rawNote?.querySelector('duration')?.textContent)
+        const rawVoice = Number(rawNote?.querySelector('voice')?.textContent)
+        if (!rawNote
+          || Boolean(rawNote.querySelector('rest')) !== isRest
+          || Boolean(rawNote.querySelector('chord')) !== (offset > 0)
+          || !Number.isFinite(rawDuration) || rawDuration !== note.tickCount
+          || rawVoice !== locator.voiceIndex + 1) {
+          throw new Error('Raw/model note order, chord expansion or duration mismatch')
+        }
       }
       const record = captured.get(note)
-      if (!record) return
-      if (found.has(note) || note[importMarker] !== token
-        || record.noteIdentity !== identity(note) || record.durationTicks !== note.tickCount
-        || Object.keys(locator).some((key) => record.locator[key] !== locator[key])) {
-        throw new Error('Padding rest identity, duration or locator changed')
+      if (record) {
+        if (found.has(note) || note[importMarker] !== token
+          || record.noteIdentity !== identity(note) || record.durationTicks !== note.tickCount
+          || Object.keys(locator).some((key) => record.locator[key] !== locator[key])) {
+          throw new Error('Padding rest identity, duration or locator changed')
+        }
+        if (ids.has(record.noteIdentity)) throw new Error('Duplicate padding rest identity')
+        ids.add(record.noteIdentity)
+        found.add(note)
+        entries.push(Object.freeze({ ...record.locator, rawNoteOrdinal: rawOrdinal,
+          noteIdentity: record.noteIdentity, durationTicks: record.durationTicks }))
       }
-      if (ids.has(record.noteIdentity)) throw new Error('Duplicate padding rest identity')
-      ids.add(record.noteIdentity)
-      found.add(note)
-      entries.push(Object.freeze({ ...record.locator, rawNoteOrdinal: ordinal,
-        noteIdentity: record.noteIdentity, durationTicks: record.durationTicks }))
+      rawOrdinal += rawSpan
     })
+    if (rawOrdinal !== raw.length) throw new Error('Raw/model note count mismatch')
     if (found.size !== captured.size) throw new Error('Missing padding rest locator or identity')
     return Object.freeze({ version: 1, sourceRevision, rawNoteCount: raw.length,
       entries: Object.freeze(entries) })
