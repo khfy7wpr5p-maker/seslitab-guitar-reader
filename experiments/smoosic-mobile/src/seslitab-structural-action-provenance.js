@@ -17,7 +17,7 @@ function noteIdentity(note) {
   return requiredString(note?.attrs?.id, 'note identity')
 }
 
-function orderedNotes(score) {
+function orderedNotes(score, excludeNote = () => false) {
   if (!Array.isArray(score?.staves)) throw new Error('Invalid imported score')
   const result = []
   for (let staffIndex = 0; staffIndex < score.staves.length; staffIndex += 1) {
@@ -35,7 +35,9 @@ function orderedNotes(score) {
         if (!Array.isArray(voices)) throw new Error('Missing score voices')
         voices.forEach((voice, voiceIndex) => {
           if (!Array.isArray(voice?.notes)) throw new Error('Missing score notes')
-          voice.notes.forEach((note, noteIndex) => {
+          let noteIndex = 0
+          voice.notes.forEach((note) => {
+            if (excludeNote(note)) return
             const isRest = note?.noteType === 'r'
             const rawSpan = isRest ? 1 : Math.max(1, Array.isArray(note?.pitches) ? note.pitches.length : 0)
             result.push({
@@ -47,6 +49,7 @@ function orderedNotes(score) {
               rawSpan,
               isRest,
             })
+            noteIndex += 1
           })
         })
       }
@@ -90,18 +93,24 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
     sequence = 0
   }
 
-  function beginImport({ score, editorSessionId: sessionId } = {}) {
+  function beginImport({ score, editorSessionId: sessionId, sourceDurationByRawOrdinal = null } = {}) {
     clear()
-    const ordered = orderedNotes(score)
-    if (!ordered.length) throw new Error('Imported score contains no notes')
+    const ordered = orderedNotes(score, isPaddingRest)
     editorSessionId = requiredString(sessionId, 'editorSessionId')
     let rawNoteOrdinal = 0
     baseRecords = ordered.map((entry) => {
+      const baseDuration = positiveDuration(entry.note?.tickCount, 'import duration')
+      const sourceDurationValue = Array.isArray(sourceDurationByRawOrdinal)
+        ? Number(sourceDurationByRawOrdinal[rawNoteOrdinal])
+        : NaN
       const record = {
         ...entry,
         rawNoteOrdinal,
-        baseDuration: positiveDuration(entry.note?.tickCount, 'import duration'),
-        currentDuration: positiveDuration(entry.note?.tickCount, 'import duration'),
+        baseDuration,
+        currentDuration: baseDuration,
+        sourceDuration: Number.isFinite(sourceDurationValue) && sourceDurationValue > 0
+          ? sourceDurationValue
+          : null,
       }
       rawNoteOrdinal += entry.rawSpan
       return record
@@ -122,7 +131,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
 
   function reconcileRenderedScore(renderedScore) {
     if (!baseScore || !baseRecords.length) throw new Error('Structural action import registry is unavailable')
-    const rendered = orderedNotes(renderedScore)
+    const rendered = orderedNotes(renderedScore, isPaddingRest)
     if (rendered.length !== baseRecords.length) throw new Error('Rendered score structural shape changed without explicit action')
 
     const nextMap = new Map()
@@ -142,7 +151,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       const duration = positiveDuration(entry.note?.tickCount, 'rendered duration')
       const action = active.get(base.rawNoteOrdinal)
       if (duration !== base.baseDuration) {
-        if (!action || duration !== action.after) {
+        if (!action || duration !== action.afterTicks) {
           throw new Error('Unrecorded duration mutation requires explicit teacher action')
         }
       } else if (action) {
@@ -159,21 +168,30 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
     return renderedScore
   }
 
-  function recordDurationAction({ note, beforeDuration, afterDuration } = {}) {
+  function recordDurationAction({ note, renderedNote = note, beforeDuration, afterDuration } = {}) {
+    if (isPaddingRest(note) || isPaddingRest(renderedNote)) {
+      throw new Error('Certified padding rest cannot be a structural duration target')
+    }
     const record = recordByNote.get(note)
     if (!record) throw new Error('Duration target is not part of the explicit imported mapping')
-    if (isPaddingRest(note)) throw new Error('Certified padding rest cannot be a structural duration target')
+    noteIdentity(note)
+    const renderedIdentity = noteIdentity(renderedNote)
 
     const before = positiveDuration(beforeDuration, 'beforeDuration')
     const after = positiveDuration(afterDuration, 'afterDuration')
     if (before !== record.currentDuration) throw new Error('Duration before state is stale')
-    if (Number(note?.tickCount) !== after) throw new Error('Duration after state does not match rendered note')
+    if (Number(renderedNote?.tickCount) !== after) throw new Error('Duration after state does not match rendered note')
 
     const existing = active.get(record.rawNoteOrdinal)
-    const originalBefore = existing?.before ?? before
+    const originalBeforeTicks = existing?.beforeTicks ?? before
+    const toSourceDuration = (ticks) => record.sourceDuration == null
+      ? ticks
+      : record.sourceDuration * (ticks / record.baseDuration)
+    const originalBefore = existing?.before ?? toSourceDuration(originalBeforeTicks)
+    const normalizedAfter = toSourceDuration(after)
     record.currentDuration = after
 
-    if (after === originalBefore) {
+    if (after === record.baseDuration) {
       active.delete(record.rawNoteOrdinal)
       return null
     }
@@ -185,11 +203,18 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       measureIndex: record.measureIndex,
       voiceIndex: record.voiceIndex,
       noteIndex: record.noteIndex,
-      noteIdentity: noteIdentity(note),
+      noteIdentity: renderedIdentity,
+      beforeTicks: originalBeforeTicks,
+      afterTicks: after,
       before: originalBefore,
-      after,
+      after: normalizedAfter,
     }
     active.set(record.rawNoteOrdinal, value)
+    if (renderedNote !== note) {
+      recordByNote.delete(note)
+      record.note = renderedNote
+      recordByNote.set(renderedNote, record)
+    }
     return freezeOperation(value)
   }
 

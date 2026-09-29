@@ -629,6 +629,20 @@ test('S15 primes the Smoosic cursor after every accepted MusicXML load', () => {
   )
 })
 
+test('Task 7 retires consumed padding immediately after explicit duration action', () => {
+  assert.match(
+    editor,
+    /activeStructuralActionTracker\.recordDurationAction\([\s\S]*activePaddingRestTracker\?\.adoptRenderedScore\(view\.score,[\s\S]*authorizedDurationIdentities:[\s\S]*activeStructuralActionTracker\.authorizedDurationIdentitySet\(\)/,
+  )
+})
+
+test('Task 7 Ctrl+Z restores padding provenance before structural action reconciliation', () => {
+  assert.match(
+    editor,
+    /key\.toLowerCase\(\) === 'z'[\s\S]*activePaddingRestTracker\?\.adoptRenderedScore\(renderedScore,[\s\S]*authorizedDurationIdentities:[\s\S]*activeStructuralActionTracker\?\.authorizedDurationIdentitySet\(\)[\s\S]*activeStructuralActionTracker\?\.reconcileRenderedScore\(renderedScore\)/,
+  )
+})
+
 test('S15 re-adopts rendered score with explicit structural duration identities before provenance export', () => {
   assert.match(
     editor,

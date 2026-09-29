@@ -130,9 +130,14 @@ async function runMobileKeyAction(button) {
     );
     if (!updated?.note) throw new Error('Süre düzenlemesi sonrası nota bulunamadı.');
     activeStructuralActionTracker.recordDurationAction({
-      note: updated.note,
+      note: current.note,
+      renderedNote: updated.note,
       beforeDuration,
       afterDuration: Number(updated.note.tickCount)
+    });
+    activePaddingRestTracker?.adoptRenderedScore(view.score, {
+      allowPitchChanges: true,
+      authorizedDurationIdentities: activeStructuralActionTracker.authorizedDurationIdentitySet()
     });
     return;
   }
@@ -151,7 +156,12 @@ async function runMobileKeyAction(button) {
     if (renderer && typeof renderer.updatePromise === 'function') {
       await renderer.updatePromise();
     }
-    activeStructuralActionTracker?.reconcileRenderedScore(applicationInstance.view.score);
+    const renderedScore = applicationInstance.view.score;
+    activePaddingRestTracker?.adoptRenderedScore(renderedScore, {
+      allowPitchChanges: true,
+      authorizedDurationIdentities: activeStructuralActionTracker?.authorizedDurationIdentitySet() ?? null
+    });
+    activeStructuralActionTracker?.reconcileRenderedScore(renderedScore);
     return;
   }
 
@@ -269,6 +279,16 @@ function stopNativePlayback() {
   stopActiveSoundfont();
 }
 
+function sourceMusicXmlDurationByRawOrdinal(xml) {
+  const notes = Array.from(xml?.querySelectorAll?.('part > measure > note') ?? [])
+  return notes.map((note) => {
+    const duration = Array.from(note?.children ?? [])
+      .find((child) => String(child?.localName || child?.tagName || '').toLowerCase() === 'duration')
+    const value = Number(duration?.textContent)
+    return Number.isFinite(value) && value > 0 ? value : null
+  })
+}
+
 async function loadMusicXmlFile(file) {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
@@ -299,7 +319,11 @@ async function loadMusicXmlFile(file) {
   let score;
   try {
     score = candidateTracker.runDuringImport(() => XmlToSmo.convert(xml));
-    candidateStructuralTracker.beginImport({ score, editorSessionId });
+    candidateStructuralTracker.beginImport({
+      score,
+      editorSessionId,
+      sourceDurationByRawOrdinal: sourceMusicXmlDurationByRawOrdinal(xml)
+    });
   } catch (error) {
     candidateTracker.clear();
     candidateStructuralTracker.clear();

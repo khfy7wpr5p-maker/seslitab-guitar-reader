@@ -195,3 +195,62 @@ test('maps a multi-pitch Smoosic note across its exact MusicXML chord expansion'
     /count|chord|order/i,
   )
 })
+
+
+test('same-object authorized duration consumption retires and exact undo restores certified padding provenance', () => {
+  const measure = factory()
+  const tracker = createSmoosicPaddingRestTracker(measure)
+  let padding
+  const score = tracker.runDuringImport(() => {
+    padding = measure.createRestNoteWithDuration(8)
+    return scoreOf([pitched('lead', 8), padding, pitched('tail', 16)])
+  })
+  const lead = score.staves[0].measures[0].voices[0].notes[0]
+  const tail = score.staves[0].measures[0].voices[0].notes[2]
+
+  lead.tickCount = 16
+  score.staves[0].measures[0].voices[0].notes = [lead, tail]
+  tracker.adoptRenderedScore(score, {
+    authorizedDurationIdentities: new Set(['lead']),
+  })
+  assert.deepEqual(manifest(tracker, score, [
+    { rest: false, duration: 16 },
+    { rest: false, duration: 16 },
+  ]).entries, [])
+
+  lead.tickCount = 8
+  // Real Smoosic Ctrl+Z restores the selected note duration but does not
+  // recreate the import-only padding rest that the duration edit consumed.
+  score.staves[0].measures[0].voices[0].notes = [lead, tail]
+  tracker.adoptRenderedScore(score, {
+    authorizedDurationIdentities: new Set(['lead']),
+  })
+  const undoNotes = score.staves[0].measures[0].voices[0].notes
+  assert.equal(undoNotes.length, 3)
+  assert.equal(undoNotes[1].noteType, 'r')
+  assert.equal(undoNotes[1].tickCount, 8)
+  const restoredProof = manifest(tracker, score, [
+    { rest: false },
+    { rest: true },
+    { rest: false, duration: 16 },
+  ])
+  assert.equal(restoredProof.entries.length, 1)
+  assert.equal(restoredProof.entries[0].rawNoteOrdinal, 1)
+  assert.equal(restoredProof.entries[0].noteIdentity, undoNotes[1].attrs.id)
+
+  const unsafeTracker = createSmoosicPaddingRestTracker(measure)
+  const unsafeScore = unsafeTracker.runDuringImport(() => scoreOf([
+    pitched('unsafe-lead', 8),
+    measure.createRestNoteWithDuration(8),
+    pitched('unsafe-tail', 16),
+  ]))
+  const unsafeLead = unsafeScore.staves[0].measures[0].voices[0].notes[0]
+  const unsafeTail = unsafeScore.staves[0].measures[0].voices[0].notes[2]
+  unsafeScore.staves[0].measures[0].voices[0].notes = [unsafeLead, unsafeTail]
+  assert.throws(
+    () => unsafeTracker.adoptRenderedScore(unsafeScore, {
+      authorizedDurationIdentities: new Set(['unsafe-lead']),
+    }),
+    /padding|duration|authorized|provenance|clone|semantics/i,
+  )
+})

@@ -61,8 +61,10 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
   if (typeof SmoMeasure?.createRestNoteWithDuration !== 'function') {
     throw new Error('Smoosic rest factory is unavailable')
   }
+  const restFactory = SmoMeasure.createRestNoteWithDuration
   let score = null
   let captured = new Map()
+  let retired = new Set()
   let inImport = false
   const token = {}
 
@@ -71,7 +73,148 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       if (note[importMarker] === token) delete note[importMarker]
     }
     captured = new Map()
+    retired = new Set()
     score = null
+  }
+
+  function voiceNotesFor(currentScore, locator) {
+    const notes = currentScore?.staves?.[locator.staffIndex]
+      ?.measures?.[locator.measureIndex]
+      ?.voices?.[locator.voiceIndex]
+      ?.notes
+    if (!Array.isArray(notes)) throw new Error('Missing padding rest voice notes')
+    return notes
+  }
+
+  function contextOf(note) {
+    if (!note) return null
+    return {
+      noteType: String(note.noteType || ''),
+      durationTicks: Number(note.tickCount),
+      pitchSignature: pitchSignature(note),
+    }
+  }
+
+  function matchesContext(note, expected, expectedDuration = expected?.durationTicks) {
+    if (!expected) return note == null
+    if (!note) return false
+    return String(note.noteType || '') === expected.noteType
+      && Number(note.tickCount) === Number(expectedDuration)
+      && pitchSignature(note) === expected.pitchSignature
+  }
+
+  function refreshRecordContext(record, currentScore) {
+    const notes = voiceNotesFor(currentScore, record.locator)
+    record.previousContext = contextOf(notes[record.locator.noteIndex - 1])
+    record.nextContext = contextOf(notes[record.locator.noteIndex + 1])
+  }
+
+  function restoreExactUndoPadding(record, notes, authorized, currentScore) {
+    if (!retired.has(record)) return null
+    const previous = notes[record.locator.noteIndex - 1] ?? null
+    const shiftedNext = notes[record.locator.noteIndex] ?? null
+    const previousIdentity = previous ? identity(previous) : ''
+    const exactUndoGap = previous
+      && authorized.has(previousIdentity)
+      && matchesContext(previous, record.previousContext)
+      && matchesContext(shiftedNext, record.nextContext)
+
+    if (!exactUndoGap) return null
+
+    const restored = restFactory.call(SmoMeasure, record.durationTicks)
+    if (!restored || typeof restored !== 'object'
+      || restored.noteType !== 'r'
+      || Number(restored.tickCount) !== Number(record.durationTicks)) {
+      throw new Error('Smoosic padding rest factory could not restore exact undo padding')
+    }
+    const restoredIdentity = identity(restored)
+    if (
+      [...captured.values()].some((value) => value.noteIdentity === restoredIdentity)
+      || orderedNotes(currentScore).some(({ note }) => identity(note) === restoredIdentity)
+    ) {
+      throw new Error('Duplicate padding rest identity')
+    }
+    Object.defineProperty(restored, importMarker, { value: token, configurable: true })
+    notes.splice(record.locator.noteIndex, 0, restored)
+    record.note = restored
+    record.noteIdentity = restoredIdentity
+    captured.set(restored, record)
+    retired.delete(record)
+    refreshRecordContext(record, currentScore)
+    return restored
+  }
+
+  function reconcileSameScore(currentScore, authorizedDurationIdentities) {
+    const located = orderedNotes(currentScore)
+    const entryByNote = new Map(located.map((entry) => [entry.note, entry]))
+    const authorized = authorizedDurationIdentities instanceof Set
+      ? authorizedDurationIdentities
+      : new Set()
+
+    for (const [note, record] of [...captured.entries()]) {
+      const entry = entryByNote.get(note)
+      if (entry) {
+        if (record.noteIdentity !== identity(note)
+          || record.durationTicks !== note.tickCount
+          || Object.keys(record.locator).some((key) => record.locator[key] !== entry[key])) {
+          throw new Error('Imported padding rest identity or locator changed')
+        }
+        continue
+      }
+
+      const notes = voiceNotesFor(currentScore, record.locator)
+      const previous = notes[record.locator.noteIndex - 1] ?? null
+      const shiftedNext = notes[record.locator.noteIndex] ?? null
+      const previousIdentity = previous ? identity(previous) : ''
+      const consumedExactly = previous
+        && authorized.has(previousIdentity)
+        && record.previousContext
+        && matchesContext(
+          previous,
+          record.previousContext,
+          Number(record.previousContext.durationTicks) + Number(record.durationTicks),
+        )
+        && matchesContext(shiftedNext, record.nextContext)
+
+      if (note[importMarker] === token) delete note[importMarker]
+      captured.delete(note)
+
+      if (!consumedExactly) {
+        throw new Error('Certified padding rest disappeared without exact authorized duration consumption')
+      }
+
+      record.note = null
+      retired.add(record)
+    }
+
+    for (const record of [...retired]) {
+      const notes = voiceNotesFor(currentScore, record.locator)
+      const candidate = notes[record.locator.noteIndex] ?? null
+      const previous = notes[record.locator.noteIndex - 1] ?? null
+      const next = notes[record.locator.noteIndex + 1] ?? null
+      if (!candidate || candidate.noteType !== 'r') {
+        restoreExactUndoPadding(record, notes, authorized, currentScore)
+        continue
+      }
+      if (Number(candidate.tickCount) !== Number(record.durationTicks)) continue
+      if (!matchesContext(previous, record.previousContext)) continue
+      if (!matchesContext(next, record.nextContext)) continue
+      // Exact base-duration + exact rest/neighbor topology is the undo proof.
+      // The structural action set may still contain the previous note until
+      // its reconciler runs immediately after padding provenance restoration.
+      const restoredIdentity = identity(candidate)
+      if ([...captured.values()].some((value) => value.noteIdentity === restoredIdentity)) {
+        throw new Error('Duplicate padding rest identity')
+      }
+      Object.defineProperty(candidate, importMarker, { value: token, configurable: true })
+      record.note = candidate
+      record.noteIdentity = restoredIdentity
+      captured.set(candidate, record)
+      retired.delete(record)
+      refreshRecordContext(record, currentScore)
+    }
+
+    return currentScore
   }
 
   function runDuringImport(convertFn) {
@@ -86,7 +229,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       }
       const noteIdentity = identity(note)
       Object.defineProperty(note, importMarker, { value: token, configurable: true })
-      created.set(note, { noteIdentity, durationTicks: note.tickCount })
+      created.set(note, { note, noteIdentity, durationTicks: note.tickCount })
       return note
     }
     inImport = true
@@ -105,6 +248,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       }
       for (const record of created.values()) {
         if (!record.locator) throw new Error('Missing padding rest locator')
+        refreshRecordContext(record, importedScore)
       }
       captured = created
       score = importedScore
@@ -123,7 +267,10 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
 
   function adoptRenderedScore(renderedScore, { allowPitchChanges = false, authorizedDurationIdentities = null } = {}) {
     if (!score) throw new Error('Imported score registry is unavailable or stale')
-    if (renderedScore === score) return renderedScore
+    if (renderedScore === score) {
+      return reconcileSameScore(renderedScore, authorizedDurationIdentities)
+    }
+    if (retired.size) throw new Error('Retired padding rest provenance cannot cross a score clone')
 
     const importedNotes = orderedNotes(score)
     const renderedNotes = orderedNotes(renderedScore)
@@ -168,11 +315,9 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
         throw new Error('Imported padding rest identity or locator changed')
       }
       Object.defineProperty(renderedEntry.note, importMarker, { value: token, configurable: true })
-      adopted.set(renderedEntry.note, {
-        noteIdentity: renderedId,
-        durationTicks: record.durationTicks,
-        locator: record.locator,
-      })
+      record.note = renderedEntry.note
+      record.noteIdentity = renderedId
+      adopted.set(renderedEntry.note, record)
     })
     if (adopted.size !== captured.size) {
       throw new Error('Rendered score clone is missing padding rest identity')
@@ -182,6 +327,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     }
     captured = adopted
     score = renderedScore
+    for (const record of captured.values()) refreshRecordContext(record, renderedScore)
     return renderedScore
   }
 
