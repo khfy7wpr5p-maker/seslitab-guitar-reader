@@ -186,6 +186,9 @@ test('Docker smoke workflow captures CE-DATA-01B evidence only through the local
   assert.ok(workflow.includes('ce-data-01b-local-audiveris-capture'))
   assert.ok(workflow.includes('--expected-source-sha256 c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed'))
   assert.ok(workflow.includes('--expected-reference-sha256 7004b4ac37711cca340c63e2f2436dd70e0f630f4e891cb311caff159b5d9d94'))
+  assert.ok(workflow.includes('--source-repository khfy7wpr5p-maker/seslitab-guitar-reader'))
+  assert.ok(workflow.includes('--source-revision-id fcfa70da2d81891d98dc1029862671c35217c00f'))
+  assert.ok(workflow.includes('--license-id CC0-1.0'))
   assert.ok(workflow.includes('actions/upload-artifact@v4'))
   assert.equal(workflow.includes('seslitab-omr.onrender.com'), false)
 })
@@ -301,6 +304,9 @@ test('packages direct-container Audiveris outputs as pre-label evidence', async 
     const result = await packageLocalAudiverisEvidence({
       pdfPath, referencePath, musicXmlPath, omrPath, versionPath, outDir,
       engineVersion: '5.11.0',
+      sourceRepository: 'khfy7wpr5p-maker/seslitab-guitar-reader',
+      sourceRevisionId: 'fcfa70da2d81891d98dc1029862671c35217c00f',
+      licenseId: 'CC0-1.0',
       expectedSourceSha256: sha256(pdf),
       expectedReferenceSha256: sha256(reference),
     })
@@ -308,6 +314,15 @@ test('packages direct-container Audiveris outputs as pre-label evidence', async 
     assert.equal(result.manifest.musicXml.sha256, sha256(musicXml))
     assert.equal(result.manifest.omr.sha256, sha256(omr))
     assert.equal(result.manifest.engine.versionEvidenceSha256, sha256(version))
+    assert.deepEqual(result.manifest.provenance, {
+      sourceRepository: 'khfy7wpr5p-maker/seslitab-guitar-reader',
+      sourceRevisionId: 'fcfa70da2d81891d98dc1029862671c35217c00f',
+      licenseId: 'CC0-1.0',
+      rightsEvidence: {
+        kind: 'TEACHER_VERIFIED_GOLDEN_REFERENCE',
+        referenceSha256: sha256(reference),
+      },
+    })
     assert.equal(Object.hasOwn(result.manifest, 'teacherDecision'), false)
     assert.deepEqual(await readFile(path.join(outDir, 'output.musicxml')), musicXml)
   } finally {
