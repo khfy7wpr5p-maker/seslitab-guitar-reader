@@ -90,18 +90,25 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
     sequence = 0
   }
 
-  function beginImport({ score, editorSessionId: sessionId } = {}) {
+  function beginImport({ score, editorSessionId: sessionId, sourceDurationByRawOrdinal = null } = {}) {
     clear()
     const ordered = orderedNotes(score)
     if (!ordered.length) throw new Error('Imported score contains no notes')
     editorSessionId = requiredString(sessionId, 'editorSessionId')
     let rawNoteOrdinal = 0
     baseRecords = ordered.map((entry) => {
+      const baseDuration = positiveDuration(entry.note?.tickCount, 'import duration')
+      const sourceDurationValue = Array.isArray(sourceDurationByRawOrdinal)
+        ? Number(sourceDurationByRawOrdinal[rawNoteOrdinal])
+        : NaN
       const record = {
         ...entry,
         rawNoteOrdinal,
-        baseDuration: positiveDuration(entry.note?.tickCount, 'import duration'),
-        currentDuration: positiveDuration(entry.note?.tickCount, 'import duration'),
+        baseDuration,
+        currentDuration: baseDuration,
+        sourceDuration: Number.isFinite(sourceDurationValue) && sourceDurationValue > 0
+          ? sourceDurationValue
+          : null,
       }
       rawNoteOrdinal += entry.rawSpan
       return record
@@ -142,7 +149,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       const duration = positiveDuration(entry.note?.tickCount, 'rendered duration')
       const action = active.get(base.rawNoteOrdinal)
       if (duration !== base.baseDuration) {
-        if (!action || duration !== action.after) {
+        if (!action || duration !== action.afterTicks) {
           throw new Error('Unrecorded duration mutation requires explicit teacher action')
         }
       } else if (action) {
@@ -170,10 +177,15 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
     if (Number(note?.tickCount) !== after) throw new Error('Duration after state does not match rendered note')
 
     const existing = active.get(record.rawNoteOrdinal)
-    const originalBefore = existing?.before ?? before
+    const originalBeforeTicks = existing?.beforeTicks ?? before
+    const toSourceDuration = (ticks) => record.sourceDuration == null
+      ? ticks
+      : record.sourceDuration * (ticks / record.baseDuration)
+    const originalBefore = existing?.before ?? toSourceDuration(originalBeforeTicks)
+    const normalizedAfter = toSourceDuration(after)
     record.currentDuration = after
 
-    if (after === originalBefore) {
+    if (after === record.baseDuration) {
       active.delete(record.rawNoteOrdinal)
       return null
     }
@@ -186,8 +198,10 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
       voiceIndex: record.voiceIndex,
       noteIndex: record.noteIndex,
       noteIdentity: noteIdentity(note),
+      beforeTicks: originalBeforeTicks,
+      afterTicks: after,
       before: originalBefore,
-      after,
+      after: normalizedAfter,
     }
     active.set(record.rawNoteOrdinal, value)
     return freezeOperation(value)
