@@ -135,3 +135,30 @@ test('explicit duration manifest converts Smoosic ticks into source MusicXML dur
   assert.equal(manifest.operations[0].before, 1)
   assert.equal(manifest.operations[0].after, 2)
 })
+
+
+test('explicit duration action remains exact when Smoosic replaces the rendered note object', async () => {
+  const tracker = await trackerFactory()
+  const original = pitched('replace-a', 8)
+  const score = scoreOf([original])
+  tracker.beginImport({
+    score,
+    editorSessionId: 'session-replaced-object',
+    sourceDurationByRawOrdinal: [1],
+  })
+
+  const replacement = pitched('replace-a', 16)
+  score.staves[0].measures[0].voices[0].notes[0] = replacement
+  tracker.recordDurationAction({
+    note: original,
+    renderedNote: replacement,
+    beforeDuration: 8,
+    afterDuration: 16,
+  })
+
+  const manifest = tracker.createApplyManifest({ sourceRevision: 9, actionId: 'apply-replaced-object' })
+  assert.equal(manifest.operations[0].noteIdentity, 'replace-a')
+  assert.equal(manifest.operations[0].before, 1)
+  assert.equal(manifest.operations[0].after, 2)
+  assert.deepEqual([...tracker.authorizedDurationIdentitySet()], ['replace-a'])
+})
