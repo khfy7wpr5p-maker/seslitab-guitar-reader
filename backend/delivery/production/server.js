@@ -131,7 +131,7 @@ export async function startSecureDeliveryServer({
           disabledResult(),
         )
       } else {
-        Promise.resolve()
+        void Promise.resolve()
           .then(() =>
             runAcceptance({
               env,
@@ -160,7 +160,7 @@ export async function startSecureDeliveryServer({
           disabledResult(),
         )
       } else {
-        Promise.resolve()
+        void Promise.resolve()
           .then(() =>
             runProvisioningBootstrap({
               env,

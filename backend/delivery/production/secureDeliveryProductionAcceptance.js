@@ -441,8 +441,12 @@ export async function runSecureDeliveryProductionAcceptance({
   let provisioningService = null
   let localSigner = null
   let identityMayBeActive = false
+  let result = null
+  let identityCleanupFailure = null
+  let cleanupFailure = null
 
   try {
+    acceptanceFlow: {
     runtimeStore =
       trustedFactories
         .createRuntimeStore({
@@ -465,11 +469,12 @@ export async function runSecureDeliveryProductionAcceptance({
         write,
         'already_complete',
       )
-      return Object.freeze({
+      result = Object.freeze({
         ran: false,
         outcome:
           'already-complete',
       })
+      break acceptanceFlow
     }
 
     provisioningService =
@@ -641,12 +646,13 @@ export async function runSecureDeliveryProductionAcceptance({
       },
     )
 
-    return Object.freeze({
+    result = Object.freeze({
       ran: true,
       outcome: 'pass',
       authorizedStatus,
       revokedStatus,
     })
+    }
   } catch (error) {
     failure = error
     safeWrite(
@@ -664,14 +670,7 @@ export async function runSecureDeliveryProductionAcceptance({
             stage,
           },
     )
-    throw new Error(
-      'secure-delivery-production-acceptance-failed',
-      {
-        cause: error,
-      },
-    )
   } finally {
-    let identityCleanupFailure = null
 
     if (
       failure !== null &&
@@ -703,12 +702,10 @@ export async function runSecureDeliveryProductionAcceptance({
               config.studentId
 
           if (!isExpectedIdentity) {
-            throw new Error(
+            identityCleanupFailure = new Error(
               'secure-delivery-production-acceptance-failure-cleanup-identity-conflict',
             )
-          }
-
-          if (
+          } else if (
             possibleMapping.active ===
               true &&
             possibleMapping.disabledAt ===
@@ -721,13 +718,16 @@ export async function runSecureDeliveryProductionAcceptance({
             possibleMapping.disabledAt ===
               null
           ) {
-            throw new Error(
+            identityCleanupFailure = new Error(
               'secure-delivery-production-acceptance-failure-cleanup-identity-state-invalid',
             )
           }
         }
       } catch (error) {
         identityCleanupFailure = error
+      }
+
+      if (identityCleanupFailure !== null) {
         safeWrite(
           write,
           'failure_cleanup_failed',
@@ -788,7 +788,7 @@ export async function runSecureDeliveryProductionAcceptance({
       }
     }
 
-    let cleanupFailure = null
+    cleanupFailure = null
     try {
       await admin.auth
         .deleteUser(
@@ -815,33 +815,45 @@ export async function runSecureDeliveryProductionAcceptance({
 
     await admin.delete()
 
-    if (
-      identityCleanupFailure !== null
-    ) {
-      throw new Error(
-        'secure-delivery-production-acceptance-failure-cleanup-failed',
-        {
-          cause:
-            identityCleanupFailure,
-        },
-      )
-    }
-
-    if (
-      cleanupFailure !== null &&
-      failure === null
-    ) {
-      safeWrite(
-        write,
-        'cleanup_failed',
-      )
-      throw new Error(
-        'secure-delivery-production-acceptance-cleanup-failed',
-        {
-          cause:
-            cleanupFailure,
-        },
-      )
-    }
   }
+
+  if (
+    identityCleanupFailure !== null
+  ) {
+    throw new Error(
+      'secure-delivery-production-acceptance-failure-cleanup-failed',
+      {
+        cause:
+          identityCleanupFailure,
+      },
+    )
+  }
+
+  if (
+    cleanupFailure !== null &&
+    failure === null
+  ) {
+    safeWrite(
+      write,
+      'cleanup_failed',
+    )
+    throw new Error(
+      'secure-delivery-production-acceptance-cleanup-failed',
+      {
+        cause:
+          cleanupFailure,
+      },
+    )
+  }
+
+  if (failure !== null) {
+    throw new Error(
+      'secure-delivery-production-acceptance-failed',
+      {
+        cause: failure,
+      },
+    )
+  }
+
+  return result
 }
