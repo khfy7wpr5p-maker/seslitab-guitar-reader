@@ -626,3 +626,10 @@ test('S15 primes the Smoosic cursor after every accepted MusicXML load', () => {
     /await applicationInstance\.view\.changeScore\(score\)[\s\S]*await applicationInstance\.view\.moveHome\(\{[\s\S]*ctrlKey: true[\s\S]*shiftKey: false[\s\S]*altKey: false[\s\S]*\}\)/,
   )
 })
+
+test('S15 strictly re-adopts the current rendered score before provenance export', () => {
+  assert.match(
+    editor,
+    /function createSesliTabWritebackExport\(\{ score, sourceRevision, tracker \}\)[\s\S]*tracker\.adoptRenderedScore\(score\)[\s\S]*tracker\.createExportManifest\(/,
+  )
+})
