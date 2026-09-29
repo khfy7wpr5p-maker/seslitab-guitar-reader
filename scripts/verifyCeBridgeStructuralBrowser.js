@@ -333,13 +333,24 @@ async function runMainProof() {
       throw new Error('Undo-before-Apply retained a structuralActionManifest.')
     }
     await clickApply(session)
-    const undoStatus = await waitFor(
-      `(() => {
-        const text = String(document.getElementById('smoosic-editor-host-status')?.textContent || '');
-        return text.includes('yeni bir müzikal değişiklik yok') ? text : '';
-      })()`,
-      'undo no-change',
-    )
+    let undoStatus
+    try {
+      undoStatus = await waitFor(
+        `(() => {
+          const text = String(document.getElementById('smoosic-editor-host-status')?.textContent || '');
+          return text.includes('yeni bir müzikal değişiklik yok') ? text : '';
+        })()`,
+        'undo no-change',
+      )
+    } catch (error) {
+      const hostStatus = await session.evaluate(
+        `String(document.getElementById('smoosic-editor-host-status')?.textContent || '')`,
+      )
+      const visible = await visibleFirstNote(session)
+      throw new Error(
+        `${error?.message ?? error}; hostStatus=${hostStatus}; undoProbe=${JSON.stringify(undoProbe)}; visible=${JSON.stringify({ step: visible.step, duration: visible.duration })}`,
+      )
+    }
     const undoVisible = await visibleFirstNote(session)
     if (undoVisible.duration !== 1 || undoVisible.step !== 'C') {
       throw new Error('Undo-before-Apply changed the accepted revision.')
