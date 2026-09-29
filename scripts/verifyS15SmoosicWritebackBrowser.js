@@ -869,7 +869,7 @@ try {
       'supported gesi-clean write-back',
     )
   } catch (error) {
-    const diagnostic = await evaluate(cdp, `(() => {
+    const failureSnapshot = await evaluate(cdp, `(() => {
       const frame = document.getElementById('smoosic-editor-frame');
       const result = window.__S15_FIRST_EXPORT__ || null;
       const raw = String(result?.musicXml || '');
@@ -890,8 +890,22 @@ try {
         provenanceEntries: result?.paddingRestProvenance?.entries?.length ?? null,
         provenanceRawNoteCount: result?.paddingRestProvenance?.rawNoteCount ?? null,
         applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+        rawMusicXml: raw,
+        paddingRestProvenance: result?.paddingRestProvenance || null,
+        acceptedMusicXml: visible,
       };
     })()`)
+    const { rawMusicXml, paddingRestProvenance, acceptedMusicXml, ...diagnostic } = failureSnapshot
+    mkdirSync(resolve(repoRoot, 'artifacts'), { recursive: true })
+    writeFileSync(evidencePath, JSON.stringify({
+      documentType: 'S15SmoosicWritebackFailureEvidence',
+      evidenceClass: 'CHROMIUM_REAL_BROWSER_PRODUCTION_BUNDLE',
+      fixture: 'tests/fixtures/real-omr/gesi-clean.xml',
+      diagnostic,
+      rawMusicXml,
+      paddingRestProvenance,
+      acceptedMusicXml,
+    }, null, 2) + '\n')
     throw new Error(`${error.message} | gesi-clean diagnostic=${JSON.stringify(diagnostic)}`)
   }
 
