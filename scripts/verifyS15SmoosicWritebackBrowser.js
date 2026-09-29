@@ -1049,6 +1049,11 @@ try {
     gesiNegativeOutcomes.every((outcome) => outcome.sourceRevision === gesiNegativeOutcomes[0].sourceRevision),
     'a rejected/no-change case advanced the committed source revision',
   )
+  const committedSourceRevision = gesiNegativeOutcomes[0].sourceRevision
+  requireEvidence(
+    committedSourceRevision === gesiSnapshot.provenance.sourceRevision + 1,
+    `committed source revision ${committedSourceRevision} did not advance exactly once`,
+  )
   await evaluate(cdp, `(() => {
     document.getElementById('smoosic-editor-frame').contentWindow.postMessage = window.__S15_ORIGINAL_POSTMESSAGE__;
     delete window.__S15_ORIGINAL_POSTMESSAGE__;
@@ -1060,6 +1065,9 @@ try {
     fixture: 'tests/fixtures/real-omr/gesi-clean.xml',
     editClass: 'PITCH_ONLY',
     terminalStatus: 'APPLIED',
+    committedRevision: {
+      sourceRevision: committedSourceRevision,
+    },
     identityValidatedAfterEdit: true,
     source: sourceCounts,
     raw: rawCounts,
