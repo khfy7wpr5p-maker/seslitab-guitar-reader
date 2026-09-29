@@ -116,3 +116,22 @@ test('pitch-only mutation creates no structural manifest', async () => {
   tracker.reconcileRenderedScore(score)
   assert.equal(tracker.createApplyManifest({ sourceRevision: 5, actionId: 'apply-6' }), null)
 })
+
+
+test('explicit duration manifest converts Smoosic ticks into source MusicXML duration units', async () => {
+  const tracker = await trackerFactory()
+  const score = scoreOf([pitched('duration-unit-a', 8)])
+  tracker.beginImport({
+    score,
+    editorSessionId: 'session-duration-units',
+    sourceDurationByRawOrdinal: [1],
+  })
+  const note = score.staves[0].measures[0].voices[0].notes[0]
+
+  note.tickCount = 16
+  tracker.recordDurationAction({ note, beforeDuration: 8, afterDuration: 16 })
+
+  const manifest = tracker.createApplyManifest({ sourceRevision: 8, actionId: 'apply-duration-units' })
+  assert.equal(manifest.operations[0].before, 1)
+  assert.equal(manifest.operations[0].after, 2)
+})
