@@ -627,9 +627,9 @@ test('S15 primes the Smoosic cursor after every accepted MusicXML load', () => {
   )
 })
 
-test('S15 strictly re-adopts the current rendered score before provenance export', () => {
+test('S15 strictly re-adopts the current rendered score with pitch-only allowance before provenance export', () => {
   assert.match(
     editor,
-    /function createSesliTabWritebackExport\(\{ score, sourceRevision, tracker \}\)[\s\S]*tracker\.adoptRenderedScore\(score\)[\s\S]*tracker\.createExportManifest\(/,
+    /function createSesliTabWritebackExport\(\{ score, sourceRevision, tracker \}\)[\s\S]*tracker\.adoptRenderedScore\(score, \{ allowPitchChanges: true \}\)[\s\S]*tracker\.createExportManifest\(/,
   )
 })
