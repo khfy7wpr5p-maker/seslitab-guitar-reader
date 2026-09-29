@@ -11,7 +11,9 @@ import {
   clearScoreHighlights,
   clearScoreView,
   getCurrentScoreRenderEvidence,
-  highlightScoreMeasure,\n  highlightScoreNote,
+  clearScoreMeasureHighlights,
+  highlightScoreMeasure,
+  highlightScoreNote,
   hitTestScoreNote,
   hitTestScoreNoteDetailed,
   moveScoreCursor,
@@ -67,6 +69,8 @@ test('runtime resolution requires the reviewed detailed-hit ST-owned host shape'
     hitTestNoteDetailed() {},
     highlight() {},
     clearHighlights() {},
+    highlightMeasure() {},
+    clearMeasureHighlights() {},
     dispose() {},
   }
   assert.equal(resolveStScoreRuntime({ __ST_SCORE_RENDER_HOST__: host }), host)
