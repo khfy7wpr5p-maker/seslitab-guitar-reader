@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import '../scripts/runOmrQualityReport.js'
 import { createSmoosicStructuralActionTracker } from '../experiments/smoosic-mobile/src/seslitab-structural-action-provenance.js'
 
 const moduleUrl = new URL('../src/services/smoosicCeStructIdentityBridge.js', import.meta.url)
