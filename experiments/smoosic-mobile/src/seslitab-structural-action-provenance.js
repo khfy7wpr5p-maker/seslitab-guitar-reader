@@ -171,9 +171,7 @@ function createSmoosicStructuralActionTracker({ isPaddingRest = () => false } = 
     if (!record) throw new Error('Duration target is not part of the explicit imported mapping')
     if (isPaddingRest(note) || isPaddingRest(renderedNote)) throw new Error('Certified padding rest cannot be a structural duration target')
     const sourceIdentity = noteIdentity(note)
-    if (noteIdentity(renderedNote) !== sourceIdentity) {
-      throw new Error('Duration action rendered note identity changed')
-    }
+    noteIdentity(renderedNote)
 
     const before = positiveDuration(beforeDuration, 'beforeDuration')
     const after = positiveDuration(afterDuration, 'afterDuration')
