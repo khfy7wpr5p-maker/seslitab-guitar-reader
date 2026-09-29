@@ -64,15 +64,15 @@ test('score runtime manifest rejects unsafe paths and digests', () => {
 
 test('score runtime admission requires detailed hit-test and renderEpoch surfaces', () => {
   assert.equal(verifyRuntimeFeatureSources({
-    bootstrap: 'runtimeHost.hitTestNoteDetailed(payload)',
-    browserHost: 'return { renderEpoch: currentEpoch }',
+    bootstrap: 'runtimeHost.hitTestNoteDetailed(payload); runtimeHost.highlightMeasure(payload); runtimeHost.clearMeasureHighlights()',
+    browserHost: 'return { renderEpoch: currentEpoch }; highlightMeasure(payload); clearMeasureHighlights()',
   }), true)
   assert.throws(
-    () => verifyRuntimeFeatureSources({ bootstrap: 'hitTestNote(payload)', browserHost: 'renderEpoch' }),
+    () => verifyRuntimeFeatureSources({ bootstrap: 'hitTestNote(payload); highlightMeasure(payload); clearMeasureHighlights()', browserHost: 'renderEpoch; highlightMeasure; clearMeasureHighlights' }),
     /detailed hit-test feature is missing/,
   )
   assert.throws(
-    () => verifyRuntimeFeatureSources({ bootstrap: 'hitTestNoteDetailed', browserHost: 'render result' }),
+    () => verifyRuntimeFeatureSources({ bootstrap: 'hitTestNoteDetailed; highlightMeasure; clearMeasureHighlights', browserHost: 'render result; highlightMeasure; clearMeasureHighlights' }),
     /renderEpoch feature is missing/,
   )
 })
