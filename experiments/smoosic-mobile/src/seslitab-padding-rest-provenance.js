@@ -109,7 +109,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
     record.nextContext = contextOf(notes[record.locator.noteIndex + 1])
   }
 
-  function restoreExactUndoPadding(record, notes, authorized) {
+  function restoreExactUndoPadding(record, notes, authorized, currentScore) {
     const previous = notes[record.locator.noteIndex - 1] ?? null
     const shiftedNext = notes[record.locator.noteIndex] ?? null
     const previousIdentity = previous ? identity(previous) : ''
@@ -175,7 +175,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       if (note[importMarker] === token) delete note[importMarker]
       captured.delete(note)
 
-      if (restoreExactUndoPadding(record, notes, authorized)) continue
+      if (restoreExactUndoPadding(record, notes, authorized, currentScore)) continue
 
       if (!consumedExactly) {
         throw new Error('Certified padding rest disappeared without exact authorized duration consumption')
@@ -191,7 +191,7 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       const previous = notes[record.locator.noteIndex - 1] ?? null
       const next = notes[record.locator.noteIndex + 1] ?? null
       if (!candidate || candidate.noteType !== 'r') {
-        restoreExactUndoPadding(record, notes, authorized)
+        restoreExactUndoPadding(record, notes, authorized, currentScore)
         continue
       }
       if (Number(candidate.tickCount) !== Number(record.durationTicks)) continue
