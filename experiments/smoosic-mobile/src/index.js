@@ -816,7 +816,7 @@ function createSesliTabWritebackExport({ score, sourceRevision, tracker }) {
     || typeof tracker.createExportManifest !== 'function') {
     throw new Error('Imported score provenance is unavailable');
   }
-  tracker.adoptRenderedScore(score);
+  tracker.adoptRenderedScore(score, { allowPitchChanges: true });
   const serialized = serializeCurrentMusicXml(score);
   if (new TextEncoder().encode(serialized.musicXml).length > SESLITAB_EXPORT_MAX_XML_BYTES) {
     throw new Error('MusicXML exceeds host payload size limit');
