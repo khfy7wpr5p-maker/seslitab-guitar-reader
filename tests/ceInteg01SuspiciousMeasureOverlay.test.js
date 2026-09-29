@@ -227,6 +227,166 @@ test('CE analysis consumer validates shadow-only source identity and authority',
   )
 })
 
+test('analysis validator rejects malformed identities, bounds and evidence without coercion', async () => {
+  const consumer = await import(analysisConsumerUrl)
+  const valid = {
+    contract: 'ST_OMR_CORRECTION_ENGINE_SUSPICIOUS_MEASURES_V1',
+    mode: 'SHADOW_ONLY',
+    sourceId: 'render:1',
+    sourceHash: 'e'.repeat(64),
+    partId: 'P1',
+    measureCount: 2,
+    eventCount: 3,
+    findings: [],
+    suspiciousMeasures: [
+      { measureKey: 'm1', measureNumber: '1', measureIndex: 0, codes: ['X'], errorClasses: ['DURATION'], findingIds: ['f1'] },
+    ],
+    unmappedFindingCount: 0,
+    sourceGraphMutated: false,
+    automaticApplyAuthority: false,
+    musicXmlWriteBackAuthority: false,
+  }
+
+  for (const [value, pattern] of [
+    [null, /must be an object/i],
+    [{ ...valid, contract: 'OTHER' }, /contract mismatch/i],
+    [{ ...valid, mode: 'APPLY' }, /SHADOW_ONLY/i],
+    [{ ...valid, sourceId: ' bad ' }, /source identity/i],
+    [{ ...valid, sourceHash: 'BAD' }, /source hash/i],
+    [{ ...valid, partId: '' }, /partId/i],
+    [{ ...valid, measureCount: -1 }, /summary/i],
+    [{ ...valid, findings: null }, /findings/i],
+    [{ ...valid, unmappedFindingCount: -1 }, /unmapped finding count/i],
+    [{ ...valid, sourceGraphMutated: true }, /authority|immutability/i],
+    [{ ...valid, suspiciousMeasures: [{ ...valid.suspiciousMeasures[0], measureIndex: 2 }] }, /outside the analyzed score/i],
+    [{ ...valid, suspiciousMeasures: [{ ...valid.suspiciousMeasures[0], measureKey: '' }] }, /identity/i],
+    [{ ...valid, suspiciousMeasures: [{ ...valid.suspiciousMeasures[0], codes: null }] }, /evidence/i],
+  ]) {
+    assert.throws(() => consumer.validateSuspiciousMeasureAnalysis(value), pattern)
+  }
+
+  assert.throws(
+    () => consumer.analyzeSuspiciousMeasures(null, { musicxml: '<score-partwise/>', sourceId: 'render:1' }),
+    /runtime is not connected/i,
+  )
+  const runtime = {
+    analyzeMusicXmlSuspiciousMeasures() { return valid },
+  }
+  assert.throws(
+    () => consumer.analyzeSuspiciousMeasures(runtime, { musicxml: '<score-timewise/>', sourceId: 'render:1' }),
+    /score-partwise/i,
+  )
+  assert.throws(
+    () => consumer.analyzeSuspiciousMeasures(runtime, { musicxml: '<score-partwise/>', sourceId: ' bad ' }),
+    /source identity/i,
+  )
+  assert.throws(
+    () => consumer.analyzeSuspiciousMeasures(runtime, { musicxml: '<score-partwise/>', sourceId: 'render:1', tolerance: -1 }),
+    /tolerance/i,
+  )
+})
+
+test('score-view dynamically loads CE analysis runtime and keeps load failures fail-open for rendering', async () => {
+  const musicxml = '<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>'
+  const resultFor = (sourceId) => ({
+    contract: 'ST_OMR_CORRECTION_ENGINE_SUSPICIOUS_MEASURES_V1',
+    mode: 'SHADOW_ONLY',
+    sourceId,
+    sourceHash: 'f'.repeat(64),
+    partId: 'P1',
+    measureCount: 1,
+    eventCount: 0,
+    findings: [],
+    suspiciousMeasures: [
+      { measureKey: 'm1', measureNumber: '1', measureIndex: 0, codes: ['X'], errorClasses: ['DURATION'], findingIds: ['f1'] },
+    ],
+    unmappedFindingCount: 0,
+    sourceGraphMutated: false,
+    automaticApplyAuthority: false,
+    musicXmlWriteBackAuthority: false,
+  })
+  const runtime = {
+    contract: 'ST_OMR_CORRECTION_ENGINE_ANALYSIS_BROWSER',
+    contractVersion: '1.0.0',
+    runtimeVersion: '1.0.0',
+    analyzeMusicXmlSuspiciousMeasures({ sourceId }) { return resultFor(sourceId) },
+  }
+
+  function makeRenderer(label) {
+    return {
+      async renderMusicXml() { return { renderEpoch: label, sourceId: `source:${label}` } },
+      async highlightMeasure() {},
+      async clearMeasureHighlights() {},
+    }
+  }
+
+  function makeRoot({ existingRuntime = null, outcome = 'load', allowDom = true } = {}) {
+    const scope = existingRuntime ? { STOmrCorrectionAnalysisRuntime: existingRuntime } : {}
+    const surface = { dataset: {} }
+    const xmlOutput = { textContent: musicxml }
+    let created = 0
+    let appended = 0
+    const root = {
+      defaultView: scope,
+      getElementById(id) {
+        if (id === 'score-view-surface') return surface
+        if (id === 'xml-output') return xmlOutput
+        return null
+      },
+      querySelector() { return null },
+    }
+    if (allowDom) {
+      root.createElement = () => {
+        created += 1
+        const listeners = {}
+        return {
+          dataset: {},
+          addEventListener(name, listener) { listeners[name] = listener },
+          get listeners() { return listeners },
+        }
+      }
+      root.head = {
+        appendChild(script) {
+          appended += 1
+          if (outcome === 'load') {
+            scope.STOmrCorrectionAnalysisRuntime = runtime
+            script.listeners.load?.()
+          } else {
+            script.listeners.error?.()
+          }
+        },
+      }
+    }
+    return { root, surface, counts: () => ({ created, appended }) }
+  }
+
+  const loaded = makeRoot()
+  const rendererA = makeRenderer('a')
+  await rendererConsumer.renderScoreView(rendererA, musicxml, { ticket: 'a' })
+  assert.equal(await syncCorrectionMeasureOverlays(loaded.root, rendererA, musicxml), true)
+  assert.deepEqual(loaded.counts(), { created: 1, appended: 1 })
+  assert.equal(loaded.surface.dataset.correctionOverlayState, 'ready')
+
+  const already = makeRoot({ existingRuntime: runtime })
+  const rendererB = makeRenderer('b')
+  await rendererConsumer.renderScoreView(rendererB, musicxml, { ticket: 'b' })
+  assert.equal(await syncCorrectionMeasureOverlays(already.root, rendererB, musicxml), true)
+  assert.deepEqual(already.counts(), { created: 0, appended: 0 })
+
+  const failed = makeRoot({ outcome: 'error' })
+  const rendererC = makeRenderer('c')
+  await rendererConsumer.renderScoreView(rendererC, musicxml, { ticket: 'c' })
+  assert.equal(await syncCorrectionMeasureOverlays(failed.root, rendererC, musicxml), false)
+  assert.equal(failed.surface.dataset.correctionOverlayState, 'unavailable')
+  assert.deepEqual(failed.counts(), { created: 1, appended: 1 })
+
+  const noDom = makeRoot({ allowDom: false })
+  const rendererD = makeRenderer('d')
+  await rendererConsumer.renderScoreView(rendererD, musicxml, { ticket: 'd' })
+  assert.equal(await syncCorrectionMeasureOverlays(noDom.root, rendererD, musicxml), false)
+  assert.equal(noDom.surface.dataset.correctionOverlayState, 'unavailable')
+})
+
 test('overlay projection deduplicates exact partId + measureIndex and fails closed on incomplete mapping', async () => {
   assert.equal(existsSync(overlayUrl), true)
   if (!existsSync(overlayUrl)) return
