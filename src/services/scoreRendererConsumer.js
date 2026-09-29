@@ -8,7 +8,7 @@ import { createRealmPlainObjectFor, isRealmSafePlainObject } from './realmSafePl
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
-export const ST_SCORE_RENDERER_REVIEWED_REVISION = 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a'
+export const ST_SCORE_RENDERER_REVIEWED_REVISION = '3955250a0a1407d3a13de5f72b106b5234db10b6'
 export const SCORE_VIEW_MAX_MUSICXML_BYTES = 5 * 1024 * 1024
 export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
 export const SCORE_RENDER_MISS_REASONS = Object.freeze([
@@ -238,7 +238,7 @@ export async function highlightScoreNote(host, target) {
   return host.highlight(payload)
 }
 
-export async function clearScoreHighlights(host) {
+export async function highlightScoreMeasure(host, target) {\n  if (!host || typeof host.highlightMeasure !== 'function') {\n    throw new TypeError('ST score renderer measure highlight runtime bağlı değil.')\n  }\n  const validated = validateScoreCursorTarget(target)\n  const hostTarget = createRealmPlainObjectFor(host, validated)\n  const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'st-score-suspicious-measure' })\n  return host.highlightMeasure(payload)\n}\n\nexport async function clearScoreMeasureHighlights(host) {\n  if (!host || typeof host.clearMeasureHighlights !== 'function') return false\n  await host.clearMeasureHighlights()\n  return true\n}\n\nexport async function clearScoreHighlights(host) {
   if (!host || typeof host.clearHighlights !== 'function') return false
   await host.clearHighlights()
   return true
