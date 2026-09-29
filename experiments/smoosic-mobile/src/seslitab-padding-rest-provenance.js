@@ -159,8 +159,9 @@ function createSmoosicPaddingRestTracker(SmoMeasure) {
       if (Number(candidate.tickCount) !== Number(record.durationTicks)) continue
       if (!matchesContext(previous, record.previousContext)) continue
       if (!matchesContext(next, record.nextContext)) continue
-      if (authorized.size) {
-        throw new Error('Retired padding rest cannot be restored while a structural duration action is active')
+      const previousIdentity = previous ? identity(previous) : ''
+      if (previousIdentity && authorized.has(previousIdentity)) {
+        throw new Error('Retired padding rest cannot be restored while its duration action is active')
       }
       const restoredIdentity = identity(candidate)
       if ([...captured.values()].some((value) => value.noteIdentity === restoredIdentity)) {
