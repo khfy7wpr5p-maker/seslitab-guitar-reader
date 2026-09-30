@@ -361,20 +361,7 @@ function createSmoosicCorrectionOverlayManager({
       seen.add(key)
     }
 
-    const view = getView()
-    if (
-      typeof view?.renderer?.updatePromise !==
-        'function'
-    ) {
-      return immutableResult(
-        false,
-        0,
-        imported.sourceHash,
-      )
-    }
-
     try {
-      await view.renderer.updatePromise()
       for (const target of payload.targets) {
         const geometry =
           measureGeometry(target.measureIndex)
