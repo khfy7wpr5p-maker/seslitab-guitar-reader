@@ -205,14 +205,14 @@ async function runRuntimeUnavailableProof() {
 }
 
 async function armForgedManifest(session, mode) {
-  return session.evaluate(\`(() => {
+  return session.evaluate(`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
     const frameWindow = frame?.contentWindow;
     const frameDocument = frame?.contentDocument;
     if (!frameWindow || !frameDocument?.body) return false;
 
     if (!frameWindow.__CE_BRIDGE_FORGE_HANDLER__) {
-      const sourceXml = \${JSON.stringify(SOURCE_XML)};
+      const sourceXml = ${JSON.stringify(SOURCE_XML)};
       const installer = frameDocument.createElement('script');
       installer.textContent = '(' + function installForgedReplyListener(sourceXml) {
         const handler = (event) => {
@@ -274,13 +274,13 @@ async function armForgedManifest(session, mode) {
       if (typeof frameWindow.__CE_BRIDGE_FORGE_HANDLER__ !== 'function') return false;
     }
 
-    frameWindow.__CE_BRIDGE_FORGE_MODE__ = \${JSON.stringify(mode)};
+    frameWindow.__CE_BRIDGE_FORGE_MODE__ = ${JSON.stringify(mode)};
     return true;
-  })()\`)
+  })()`)
 }
 
 async function restoreForgedManifest(session) {
-  await session.evaluate(\`(() => {
+  await session.evaluate(`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
     const frameWindow = frame?.contentWindow;
     if (frameWindow?.__CE_BRIDGE_FORGE_HANDLER__) {
@@ -289,7 +289,7 @@ async function restoreForgedManifest(session) {
     }
     if (frameWindow) delete frameWindow.__CE_BRIDGE_FORGE_MODE__;
     return true;
-  })()\`)
+  })()`)
 }
 
 async function runMainProof() {
