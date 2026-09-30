@@ -328,6 +328,7 @@ test('SES-120 protected CI requires the real bundled Smoosic overlay browser pro
 
   assert.match(script, /createS14CdpProofSession/)
   assert.match(script, /seslitab-correction-overlay/)
+  assert.match(script, /vf-seslitab-correction-overlay/)
   assert.match(script, /#dc2626/)
   assert.match(script, /exactMeasureIndex:\s*1/)
   assert.match(script, /overlayCount:\s*0/)
