@@ -1,0 +1,164 @@
+name: Production Gate
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: production-gate-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  exact-main-production-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Reject non-push CI triggers
+        if: ${{ github.event.workflow_run.event != 'push' }}
+        run: |
+          echo "Production Gate requires a CI push run on main."
+          exit 1
+
+      - name: Checkout exact merged main revision
+        if: ${{ github.event.workflow_run.event == 'push' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        if: ${{ github.event.workflow_run.event == 'push' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify exact-main CI and Regression Quality evidence
+        if: ${{ github.event.workflow_run.event == 'push' }}
+        uses: actions/github-script@v8
+        env:
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('node:fs')
+            const path = require('node:path')
+            const { pathToFileURL } = require('node:url')
+
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const repository = `${owner}/${repo}`
+            const triggerRunId = Number(process.env.TRIGGER_RUN_ID)
+            const triggerHeadSha = String(process.env.TRIGGER_HEAD_SHA || '').toLowerCase()
+
+            if (!Number.isInteger(triggerRunId) || triggerRunId <= 0) {
+              throw new Error('production-gate-trigger-run-id-invalid')
+            }
+
+            const moduleUrl = pathToFileURL(
+              path.join(
+                process.env.GITHUB_WORKSPACE,
+                'scripts',
+                'postMergeProductionGate.js',
+              ),
+            ).href
+            const { evaluatePostMergeProductionGate } = await import(moduleUrl)
+
+            const { data: triggerRun } =
+              await github.rest.actions.getWorkflowRun({
+                owner,
+                repo,
+                run_id: triggerRunId,
+              })
+
+            if (String(triggerRun.head_sha || '').toLowerCase() !== triggerHeadSha) {
+              throw new Error('production-gate-trigger-sha-drift')
+            }
+            if (triggerRun.run_attempt !== 1) {
+              throw new Error('production-gate-ci-first-attempt-required')
+            }
+
+            const retryable = new Set([
+              'production-gate-regression-missing',
+              'production-gate-regression-pending',
+            ])
+
+            let attestation = null
+            let lastRetryableError = null
+
+            for (let attempt = 0; attempt < 60; attempt += 1) {
+              const { data: mainBranch } = await github.rest.repos.getBranch({
+                owner,
+                repo,
+                branch: 'main',
+              })
+              const currentMainSha =
+                String(mainBranch.commit.sha || '').toLowerCase()
+
+              const { data: runs } =
+                await github.rest.actions.listWorkflowRunsForRepo({
+                  owner,
+                  repo,
+                  head_sha: triggerHeadSha,
+                  event: 'push',
+                  per_page: 100,
+                })
+
+              const regressionRuns = (runs.workflow_runs || [])
+                .filter((run) => run.name === 'Regression Quality')
+
+              try {
+                attestation = evaluatePostMergeProductionGate({
+                  repository,
+                  triggerRun,
+                  regressionRuns,
+                  currentMainSha,
+                  verifiedAt: new Date().toISOString(),
+                })
+                break
+              } catch (error) {
+                if (!retryable.has(error?.message)) {
+                  throw error
+                }
+                lastRetryableError = error
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, 10000))
+            }
+
+            if (!attestation) {
+              throw new Error(
+                `production-gate-regression-timeout:${lastRetryableError?.message || 'unknown'}`,
+              )
+            }
+
+            const outputDir = path.join(
+              process.env.GITHUB_WORKSPACE,
+              'artifacts',
+            )
+            fs.mkdirSync(outputDir, { recursive: true })
+            fs.writeFileSync(
+              path.join(outputDir, 'production-gate.json'),
+              `${JSON.stringify(attestation, null, 2)}\n`,
+              { encoding: 'utf8', mode: 0o600 },
+            )
+
+            core.info(
+              `Production Gate PASS for ${attestation.headSha}`,
+            )
+
+      - name: Upload production-gate attestation
+        if: ${{ github.event.workflow_run.event == 'push' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-gate-attestation-${{ github.event.workflow_run.head_sha }}
+          path: artifacts/production-gate.json
+          if-no-files-found: error
+          retention-days: 30

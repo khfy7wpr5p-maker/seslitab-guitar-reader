@@ -76,6 +76,26 @@ A real production apply requires **all** of the following and separate human app
 
 The three provisioning gates are deliberately separate so a dry-run authorization cannot silently become a write authorization.
 
+## Exact-main post-merge Production Gate
+
+Every production-changing operation must stop unless the exact current `main` revision has a successful **Production Gate** attestation.
+
+The required order is:
+
+`PR GREEN → merge → exact main CI + Regression Quality GREEN on first attempt → Production Gate PASS → separate human approval → production operation`
+
+The Production Gate is a technical prerequisite, not production authorization. A PASS does not itself authorize Render changes, Firebase provisioning/writes, environment-flag changes, deploy/restart, teacher-write activation, or OMR resume.
+
+The attestation must prove all of the following for the same exact current `main` SHA:
+
+- the triggering `CI` run is a `push` run on `main`;
+- CI completed successfully on `run_attempt=1`;
+- the exact-SHA `Regression Quality` push run on `main` completed successfully on `run_attempt=1`;
+- the repository's current `main` SHA still equals the attested SHA;
+- the gate artifact is `production-gate-attestation-<sha>` and contains `artifacts/production-gate.json`.
+
+Missing, pending, failed, retried, stale-SHA, wrong-branch, or wrong-event evidence is fail-closed. Do not treat a successful rerun as equivalent to a first-attempt production gate. Investigate and create a newly verified merge when production admission is required.
+
 ## Activation sequence
 
 Do not execute this sequence during Aşama 1. It is the Aşama 2 checklist after explicit user approval.
