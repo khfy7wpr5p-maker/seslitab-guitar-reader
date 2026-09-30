@@ -1087,7 +1087,6 @@ async function handleSesliTabCorrectionOverlayRequest(event) {
           || !Number.isSafeInteger(target.measureIndex)
           || target.measureIndex < 0) return;
       }
-      await awaitEditorStable();
       result = await activeCorrectionOverlayManager.replace({
         sourceRevision: message.sourceRevision,
         sourceHash: message.sourceHash,
