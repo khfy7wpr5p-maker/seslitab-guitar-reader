@@ -211,6 +211,19 @@ async function armForgedManifest(session, mode) {
     const frameDocument = frame?.contentDocument;
     if (!frameWindow || !frameDocument?.body) return false;
 
+    if (!window.__CE_BRIDGE_DELIVER_FORGED__) {
+      window.__CE_BRIDGE_DELIVER_FORGED__ = (payload) => {
+        const activeFrame = document.getElementById('smoosic-editor-frame');
+        if (!activeFrame?.contentWindow) return false;
+        window.dispatchEvent(new MessageEvent('message', {
+          data: payload,
+          origin: location.origin,
+          source: activeFrame.contentWindow,
+        }));
+        return true;
+      };
+    }
+
     if (!frameWindow.__CE_BRIDGE_FORGE_HANDLER__) {
       const sourceXml = ${JSON.stringify(SOURCE_XML)};
       const installer = frameDocument.createElement('script');
@@ -219,8 +232,6 @@ async function armForgedManifest(session, mode) {
           const message = event.data;
           const mode = window.__CE_BRIDGE_FORGE_MODE__;
           if (!mode || message?.type !== 'seslitab:smoosic-export-request') return;
-
-          event.stopImmediatePropagation();
 
           const malformed = { malformed: true };
           const stale = {
@@ -262,7 +273,13 @@ async function armForgedManifest(session, mode) {
             semanticOk: true,
           };
 
-          parent.postMessage(payload, location.origin);
+          const delivered = parent.__CE_BRIDGE_DELIVER_FORGED__?.(payload) === true;
+          parent.__CE_BRIDGE_FORGE_DEBUG__ = {
+            mode,
+            requestId: message.requestId,
+            sourceRevision: message.sourceRevision,
+            delivered,
+          };
         };
 
         window.__CE_BRIDGE_FORGE_HANDLER__ = handler;
@@ -288,6 +305,8 @@ async function restoreForgedManifest(session) {
       delete frameWindow.__CE_BRIDGE_FORGE_HANDLER__;
     }
     if (frameWindow) delete frameWindow.__CE_BRIDGE_FORGE_MODE__;
+    delete window.__CE_BRIDGE_DELIVER_FORGED__;
+    delete window.__CE_BRIDGE_FORGE_DEBUG__;
     return true;
   })()`)
 }
