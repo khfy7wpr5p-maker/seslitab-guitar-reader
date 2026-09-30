@@ -85,6 +85,26 @@ async function main() {
       'SesliTab init',
     )
 
+    await evaluate(`(() => {
+      window.__ses120OverlayResults = [];
+      window.addEventListener('message', (event) => {
+        const data = event?.data;
+        if (data?.type === 'seslitab:smoosic-correction-overlay-result') {
+          window.__ses120OverlayResults.push({
+            origin: event.origin,
+            version: data.version,
+            requestId: data.requestId,
+            sourceRevision: data.sourceRevision,
+            ok: data.ok,
+            appliedCount: data.appliedCount,
+            sourceHash: data.sourceHash,
+            error: data.error || null,
+          });
+        }
+      });
+      return true;
+    })()`)
+
     await openSource(session, SUSPICIOUS_XML, 'ses-120-suspicious.musicxml')
     const sourceBefore = await evaluate(
       `String(document.getElementById('xml-output')?.textContent || '')`,
@@ -94,6 +114,18 @@ async function main() {
     }
 
     await openSmoosic(session, 'ses-120-suspicious.musicxml')
+
+    const acknowledgement = await waitFor(
+      `window.__ses120OverlayResults?.length
+        ? window.__ses120OverlayResults[window.__ses120OverlayResults.length - 1]
+        : null`,
+      'Smoosic correction overlay acknowledgement',
+    )
+    if (acknowledgement.ok !== true || acknowledgement.appliedCount < 1) {
+      throw new Error(
+        `Smoosic correction overlay rejected: ${JSON.stringify(acknowledgement)}`,
+      )
+    }
 
     const overlay = await waitFor(
       `(() => {
@@ -139,6 +171,7 @@ async function main() {
     evidence.suspicious = {
       exactPartId: 'P1',
       exactMeasureIndex: 1,
+      acknowledgement,
       overlay,
       chrome,
     }
