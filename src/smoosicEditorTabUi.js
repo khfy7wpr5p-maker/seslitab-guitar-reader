@@ -463,7 +463,13 @@ export async function syncSmoosicCorrectionOverlays(
       && state.sourceRevision === sourceRevision
     )
   } catch {
-    await clearSmoosicCorrectionOverlay(root)
+    if (
+      state.sourceRevision === sourceRevision
+      && !sourceTransitionPending(root)
+      && !state.pendingCorrectionOverlay
+    ) {
+      await clearSmoosicCorrectionOverlay(root)
+    }
     return false
   }
 }
@@ -832,7 +838,7 @@ async function loadSourceIntoEditor(root, frame) {
   if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
     frame.hidden = false
     setHostStatus(root, '', 'ready')
-    await syncSmoosicCorrectionOverlays(
+    void syncSmoosicCorrectionOverlays(
       root,
       frame,
       xml,
@@ -871,7 +877,7 @@ async function loadSourceIntoEditor(root, frame) {
   state.lastSourceXml = xml
   state.lastSourceName = fileName
   setHostStatus(root, '', 'ready')
-  await syncSmoosicCorrectionOverlays(
+  void syncSmoosicCorrectionOverlays(
     root,
     frame,
     xml,
