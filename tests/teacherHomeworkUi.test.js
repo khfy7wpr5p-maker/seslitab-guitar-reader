@@ -121,8 +121,10 @@ test('SES-119 mounts one Ödev Gönder surface with Nota/Akor modes, one roster 
     ['student-a', 'student-b'],
   )
   assert.deepEqual(
-    roster.map(
-      (node) => node.parentElement.dataset.studentId,
+    host.querySelectorAll(
+      '.teacher-homework__student',
+    ).map(
+      (row) => row.dataset.studentId,
     ),
     ['student-a', 'student-b'],
   )
