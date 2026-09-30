@@ -81,6 +81,9 @@ jobs:
             if (String(triggerRun.head_sha || '').toLowerCase() !== triggerHeadSha) {
               throw new Error('production-gate-trigger-sha-drift')
             }
+            if (triggerRun.run_attempt !== 1) {
+              throw new Error('production-gate-ci-first-attempt-required')
+            }
 
             const retryable = new Set([
               'production-gate-regression-missing',
