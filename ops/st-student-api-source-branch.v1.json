@@ -73,6 +73,7 @@
     "requiresExplicitUserApproval": true,
     "requiresFreshRead": true,
     "requiresExactMainProductionGate": true,
+    "requiresAutoDeployDisabledBeforeBranchSwitch": true,
     "preserveServiceId": "srv-darsntfavr4c7381t9f0",
     "preserveUrl": "https://st-student-api.onrender.com",
     "preserveStartCommand": "node backend/delivery/pilot/server.js",
