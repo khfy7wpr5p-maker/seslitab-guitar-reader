@@ -44,6 +44,20 @@ jobs:
           cp package.json artifacts/package.candidate.json
           cp package-lock.json artifacts/package-lock.candidate.json
 
+      - name: Inspect compatible registry candidates
+        shell: bash
+        run: |
+          echo "firebase-admin latest:"
+          npm view firebase-admin version optionalDependencies --json
+          echo "@google-cloud/storage latest:"
+          npm view @google-cloud/storage version dependencies.gaxios --json
+          echo "firebase-tools latest:"
+          npm view firebase-tools version dependencies.gaxios dependencies.@google-cloud/pubsub --json
+          echo "@google-cloud/pubsub latest:"
+          npm view @google-cloud/pubsub version dependencies.@opentelemetry/core --json
+          echo "outdated:"
+          npm outdated --json || true
+
       - name: Install candidate dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
 
