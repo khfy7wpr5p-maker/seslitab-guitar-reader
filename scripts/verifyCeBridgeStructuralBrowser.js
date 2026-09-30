@@ -204,92 +204,118 @@ async function runRuntimeUnavailableProof() {
   }
 }
 
-async function armForgedManifest(session, mode) {
-  return session.evaluate(`(() => {
+async function armForgedManifest(session) {
+  const armed = await session.evaluate(`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
-    if (!frame?.contentWindow) return false;
+    const editorWin = frame?.contentWindow;
+    if (!editorWin) return false;
 
-    if (!window.__CE_BRIDGE_FORGE_HANDLER__) {
-      window.__CE_BRIDGE_FORGE_HANDLER__ = (event) => {
-        if (window.__CE_BRIDGE_FORGE_REPLAYING__) return;
-
-        const activeFrame = document.getElementById('smoosic-editor-frame');
-        const message = event.data;
-        const mode = window.__CE_BRIDGE_FORGE_MODE__;
-        if (
-          !mode
-          || event.source !== activeFrame?.contentWindow
-          || event.origin !== location.origin
-          || !message
-          || typeof message !== 'object'
-          || message.type !== 'seslitab:smoosic-export-result'
-          || message.version !== 2
-        ) {
-          return;
-        }
-
-        const malformed = { malformed: true };
-        const stale = {
-          version: 1,
-          sourceRevision: Number(message.sourceRevision) + 1,
-          editorSessionId: 'forged-session',
-          actionId: 'forged-apply',
-          operations: [{
-            order: 0,
-            operation: 'CHANGE_EVENT_DURATION',
-            rawNoteOrdinal: 0,
-            staffIndex: 0,
-            measureIndex: 0,
-            voiceIndex: 0,
-            noteIndex: 0,
-            noteIdentity: 'forged-note',
-            before: 1,
-            after: 2,
-          }],
-          baseMappingFingerprint: '0000000000000000',
-          createdFromExplicitTeacherApply: true,
-        };
-        const payload = {
-          ...message,
-          structuralActionManifest: mode === 'stale' ? stale : malformed,
-        };
-
-        event.stopImmediatePropagation();
-        window.__CE_BRIDGE_FORGE_DEBUG__ = {
-          mode,
+    if (!window.__CE_BRIDGE_ORIGINAL_FRAME_POST__) {
+      window.__CE_BRIDGE_ORIGINAL_FRAME_POST__ = editorWin.postMessage.bind(editorWin);
+    }
+    const original = window.__CE_BRIDGE_ORIGINAL_FRAME_POST__;
+    window.__CE_BRIDGE_PENDING_REQUEST__ = null;
+    editorWin.postMessage = function(message, targetOrigin, transfer) {
+      if (message?.type === 'seslitab:smoosic-export-request') {
+        window.__CE_BRIDGE_PENDING_REQUEST__ = {
           requestId: message.requestId,
           sourceRevision: message.sourceRevision,
-          intercepted: true,
         };
-
-        window.__CE_BRIDGE_FORGE_REPLAYING__ = true;
-        try {
-          window.dispatchEvent(new MessageEvent('message', {
-            data: payload,
-            origin: event.origin,
-            source: activeFrame.contentWindow,
-          }));
-        } finally {
-          window.__CE_BRIDGE_FORGE_REPLAYING__ = false;
-        }
-      };
-      window.addEventListener('message', window.__CE_BRIDGE_FORGE_HANDLER__, true);
-    }
-
-    window.__CE_BRIDGE_FORGE_MODE__ = ${JSON.stringify(mode)};
+        return;
+      }
+      return original(message, targetOrigin, transfer);
+    };
     return true;
   })()`)
+  if (!armed) return null
+  return true
+}
+
+async function capturedWritebackRequest(session, label) {
+  try {
+    return await session.waitFor(
+      `window.__CE_BRIDGE_PENDING_REQUEST__ || null`,
+      label,
+      12000,
+    )
+  } catch (error) {
+    const diagnostic = await session.evaluate(`(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      return {
+        hostStatus: String(document.getElementById('smoosic-editor-host-status')?.textContent || ''),
+        editorStatus: String(frame?.contentDocument?.getElementById('poc-status')?.textContent || ''),
+        applyDisabled: Boolean(document.getElementById('smoosic-apply-btn')?.disabled),
+        hasOriginalPost: typeof window.__CE_BRIDGE_ORIGINAL_FRAME_POST__ === 'function',
+        hasCapturedRequest: Boolean(window.__CE_BRIDGE_PENDING_REQUEST__),
+      };
+    })()`)
+    throw new Error(`${error?.message ?? error}; diagnostic=${JSON.stringify(diagnostic)}`)
+  }
+}
+
+async function deliverForgedManifest(session, request, mode) {
+  const delivered = await session.evaluate(`(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    if (!frame?.contentDocument?.body) return false;
+
+    const malformed = { malformed: true };
+    const stale = {
+      version: 1,
+      sourceRevision: ${Number(request.sourceRevision) + 1},
+      editorSessionId: 'forged-session',
+      actionId: 'forged-apply',
+      operations: [{
+        order: 0,
+        operation: 'CHANGE_EVENT_DURATION',
+        rawNoteOrdinal: 0,
+        staffIndex: 0,
+        measureIndex: 0,
+        voiceIndex: 0,
+        noteIndex: 0,
+        noteIdentity: 'forged-note',
+        before: 1,
+        after: 2,
+      }],
+      baseMappingFingerprint: '0000000000000000',
+      createdFromExplicitTeacherApply: true,
+    };
+    const payload = {
+      type: 'seslitab:smoosic-export-result',
+      version: 2,
+      requestId: ${JSON.stringify(request.requestId)},
+      sourceRevision: ${Number(request.sourceRevision)},
+      fileName: 'forged-structural.musicxml',
+      musicXml: ${JSON.stringify(SOURCE_XML)},
+      paddingRestProvenance: {
+        version: 1,
+        sourceRevision: ${Number(request.sourceRevision)},
+        rawNoteCount: 2,
+        entries: [],
+      },
+      structuralActionManifest: ${JSON.stringify(mode)} === 'stale' ? stale : malformed,
+      roundTripOk: true,
+      shapeOk: true,
+      semanticOk: true,
+    };
+    const script = frame.contentDocument.createElement('script');
+    script.textContent = 'parent.postMessage('
+      + JSON.stringify(payload).replace(/</g, '\\\\u003c')
+      + ', location.origin);';
+    frame.contentDocument.body.appendChild(script);
+    script.remove();
+    return true;
+  })()`)
+  if (!delivered) throw new Error(`Could not deliver ${mode} manifest proof.`)
 }
 
 async function restoreForgedManifest(session) {
   await session.evaluate(`(() => {
-    if (window.__CE_BRIDGE_FORGE_HANDLER__) {
-      window.removeEventListener('message', window.__CE_BRIDGE_FORGE_HANDLER__, true);
-      delete window.__CE_BRIDGE_FORGE_HANDLER__;
+    const frame = document.getElementById('smoosic-editor-frame');
+    if (window.__CE_BRIDGE_ORIGINAL_FRAME_POST__ && frame?.contentWindow) {
+      frame.contentWindow.postMessage = window.__CE_BRIDGE_ORIGINAL_FRAME_POST__;
     }
-    delete window.__CE_BRIDGE_FORGE_MODE__;
-    delete window.__CE_BRIDGE_FORGE_REPLAYING__;
-    delete window.__CE_BRIDGE_FORGE_DEBUG__;
+    delete window.__CE_BRIDGE_ORIGINAL_FRAME_POST__;
+    delete window.__CE_BRIDGE_PENDING_REQUEST__;
     return true;
   })()`)
 }
@@ -392,25 +418,31 @@ async function runMainProof() {
     evidence.conformance = { status: conformanceStatus, failure: EXPECTED_FAILURES.conformance }
 
     await openSource(session, 'ce-struct-provenance.musicxml')
-    if (!await armForgedManifest(session, 'malformed')) throw new Error('Could not arm malformed manifest proof.')
+    if (!await armForgedManifest(session)) throw new Error('Could not arm malformed manifest proof.')
     await clickApply(session)
+    const malformedRequest = await capturedWritebackRequest(session, 'captured malformed provenance request')
+    await deliverForgedManifest(session, malformedRequest, 'malformed')
     const malformedStatus = await waitFor(
       `(() => {
         const text = String(document.getElementById('smoosic-editor-host-status')?.textContent || '');
         return text.includes('Düzenleme kanıtı doğrulanamadı') ? text : '';
       })()`,
       'malformed action provenance',
+      16000,
     )
     evidence.malformed = { status: malformedStatus }
 
-    await armForgedManifest(session, 'stale')
+    if (!await armForgedManifest(session)) throw new Error('Could not arm stale manifest proof.')
     await clickApply(session)
+    const staleRequest = await capturedWritebackRequest(session, 'captured stale provenance request')
+    await deliverForgedManifest(session, staleRequest, 'stale')
     const staleStatus = await waitFor(
       `(() => {
         const text = String(document.getElementById('smoosic-editor-host-status')?.textContent || '');
         return text.includes('Kaynak değişti') ? text : '';
       })()`,
       'stale action provenance',
+      16000,
     )
     const staleVisible = await visibleFirstNote(session)
     if (staleVisible.duration !== 1 || staleVisible.step !== 'C') {
