@@ -29,6 +29,10 @@ import {
   assertStrictInputObject,
   normalizeRequiredTimestamp,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
+import {
+  SECURE_DELIVERY_PREPARE_BATCH_MAX_BYTES,
+  assertSecureDeliveryPrepareBatchBytes,
+} from '../../../src/services/secureDeliveryPayloadBoundary.js'
 
 const ITEM_FIELDS = Object.freeze([
   'assignment',
@@ -130,6 +134,8 @@ export function createPreparedAssignmentService({
   authorization,
   store,
   now,
+  maxPrepareBatchBytes =
+    SECURE_DELIVERY_PREPARE_BATCH_MAX_BYTES,
 } = {}) {
   if (
     !authorization ||
@@ -165,6 +171,13 @@ export function createPreparedAssignmentService({
         'prepared assignment batch maximum is 40.',
       )
     }
+
+    assertSecureDeliveryPrepareBatchBytes(
+      items,
+      {
+        maxBytes: maxPrepareBatchBytes,
+      },
+    )
 
     const principal =
       await authorization.resolvePrincipal(
