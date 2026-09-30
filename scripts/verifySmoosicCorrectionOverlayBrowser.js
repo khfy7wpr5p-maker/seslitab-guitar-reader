@@ -126,8 +126,14 @@ async function main() {
       'Smoosic correction overlay replace acknowledgement',
     )
     if (acknowledgement.ok !== true || acknowledgement.appliedCount < 1) {
+      const bindError = await evaluate(`String(
+        document.getElementById('smoosic-editor-frame')
+          ?.contentDocument
+          ?.getElementById('poc-status')
+          ?.getAttribute('data-correction-overlay-bind-error') || ''
+      )`)
       throw new Error(
-        `Smoosic correction overlay rejected: ${JSON.stringify(acknowledgement)}`,
+        `Smoosic correction overlay rejected: ${JSON.stringify(acknowledgement)}; bindError=${bindError || 'none'}`,
       )
     }
 
