@@ -116,10 +116,14 @@ async function main() {
     await openSmoosic(session, 'ses-120-suspicious.musicxml')
 
     const acknowledgement = await waitFor(
-      `window.__ses120OverlayResults?.length
-        ? window.__ses120OverlayResults[window.__ses120OverlayResults.length - 1]
-        : null`,
-      'Smoosic correction overlay acknowledgement',
+      `(() => {
+        const rows = window.__ses120OverlayResults || [];
+        return rows.find((row) =>
+          typeof row?.requestId === 'string'
+          && !row.requestId.includes('-clear-')
+        ) || null;
+      })()`,
+      'Smoosic correction overlay replace acknowledgement',
     )
     if (acknowledgement.ok !== true || acknowledgement.appliedCount < 1) {
       throw new Error(
@@ -171,6 +175,7 @@ async function main() {
     evidence.suspicious = {
       exactPartId: 'P1',
       exactMeasureIndex: 1,
+      acknowledgements: await evaluate('window.__ses120OverlayResults'),
       acknowledgement,
       overlay,
       chrome,
