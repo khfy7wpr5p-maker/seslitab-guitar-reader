@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
@@ -18,6 +19,25 @@ function readyComposition({
     ...extra,
   })
 }
+
+test('TD-PROD-01 mount seam contains no privileged provider browser authority or legacy assignment UI imports', () => {
+  const source = readFileSync(
+    new URL(
+      '../src/teacherAssignmentProductionMount.js',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+
+  assert.doesNotMatch(
+    source,
+    /firebase-admin|from\s+['"]firebase(?:\/|['"])|firestore|localStorage|sessionStorage|indexedDB|Authorization\s*:|Bearer\s|student-app|st-student-app/i,
+  )
+  assert.doesNotMatch(
+    source,
+    /teacherScoreAssignmentUi|mountTeacherScoreAssignmentUi|teacherChordBoardAssignmentUi|mountTeacherChordBoardAssignmentUi/i,
+  )
+})
 
 test('TD-PROD-01 stays unavailable when production composition is absent', () => {
   const result =
