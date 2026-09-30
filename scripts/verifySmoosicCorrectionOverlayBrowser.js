@@ -126,8 +126,17 @@ async function main() {
       'Smoosic correction overlay replace acknowledgement',
     )
     if (acknowledgement.ok !== true || acknowledgement.appliedCount < 1) {
+      const importDebug = await evaluate(`(() => {
+        const status = document.getElementById('smoosic-editor-frame')
+          ?.contentDocument?.getElementById('poc-status');
+        return {
+          importDebug: status?.getAttribute('data-ses120-import-debug') || null,
+          bindInputRevision: status?.getAttribute('data-ses120-bind-input-revision') || null,
+          bindResult: status?.getAttribute('data-ses120-bind-result') || null,
+        };
+      })()`)
       throw new Error(
-        `Smoosic correction overlay rejected: ${JSON.stringify(acknowledgement)}`,
+        `Smoosic correction overlay rejected: ${JSON.stringify(acknowledgement)}; importDebug=${JSON.stringify(importDebug)}`,
       )
     }
 
