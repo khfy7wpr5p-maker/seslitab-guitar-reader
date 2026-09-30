@@ -93,14 +93,14 @@ after(async () => {
   rmSync(TMP_STORAGE, { recursive: true, force: true })
 })
 
-test('Multer 2.2.0 and strict multipart limits are pinned in production configuration', () => {
+test('Multer 2.4.0 and strict multipart limits are pinned in production configuration', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const packageLock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'))
   const serverSource = readFileSync(new URL('../backend/server.js', import.meta.url), 'utf8')
 
-  assert.equal(packageJson.dependencies.multer, '2.2.0')
-  assert.equal(packageLock.packages[''].dependencies.multer, '2.2.0')
-  assert.equal(packageLock.packages['node_modules/multer'].version, '2.2.0')
+  assert.equal(packageJson.dependencies.multer, '2.4.0')
+  assert.equal(packageLock.packages[''].dependencies.multer, '2.4.0')
+  assert.equal(packageLock.packages['node_modules/multer'].version, '2.4.0')
   assert.match(serverSource, /fileSize:\s*GATEWAY_CONFIG\.maxUploadSizeBytes/)
   assert.match(serverSource, /files:\s*1/)
   assert.match(serverSource, /fields:\s*1/)

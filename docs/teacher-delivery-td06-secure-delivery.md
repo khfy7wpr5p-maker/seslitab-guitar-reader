@@ -160,7 +160,9 @@ Reviewed exact versions:
 - `firebase-admin@14.4.0`
 - `firebase@12.19.0`
 - `@firebase/rules-unit-testing@5.0.2`
-- `firebase-tools@15.30.2`
+- `firebase-tools@15.32.0`
+
+TD-PROD-15 additionally applies the transitive npm override range `@grpc/grpc-js@^1.13.6`; the qualified lockfile currently resolves `1.14.5`. This preserves the audited `1.13.6` security floor without pinning the minimum fixed release. This dependency qualification does not activate Firebase production access.
 
 ## Human Gate B — still closed
 
