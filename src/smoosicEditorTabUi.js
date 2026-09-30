@@ -784,22 +784,18 @@ function makeIframeFile(frame, xml, fileName) {
 
 function createIframeImportEvent(frame, sourceRevision) {
   const win = frame.contentWindow
-  if (!win?.Event) throw new Error('Editör olay API’si kullanılamıyor.')
+  if (!win?.CustomEvent) throw new Error('Editör olay API’si kullanılamıyor.')
   if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0) {
     throw new Error('Nota editörü kaynak sürümü geçersiz.')
   }
-  const event = new win.Event('change', { bubbles: true })
-  Object.defineProperty(event, 'seslitabImportProvenance', {
-    configurable: false,
-    enumerable: false,
-    writable: false,
-    value: Object.freeze({
+  return new win.CustomEvent('change', {
+    bubbles: true,
+    detail: Object.freeze({
       contract: 'SESLITAB_SMOOSIC_IMPORT_V1',
       version: 1,
       sourceRevision,
     }),
   })
-  return event
 }
 
 function assignInputFile(frame, input, file) {
