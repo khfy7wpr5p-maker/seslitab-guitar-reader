@@ -135,11 +135,11 @@ async function main() {
       `(() => {
         const frame = document.getElementById('smoosic-editor-frame');
         const doc = frame?.contentDocument;
-        const group = doc?.querySelector('g.seslitab-correction-overlay.seslitab-correction-measure');
+        const group = doc?.querySelector('g.vf-seslitab-correction-overlay.seslitab-correction-measure');
         const rect = group?.querySelector('rect');
         if (!group || !rect) return null;
         return {
-          groups: doc.querySelectorAll('g.seslitab-correction-overlay.seslitab-correction-measure').length,
+          groups: doc.querySelectorAll('g.vf-seslitab-correction-overlay.seslitab-correction-measure').length,
           stroke: String(rect.getAttribute('stroke') || ''),
           strokeWidth: String(rect.getAttribute('stroke-width') || ''),
           fill: String(rect.getAttribute('fill') || ''),
@@ -187,7 +187,7 @@ async function main() {
     await waitFor(
       `(() => {
         const frame = document.getElementById('smoosic-editor-frame');
-        return frame?.contentDocument?.querySelectorAll('g.seslitab-correction-overlay.seslitab-correction-measure').length === 0;
+        return frame?.contentDocument?.querySelectorAll('g.vf-seslitab-correction-overlay.seslitab-correction-measure').length === 0;
       })()`,
       'stale Smoosic overlay clear',
     )
