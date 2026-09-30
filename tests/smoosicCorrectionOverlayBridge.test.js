@@ -184,7 +184,7 @@ test('SES-120 presentation sync cannot block Smoosic source transfer', () => {
 })
 
 
-test('SES-120 sourceRevision provenance is event-bound, never a custom File property', () => {
+test('SES-120 sourceRevision provenance uses cross-realm CustomEvent detail and never a custom File property', () => {
   const hostSource = readFileSync(
     new URL('../src/smoosicEditorTabUi.js', import.meta.url),
     'utf8',
@@ -194,10 +194,13 @@ test('SES-120 sourceRevision provenance is event-bound, never a custom File prop
     'utf8',
   )
 
+  assert.match(hostSource, /new win\.CustomEvent\(['"]change['"]/)
+  assert.match(hostSource, /detail:\s*Object\.freeze\(/)
   assert.match(hostSource, /SESLITAB_SMOOSIC_IMPORT_V1/)
-  assert.match(hostSource, /seslitabImportProvenance/)
+  assert.match(iframeSource, /const provenance = event\?\.detail/)
   assert.match(iframeSource, /SESLITAB_SMOOSIC_IMPORT_V1/)
   assert.match(iframeSource, /importedSourceRevision\(event\)/)
+  assert.doesNotMatch(hostSource, /seslitabImportProvenance/)
   assert.doesNotMatch(hostSource, /file\.seslitabSourceRevision/)
   assert.doesNotMatch(iframeSource, /file\?\.seslitabSourceRevision/)
 })
