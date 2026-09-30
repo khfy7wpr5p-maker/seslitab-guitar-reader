@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { MAX_MUSIC_XML_SIZE_BYTES } from '../musicXmlSecurity.js'
+import { SmoosicTestDOMParser, SmoosicTestXMLSerializer } from './support/smoosicXmlDom.js'
 import { parseMusicXmlToNotes } from '../src/services/musicEngine.js'
 import {
   registerPrDProductMusicXml,
@@ -16,6 +17,9 @@ import {
 import {
   createFinalMusicXmlIntake,
 } from '../src/services/finalMusicXmlIntake.js'
+
+globalThis.DOMParser = SmoosicTestDOMParser
+globalThis.XMLSerializer = SmoosicTestXMLSerializer
 
 const SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
