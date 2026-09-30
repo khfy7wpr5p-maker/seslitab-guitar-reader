@@ -43,12 +43,13 @@ The production boundary invokes the composition only after `SECURE_DELIVERY_PROD
 ## Feature flags
 
 - `SECURE_DELIVERY_ENABLED`: enables the isolated Secure Delivery composition.
-- `SECURE_DELIVERY_WRITES_ENABLED`: independently enables teacher preparation/delivery/lifecycle writes.
+- `SECURE_DELIVERY_WRITES_ENABLED`: enables teacher preparation/delivery/lifecycle write routes in the Secure Delivery composition.
+- `SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION`: Task 9 production-only second gate. In production it must be exactly enabled together with `SECURE_DELIVERY_WRITES_ENABLED`; either flag without the other fails closed before Firebase initialization.
 - `STUDENT_DELIVERY_READS_ENABLED`: independently enables Student read endpoints.
 - `SECURE_DELIVERY_PRODUCTION_ACTIVATION`: independent production master gate. Its absence keeps the production server on the unavailable/fail-closed router even if older feature flags are enabled.
 - `SECURE_DELIVERY_FIREBASE_PROJECT_ID`: explicit approved non-emulator project selection required only after the master gate is enabled.
 
-All boolean flags are closed when absent or not exactly `true`. The initial production activation contract requires writes to remain disabled.
+All boolean flags are closed when absent or not exactly `true`. The initial production activation contract remains read-only. Task 9 adds a separately reviewable `TEACHER_WRITES` profile but does not activate it: production teacher writes require both write gates plus the existing master gate and all existing production checks.
 
 ## HTTP contract
 

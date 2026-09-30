@@ -151,7 +151,15 @@ test('SES-15 backend remains fail-closed behind a dedicated production activatio
   )
   assert.match(
     boundary,
-    /read-only-requires-writes-disabled/,
+    /SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION/,
+  )
+  assert.match(
+    boundary,
+    /teacher-writes-activation-required/,
+  )
+  assert.match(
+    boundary,
+    /teacher-writes-activation-requires-writes-enabled/,
   )
   assert.match(
     boundary,

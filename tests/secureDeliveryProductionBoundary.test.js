@@ -79,6 +79,15 @@ function enabledReadOnlyEnv(overrides = {}) {
   }
 }
 
+function enabledTeacherWriteEnv(overrides = {}) {
+  return enabledReadOnlyEnv({
+    SECURE_DELIVERY_WRITES_ENABLED: 'true',
+    SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION:
+      'true',
+    ...overrides,
+  })
+}
+
 test('production boundary stays closed when only legacy Secure Delivery flags are enabled', async () => {
   const calls = []
   const boundary =
@@ -98,7 +107,7 @@ test('production boundary stays closed when only legacy Secure Delivery flags ar
   assert.deepEqual(calls, [])
 })
 
-test('production activation refuses incomplete or write-enabled profiles before Firebase initialization', async () => {
+test('production activation refuses incomplete or mismatched profiles before Firebase initialization', async () => {
   const cases = [
     [
       enabledReadOnlyEnv({
@@ -124,7 +133,14 @@ test('production activation refuses incomplete or write-enabled profiles before 
         SECURE_DELIVERY_WRITES_ENABLED:
           'true',
       }),
-      /read-only|writes-disabled/i,
+      /teacher-writes-activation-required/i,
+    ],
+    [
+      enabledReadOnlyEnv({
+        SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION:
+          'true',
+      }),
+      /teacher-writes-activation-requires-writes-enabled/i,
     ],
     [
       enabledReadOnlyEnv({
@@ -178,6 +194,10 @@ test('explicit read-only production activation passes a non-emulator project and
     boundary.config.writesEnabled,
     false,
   )
+  assert.equal(
+    boundary.productionProfile,
+    'READ_ONLY',
+  )
 
   assert.deepEqual(calls[0], [
     'admin',
@@ -196,6 +216,69 @@ test('explicit read-only production activation passes a non-emulator project and
     calls.some(([name]) => name === 'delete'),
     true,
   )
+})
+
+
+test('explicit teacher-write production profile requires the independent write activation gate and preserves the existing Firebase composition', async () => {
+  const calls = []
+  const env = enabledTeacherWriteEnv()
+  const boundary =
+    await createSecureDeliveryProductionBoundary({
+      env,
+      firebaseFactories: fakeFactories(calls),
+      now: () => '2026-09-30T17:40:00Z',
+      createHistoryEventId: () =>
+        'history-teacher-write-a',
+    })
+
+  assert.equal(boundary.active, true)
+  assert.equal(
+    boundary.productionProfile,
+    'TEACHER_WRITES',
+  )
+  assert.equal(boundary.config.enabled, true)
+  assert.equal(
+    boundary.config.studentReadsEnabled,
+    true,
+  )
+  assert.equal(
+    boundary.config.writesEnabled,
+    true,
+  )
+
+  assert.deepEqual(calls[0], [
+    'admin',
+    {
+      env,
+      projectId:
+        'seslitab-production-example',
+      productionAuthorized: true,
+    },
+  ])
+  assert.equal(calls[1][0], 'token')
+  assert.equal(calls[2][0], 'store')
+
+  await boundary.close()
+  assert.equal(
+    calls.some(([name]) => name === 'delete'),
+    true,
+  )
+})
+
+test('teacher-write flag cannot bypass the independent production master gate', async () => {
+  const calls = []
+  const env = enabledTeacherWriteEnv({
+    SECURE_DELIVERY_PRODUCTION_ACTIVATION:
+      'false',
+  })
+  const boundary =
+    await createSecureDeliveryProductionBoundary({
+      env,
+      firebaseFactories: fakeFactories(calls),
+    })
+
+  assert.equal(boundary.active, false)
+  assert.deepEqual(calls, [])
 })
 
 test('server wiring uses the guarded production boundary instead of mounting unavailable router directly', () => {
