@@ -23,7 +23,6 @@ let applicationInstance = null;
 let activePaddingRestTracker = null;
 let activeStructuralActionTracker = null;
 let activeCorrectionOverlayManager = null;
-let correctionOverlayRefreshTimer = null;
 let editorReady = false;
 let activePlaybackInstrument = 'piano';
 let nativeAudioBridgeInstalled = false;
@@ -263,23 +262,6 @@ function musicXmlPartIds(xml) {
 function importedSourceRevision(file) {
   const value = file?.seslitabSourceRevision;
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
-}
-
-function scheduleCorrectionOverlayRefresh() {
-  if (!activeCorrectionOverlayManager) return;
-  if (correctionOverlayRefreshTimer) {
-    clearTimeout(correctionOverlayRefreshTimer);
-  }
-  correctionOverlayRefreshTimer = setTimeout(async () => {
-    correctionOverlayRefreshTimer = null;
-    try {
-      await awaitEditorStable();
-      await activeCorrectionOverlayManager.refresh();
-    } catch (error) {
-      activeCorrectionOverlayManager.clear();
-      console.warn('Correction overlay yenilenemedi', error);
-    }
-  }, 80);
 }
 
 function stripMusicXmlExtension(name) {
@@ -1232,9 +1214,6 @@ async function boot() {
   wireNativeTransportGuard();
   window.addEventListener('message', handleSesliTabExportRequest);
   window.addEventListener('message', handleSesliTabCorrectionOverlayRequest);
-  document.addEventListener('click', scheduleCorrectionOverlayRefresh, true);
-  document.addEventListener('keyup', scheduleCorrectionOverlayRefresh, true);
-  window.addEventListener('resize', scheduleCorrectionOverlayRefresh);
   updateMetronomeButton();
   setEditorControlsEnabled(false);
   window.addEventListener('error', (event) => setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`));
