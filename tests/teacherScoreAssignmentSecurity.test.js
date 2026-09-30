@@ -24,7 +24,17 @@ test('TD-04 contains no provider network browser persistence or Student App impl
   }
 })
 
-test('TD-04 does not production-mount SCORE assignment UI', () => {
+test('TD-PROD-01 production shell uses the controlled assignment mount seam without directly mounting legacy SCORE UI', () => {
+  const main = readFileSync(
+    new URL('../main.js', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(
+    main,
+    /teacherAssignmentProductionMount|mountTeacherAssignmentProduction/,
+  )
+
   for (const path of [
     '../main.js',
     '../src/app.js',
