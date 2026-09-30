@@ -15,12 +15,45 @@ import {
 const EMULATOR_PROJECT_ID =
   'demo-seslitab-td06'
 
+const PRODUCTION_PROFILE =
+  Object.freeze({
+    READ_ONLY: 'READ_ONLY',
+    TEACHER_WRITES: 'TEACHER_WRITES',
+  })
+
 function enabled(value) {
   return (
     String(value ?? '')
       .trim()
       .toLowerCase() === 'true'
   )
+}
+
+
+function productionProfile(env, config) {
+  const teacherWritesActivation =
+    enabled(
+      env
+        .SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION,
+    )
+
+  if (config.writesEnabled) {
+    if (!teacherWritesActivation) {
+      throw new Error(
+        'secure-delivery-production-teacher-writes-activation-required',
+      )
+    }
+    return PRODUCTION_PROFILE
+      .TEACHER_WRITES
+  }
+
+  if (teacherWritesActivation) {
+    throw new Error(
+      'secure-delivery-production-teacher-writes-activation-requires-writes-enabled',
+    )
+  }
+
+  return PRODUCTION_PROFILE.READ_ONLY
 }
 
 function closedBoundary(config) {
@@ -148,11 +181,8 @@ export async function createSecureDeliveryProductionBoundary({
     )
   }
 
-  if (config.writesEnabled) {
-    throw new Error(
-      'secure-delivery-production-read-only-requires-writes-disabled',
-    )
-  }
+  const resolvedProductionProfile =
+    productionProfile(env, config)
 
   const projectId =
     String(
@@ -201,5 +231,7 @@ export async function createSecureDeliveryProductionBoundary({
   return Object.freeze({
     ...composition,
     active: true,
+    productionProfile:
+      resolvedProductionProfile,
   })
 }
