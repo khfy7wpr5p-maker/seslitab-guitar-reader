@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>CE-INTEG-01 suspicious measure browser proof</title>
+  <style>
+    body { margin: 0; }
+    #st-score-root { width: 960px; }
+  </style>
+</head>
+<body>
+  <div id="st-score-root"></div>
+  <div
+    id="status"
+    data-ce-analysis-pass="false"
+    data-ce-overlay-pass="false"
+    data-ce-no-note-recolor-pass="false"
+    data-ce-clear-pass="false"
+    data-ce-source-immutable-pass="false"
+    data-ce-authority-pass="false"
+  >PENDING</div>
+
+  <script src="../../public/st-omr-correction-analysis-runtime/ce-analysis-browser-runtime.js"></script>
+  <script src="../../public/st-score-runtime/vendor/opensheetmusicdisplay.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "@st/score-renderer-contracts": "../../public/st-score-runtime/modules/contracts.js",
+      "@st/score-renderer-core": "../../public/st-score-runtime/modules/renderer-core.js",
+      "@st/score-renderer-osmd": "../../public/st-score-runtime/modules/adapter-osmd.js",
+      "@st/score-renderer-browser-host": "../../public/st-score-runtime/modules/browser-host.js",
+      "opensheetmusicdisplay": "../../public/st-score-runtime/modules/osmd-module-shim.mjs"
+    }
+  }
+  </script>
+  <script type="module" src="../../public/st-score-runtime/workstation-bootstrap.mjs"></script>
+  <script type="module">
+    import {
+      getCurrentScoreRenderEvidence,
+      renderScoreView,
+    } from '../../src/services/scoreRendererConsumer.js'
+    import {
+      analyzeSuspiciousMeasures,
+      resolveCorrectionAnalysisRuntime,
+    } from '../../src/services/correctionAnalysisConsumer.js'
+    import { replaceSuspiciousMeasureOverlays } from '../../src/services/correctionMeasureOverlay.js'
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>4</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice></note>
+    </measure>
+  </part>
+</score-partwise>`
+
+    const status = document.getElementById('status')
+    const scoreRoot = document.getElementById('st-score-root')
+
+    ;(async () => {
+      try {
+        const host = globalThis.__ST_SCORE_RENDER_HOST__
+        if (
+          !host
+          || typeof host.renderMusicXml !== 'function'
+          || typeof host.highlightMeasure !== 'function'
+          || typeof host.clearMeasureHighlights !== 'function'
+        ) throw new Error('reviewed score runtime measure API missing')
+
+        const analysisRuntime = resolveCorrectionAnalysisRuntime(globalThis)
+        if (!analysisRuntime) throw new Error('CE analysis runtime missing')
+
+        const sourceBefore = xml
+        await renderScoreView(host, xml, {
+          ticket: '114',
+          autoResize: false,
+          drawTitle: false,
+          drawComposer: false,
+        })
+        const evidence = getCurrentScoreRenderEvidence(host)
+        if (!evidence?.sourceId) throw new Error('current render source identity missing')
+
+        const result = analyzeSuspiciousMeasures(analysisRuntime, {
+          musicxml: xml,
+          sourceId: evidence.sourceId,
+        })
+        if (
+          result.mode !== 'SHADOW_ONLY'
+          || result.suspiciousMeasures.length !== 1
+          || result.suspiciousMeasures[0].measureIndex !== 1
+          || result.suspiciousMeasures[0].measureNumber !== '2'
+        ) throw new Error('unexpected suspicious measure result')
+        status.dataset.ceAnalysisPass = 'true'
+
+        if (
+          result.sourceGraphMutated !== false
+          || result.automaticApplyAuthority !== false
+          || result.musicXmlWriteBackAuthority !== false
+        ) throw new Error('analysis authority expanded')
+        status.dataset.ceAuthorityPass = 'true'
+
+        const applied = await replaceSuspiciousMeasureOverlays(host, result, {
+          expectedSourceId: evidence.sourceId,
+        })
+        if (!applied) throw new Error('suspicious measure overlay rejected')
+
+        const overlays = [...scoreRoot.querySelectorAll('[data-st-score-measure-highlight="true"]')]
+        if (
+          overlays.length !== 1
+          || overlays[0].getAttribute('data-st-score-measure-part-id') !== 'P1'
+          || overlays[0].getAttribute('data-st-score-measure-index') !== '1'
+        ) throw new Error('exact measure overlay identity mismatch')
+        status.dataset.ceOverlayPass = 'true'
+
+        if (scoreRoot.querySelector('[data-st-score-highlight="true"]')) {
+          throw new Error('suspicious measure overlay recolored note highlight state')
+        }
+        status.dataset.ceNoNoteRecolorPass = 'true'
+
+        const noFindings = {
+          ...result,
+          findings: [],
+          suspiciousMeasures: [],
+        }
+        if (!await replaceSuspiciousMeasureOverlays(host, noFindings, { expectedSourceId: evidence.sourceId })) {
+          throw new Error('no-findings replacement rejected')
+        }
+        if (scoreRoot.querySelector('[data-st-score-measure-highlight="true"]')) {
+          throw new Error('no-findings result left stale measure overlay')
+        }
+
+        const staleAccepted = await replaceSuspiciousMeasureOverlays(host, result, {
+          expectedSourceId: 'stale-source',
+        })
+        if (staleAccepted || scoreRoot.querySelector('[data-st-score-measure-highlight="true"]')) {
+          throw new Error('stale source identity did not fail closed')
+        }
+        status.dataset.ceClearPass = 'true'
+
+        if (xml !== sourceBefore) throw new Error('source MusicXML mutated')
+        status.dataset.ceSourceImmutablePass = 'true'
+        status.textContent = 'PASS'
+      } catch (error) {
+        status.dataset.renderError = String(error?.message ?? error)
+        status.textContent = 'FAIL'
+      }
+    })()
+  </script>
+</body>
+</html>

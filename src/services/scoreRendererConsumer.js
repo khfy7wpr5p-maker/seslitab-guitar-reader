@@ -8,7 +8,7 @@ import { createRealmPlainObjectFor, isRealmSafePlainObject } from './realmSafePl
 import { validateRendererScoreNoteRef } from './scoreNoteIdentity.js'
 
 export const ST_SCORE_RENDERER_CONTRACT_VERSION = '0.2.0'
-export const ST_SCORE_RENDERER_REVIEWED_REVISION = 'a8961e0e68a950cbe980162e23c09f23f0ce5d0a'
+export const ST_SCORE_RENDERER_REVIEWED_REVISION = '3955250a0a1407d3a13de5f72b106b5234db10b6'
 export const SCORE_VIEW_MAX_MUSICXML_BYTES = 5 * 1024 * 1024
 export const SCORE_VIEW_MAX_PART_ID_CHARS = 128
 export const SCORE_RENDER_MISS_REASONS = Object.freeze([
@@ -105,6 +105,8 @@ export function resolveStScoreRuntime(globalScope = globalThis) {
   if (typeof host.hitTestNoteDetailed !== 'function') return null
   if (typeof host.highlight !== 'function') return null
   if (typeof host.clearHighlights !== 'function') return null
+  if (typeof host.highlightMeasure !== 'function') return null
+  if (typeof host.clearMeasureHighlights !== 'function') return null
   if (typeof host.dispose !== 'function') return null
   return host
 }
@@ -236,6 +238,22 @@ export async function highlightScoreNote(host, target) {
   const hostTarget = createRealmPlainObjectFor(host, validated)
   const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'seslitab-note-focus' })
   return host.highlight(payload)
+}
+
+export async function highlightScoreMeasure(host, target) {
+  if (!host || typeof host.highlightMeasure !== 'function') {
+    throw new TypeError('ST score renderer measure highlight runtime bağlı değil.')
+  }
+  const validated = validateScoreCursorTarget(target)
+  const hostTarget = createRealmPlainObjectFor(host, validated)
+  const payload = createRealmPlainObjectFor(host, { target: hostTarget, className: 'st-score-suspicious-measure' })
+  return host.highlightMeasure(payload)
+}
+
+export async function clearScoreMeasureHighlights(host) {
+  if (!host || typeof host.clearMeasureHighlights !== 'function') return false
+  await host.clearMeasureHighlights()
+  return true
 }
 
 export async function clearScoreHighlights(host) {
