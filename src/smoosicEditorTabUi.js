@@ -127,6 +127,7 @@ function stateFor(root) {
       publishingWritebackXml: null,
       writebackPromise: Promise.resolve(false),
       writebackMessageHandler: null,
+      correctionOverlayMessageHandler: null,
     }
     states.set(root, state)
   }
@@ -930,7 +931,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
       // If the replacement fails, that accepted source remains authoritative.
       state.sourceRevision += 1
       cancelPendingWriteback(state)
-  cancelPendingCorrectionOverlay(state)
+      cancelPendingCorrectionOverlay(state)
       if (state.frame?.isConnected && state.frame.getAttribute('src')) {
         void enqueueEditorSync(root)
       }
@@ -964,7 +965,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
     state.observedSourceName = null
     state.sourceRevision += 1
     cancelPendingWriteback(state)
-  cancelPendingCorrectionOverlay(state)
+    cancelPendingCorrectionOverlay(state)
     clearAuthorityState(state)
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
