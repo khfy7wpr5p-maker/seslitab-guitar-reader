@@ -719,6 +719,29 @@ export function createInMemorySecureDeliveryStore({
       )
     },
 
+    async listTeacherStudentGrantsForTeacher(
+      teacherId,
+    ) {
+      const id = normalizeRequiredId(
+        teacherId,
+        'teacherId',
+      )
+      return Object.freeze(
+        [...grantsByPair.values()].filter(
+          (grant) =>
+            grant.teacherId === id,
+        ),
+      )
+    },
+
+    async getRosterEntry(studentId) {
+      const id = normalizeRequiredId(
+        studentId,
+        'studentId',
+      )
+      return rosterByStudent.get(id) ?? null
+    },
+
     previewProvisioningBatch,
     commitProvisioningBatch,
 
