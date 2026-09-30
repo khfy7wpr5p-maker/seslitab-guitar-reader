@@ -782,20 +782,20 @@ function makeIframeFile(frame, xml, fileName) {
   return new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' })
 }
 
-function createIframeImportEvent(frame, sourceRevision) {
-  const win = frame.contentWindow
-  if (!win?.CustomEvent) throw new Error('Editör olay API’si kullanılamıyor.')
+function stampIframeImportProvenance(input, sourceRevision) {
+  if (!input?.dataset) throw new Error('Editör aktarım provenance alanı kullanılamıyor.')
   if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0) {
     throw new Error('Nota editörü kaynak sürümü geçersiz.')
   }
-  return new win.CustomEvent('change', {
-    bubbles: true,
-    detail: Object.freeze({
-      contract: 'SESLITAB_SMOOSIC_IMPORT_V1',
-      version: 1,
-      sourceRevision,
-    }),
-  })
+  input.dataset.seslitabImportContract = 'SESLITAB_SMOOSIC_IMPORT_V1'
+  input.dataset.seslitabImportVersion = '1'
+  input.dataset.seslitabImportRevision = String(sourceRevision)
+}
+
+function createIframeImportEvent(frame) {
+  const win = frame.contentWindow
+  if (!win?.Event) throw new Error('Editör olay API’si kullanılamıyor.')
+  return new win.Event('change', { bubbles: true })
 }
 
 function assignInputFile(frame, input, file) {
@@ -861,10 +861,11 @@ async function loadSourceIntoEditor(root, frame) {
 
   const targetRevision = state.sourceRevision
   const file = makeIframeFile(frame, xml, fileName)
+  stampIframeImportProvenance(input, targetRevision)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
   setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
-  input.dispatchEvent(createIframeImportEvent(frame, targetRevision))
+  input.dispatchEvent(createIframeImportEvent(frame))
   await waitForMusicXmlLoad(frame, fileName)
 
   // A newer PDF/MusicXML may have completed while this import was running.
