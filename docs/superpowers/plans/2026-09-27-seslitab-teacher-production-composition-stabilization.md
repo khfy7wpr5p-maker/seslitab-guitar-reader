@@ -1,3 +1,5 @@
+> **Historical scope notice — 2026-09-30:** This SES-43 stabilization plan remains valid evidence for the package it governed. Its constraints that prohibit production-mounting Chord Board assignment/authenticated student delivery are **superseded only for the separately approved SES-115 / TD-PROD-01 architecture** in `docs/superpowers/plans/2026-09-30-seslitab-teacher-assignment-final-architecture.md`. Do not reinterpret this notice as implementation, production-write activation, merge, or deploy approval.
+
 # SES-43 SesliTab Teacher Production Composition Stabilization Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
