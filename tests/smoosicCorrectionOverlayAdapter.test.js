@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test from 'node:test'
@@ -311,4 +312,21 @@ test('SES-120 admits only the reviewed Smoosic version surface', () => {
       }),
     /1\.0\.44|reviewed/i,
   )
+})
+
+
+test('SES-120 protected CI requires the real bundled Smoosic overlay browser proof', () => {
+  const scriptUrl = new URL('../scripts/verifySmoosicCorrectionOverlayBrowser.js', import.meta.url)
+  assert.equal(existsSync(scriptUrl), true)
+
+  const script = readFileSync(scriptUrl, 'utf8')
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+
+  assert.match(script, /createS14CdpProofSession/)
+  assert.match(script, /seslitab-correction-overlay/)
+  assert.match(script, /#dc2626/)
+  assert.match(script, /exactMeasureIndex:\s*1/)
+  assert.match(script, /overlayCount:\s*0/)
+  assert.match(ci, /Verify SES-120 Smoosic correction overlay in real browser/)
+  assert.match(ci, /node scripts\/verifySmoosicCorrectionOverlayBrowser\.js/)
 })
