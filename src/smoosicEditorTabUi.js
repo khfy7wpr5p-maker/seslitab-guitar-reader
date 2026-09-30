@@ -776,20 +776,30 @@ async function waitForMusicXmlLoad(frame, expectedFileName) {
   throw new Error(`MusicXML editöre zamanında yüklenmedi: ${expectedFileName}`)
 }
 
-function makeIframeFile(frame, xml, fileName, sourceRevision) {
+function makeIframeFile(frame, xml, fileName) {
   const win = frame.contentWindow
   if (!win?.File) throw new Error('Editör dosya aktarım API’si kullanılamıyor.')
-  const file = new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' })
+  return new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' })
+}
+
+function createIframeImportEvent(frame, sourceRevision) {
+  const win = frame.contentWindow
+  if (!win?.Event) throw new Error('Editör olay API’si kullanılamıyor.')
   if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0) {
     throw new Error('Nota editörü kaynak sürümü geçersiz.')
   }
-  Object.defineProperty(file, 'seslitabSourceRevision', {
+  const event = new win.Event('change', { bubbles: true })
+  Object.defineProperty(event, 'seslitabImportProvenance', {
     configurable: false,
     enumerable: false,
     writable: false,
-    value: sourceRevision,
+    value: Object.freeze({
+      contract: 'SESLITAB_SMOOSIC_IMPORT_V1',
+      version: 1,
+      sourceRevision,
+    }),
   })
-  return file
+  return event
 }
 
 function assignInputFile(frame, input, file) {
@@ -854,11 +864,11 @@ async function loadSourceIntoEditor(root, frame) {
   if (!input) throw new Error('Nota editörünün MusicXML giriş alanı bulunamadı.')
 
   const targetRevision = state.sourceRevision
-  const file = makeIframeFile(frame, xml, fileName, targetRevision)
+  const file = makeIframeFile(frame, xml, fileName)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
   setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
-  input.dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }))
+  input.dispatchEvent(createIframeImportEvent(frame, targetRevision))
   await waitForMusicXmlLoad(frame, fileName)
 
   // A newer PDF/MusicXML may have completed while this import was running.
