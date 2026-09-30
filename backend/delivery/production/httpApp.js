@@ -16,6 +16,10 @@ import {
 import {
   createFixedWindowRateLimiter,
 } from '../../security/rateLimitPolicy.js'
+import {
+  createSecureDeliveryJsonBodyParser,
+  secureDeliveryPayloadErrorHandler,
+} from '../http/payloadBoundary.js'
 
 export async function createSecureDeliveryProductionHttpApp({
   env = process.env,
@@ -68,10 +72,12 @@ export async function createSecureDeliveryProductionHttpApp({
     ),
   )
 
+  const secureDeliveryJsonBodyParser =
+    createSecureDeliveryJsonBodyParser()
+
   app.use(
-    express.json({
-      limit: '16kb',
-    }),
+    '/api/secure-delivery/v1',
+    secureDeliveryJsonBodyParser,
   )
 
   app.get('/health', (_req, res) => {
@@ -97,6 +103,11 @@ export async function createSecureDeliveryProductionHttpApp({
     '/api/secure-delivery/v1',
     secureDeliveryRateLimiter,
     resolvedBoundary.router,
+  )
+
+  app.use(
+    '/api/secure-delivery/v1',
+    secureDeliveryPayloadErrorHandler,
   )
 
   app.use((_req, res) => {
