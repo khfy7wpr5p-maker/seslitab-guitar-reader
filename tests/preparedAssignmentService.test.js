@@ -358,3 +358,34 @@ test('prepared handoff denies success when durable reread acknowledgement is sub
     /acknowledgement|mismatch/i,
   )
 })
+
+
+test('SES-121 server re-checks aggregate prepare bytes before authorization or persistence', async () => {
+  const { createPreparedAssignmentService } =
+    await loadService()
+  const h = harness()
+  const service =
+    createPreparedAssignmentService({
+      authorization: h.authorization,
+      store: h.store,
+      now: h.now,
+      maxPrepareBatchBytes: 1,
+    })
+
+  await assert.rejects(
+    () =>
+      service.prepareBatch({
+        providerSubject: 'uid-teacher',
+        items: [item()],
+      }),
+    /secure-delivery-payload-too-large/i,
+  )
+
+  assert.equal(
+    await h.store.getPreparedAssignment(
+      'assignment-a',
+    ),
+    null,
+  )
+  assert.equal(h.nowCalls(), 0)
+})

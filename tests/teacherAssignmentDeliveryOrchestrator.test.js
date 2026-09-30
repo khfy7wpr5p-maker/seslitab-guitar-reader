@@ -135,6 +135,7 @@ function harness({
   deliveryError = null,
   preparedTransform = (rows) => rows,
   deliveryTransform = (rows) => rows,
+  maxPrepareBatchBytes,
 } = {}) {
   const calls = {
     prepare: [],
@@ -170,6 +171,7 @@ function harness({
     orchestrator:
       createTeacherAssignmentDeliveryOrchestrator({
         secureDeliveryClient,
+        maxPrepareBatchBytes,
       }),
   }
 }
@@ -382,6 +384,28 @@ test('SES-118 enforces the existing 40-assignment batch boundary before prepare'
     TEACHER_ASSIGNMENT_DELIVERY_PHASE
       .LOCAL_ASSIGNMENT_ONLY,
   )
+  assert.equal(calls.prepare.length, 0)
+  assert.equal(calls.deliver.length, 0)
+})
+
+
+test('SES-121 rejects an oversized aggregate prepare payload before any network write', async () => {
+  const score = scorePair()
+  const { orchestrator, calls } = harness({
+    maxPrepareBatchBytes: 1,
+  })
+
+  const result = await orchestrator.deliver([
+    score,
+  ])
+
+  assert.equal(result.ok, false)
+  assert.equal(
+    result.phase,
+    TEACHER_ASSIGNMENT_DELIVERY_PHASE
+      .LOCAL_ASSIGNMENT_ONLY,
+  )
+  assert.deepEqual(result.assignments, [])
   assert.equal(calls.prepare.length, 0)
   assert.equal(calls.deliver.length, 0)
 })
