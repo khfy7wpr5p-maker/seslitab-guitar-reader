@@ -29,6 +29,10 @@ import {
   normalizeRequiredId,
   normalizeRequiredTimestamp,
 } from './teacherDeliveryContractValidation.js'
+import {
+  SECURE_DELIVERY_PREPARE_BATCH_MAX_BYTES,
+  assertSecureDeliveryPrepareBatchBytes,
+} from './secureDeliveryPayloadBoundary.js'
 
 export const TEACHER_ASSIGNMENT_DELIVERY_PHASE =
   Object.freeze({
@@ -316,6 +320,8 @@ function phaseResult({
 
 export function createTeacherAssignmentDeliveryOrchestrator({
   secureDeliveryClient,
+  maxPrepareBatchBytes =
+    SECURE_DELIVERY_PREPARE_BATCH_MAX_BYTES,
 } = {}) {
   if (
     !secureDeliveryClient ||
@@ -333,6 +339,12 @@ export function createTeacherAssignmentDeliveryOrchestrator({
     let items
     try {
       items = normalizedAssignments(rawItems)
+      assertSecureDeliveryPrepareBatchBytes(
+        items,
+        {
+          maxBytes: maxPrepareBatchBytes,
+        },
+      )
     } catch {
       return phaseResult({
         ok: false,
