@@ -13,6 +13,7 @@ import './src/stageDQualityOverlay.css'
 import './src/stageJDiscoveryPresentation.css'
 import './src/stageS13SmoosicTransitionCleanup.css'
 import './src/smoosicEditorTab.css'
+import './src/teacherHomeworkUi.css'
 
 import './src/app.js'
 import './src/package3Ui.js'

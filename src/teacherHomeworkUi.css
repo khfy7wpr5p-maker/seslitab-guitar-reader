@@ -1,0 +1,260 @@
+.teacher-homework {
+  overflow: hidden;
+}
+
+.teacher-homework__header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--neutral-100);
+  background: var(--neutral-50);
+}
+
+.teacher-homework__header h2 {
+  margin: 0;
+  color: var(--neutral-800);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.teacher-homework__description {
+  margin-top: 0.25rem;
+  color: var(--neutral-500);
+  font-size: 0.8125rem;
+}
+
+.teacher-homework__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+}
+
+.teacher-homework fieldset {
+  min-width: 0;
+  border: 0;
+}
+
+.teacher-homework legend,
+.teacher-homework__common-note > span,
+.teacher-homework__chord-select > span {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--neutral-700);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.teacher-homework__mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.teacher-homework__mode-option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 44px;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--neutral-700);
+  cursor: pointer;
+}
+
+.teacher-homework__mode-option:has(input:checked) {
+  border-color: var(--primary-500);
+  background: var(--primary-50);
+  color: var(--primary-700);
+}
+
+.teacher-homework__mode-option input,
+.teacher-homework__student-select input,
+.teacher-homework__override input,
+.teacher-homework__position input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--primary-500);
+}
+
+.teacher-homework__content {
+  padding: 1rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--neutral-50);
+}
+
+.teacher-homework__score,
+.teacher-homework__chord-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.teacher-homework__score-title,
+.teacher-homework__chord-title {
+  color: var(--neutral-800);
+  font-size: 0.9375rem;
+}
+
+.teacher-homework__score-detail {
+  color: var(--neutral-500);
+  font-size: 0.8125rem;
+}
+
+.teacher-homework__chord-select {
+  display: flex;
+  flex-direction: column;
+}
+
+.teacher-homework select,
+.teacher-homework textarea {
+  width: 100%;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--neutral-800);
+  font: inherit;
+}
+
+.teacher-homework select {
+  min-height: 44px;
+  padding: 0.625rem 0.75rem;
+}
+
+.teacher-homework textarea {
+  min-height: 88px;
+  padding: 0.75rem;
+  resize: vertical;
+}
+
+.teacher-homework select:focus,
+.teacher-homework textarea:focus,
+.teacher-homework input:focus-visible,
+.teacher-homework button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 2px;
+}
+
+.teacher-homework__positions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.teacher-homework__position {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.4rem 0.625rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: white;
+  cursor: pointer;
+}
+
+.teacher-homework__chord-preview {
+  padding: 0.875rem;
+  border: 1px solid var(--primary-100);
+  border-radius: var(--radius-sm);
+  background: var(--primary-50);
+}
+
+.teacher-homework__chord-strings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.375rem;
+  margin-top: 0.625rem;
+}
+
+.teacher-homework__chord-string {
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--neutral-700);
+  font-size: 0.8125rem;
+}
+
+.teacher-homework__students {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.teacher-homework__student {
+  padding: 0.75rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-sm);
+  background: white;
+}
+
+.teacher-homework__student-select,
+.teacher-homework__override > label:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 40px;
+  color: var(--neutral-800);
+  cursor: pointer;
+}
+
+.teacher-homework__override {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-top: 0.625rem;
+  padding-left: 1.75rem;
+}
+
+.teacher-homework__override[hidden] {
+  display: none;
+}
+
+.teacher-homework__override label[hidden] {
+  display: none;
+}
+
+.teacher-homework__common-note {
+  display: flex;
+  flex-direction: column;
+}
+
+.teacher-homework__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.teacher-homework__submit {
+  min-height: 44px;
+  min-width: 170px;
+}
+
+.teacher-homework__status {
+  min-height: 1.5rem;
+  color: var(--neutral-600);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .teacher-homework__header,
+  .teacher-homework__form {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .teacher-homework__mode-options {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-homework__chord-strings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-homework__actions,
+  .teacher-homework__submit {
+    width: 100%;
+  }
+}
