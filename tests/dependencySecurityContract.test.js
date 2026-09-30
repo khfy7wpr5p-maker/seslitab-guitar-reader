@@ -20,7 +20,7 @@ const qualification = readFileSync(
 test('TD-PROD-15 pins the qualified direct and transitive security versions', () => {
   assert.equal(packageJson.dependencies.multer, '2.4.0')
   assert.equal(packageJson.devDependencies['firebase-tools'], '15.32.0')
-  assert.equal(packageJson.overrides?.['@grpc/grpc-js'], '1.13.6')
+  assert.equal(packageJson.overrides?.['@grpc/grpc-js'], '^1.13.6')
 
   assert.equal(packageLock.packages[''].dependencies.multer, '2.4.0')
   assert.equal(
@@ -38,10 +38,17 @@ test('TD-PROD-15 pins the qualified direct and transitive security versions', ()
 
   assert.ok(grpcEntries.length > 0)
   for (const [path, entry] of grpcEntries) {
+    const [major, minor, patch] = entry.version
+      .split('.')
+      .map(value => Number.parseInt(value, 10))
+    const isQualified =
+      major === 1 &&
+      (minor > 13 || (minor === 13 && patch >= 6))
+
     assert.equal(
-      entry.version,
-      '1.13.6',
-      `${path} must stay on the qualified @grpc/grpc-js override`,
+      isQualified,
+      true,
+      `${path} must stay at or above the qualified 1.13.6 security floor within major 1`,
     )
   }
 })

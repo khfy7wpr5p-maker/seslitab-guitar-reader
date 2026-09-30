@@ -27,10 +27,10 @@ The bounded candidate applies:
 
 - `multer@2.4.0`;
 - `firebase-tools@15.32.0`;
-- npm override `@grpc/grpc-js@1.13.6`;
+- npm override range `@grpc/grpc-js@^1.13.6`, with the refreshed lockfile resolving `1.14.5`;
 - compatible lockfile refreshes produced without `npm audit fix --force`.
 
-The compatible lockfile refresh also moves affected transitive packages such as Express/body-parser/qs and Firebase CLI utilities to patched versions allowed by their declared dependency ranges.
+The compatible lockfile refresh also moves affected transitive packages such as Express/body-parser/qs and Firebase CLI utilities to patched versions allowed by their declared dependency ranges. The gRPC range keeps the audited `1.13.6` security floor while allowing newer compatible `1.x` releases instead of pinning the minimum fixed version.
 
 Fresh candidate audit evidence reports:
 
