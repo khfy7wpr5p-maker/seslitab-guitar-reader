@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   npm-audit:
@@ -43,6 +43,22 @@ jobs:
           npm audit fix --package-lock-only --ignore-scripts || true
           cp package.json artifacts/package.candidate.json
           cp package-lock.json artifacts/package-lock.candidate.json
+
+      - name: Commit proven candidate package files to this PR branch
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "Candidate package files already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "fix(SES-127): apply dependency security candidate"
+          git push origin "HEAD:$TARGET_BRANCH"
 
       - name: Inspect compatible registry candidates
         shell: bash
