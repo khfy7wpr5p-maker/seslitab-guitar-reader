@@ -46,6 +46,7 @@ test('SES-128 st-student-api source authority is main and live mutation stays ga
     'dep-daulsgvf3r2c73fv8on0',
   )
   assert.equal(api.observedLive.deployStatus, 'live')
+  assert.equal(api.observedLive.autoDeploy, 'yes')
 
   assert.equal(
     api.sourceAuthority.canonicalBranch,
@@ -91,6 +92,28 @@ test('SES-128 st-student-api source authority is main and live mutation stays ga
     newRenderServiceAuthorized: false,
   })
 
+  assert.equal(contract.qualification.exactMainSha, QUALIFIED_MAIN_SHA)
+  assert.deepEqual(contract.qualification.ci, {
+    runNumber: 1458,
+    attempt: 1,
+    conclusion: 'success',
+  })
+  assert.deepEqual(contract.qualification.regressionQuality, {
+    runNumber: 795,
+    attempt: 1,
+    conclusion: 'success',
+  })
+  assert.deepEqual(contract.qualification.dependencySecurity, {
+    runNumber: 14,
+    attempt: 1,
+    conclusion: 'success',
+  })
+  assert.deepEqual(contract.qualification.productionGate, {
+    runNumber: 2,
+    attempt: 1,
+    conclusion: 'success',
+  })
+
   assert.equal(
     contract.nextGate.action,
     'SWITCH_EXISTING_RENDER_TRACKED_BRANCH_TO_MAIN',
@@ -105,6 +128,18 @@ test('SES-128 st-student-api source authority is main and live mutation stays ga
   )
   assert.equal(
     contract.nextGate.requiresExactMainProductionGate,
+    true,
+  )
+  assert.equal(
+    contract.nextGate.requiresAutoDeployDisabledBeforeBranchSwitch,
+    true,
+  )
+  assert.equal(
+    contract.nextGate.teacherWritesRemainSeparateGate,
+    true,
+  )
+  assert.equal(
+    contract.nextGate.omrRemainsSeparateGate,
     true,
   )
 })
