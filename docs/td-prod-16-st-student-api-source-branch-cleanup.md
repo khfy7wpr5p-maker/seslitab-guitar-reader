@@ -98,7 +98,7 @@ That later gate must fresh-read:
 2. existing Render service ID, URL, start command, tracked branch, current deploy and rollback point;
 3. safe write/activation/provisioning flags without exposing secrets;
 4. current Firebase identity/grant prerequisites;
-5. auto-deploy behavior before any branch change.
+5. confirm auto-deploy is disabled before changing the tracked branch, so the branch switch cannot silently trigger deployment.
 
 The branch switch, deployment, teacher-write activation, production assignment smoke, Firebase provisioning/grants, and OMR live E2E remain distinct approvals.
 
