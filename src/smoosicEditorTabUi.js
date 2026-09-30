@@ -11,6 +11,17 @@ import { createSmoosicCeStructIdentityBridge } from './services/smoosicCeStructI
 import { resolveCeStructRuntime } from './services/smoosicCeStructBridge.js'
 import { getTeacherWorkspaceCurrentRevision } from './services/teacherWorkspaceModel.js'
 import { resolvePrDProductMusicXml } from './services/editorPrDRevisionMusicXmlRegistry.js'
+import {
+  analyzeSuspiciousMeasures,
+} from './services/correctionAnalysisConsumer.js'
+import {
+  loadCorrectionAnalysisRuntime,
+} from './services/correctionAnalysisRuntimeLoader.js'
+import {
+  createSmoosicCorrectionOverlayClearCommand,
+  createSmoosicCorrectionOverlayCommand,
+  validateSmoosicCorrectionOverlayResult,
+} from './services/smoosicCorrectionOverlayBridge.js'
 
 const TAB_ID = 'smoosic-tab-btn'
 const PANEL_ID = 'smoosic-panel'
@@ -22,6 +33,7 @@ const CE_STRUCT_RUNTIME_SRC = '/st-omr-correction-engine-runtime/ce-struct-brows
 const READY_TIMEOUT_MS = 60000
 const LOAD_TIMEOUT_MS = 45000
 const WRITEBACK_TIMEOUT_MS = 45000
+const CORRECTION_OVERLAY_TIMEOUT_MS = 10000
 const WRITEBACK_REQUEST = 'seslitab:smoosic-export-request'
 const WRITEBACK_RESULT = 'seslitab:smoosic-export-result'
 const WRITEBACK_REQUEST_VERSION = 1
@@ -110,6 +122,7 @@ function stateFor(root) {
       authoritySourceName: null,
       authoritySourceRevision: null,
       pendingWriteback: null,
+      pendingCorrectionOverlay: null,
       pendingPublication: null,
       publishingWritebackXml: null,
       writebackPromise: Promise.resolve(false),
@@ -294,6 +307,166 @@ function cancelPendingWriteback(state) {
   pending.reject(createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE))
 }
 
+function bindCorrectionOverlayMessages(root) {
+  const state = stateFor(root)
+  const win = root.defaultView
+  if (!win?.addEventListener || state.correctionOverlayMessageHandler) return false
+
+  state.correctionOverlayMessageHandler = (event) => {
+    const pending = state.pendingCorrectionOverlay
+    if (!pending) return
+    if (event.origin !== win.location.origin) return
+    if (event.source !== state.frame?.contentWindow) return
+
+    const message = event.data
+    if (!message || typeof message !== 'object' || Array.isArray(message)) return
+    if (message.requestId !== pending.command.requestId) return
+    if (message.sourceRevision !== pending.command.sourceRevision) return
+
+    state.pendingCorrectionOverlay = null
+    clearTimeout(pending.timeout)
+    try {
+      const validated = validateSmoosicCorrectionOverlayResult(message, {
+        requestId: pending.command.requestId,
+        sourceRevision: pending.command.sourceRevision,
+        sourceHash: pending.command.sourceHash,
+      })
+      pending.resolve(validated)
+    } catch (error) {
+      pending.reject(error)
+    }
+  }
+  win.addEventListener('message', state.correctionOverlayMessageHandler)
+  return true
+}
+
+function cancelPendingCorrectionOverlay(state) {
+  const pending = state.pendingCorrectionOverlay
+  if (!pending) return
+  state.pendingCorrectionOverlay = null
+  clearTimeout(pending.timeout)
+  pending.reject(new Error('Smoosic correction overlay source became stale.'))
+}
+
+function requestSmoosicCorrectionOverlay(root, command) {
+  const state = stateFor(root)
+  const frame = state.frame
+  const win = root.defaultView
+
+  if (!frame?.isConnected || !frame.contentWindow || !frame.getAttribute('src')) {
+    return Promise.reject(new Error('Smoosic correction overlay frame is unavailable.'))
+  }
+  if (!win?.location?.origin) {
+    return Promise.reject(new Error('SesliTab origin is unavailable.'))
+  }
+  if (state.pendingCorrectionOverlay) {
+    return Promise.reject(new Error('A correction overlay request is already pending.'))
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (state.pendingCorrectionOverlay?.command?.requestId !== command.requestId) return
+      state.pendingCorrectionOverlay = null
+      reject(new Error('Smoosic correction overlay acknowledgement timed out.'))
+    }, CORRECTION_OVERLAY_TIMEOUT_MS)
+
+    state.pendingCorrectionOverlay = {
+      command,
+      timeout,
+      resolve,
+      reject,
+    }
+    frame.contentWindow.postMessage(command, win.location.origin)
+  })
+}
+
+async function clearSmoosicCorrectionOverlay(root) {
+  const state = stateFor(root)
+  try {
+    const command = createSmoosicCorrectionOverlayClearCommand({
+      requestId: secureId(root, 'smoosic-correction-overlay-clear'),
+      sourceRevision: state.sourceRevision,
+    })
+    const result = await requestSmoosicCorrectionOverlay(root, command)
+    return result.ok === true
+  } catch {
+    return false
+  }
+}
+
+export async function syncSmoosicCorrectionOverlays(
+  root,
+  frame,
+  musicXml,
+  sourceRevision,
+  analysisRuntime = null,
+) {
+  const state = stateFor(root)
+  if (
+    frame !== state.frame
+    || !frame?.contentWindow
+    || typeof musicXml !== 'string'
+    || !musicXml.trim()
+    || !Number.isSafeInteger(sourceRevision)
+    || sourceRevision < 0
+    || state.sourceRevision !== sourceRevision
+    || sourceTransitionPending(root)
+  ) {
+    return false
+  }
+
+  const sourceId = `smoosic-source:${sourceRevision}`
+  try {
+    const runtime =
+      analysisRuntime
+      ?? await loadCorrectionAnalysisRuntime(root)
+    if (!runtime) {
+      await clearSmoosicCorrectionOverlay(root)
+      return false
+    }
+
+    const result = analyzeSuspiciousMeasures(
+      runtime,
+      {
+        musicxml: musicXml,
+        sourceId,
+      },
+    )
+    if (state.sourceRevision !== sourceRevision || sourceTransitionPending(root)) {
+      await clearSmoosicCorrectionOverlay(root)
+      return false
+    }
+
+    const command =
+      createSmoosicCorrectionOverlayCommand(
+        result,
+        {
+          requestId: secureId(
+            root,
+            'smoosic-correction-overlay',
+          ),
+          sourceRevision,
+          expectedSourceId: sourceId,
+        },
+      )
+
+    const ack =
+      await requestSmoosicCorrectionOverlay(
+        root,
+        command,
+      )
+    return (
+      ack.ok === true
+      && ack.appliedCount
+        === command.targets.length
+      && state.sourceRevision === sourceRevision
+    )
+  } catch {
+    await clearSmoosicCorrectionOverlay(root)
+    return false
+  }
+}
+
 function requestEditorMusicXml(root) {
   const state = stateFor(root)
   const frame = state.frame
@@ -344,6 +517,8 @@ function publishCommittedRevision(root, committed) {
     state.observedSourceXml = committed.musicXml
     state.lastSourceXml = committed.musicXml
     state.sourceRevision += 1
+    cancelPendingCorrectionOverlay(state)
+    void clearSmoosicCorrectionOverlay(root)
     state.authoritySourceXml = committed.musicXml
     state.authoritySourceName = state.observedSourceName || state.authoritySourceName
     state.authoritySourceRevision = state.sourceRevision
@@ -594,10 +769,20 @@ async function waitForMusicXmlLoad(frame, expectedFileName) {
   throw new Error(`MusicXML editöre zamanında yüklenmedi: ${expectedFileName}`)
 }
 
-function makeIframeFile(frame, xml, fileName) {
+function makeIframeFile(frame, xml, fileName, sourceRevision) {
   const win = frame.contentWindow
   if (!win?.File) throw new Error('Editör dosya aktarım API’si kullanılamıyor.')
-  return new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' })
+  const file = new win.File([xml], fileName, { type: 'application/vnd.recordare.musicxml+xml' })
+  if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0) {
+    throw new Error('Nota editörü kaynak sürümü geçersiz.')
+  }
+  Object.defineProperty(file, 'seslitabSourceRevision', {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: sourceRevision,
+  })
+  return file
 }
 
 function assignInputFile(frame, input, file) {
@@ -646,6 +831,12 @@ async function loadSourceIntoEditor(root, frame) {
   if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
     frame.hidden = false
     setHostStatus(root, '', 'ready')
+    await syncSmoosicCorrectionOverlays(
+      root,
+      frame,
+      xml,
+      state.sourceRevision,
+    )
     return true
   }
 
@@ -656,7 +847,7 @@ async function loadSourceIntoEditor(root, frame) {
   if (!input) throw new Error('Nota editörünün MusicXML giriş alanı bulunamadı.')
 
   const targetRevision = state.sourceRevision
-  const file = makeIframeFile(frame, xml, fileName)
+  const file = makeIframeFile(frame, xml, fileName, targetRevision)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
   setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
@@ -679,6 +870,12 @@ async function loadSourceIntoEditor(root, frame) {
   state.lastSourceXml = xml
   state.lastSourceName = fileName
   setHostStatus(root, '', 'ready')
+  await syncSmoosicCorrectionOverlays(
+    root,
+    frame,
+    xml,
+    targetRevision,
+  )
   return true
 }
 
@@ -733,6 +930,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
       // If the replacement fails, that accepted source remains authoritative.
       state.sourceRevision += 1
       cancelPendingWriteback(state)
+  cancelPendingCorrectionOverlay(state)
       if (state.frame?.isConnected && state.frame.getAttribute('src')) {
         void enqueueEditorSync(root)
       }
@@ -766,6 +964,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
     state.observedSourceName = null
     state.sourceRevision += 1
     cancelPendingWriteback(state)
+  cancelPendingCorrectionOverlay(state)
     clearAuthorityState(state)
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
@@ -823,6 +1022,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   state.observedSourceName = fileName
   state.sourceRevision += 1
   cancelPendingWriteback(state)
+  cancelPendingCorrectionOverlay(state)
   state.lastSourceXml = null
   state.lastSourceName = 'seslitab-current.musicxml'
 
@@ -895,6 +1095,7 @@ export function ensureSmoosicEditorTab(root = document) {
   if (existing) {
     bindSourceLifecycle(root)
     bindWritebackMessages(root)
+    bindCorrectionOverlayMessages(root)
     return root.getElementById(PANEL_ID)
   }
 
@@ -946,6 +1147,7 @@ export function ensureSmoosicEditorTab(root = document) {
   bindOtherTabs(root)
   bindSourceLifecycle(root)
   bindWritebackMessages(root)
+  bindCorrectionOverlayMessages(root)
   return panel
 }
 
