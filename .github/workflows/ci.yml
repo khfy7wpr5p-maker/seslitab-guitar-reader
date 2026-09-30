@@ -136,3 +136,93 @@ jobs:
           name: smoosic-mobile-scroll-settle-production
           path: artifacts/smoosic-mobile-scroll-settle-production.json
           if-no-files-found: warn
+
+
+  td-prod-10-teacher-student-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STUDENT_APP_SHA: b59bcb6dc5525f035515ab358734ebbe5a277fbb
+      RENDERER_SHA: 13aa0843158257a207afe062879743d58048cc6d
+
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+
+    steps:
+      - name: Checkout SesliTab teacher exact PR head
+        uses: actions/checkout@v4
+        with:
+          path: teacher
+
+      - name: Checkout Student App at approved revision
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-student-app
+          ref: ${{ env.STUDENT_APP_SHA }}
+          path: student-app
+
+      - name: Checkout Rendering Layer at approved revision
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-score-rendering-layer
+          ref: ${{ env.RENDERER_SHA }}
+          path: renderer
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install teacher dependencies
+        working-directory: teacher
+        run: npm ci --ignore-scripts
+
+      - name: Install Student App dependencies
+        working-directory: student-app
+        run: npm ci --ignore-scripts
+
+      - name: Restore pinned Student App renderer dependency lock
+        working-directory: renderer
+        run: cp "$GITHUB_WORKSPACE/student-app/ci/renderer-package-lock.json" package-lock.json
+
+      - name: Build approved renderer
+        working-directory: renderer
+        run: npm ci --ignore-scripts && npm run build
+
+      - name: Export approved Student App browser runtime
+        working-directory: renderer
+        env:
+          ST_SCORE_RENDERER_SOURCE_REVISION: ${{ env.RENDERER_SHA }}
+        run: node scripts/export-browser-runtime.mjs browser-runtime
+
+      - name: Verify renderer runtime provenance
+        working-directory: renderer
+        run: |
+          node -e 'const m=require("./dist/browser-runtime/runtime-manifest.json"); if(m.runtimeTarget!=="browser" || m.rendererSourceRevision!==process.env.RENDERER_SHA || m.scoreRendererContractVersion!=="0.2.0") process.exit(1)'
+
+      - name: Install approved renderer runtime into Student App checkout
+        run: |
+          mkdir -p student-app/vendor/st-score-runtime
+          cp -R renderer/dist/browser-runtime/. student-app/vendor/st-score-runtime/
+
+      - name: Install Task 10 qualification harness into Student App checkout
+        run: |
+          cp teacher/qualification/td-prod-10/student-app-e2e-fixture-adapter.mjs student-app/browser-tests/support/td-prod-10-e2e-fixture-adapter.mjs
+          cp teacher/qualification/td-prod-10/student-app-e2e-bootstrap.mjs student-app/browser-tests/support/td-prod-10-e2e-bootstrap.mjs
+          cp teacher/qualification/td-prod-10/student-app-e2e.spec.mjs student-app/browser-tests/td-prod-10-teacher-delivery.spec.mjs
+
+      - name: Generate exact teacher-delivered Student App fixture
+        working-directory: teacher
+        run: node scripts/writeTdProd10StudentFixture.js ../student-app/browser-tests/support/td-prod-10-generated-fixture.mjs
+
+      - name: Install qualification browser
+        working-directory: student-app
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Qualify teacher delivery in real Student App browser
+        working-directory: student-app
+        env:
+          ST_BROWSER: ${{ matrix.browser }}
+        run: node --test browser-tests/td-prod-10-teacher-delivery.spec.mjs
