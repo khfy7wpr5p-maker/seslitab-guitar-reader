@@ -43,6 +43,14 @@ export function secureDeliveryErrorStatus(error) {
     return 409
   }
 
+  if (
+    /payload-too-large/.test(message) ||
+    error?.status === 413 ||
+    error?.statusCode === 413
+  ) {
+    return 413
+  }
+
   if (error instanceof TypeError) {
     return 400
   }
@@ -55,6 +63,7 @@ function codeForStatus(status) {
   if (status === 403) return 'FORBIDDEN'
   if (status === 404) return 'NOT_FOUND'
   if (status === 409) return 'CONFLICT'
+  if (status === 413) return 'PAYLOAD_TOO_LARGE'
   if (status === 503) return 'SECURE_DELIVERY_UNAVAILABLE'
   return 'INVALID_REQUEST'
 }
@@ -64,6 +73,7 @@ function messageForStatus(status) {
   if (status === 403) return 'Bu işlem için yetkiniz yok.'
   if (status === 404) return 'Kayıt bulunamadı.'
   if (status === 409) return 'İşlem mevcut durumla uyuşmuyor.'
+  if (status === 413) return 'Güvenli teslimat isteği boyut sınırını aşıyor.'
   if (status === 503) return 'Güvenli teslimat şu anda kullanılamıyor.'
   return 'İstek doğrulanamadı.'
 }
