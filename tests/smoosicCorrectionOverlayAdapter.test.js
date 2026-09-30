@@ -55,6 +55,7 @@ function harness() {
       height: 1000,
     },
   }
+  let rendererUpdates = 0
   const view = {
     score: fakeScore(),
     tracker: {
@@ -75,7 +76,7 @@ function harness() {
           return context
         },
       },
-      async updatePromise() {},
+      async updatePromise() { rendererUpdates += 1 },
     },
   }
   const SvgHelpers = {
@@ -107,6 +108,7 @@ function harness() {
     view,
     outlined,
     erased,
+    get rendererUpdates() { return rendererUpdates },
   }
 }
 
@@ -115,6 +117,7 @@ test('SES-120 maps exact single-part MusicXML identity to Smoosic model geometry
     manager,
     view,
     outlined,
+    rendererUpdates,
   } = harness()
   const selectionBefore =
     structuredClone(
@@ -167,6 +170,7 @@ test('SES-120 maps exact single-part MusicXML identity to Smoosic model geometry
     view.tracker.selections,
     selectionBefore,
   )
+  assert.equal(rendererUpdates, 0)
 })
 
 test('SES-120 fails closed and clears for wrong source hash, wrong part or out-of-range measure', async () => {
@@ -349,4 +353,13 @@ test('SES-120 overlay does not hook generic teacher click or keyup events', () =
     editorSource,
     /function\s+scheduleCorrectionOverlayRefresh/,
   )
+})
+
+
+test('SES-120 overlay adapter is renderer-passive and never calls updatePromise', () => {
+  const source = readFileSync(
+    new URL('../experiments/smoosic-mobile/src/seslitab-correction-overlay.js', import.meta.url),
+    'utf8',
+  )
+  assert.doesNotMatch(source, /\.updatePromise\s*\(/)
 })
