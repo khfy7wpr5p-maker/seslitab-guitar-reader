@@ -125,6 +125,7 @@ test('SES-120 maps exact single-part MusicXML identity to Smoosic model geometry
       '<score-partwise version="4.0.3"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"/><measure number="2"/></part></score-partwise>',
     partIds: ['P1'],
     score: view.score,
+    sourceRevision: 7,
   })
 
   const result = await manager.replace({
@@ -179,6 +180,7 @@ test('SES-120 fails closed and clears for wrong source hash, wrong part or out-o
       '<score-partwise version="4.0.3"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"/><measure number="2"/></part></score-partwise>',
     partIds: ['P1'],
     score: fakeScore(),
+    sourceRevision: 1,
   })
 
   assert.equal(
