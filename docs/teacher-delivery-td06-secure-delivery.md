@@ -160,7 +160,9 @@ Reviewed exact versions:
 - `firebase-admin@14.4.0`
 - `firebase@12.19.0`
 - `@firebase/rules-unit-testing@5.0.2`
-- `firebase-tools@15.30.2`
+- `firebase-tools@15.32.0`
+
+TD-PROD-15 additionally pins the transitive `@grpc/grpc-js` package to `1.13.6` through the npm override mechanism to remove the audited high-severity Firebase emulator/tooling chain. This dependency qualification does not activate Firebase production access.
 
 ## Human Gate B — still closed
 
