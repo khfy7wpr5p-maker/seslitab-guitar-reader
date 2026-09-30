@@ -27,7 +27,17 @@ test('TD-07 teacher chord UI contains no Firebase Admin token persistence or Stu
   }
 })
 
-test('TD-07 Akor Ata remains explicit-mount and is not wired into production shell', () => {
+test('TD-PROD-01 production shell uses the controlled assignment mount seam without directly mounting legacy Chord Board UI', () => {
+  const main = readFileSync(
+    new URL('../main.js', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(
+    main,
+    /teacherAssignmentProductionMount|mountTeacherAssignmentProduction/,
+  )
+
   for (const path of [
     '../main.js',
     '../src/app.js',

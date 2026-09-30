@@ -28,10 +28,14 @@ import { initStageJDiscoveryPresentation } from './src/stageJDiscoveryPresentati
 import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
 import { initSmoosicEditorTab } from './src/smoosicEditorTabUi.js'
+import { mountTeacherAssignmentProduction } from './src/teacherAssignmentProductionMount.js'
 
 if (typeof document !== 'undefined') {
   initStageJDiscoveryPresentation(document)
   initStageKTunerPresentation(document)
   initStageS04MiniTunerUi(document)
   initSmoosicEditorTab(document)
+  mountTeacherAssignmentProduction({
+    root: document,
+  })
 }
