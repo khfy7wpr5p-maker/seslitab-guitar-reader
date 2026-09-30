@@ -27,6 +27,11 @@ import { createFixedWindowRateLimiter } from './security/rateLimitPolicy.js'
 import {
   createSecureDeliveryProductionBoundary,
 } from './delivery/production/secureDeliveryProductionBoundary.js'
+import {
+  createSecureDeliveryJsonBodyParser,
+  isSecureDeliveryRequestPath,
+  secureDeliveryPayloadErrorHandler,
+} from './delivery/http/payloadBoundary.js'
 
 import { handleUploadPdf } from './api/uploadPdf.js'
 import { handleAnalyzePdf } from './api/analyzePdf.js'
@@ -86,7 +91,21 @@ app.use(
     createCorsOptions(GATEWAY_CONFIG.allowedOrigins),
   ),
 )
-app.use(express.json())
+const secureDeliveryJsonBodyParser =
+  createSecureDeliveryJsonBodyParser()
+
+app.use(
+  '/api/secure-delivery/v1',
+  secureDeliveryJsonBodyParser,
+)
+
+const gatewayJsonParser = express.json()
+app.use((req, res, next) => {
+  if (isSecureDeliveryRequestPath(req)) {
+    return next()
+  }
+  return gatewayJsonParser(req, res, next)
+})
 
 // Reject new jobs/searches during shutdown.
 app.use('/api/jobs', (req, res, next) => {
@@ -174,6 +193,10 @@ app.use('/api', apiRateLimiter)
 app.use(
   '/api/secure-delivery/v1',
   SECURE_DELIVERY_BOUNDARY.router,
+)
+app.use(
+  '/api/secure-delivery/v1',
+  secureDeliveryPayloadErrorHandler,
 )
 
 app.post('/api/v1/discovery/search', async (req, res) => {
