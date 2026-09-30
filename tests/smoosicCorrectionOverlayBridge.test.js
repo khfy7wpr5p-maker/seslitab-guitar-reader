@@ -184,7 +184,7 @@ test('SES-120 presentation sync cannot block Smoosic source transfer', () => {
 })
 
 
-test('SES-120 sourceRevision provenance survives duplicate native change for the same imported File object', () => {
+test('SES-120 host stamps import provenance before assigning files and local picker clears it', () => {
   const hostSource = readFileSync(
     new URL('../src/smoosicEditorTabUi.js', import.meta.url),
     'utf8',
@@ -194,15 +194,20 @@ test('SES-120 sourceRevision provenance survives duplicate native change for the
     'utf8',
   )
 
-  assert.match(hostSource, /new win\.CustomEvent\(['"]change['"]/)
-  assert.match(hostSource, /detail:\s*Object\.freeze\(/)
-  assert.match(hostSource, /SESLITAB_SMOOSIC_IMPORT_V1/)
-  assert.match(iframeSource, /const importedSourceRevisions = new WeakMap\(\)/)
-  assert.match(iframeSource, /function importedSourceRevision\(event, file\)/)
-  assert.match(iframeSource, /importedSourceRevisions\.set\(file, value\)/)
-  assert.match(iframeSource, /importedSourceRevisions\.has\(file\)/)
-  assert.match(iframeSource, /importedSourceRevisions\.get\(file\)/)
-  assert.match(iframeSource, /importedSourceRevision\(event, file\)/)
+  assert.match(hostSource, /function stampIframeImportProvenance\(input, sourceRevision\)/)
+  assert.match(hostSource, /input\.dataset\.seslitabImportContract = 'SESLITAB_SMOOSIC_IMPORT_V1'/)
+  assert.match(hostSource, /input\.dataset\.seslitabImportRevision = String\(sourceRevision\)/)
+  assert.match(
+    hostSource,
+    /stampIframeImportProvenance\(input, targetRevision\)[\s\S]*assignInputFile\(frame, input, file\)/,
+  )
+  assert.match(iframeSource, /function importedSourceRevision\(event, input\)/)
+  assert.match(iframeSource, /dataset\.seslitabImportContract !== 'SESLITAB_SMOOSIC_IMPORT_V1'/)
+  assert.match(iframeSource, /Number\(dataset\.seslitabImportRevision\)/)
+  assert.match(
+    iframeSource,
+    /xmlButton\.addEventListener\('click',[\s\S]*clearImportedSourceProvenance\(xmlInput\)[\s\S]*xmlInput\.click\(\)/,
+  )
   assert.doesNotMatch(hostSource, /file\.seslitabSourceRevision/)
   assert.doesNotMatch(iframeSource, /file\?\.seslitabSourceRevision/)
 })
