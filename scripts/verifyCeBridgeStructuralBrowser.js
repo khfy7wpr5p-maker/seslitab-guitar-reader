@@ -205,7 +205,7 @@ async function runRuntimeUnavailableProof() {
 }
 
 async function armForgedManifest(session, mode) {
-  return session.evaluate(\`(() => {
+  return session.evaluate(`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
     if (!frame?.contentWindow) return false;
     if (!window.__CE_BRIDGE_ORIGINAL_FRAME_POST__) {
@@ -242,7 +242,7 @@ async function armForgedManifest(session, mode) {
           requestId: message.requestId,
           sourceRevision: message.sourceRevision,
           fileName: 'forged-structural.musicxml',
-          musicXml: \${JSON.stringify(SOURCE_XML)},
+          musicXml: ${JSON.stringify(SOURCE_XML)},
           paddingRestProvenance: {
             version: 1,
             sourceRevision: message.sourceRevision,
@@ -266,13 +266,13 @@ async function armForgedManifest(session, mode) {
       window.__CE_BRIDGE_FORGED_FRAME_POST__ = forgedPostMessage;
       if (frame.contentWindow.postMessage !== forgedPostMessage) return false;
     }
-    window.__CE_BRIDGE_FORGE_MODE__ = \${JSON.stringify(mode)};
+    window.__CE_BRIDGE_FORGE_MODE__ = ${JSON.stringify(mode)};
     return true;
-  })()\`)
+  })()`)
 }
 
 async function restoreForgedManifest(session) {
-  await session.evaluate(\`(() => {
+  await session.evaluate(`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
     if (window.__CE_BRIDGE_ORIGINAL_FRAME_POST__ && frame?.contentWindow) {
       frame.contentWindow.postMessage = window.__CE_BRIDGE_ORIGINAL_FRAME_POST__;
@@ -281,7 +281,7 @@ async function restoreForgedManifest(session) {
     delete window.__CE_BRIDGE_FORGED_FRAME_POST__;
     delete window.__CE_BRIDGE_FORGE_MODE__;
     return true;
-  })()\`)
+  })()`)
 }
 
 async function runMainProof() {
