@@ -207,105 +207,88 @@ async function runRuntimeUnavailableProof() {
 async function armForgedManifest(session, mode) {
   return session.evaluate(`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
-    const frameWindow = frame?.contentWindow;
-    const frameDocument = frame?.contentDocument;
-    if (!frameWindow || !frameDocument?.body) return false;
+    if (!frame?.contentWindow) return false;
 
-    if (!window.__CE_BRIDGE_DELIVER_FORGED__) {
-      window.__CE_BRIDGE_DELIVER_FORGED__ = (payload) => {
+    if (!window.__CE_BRIDGE_FORGE_HANDLER__) {
+      window.__CE_BRIDGE_FORGE_HANDLER__ = (event) => {
+        if (window.__CE_BRIDGE_FORGE_REPLAYING__) return;
+
         const activeFrame = document.getElementById('smoosic-editor-frame');
-        if (!activeFrame?.contentWindow) return false;
-        window.dispatchEvent(new MessageEvent('message', {
-          data: payload,
-          origin: location.origin,
-          source: activeFrame.contentWindow,
-        }));
-        return true;
-      };
-    }
+        const message = event.data;
+        const mode = window.__CE_BRIDGE_FORGE_MODE__;
+        if (
+          !mode
+          || event.source !== activeFrame?.contentWindow
+          || event.origin !== location.origin
+          || !message
+          || typeof message !== 'object'
+          || message.type !== 'seslitab:smoosic-export-result'
+          || message.version !== 2
+        ) {
+          return;
+        }
 
-    if (!frameWindow.__CE_BRIDGE_FORGE_HANDLER__) {
-      const sourceXml = ${JSON.stringify(SOURCE_XML)};
-      const installer = frameDocument.createElement('script');
-      installer.textContent = '(' + function installForgedReplyListener(sourceXml) {
-        const handler = (event) => {
-          const message = event.data;
-          const mode = window.__CE_BRIDGE_FORGE_MODE__;
-          if (!mode || message?.type !== 'seslitab:smoosic-export-request') return;
-
-          const malformed = { malformed: true };
-          const stale = {
-            version: 1,
-            sourceRevision: Number(message.sourceRevision) + 1,
-            editorSessionId: 'forged-session',
-            actionId: 'forged-apply',
-            operations: [{
-              order: 0,
-              operation: 'CHANGE_EVENT_DURATION',
-              rawNoteOrdinal: 0,
-              staffIndex: 0,
-              measureIndex: 0,
-              voiceIndex: 0,
-              noteIndex: 0,
-              noteIdentity: 'forged-note',
-              before: 1,
-              after: 2,
-            }],
-            baseMappingFingerprint: '0000000000000000',
-            createdFromExplicitTeacherApply: true,
-          };
-          const payload = {
-            type: 'seslitab:smoosic-export-result',
-            version: 2,
-            requestId: message.requestId,
-            sourceRevision: message.sourceRevision,
-            fileName: 'forged-structural.musicxml',
-            musicXml: sourceXml,
-            paddingRestProvenance: {
-              version: 1,
-              sourceRevision: message.sourceRevision,
-              rawNoteCount: 2,
-              entries: [],
-            },
-            structuralActionManifest: mode === 'stale' ? stale : malformed,
-            roundTripOk: true,
-            shapeOk: true,
-            semanticOk: true,
-          };
-
-          const delivered = parent.__CE_BRIDGE_DELIVER_FORGED__?.(payload) === true;
-          parent.__CE_BRIDGE_FORGE_DEBUG__ = {
-            mode,
-            requestId: message.requestId,
-            sourceRevision: message.sourceRevision,
-            delivered,
-          };
+        const malformed = { malformed: true };
+        const stale = {
+          version: 1,
+          sourceRevision: Number(message.sourceRevision) + 1,
+          editorSessionId: 'forged-session',
+          actionId: 'forged-apply',
+          operations: [{
+            order: 0,
+            operation: 'CHANGE_EVENT_DURATION',
+            rawNoteOrdinal: 0,
+            staffIndex: 0,
+            measureIndex: 0,
+            voiceIndex: 0,
+            noteIndex: 0,
+            noteIdentity: 'forged-note',
+            before: 1,
+            after: 2,
+          }],
+          baseMappingFingerprint: '0000000000000000',
+          createdFromExplicitTeacherApply: true,
+        };
+        const payload = {
+          ...message,
+          structuralActionManifest: mode === 'stale' ? stale : malformed,
         };
 
-        window.__CE_BRIDGE_FORGE_HANDLER__ = handler;
-        window.addEventListener('message', handler, true);
-      }.toString() + ')(' + JSON.stringify(sourceXml) + ');';
-      frameDocument.body.appendChild(installer);
-      installer.remove();
+        event.stopImmediatePropagation();
+        window.__CE_BRIDGE_FORGE_DEBUG__ = {
+          mode,
+          requestId: message.requestId,
+          sourceRevision: message.sourceRevision,
+          intercepted: true,
+        };
 
-      if (typeof frameWindow.__CE_BRIDGE_FORGE_HANDLER__ !== 'function') return false;
+        window.__CE_BRIDGE_FORGE_REPLAYING__ = true;
+        try {
+          window.dispatchEvent(new MessageEvent('message', {
+            data: payload,
+            origin: event.origin,
+            source: activeFrame.contentWindow,
+          }));
+        } finally {
+          window.__CE_BRIDGE_FORGE_REPLAYING__ = false;
+        }
+      };
+      window.addEventListener('message', window.__CE_BRIDGE_FORGE_HANDLER__, true);
     }
 
-    frameWindow.__CE_BRIDGE_FORGE_MODE__ = ${JSON.stringify(mode)};
+    window.__CE_BRIDGE_FORGE_MODE__ = ${JSON.stringify(mode)};
     return true;
   })()`)
 }
 
 async function restoreForgedManifest(session) {
   await session.evaluate(`(() => {
-    const frame = document.getElementById('smoosic-editor-frame');
-    const frameWindow = frame?.contentWindow;
-    if (frameWindow?.__CE_BRIDGE_FORGE_HANDLER__) {
-      frameWindow.removeEventListener('message', frameWindow.__CE_BRIDGE_FORGE_HANDLER__, true);
-      delete frameWindow.__CE_BRIDGE_FORGE_HANDLER__;
+    if (window.__CE_BRIDGE_FORGE_HANDLER__) {
+      window.removeEventListener('message', window.__CE_BRIDGE_FORGE_HANDLER__, true);
+      delete window.__CE_BRIDGE_FORGE_HANDLER__;
     }
-    if (frameWindow) delete frameWindow.__CE_BRIDGE_FORGE_MODE__;
-    delete window.__CE_BRIDGE_DELIVER_FORGED__;
+    delete window.__CE_BRIDGE_FORGE_MODE__;
+    delete window.__CE_BRIDGE_FORGE_REPLAYING__;
     delete window.__CE_BRIDGE_FORGE_DEBUG__;
     return true;
   })()`)
