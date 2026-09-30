@@ -419,10 +419,6 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
   });
   currentScoreBaseName = stripMusicXmlExtension(name);
   window.dispatchEvent(new Event('resize'));
-  // The host treats data-loaded-file-name as the handoff barrier before it may
-  // request presentation overlays. Wait for the resize/render queue first so
-  // Smoosic cannot immediately discard a freshly acknowledged SVG overlay.
-  await awaitEditorStable();
   document.getElementById('poc-status')?.setAttribute('data-loaded-file-name', name);
   setStatus(`Yüklendi: ${name}`);
 }
