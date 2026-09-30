@@ -43,6 +43,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Verify S16 read-only request guard in serialized real browser
+        run: npm run test:s16:browser
+
       - name: Build production bundle
         run: npm run build
 
