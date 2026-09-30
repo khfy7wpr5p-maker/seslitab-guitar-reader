@@ -259,8 +259,14 @@ function musicXmlPartIds(xml) {
     .map((part) => String(part.getAttribute('id') || '').trim());
 }
 
-function importedSourceRevision(file) {
-  const value = file?.seslitabSourceRevision;
+function importedSourceRevision(event) {
+  const provenance = event?.seslitabImportProvenance;
+  if (!provenance
+      || provenance.contract !== 'SESLITAB_SMOOSIC_IMPORT_V1'
+      || provenance.version !== 1) {
+    return null;
+  }
+  const value = provenance.sourceRevision;
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
@@ -320,7 +326,7 @@ function sourceMusicXmlDurationByRawOrdinal(xml) {
   })
 }
 
-async function loadMusicXmlFile(file) {
+async function loadMusicXmlFile(file, sourceRevision = null) {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
   }
@@ -339,7 +345,9 @@ async function loadMusicXmlFile(file) {
   const xml = parser.parseFromString(text, 'text/xml');
   if (xml.querySelector('parsererror')) throw new Error('MusicXML ayrıştırılamadı');
   const partIds = musicXmlPartIds(xml);
-  const sourceRevision = importedSourceRevision(file);
+  if (sourceRevision !== null && (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0)) {
+    throw new Error('SesliTab kaynak sürümü geçersiz');
+  }
 
   const candidateTracker = createSmoosicPaddingRestTracker(SmoMeasure);
   const candidateStructuralTracker = createSmoosicStructuralActionTracker({
@@ -1176,8 +1184,13 @@ function wireMobileControls() {
       xmlInput.value = '';
       xmlInput.click();
     });
-    xmlInput.addEventListener('change', async () => {
-      try { await loadMusicXmlFile(xmlInput.files && xmlInput.files[0]); }
+    xmlInput.addEventListener('change', async (event) => {
+      try {
+        await loadMusicXmlFile(
+          xmlInput.files && xmlInput.files[0],
+          importedSourceRevision(event)
+        );
+      }
       catch (error) { console.error(error); setStatus(`XML hatası: ${String(error)}`); }
     });
   }
