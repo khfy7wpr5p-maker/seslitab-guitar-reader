@@ -317,7 +317,12 @@ function task7Host({
         }
         element.contentWindow = {
           File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
-          Event: class { constructor(type) { this.type = type } },
+          CustomEvent: class {
+            constructor(type, options = {}) {
+              this.type = type
+              this.detail = options.detail
+            }
+          },
           postMessage(message) {
             if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
               queueMicrotask(() => {
