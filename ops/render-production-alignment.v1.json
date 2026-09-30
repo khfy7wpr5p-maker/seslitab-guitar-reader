@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "preparedAt": "2026-09-30",
+  "sourceRevision": "48bfa4443356632cd1401efd246f0c590701f8d7",
+  "workspaceId": "tea-d9j83h3eo5us73b0i180",
+  "mode": "DRY_RUN_ONLY",
+  "services": [
+    {
+      "name": "seslitab-app",
+      "serviceId": "srv-da9gqapf2nfc73fh6o1g",
+      "url": "https://seslitab-app.onrender.com",
+      "status": "ALIGNED",
+      "current": {
+        "branch": "main",
+        "commit": "48bfa4443356632cd1401efd246f0c590701f8d7",
+        "deployId": "dep-daulene0tbcc73dpkdb0",
+        "deployStatus": "live",
+        "autoDeploy": "yes"
+      },
+      "target": {
+        "branch": "main",
+        "commit": "48bfa4443356632cd1401efd246f0c590701f8d7"
+      },
+      "executionPolicy": {
+        "deployAuthorized": false,
+        "environmentMutationAuthorized": false,
+        "branchMutationAuthorized": false
+      }
+    },
+    {
+      "name": "st-student-app",
+      "serviceId": "srv-darsnufpn0mc73dt17og",
+      "url": "https://st-student-app.onrender.com",
+      "status": "ALIGNED",
+      "current": {
+        "branch": "main",
+        "commit": "b59bcb6dc5525f035515ab358734ebbe5a277fbb",
+        "deployId": "dep-dat1i249v7es73fg8uj0",
+        "deployStatus": "live",
+        "autoDeploy": "yes"
+      },
+      "target": {
+        "branch": "main",
+        "commit": "b59bcb6dc5525f035515ab358734ebbe5a277fbb"
+      },
+      "executionPolicy": {
+        "deployAuthorized": false,
+        "environmentMutationAuthorized": false,
+        "branchMutationAuthorized": false
+      }
+    },
+    {
+      "name": "st-student-api",
+      "serviceId": "srv-darsntfavr4c7381t9f0",
+      "url": "https://st-student-api.onrender.com",
+      "status": "ALIGNMENT_REQUIRED",
+      "current": {
+        "branch": "ses8-pilot-authorization-hardening",
+        "commit": "33825c8332ab0f6b65a7206fc34c3ab3dd4f4185",
+        "deployId": "dep-das3a6chaf8s73f1irr0",
+        "deployStatus": "live",
+        "autoDeploy": "yes",
+        "startCommand": "node backend/delivery/pilot/server.js",
+        "runtimeEvidence": "[Secure Delivery] production server listening"
+      },
+      "target": {
+        "branch": "main",
+        "commit": "48bfa4443356632cd1401efd246f0c590701f8d7",
+        "startCommand": "node backend/delivery/pilot/server.js",
+        "urlMustRemain": "https://st-student-api.onrender.com",
+        "serviceIdMustRemain": "srv-darsntfavr4c7381t9f0"
+      },
+      "activationPreflight": {
+        "secureDeliveryProductionActivation": true,
+        "secureDeliveryWritesEnabled": false,
+        "secureDeliveryTeacherWritesActivation": false,
+        "productionProvisioningBootstrap": "disabled",
+        "productionAcceptanceBootstrap": "disabled",
+        "firebaseProjectId": "verify-approved-non-emulator-id-without-recording-secret-values",
+        "applicationDefaultCredentials": "verify-present-without-exporting-secret-material"
+      },
+      "executionPolicy": {
+        "deployAuthorized": false,
+        "environmentMutationAuthorized": false,
+        "branchMutationAuthorized": false
+      }
+    },
+    {
+      "name": "seslitab-omr",
+      "serviceId": "srv-d9jmd26gekts7381pk1g",
+      "url": "https://seslitab-omr.onrender.com",
+      "status": "SEPARATE_GATE",
+      "current": {
+        "branch": "main",
+        "commit": "5d1242572f5fed906158882cb1dd0139889d5b51",
+        "deployId": "dep-daru8bnavr4c7387jvq0",
+        "deployStatus": "live",
+        "autoDeploy": "no",
+        "suspended": true
+      },
+      "target": {
+        "branch": "main",
+        "suspended": true,
+        "alignmentDeferred": true
+      },
+      "executionPolicy": {
+        "resumeAuthorized": false,
+        "deployAuthorized": false,
+        "environmentMutationAuthorized": false,
+        "branchMutationAuthorized": false
+      }
+    }
+  ],
+  "rollback": {
+    "studentApi": {
+      "serviceId": "srv-darsntfavr4c7381t9f0",
+      "deployId": "dep-das3a6chaf8s73f1irr0",
+      "commit": "33825c8332ab0f6b65a7206fc34c3ab3dd4f4185",
+      "branch": "ses8-pilot-authorization-hardening",
+      "startCommand": "node backend/delivery/pilot/server.js"
+    }
+  },
+  "futureExecutionOrder": [
+    "audit-runtime-key-names-and-safe-values",
+    "record-current-student-api-rollback-evidence",
+    "disable-automatic-deploy-before-branch-switch",
+    "switch-existing-student-api-source-branch-to-main",
+    "manually-deploy-reviewed-main-revision",
+    "verify-health-read-only-profile",
+    "stop-before-teacher-write-activation"
+  ],
+  "forbiddenActions": [
+    "create-render-service",
+    "create-render-domain",
+    "trigger-render-deploy",
+    "teacher-write-activation",
+    "firebase-production-write",
+    "resume-seslitab-omr"
+  ]
+}
