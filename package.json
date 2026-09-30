@@ -16,6 +16,7 @@
     "build": "npm run runtime:prepare && npm run smoosic:prepare && vite build && node scripts/writeS16BuildCompositionManifest.js",
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
+    "test:s16:browser": "node --test --test-concurrency=1 browser-tests/s16ReadOnlyRequestGuard.browser.test.mjs",
     "verify:production-composition": "node scripts/verifyS16DeployedCompositionBrowser.js",
     "backend:start": "node backend/server.js",
     "backend:dev": "node --watch backend/server.js",

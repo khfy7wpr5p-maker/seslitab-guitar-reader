@@ -19,6 +19,10 @@ test('S16 real-browser guard is isolated from the parallel unit-test pool', () =
   const unitGuard = readFileSync(unitGuardPath, 'utf8')
   assert.doesNotMatch(unitGuard, /runBrowserProbe|chromeBinary|spawnSync|createServer/)
 
+  const browserGuard = readFileSync(browserGuardPath, 'utf8')
+  assert.match(browserGuard, /runBrowserProbe/)
+  assert.match(browserGuard, /S16 browser guard prevents a controlled POST from reaching the server/)
+
   const ci = readFileSync(ciPath, 'utf8')
   const unitStep = ci.indexOf('run: npm test')
   const browserStep = ci.indexOf('run: npm run test:s16:browser')
