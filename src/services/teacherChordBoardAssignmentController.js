@@ -1,16 +1,13 @@
 import {
   fingerprintChordBoardVoicing,
 } from './chordBoardVoicingFingerprint.js'
+import {
+  TEACHER_ASSIGNMENT_DELIVERY_PHASE,
+  createTeacherAssignmentDeliveryOrchestrator,
+} from './teacherAssignmentDeliveryOrchestrator.js'
 
 export const TEACHER_CHORD_DELIVERY_PHASE =
-  Object.freeze({
-    LOCAL_ASSIGNMENT_ONLY:
-      'LOCAL_ASSIGNMENT_ONLY',
-    DURABLY_PREPARED:
-      'DURABLY_PREPARED',
-    DELIVERED_TO_STUDENT:
-      'DELIVERED_TO_STUDENT',
-  })
+  TEACHER_ASSIGNMENT_DELIVERY_PHASE
 
 const EMPTY_ASSIGNMENTS = Object.freeze([])
 
@@ -60,89 +57,6 @@ function safeStudents(rosterService) {
       }),
     ),
   )
-}
-
-function assertPreparedAcknowledgement(
-  acknowledgement,
-  assignments,
-) {
-  if (
-    !Array.isArray(acknowledgement) ||
-    acknowledgement.length !==
-      assignments.length
-  ) {
-    throw new Error(
-      'secure preparation acknowledgement mismatch.',
-    )
-  }
-
-  for (
-    let index = 0;
-    index < assignments.length;
-    index += 1
-  ) {
-    const expected = assignments[index]
-    const actual = acknowledgement[index]
-
-    if (
-      actual?.assignment?.assignmentId !==
-        expected.assignmentId ||
-      actual?.assignment?.studentId !==
-        expected.studentId ||
-      actual?.assignment?.practiceType !==
-        'CHORD_BOARD' ||
-      actual?.packageId !==
-        expected.assignmentId
-    ) {
-      throw new Error(
-        'secure preparation acknowledgement mismatch.',
-      )
-    }
-  }
-
-  return acknowledgement
-}
-
-function assertDeliveryAcknowledgement(
-  acknowledgement,
-  assignments,
-) {
-  if (
-    !Array.isArray(acknowledgement) ||
-    acknowledgement.length !==
-      assignments.length
-  ) {
-    throw new Error(
-      'secure delivery acknowledgement mismatch.',
-    )
-  }
-
-  for (
-    let index = 0;
-    index < assignments.length;
-    index += 1
-  ) {
-    const expected = assignments[index]
-    const actual = acknowledgement[index]
-
-    if (
-      actual?.deliveryId !==
-        expected.assignmentId ||
-      actual?.assignmentId !==
-        expected.assignmentId ||
-      actual?.studentId !==
-        expected.studentId ||
-      actual?.packageId !==
-        expected.assignmentId ||
-      actual?.revokedAt !== null
-    ) {
-      throw new Error(
-        'secure delivery acknowledgement mismatch.',
-      )
-    }
-  }
-
-  return acknowledgement
 }
 
 export function createTeacherChordBoardAssignmentController({
@@ -201,6 +115,11 @@ export function createTeacherChordBoardAssignmentController({
       'createChordPackage must be a function.',
     )
   }
+
+  const deliveryOrchestrator =
+    createTeacherAssignmentDeliveryOrchestrator({
+      secureDeliveryClient,
+    })
 
   const symbols = catalog.listSymbols()
   if (
@@ -321,15 +240,14 @@ export function createTeacherChordBoardAssignmentController({
       })
     }
 
-    try {
-      const acknowledgement =
-        await secureDeliveryClient
-          .prepareAssignments(items)
-      assertPreparedAcknowledgement(
-        acknowledgement,
-        assignments,
-      )
-    } catch {
+    const delivery =
+      await deliveryOrchestrator.deliver(items)
+
+    if (
+      delivery.phase ===
+      TEACHER_CHORD_DELIVERY_PHASE
+        .LOCAL_ASSIGNMENT_ONLY
+    ) {
       return Object.freeze({
         ok: false,
         phase:
@@ -341,20 +259,11 @@ export function createTeacherChordBoardAssignmentController({
       })
     }
 
-    try {
-      const acknowledgement =
-        await secureDeliveryClient
-          .deliverAssignments(
-            assignments.map(
-              (assignment) =>
-                assignment.assignmentId,
-            ),
-          )
-      assertDeliveryAcknowledgement(
-        acknowledgement,
-        assignments,
-      )
-    } catch {
+    if (
+      delivery.phase ===
+      TEACHER_CHORD_DELIVERY_PHASE
+        .DURABLY_PREPARED
+    ) {
       return Object.freeze({
         ok: false,
         phase:

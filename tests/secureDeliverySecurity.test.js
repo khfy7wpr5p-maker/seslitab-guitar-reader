@@ -81,15 +81,23 @@ test('TD-06 Firebase adapter contains no production project or credential materi
   }
 })
 
-test('TD-06 browser client is provider-neutral and never imports Firebase SDK', () => {
-  const client = readFileSync(
-    new URL('../src/services/secureDeliveryApiClient.js', import.meta.url),
-    'utf8',
+test('TD-06 browser client and SES-118 orchestrator stay provider-neutral and browser-safe', () => {
+  const source = [
+    '../src/services/secureDeliveryApiClient.js',
+    '../src/services/teacherAssignmentDeliveryOrchestrator.js',
+  ].map((path) =>
+    readFileSync(new URL(path, import.meta.url), 'utf8'),
+  ).join('\n')
+
+  assert.doesNotMatch(source, /from\s+['"]firebase(?:\/|['"])/i)
+  assert.doesNotMatch(source, /firebase-admin/i)
+  assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/i)
+  assert.doesNotMatch(source, /console\.(?:log|error).*token/i)
+  assert.doesNotMatch(source, /node:crypto|createHash\s*\(/i)
+  assert.doesNotMatch(
+    source,
+    /createStudentPrivatePracticePackageV1|createStudentPrivateChordBoardPackageV1|scorePracticePackageBuilder/i,
   )
-  assert.doesNotMatch(client, /from\s+['"]firebase(?:\/|['"])/i)
-  assert.doesNotMatch(client, /firebase-admin/i)
-  assert.doesNotMatch(client, /localStorage|sessionStorage|indexedDB/i)
-  assert.doesNotMatch(client, /console\.(?:log|error).*token/i)
 })
 
 test('TD-06 is not automatically mounted into the production browser entry points', () => {
