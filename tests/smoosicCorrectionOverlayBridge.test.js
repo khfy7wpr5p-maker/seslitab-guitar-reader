@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -163,5 +164,21 @@ test('SES-120 validates exact iframe acknowledgement identity', () => {
         },
       ),
     /source hash/i,
+  )
+})
+
+
+test('SES-120 presentation sync cannot block Smoosic source transfer', () => {
+  const source = readFileSync(
+    new URL('../src/smoosicEditorTabUi.js', import.meta.url),
+    'utf8',
+  )
+  assert.doesNotMatch(
+    source,
+    /await\s+syncSmoosicCorrectionOverlays\s*\(/,
+  )
+  assert.match(
+    source,
+    /void\s+syncSmoosicCorrectionOverlays\s*\(/,
   )
 })
