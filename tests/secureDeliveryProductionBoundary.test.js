@@ -16,6 +16,8 @@ function fakeStore() {
   return {
     async getIdentityMapping() { return null },
     async getTeacherStudentGrant() { return null },
+    async listTeacherStudentGrantsForTeacher() { return [] },
+    async getRosterEntry() { return null },
     async getPreparedAssignment() { return null },
     async getPracticePackage() { return null },
     async getLifecycle() { return null },
