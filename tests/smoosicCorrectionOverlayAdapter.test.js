@@ -330,3 +330,23 @@ test('SES-120 protected CI requires the real bundled Smoosic overlay browser pro
   assert.match(ci, /Verify SES-120 Smoosic correction overlay in real browser/)
   assert.match(ci, /node scripts\/verifySmoosicCorrectionOverlayBrowser\.js/)
 })
+
+
+test('SES-120 overlay does not hook generic teacher click or keyup events', () => {
+  const editorSource = readFileSync(
+    new URL('../experiments/smoosic-mobile/src/index.js', import.meta.url),
+    'utf8',
+  )
+  assert.doesNotMatch(
+    editorSource,
+    /addEventListener\(['"]click['"],\s*scheduleCorrectionOverlayRefresh/,
+  )
+  assert.doesNotMatch(
+    editorSource,
+    /addEventListener\(['"]keyup['"],\s*scheduleCorrectionOverlayRefresh/,
+  )
+  assert.doesNotMatch(
+    editorSource,
+    /function\s+scheduleCorrectionOverlayRefresh/,
+  )
+})
