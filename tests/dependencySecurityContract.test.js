@@ -78,7 +78,7 @@ test('TD-PROD-15 documents the bounded residual moderate findings', () => {
   assert.match(qualification, /10 moderate, 6 high/)
   assert.match(qualification, /production graph: 2 moderate, 0 high, 0 critical/)
   assert.match(qualification, /full graph: 5 moderate, 0 high, 0 critical/)
-  assert.match(qualification, /firebase-admin.*optional Storage/i)
+  assert.match(qualification, /firebase-admin → optional @google-cloud\/storage/i)
   assert.match(qualification, /no Storage API usage/i)
   assert.match(qualification, /no semver-major transitive override/i)
 })
