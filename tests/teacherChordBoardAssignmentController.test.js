@@ -5,6 +5,16 @@ import {
   getChordBoardVoicings,
   listChordBoardSymbols,
 } from '../src/services/chordBoardCatalog.js'
+import {
+  createChordBoardAssignmentSourceBinding,
+} from '../src/services/chordBoardAssignmentSourceBinding.js'
+import {
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+  createPrivateAssignment,
+} from '../src/services/privateAssignment.js'
+import {
+  createStudentPrivateChordBoardPackageV1,
+} from '../src/services/studentChordBoardPackageV1.js'
 
 let controllerApi = null
 try {
@@ -23,20 +33,21 @@ function requireApi() {
 
 function assignment(studentId, index = 0) {
   const snapshot = getChordBoardVoicings('Am')[0]
-  return Object.freeze({
-    schemaVersion: 1,
+  const assignedAt = '2026-09-23T13:00:00Z'
+  return createPrivateAssignment({
     assignmentId: `assignment-${studentId}-${index}`,
     studentId,
-    practiceType: 'CHORD_BOARD',
+    practiceType:
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+        .CHORD_BOARD,
     teacherNote: '',
-    state: 'ACTIVE',
-    assignedAt: '2026-09-23T13:00:00Z',
-    revokedAt: null,
-    sourceRef: Object.freeze({
-      studentId,
-      snapshot,
-      voicingFingerprint: snapshot.voicingFingerprint,
-    }),
+    assignedAt,
+    sourceRef:
+      createChordBoardAssignmentSourceBinding({
+        studentId,
+        snapshot,
+        boundAt: assignedAt,
+      }),
   })
 }
 
@@ -84,13 +95,9 @@ function harness({
       },
       createChordPackage({ assignment: row }) {
         calls.package.push(row.assignmentId)
-        return Object.freeze({
-          packageType: 'CHORD_BOARD',
-          packageId: row.assignmentId,
-          publication: Object.freeze({
-            scope: 'student_private',
-            recipientStudentId: row.studentId,
-          }),
+        return createStudentPrivateChordBoardPackageV1({
+          assignment: row,
+          practice: {},
         })
       },
       secureDeliveryClient: {
@@ -104,8 +111,14 @@ function harness({
             Object.freeze(
               assignments.map((row) =>
                 Object.freeze({
+                  schemaVersion: 1,
+                  teacherId: 'teacher-a',
                   assignment: row,
                   packageId: row.assignmentId,
+                  packageFingerprint:
+                    'a'.repeat(64),
+                  preparedAt:
+                    '2026-09-23T13:01:00Z',
                 }),
               ),
             )
@@ -119,10 +132,14 @@ function harness({
             Object.freeze(
               assignments.map((row) =>
                 Object.freeze({
+                  schemaVersion: 1,
                   deliveryId: row.assignmentId,
                   assignmentId: row.assignmentId,
                   packageId: row.assignmentId,
+                  teacherId: 'teacher-a',
                   studentId: row.studentId,
+                  deliveredAt:
+                    '2026-09-23T13:02:00Z',
                   revokedAt: null,
                 }),
               ),
