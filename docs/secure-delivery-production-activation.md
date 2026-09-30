@@ -99,6 +99,40 @@ Do not execute this sequence during Aşama 1. It is the Aşama 2 checklist after
    - physical iPhone/Safari acceptance.
 10. Stop. Teacher production writes require a later separately reviewed/write-enabled profile; they are not part of the initial activation.
 
+## Task 9 teacher-write profile — prepared but inactive
+
+Task 9 adds a second production profile without changing the existing read-only profile or executing a production write.
+
+The teacher-write profile is selected only when **all** existing production requirements remain valid and both write gates are explicitly enabled:
+
+- `NODE_ENV=production`
+- `SECURE_DELIVERY_PRODUCTION_ACTIVATION=true`
+- `SECURE_DELIVERY_ENABLED=true`
+- `STUDENT_DELIVERY_READS_ENABLED=true`
+- `SECURE_DELIVERY_WRITES_ENABLED=true`
+- `SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION=true`
+- `SECURE_DELIVERY_FIREBASE_PROJECT_ID=<explicit approved non-emulator project ID>`
+- Firebase emulator host variables are absent
+
+The two write flags are deliberately paired:
+
+- writes enabled without `SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION=true` fails closed before Firebase initialization;
+- teacher-write activation enabled while writes are disabled also fails closed before Firebase initialization;
+- the independent production master gate remains outermost and cannot be bypassed by either write flag.
+
+This profile reuses the existing authenticated Secure Delivery router and services. It does not introduce an alternate write endpoint or direct Firestore browser path. Teacher role resolution, active teacher/student grants, exact recipient binding, package/revision authority, package fingerprint checks, idempotency/conflict handling, Task 8 payload bounds and transactional Firestore persistence remain in their existing layers.
+
+Merging Task 9 code does **not** authorize any of the following:
+
+- changing production environment flags;
+- provisioning production identities or grants;
+- adding or changing production credentials;
+- performing a Firebase production write;
+- deploying/restarting the backend;
+- running live teacher-write acceptance.
+
+Those remain separate explicit human approvals.
+
 ## Rollback
 
 Rollback is fail-closed-first and uses the existing services.
