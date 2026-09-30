@@ -259,26 +259,22 @@ function musicXmlPartIds(xml) {
     .map((part) => String(part.getAttribute('id') || '').trim());
 }
 
-const importedSourceRevisions = new WeakMap();
+function clearImportedSourceProvenance(input) {
+  if (!input?.dataset) return;
+  delete input.dataset.seslitabImportContract;
+  delete input.dataset.seslitabImportVersion;
+  delete input.dataset.seslitabImportRevision;
+}
 
-function importedSourceRevision(event, file) {
-  const provenance = event?.detail;
-  if (provenance
-      && provenance.contract === 'SESLITAB_SMOOSIC_IMPORT_V1'
-      && provenance.version === 1) {
-    const value = provenance.sourceRevision;
-    if (Number.isSafeInteger(value) && value >= 0) {
-      if (file && typeof file === 'object') {
-        importedSourceRevisions.set(file, value);
-      }
-      return value;
-    }
+function importedSourceRevision(event, input) {
+  const dataset = event?.currentTarget?.dataset || input?.dataset;
+  if (!dataset
+      || dataset.seslitabImportContract !== 'SESLITAB_SMOOSIC_IMPORT_V1'
+      || dataset.seslitabImportVersion !== '1') {
     return null;
   }
-  if (file && typeof file === 'object' && importedSourceRevisions.has(file)) {
-    return importedSourceRevisions.get(file);
-  }
-  return null;
+  const value = Number(dataset.seslitabImportRevision);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 function stripMusicXmlExtension(name) {
@@ -1192,15 +1188,15 @@ function wireMobileControls() {
   if (xmlButton && xmlInput) {
     xmlButton.addEventListener('click', () => {
       if (!editorReady) return setStatus('Editör hazırlanıyor…');
+      clearImportedSourceProvenance(xmlInput);
       xmlInput.value = '';
       xmlInput.click();
     });
     xmlInput.addEventListener('change', async (event) => {
       try {
-        const file = xmlInput.files && xmlInput.files[0];
         await loadMusicXmlFile(
-          file,
-          importedSourceRevision(event, file)
+          xmlInput.files && xmlInput.files[0],
+          importedSourceRevision(event, xmlInput)
         );
       }
       catch (error) { console.error(error); setStatus(`XML hatası: ${String(error)}`); }
