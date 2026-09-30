@@ -388,6 +388,7 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
   activeStructuralActionTracker = candidateStructuralTracker;
 
   if (activeCorrectionOverlayManager) {
+    const overlayStatus = document.getElementById('poc-status');
     try {
       if (sourceRevision === null) {
         activeCorrectionOverlayManager.reset();
@@ -399,8 +400,13 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
           sourceRevision
         });
       }
+      overlayStatus?.removeAttribute('data-correction-overlay-bind-error');
     } catch (error) {
       activeCorrectionOverlayManager.reset();
+      overlayStatus?.setAttribute(
+        'data-correction-overlay-bind-error',
+        String(error?.message || error || 'overlay source bind failed').slice(0, 256)
+      );
       console.warn('Correction overlay kaynağı kabul edilmedi', error);
     }
   }
