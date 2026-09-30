@@ -91,6 +91,7 @@ export function createSecureDeliveryRouter({
   tokenVerifier,
   preparedService,
   teacherService,
+  teacherRosterService,
   teacherPieceService,
   studentService,
   config,
@@ -122,6 +123,11 @@ export function createSecureDeliveryRouter({
       'teacherService',
     )
   }
+  assertServiceMethod(
+    teacherRosterService,
+    'listRoster',
+    'teacherRosterService',
+  )
   for (const method of [
     'createPiece',
     'applyPieceAction',
@@ -336,6 +342,19 @@ export function createSecureDeliveryRouter({
       success(
         res,
         await teacherService.listDeliveries({
+          providerSubject: subject,
+        }),
+      ),
+    ),
+  )
+
+  router.get(
+    '/teacher/roster',
+    requireEnabled('teacher_roster_list'),
+    route('teacher_roster_list', async (_req, res, subject) =>
+      success(
+        res,
+        await teacherRosterService.listRoster({
           providerSubject: subject,
         }),
       ),
