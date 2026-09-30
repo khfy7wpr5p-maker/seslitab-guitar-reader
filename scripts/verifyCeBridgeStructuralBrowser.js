@@ -205,83 +205,91 @@ async function runRuntimeUnavailableProof() {
 }
 
 async function armForgedManifest(session, mode) {
-  return session.evaluate(`(() => {
+  return session.evaluate(\`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
-    if (!frame?.contentWindow) return false;
-    if (!window.__CE_BRIDGE_ORIGINAL_FRAME_POST__) {
-      window.__CE_BRIDGE_ORIGINAL_FRAME_POST__ = frame.contentWindow.postMessage.bind(frame.contentWindow);
-      const forgedPostMessage = function(message, targetOrigin, transfer) {
-        if (message?.type !== 'seslitab:smoosic-export-request') {
-          return window.__CE_BRIDGE_ORIGINAL_FRAME_POST__(message, targetOrigin, transfer);
-        }
-        const mode = window.__CE_BRIDGE_FORGE_MODE__;
-        const malformed = { malformed: true };
-        const stale = {
-          version: 1,
-          sourceRevision: Number(message.sourceRevision) + 1,
-          editorSessionId: 'forged-session',
-          actionId: 'forged-apply',
-          operations: [{
-            order: 0,
-            operation: 'CHANGE_EVENT_DURATION',
-            rawNoteOrdinal: 0,
-            staffIndex: 0,
-            measureIndex: 0,
-            voiceIndex: 0,
-            noteIndex: 0,
-            noteIdentity: 'forged-note',
-            before: 1,
-            after: 2,
-          }],
-          baseMappingFingerprint: '0000000000000000',
-          createdFromExplicitTeacherApply: true,
-        };
-        const payload = {
-          type: 'seslitab:smoosic-export-result',
-          version: 2,
-          requestId: message.requestId,
-          sourceRevision: message.sourceRevision,
-          fileName: 'forged-structural.musicxml',
-          musicXml: ${JSON.stringify(SOURCE_XML)},
-          paddingRestProvenance: {
+    const frameWindow = frame?.contentWindow;
+    const frameDocument = frame?.contentDocument;
+    if (!frameWindow || !frameDocument?.body) return false;
+
+    if (!frameWindow.__CE_BRIDGE_FORGE_HANDLER__) {
+      const sourceXml = \${JSON.stringify(SOURCE_XML)};
+      const installer = frameDocument.createElement('script');
+      installer.textContent = '(' + function installForgedReplyListener(sourceXml) {
+        const handler = (event) => {
+          const message = event.data;
+          const mode = window.__CE_BRIDGE_FORGE_MODE__;
+          if (!mode || message?.type !== 'seslitab:smoosic-export-request') return;
+
+          event.stopImmediatePropagation();
+
+          const malformed = { malformed: true };
+          const stale = {
             version: 1,
+            sourceRevision: Number(message.sourceRevision) + 1,
+            editorSessionId: 'forged-session',
+            actionId: 'forged-apply',
+            operations: [{
+              order: 0,
+              operation: 'CHANGE_EVENT_DURATION',
+              rawNoteOrdinal: 0,
+              staffIndex: 0,
+              measureIndex: 0,
+              voiceIndex: 0,
+              noteIndex: 0,
+              noteIdentity: 'forged-note',
+              before: 1,
+              after: 2,
+            }],
+            baseMappingFingerprint: '0000000000000000',
+            createdFromExplicitTeacherApply: true,
+          };
+          const payload = {
+            type: 'seslitab:smoosic-export-result',
+            version: 2,
+            requestId: message.requestId,
             sourceRevision: message.sourceRevision,
-            rawNoteCount: 2,
-            entries: [],
-          },
-          structuralActionManifest: mode === 'stale' ? stale : malformed,
-          roundTripOk: true,
-          shapeOk: true,
-          semanticOk: true,
+            fileName: 'forged-structural.musicxml',
+            musicXml: sourceXml,
+            paddingRestProvenance: {
+              version: 1,
+              sourceRevision: message.sourceRevision,
+              rawNoteCount: 2,
+              entries: [],
+            },
+            structuralActionManifest: mode === 'stale' ? stale : malformed,
+            roundTripOk: true,
+            shapeOk: true,
+            semanticOk: true,
+          };
+
+          parent.postMessage(payload, location.origin);
         };
-        queueMicrotask(() => {
-          window.dispatchEvent(new MessageEvent('message', {
-            data: payload,
-            origin: location.origin,
-            source: frame.contentWindow,
-          }));
-        });
-      };
-      frame.contentWindow.postMessage = forgedPostMessage;
-      window.__CE_BRIDGE_FORGED_FRAME_POST__ = forgedPostMessage;
-      if (frame.contentWindow.postMessage !== forgedPostMessage) return false;
+
+        window.__CE_BRIDGE_FORGE_HANDLER__ = handler;
+        window.addEventListener('message', handler, true);
+      }.toString() + ')(' + JSON.stringify(sourceXml) + ');';
+      frameDocument.body.appendChild(installer);
+      installer.remove();
+
+      if (typeof frameWindow.__CE_BRIDGE_FORGE_HANDLER__ !== 'function') return false;
     }
-    window.__CE_BRIDGE_FORGE_MODE__ = ${JSON.stringify(mode)};
+
+    frameWindow.__CE_BRIDGE_FORGE_MODE__ = \${JSON.stringify(mode)};
     return true;
-  })()`)
+  })()\`)
 }
 
 async function restoreForgedManifest(session) {
-  await session.evaluate(`(() => {
+  await session.evaluate(\`(() => {
     const frame = document.getElementById('smoosic-editor-frame');
-    if (window.__CE_BRIDGE_ORIGINAL_FRAME_POST__ && frame?.contentWindow) {
-      frame.contentWindow.postMessage = window.__CE_BRIDGE_ORIGINAL_FRAME_POST__;
+    const frameWindow = frame?.contentWindow;
+    if (frameWindow?.__CE_BRIDGE_FORGE_HANDLER__) {
+      frameWindow.removeEventListener('message', frameWindow.__CE_BRIDGE_FORGE_HANDLER__, true);
+      delete frameWindow.__CE_BRIDGE_FORGE_HANDLER__;
     }
-    delete window.__CE_BRIDGE_ORIGINAL_FRAME_POST__;
-    delete window.__CE_BRIDGE_FORGED_FRAME_POST__;
-    delete window.__CE_BRIDGE_FORGE_MODE__;
+    if (frameWindow) delete frameWindow.__CE_BRIDGE_FORGE_MODE__;
     return true;
-  })()`)
+  })()\`)
 }
 
 async function runMainProof() {
