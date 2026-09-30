@@ -702,6 +702,14 @@ function readOnlyTeacherService() {
   })
 }
 
+function readOnlyTeacherRosterService() {
+  return Object.freeze({
+    async listRoster() {
+      return readOnlyFailure()
+    },
+  })
+}
+
 function readOnlyTeacherPieceService() {
   return Object.freeze({
     async createPiece() {
@@ -809,6 +817,8 @@ export function createStudent08PilotApp({
         readOnlyPreparedService(),
       teacherService:
         readOnlyTeacherService(),
+      teacherRosterService:
+        readOnlyTeacherRosterService(),
       teacherPieceService:
         readOnlyTeacherPieceService(),
       studentService,

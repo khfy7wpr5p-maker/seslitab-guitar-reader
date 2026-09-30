@@ -500,6 +500,21 @@ test('identity/grant lookup and roster/Pool provisioning round-trip through Admi
     (await db.collection('studentRoster').doc(id(roster.studentId)).get()).data(),
     plain(roster),
   )
+  assert.deepEqual(
+    await store.getRosterEntry(
+      roster.studentId,
+    ),
+    roster,
+  )
+  assert.deepEqual(
+    (
+      await store
+        .listTeacherStudentGrantsForTeacher(
+          'teacher-a',
+        )
+    ).map((grant) => grant.studentId),
+    ['student-provision'],
+  )
 
   const selectedItem = createPoolItem({
     poolItemId: 'pool-selected',

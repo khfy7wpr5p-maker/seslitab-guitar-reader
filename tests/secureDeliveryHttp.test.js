@@ -48,6 +48,17 @@ function fakeDeps(config) {
       return { lifecycle: { state: input.action }, delivery: null }
     },
   }
+  const teacherRosterService = {
+    async listRoster(input) {
+      calls.push(['teacher-roster', input])
+      return [{
+        schemaVersion: 1,
+        studentId: 'student-a',
+        displayNameOrNickname: 'Ali',
+        active: true,
+      }]
+    },
+  }
   const teacherPieceService = {
     async createPiece(input) {
       calls.push(['piece-create', input])
@@ -99,6 +110,7 @@ function fakeDeps(config) {
     calls,
     preparedService,
     teacherService,
+    teacherRosterService,
     teacherPieceService,
     studentService,
     tokenVerifier,
@@ -202,6 +214,7 @@ test('router exposes approved teacher/student endpoints with providerSubject onl
   for (const [path, init, expectedStatus] of [
     ['/api/secure-delivery/v1/teacher/deliveries', { method: 'POST', headers: auth, body: JSON.stringify({ assignmentIds: ['assignment-a'] }) }, 200],
     ['/api/secure-delivery/v1/teacher/deliveries', { method: 'GET', headers: auth }, 200],
+    ['/api/secure-delivery/v1/teacher/roster', { method: 'GET', headers: auth }, 200],
     ['/api/secure-delivery/v1/teacher/assignments/assignment-a/actions', { method: 'POST', headers: auth, body: JSON.stringify({ action: 'REVOKE' }) }, 200],
     ['/api/secure-delivery/v1/student/assignments', { method: 'GET', headers: auth }, 200],
     ['/api/secure-delivery/v1/student/assignments/assignment-a', { method: 'GET', headers: auth }, 200],
@@ -385,4 +398,53 @@ test('student Piece HTTP response stays bounded and excludes recipient/provider 
   assert.equal(serialized.includes('teacherId'), false)
   assert.equal(serialized.includes('providerSubject'), false)
   assert.equal(serialized.includes('package'), false)
+})
+
+
+test('Task 2 teacher roster HTTP route derives authority only from verified token', async () => {
+  const { createSecureDeliveryRouter } = await loadHttp()
+  const deps = fakeDeps({
+    enabled: true,
+    writesEnabled: false,
+    studentReadsEnabled: false,
+  })
+
+  const response = await request(
+    appFor(createSecureDeliveryRouter(deps)),
+    '/api/secure-delivery/v1/teacher/roster?teacherId=forged-teacher',
+    {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer teacher-token',
+      },
+    },
+  )
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    success: true,
+    data: [{
+      schemaVersion: 1,
+      studentId: 'student-a',
+      displayNameOrNickname: 'Ali',
+      active: true,
+    }],
+  })
+  assert.deepEqual(
+    deps.calls.filter(([name]) =>
+      name === 'verify' ||
+      name === 'teacher-roster'
+    ),
+    [
+      ['verify', 'teacher-token'],
+      ['teacher-roster', {
+        providerSubject: 'uid-from-token',
+      }],
+    ],
+  )
+  assert.equal(
+    JSON.stringify(deps.calls)
+      .includes('forged-teacher'),
+    false,
+  )
 })

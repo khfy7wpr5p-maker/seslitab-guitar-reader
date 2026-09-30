@@ -80,6 +80,7 @@ test('client maps all TD-06 methods to the bounded HTTP contract', async () => {
   await client.prepareAssignments([{ assignment: {}, package: {} }])
   await client.deliverAssignments(['assignment-a'])
   await client.listTeacherDeliveries()
+  await client.listTeacherRoster()
   await client.applyAssignmentAction('assignment-a', 'COMPLETE')
   await client.listStudentAssignments()
   await client.getStudentAssignment('assignment-a')
@@ -103,6 +104,11 @@ test('client maps all TD-06 methods to the bounded HTTP contract', async () => {
       ],
       [
         'https://example.invalid/api/secure-delivery/v1/teacher/deliveries',
+        'GET',
+        null,
+      ],
+      [
+        'https://example.invalid/api/secure-delivery/v1/teacher/roster',
         'GET',
         null,
       ],
@@ -200,6 +206,8 @@ test('enabled composition uses injected provider factories without importing bro
   const store = {
     async getIdentityMapping() { return null },
     async getTeacherStudentGrant() { return null },
+    async listTeacherStudentGrantsForTeacher() { return [] },
+    async getRosterEntry() { return null },
     async getPreparedAssignment() { return null },
     async getPracticePackage() { return null },
     async getLifecycle() { return null },

@@ -195,6 +195,11 @@ function routerDeps() {
         return {}
       },
     },
+    teacherRosterService: {
+      async listRoster() {
+        return []
+      },
+    },
     teacherPieceService: {
       async createPiece() {
         return {}

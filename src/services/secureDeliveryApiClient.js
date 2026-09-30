@@ -141,6 +141,12 @@ export function createSecureDeliveryApiClient({
       )
     },
 
+    listTeacherRoster() {
+      return request(
+        'teacher/roster',
+      )
+    },
+
     applyAssignmentAction(
       assignmentId,
       action,

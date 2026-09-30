@@ -23,6 +23,9 @@ import {
 import {
   createTeacherPieceService,
 } from './services/teacherPieceService.js'
+import {
+  createTeacherRosterReadService,
+} from './services/teacherRosterReadService.js'
 
 function assertFactories(factories) {
   if (
@@ -133,6 +136,11 @@ export function createSecureDeliveryComposition({
       now,
       createHistoryEventId,
     })
+  const teacherRosterService =
+    createTeacherRosterReadService({
+      authorization,
+      store,
+    })
   const teacherPieceService =
     createTeacherPieceService({
       authorization,
@@ -163,6 +171,7 @@ export function createSecureDeliveryComposition({
       tokenVerifier,
       preparedService,
       teacherService,
+      teacherRosterService,
       teacherPieceService,
       studentService,
       config,
