@@ -388,19 +388,33 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
   activeStructuralActionTracker = candidateStructuralTracker;
 
   if (activeCorrectionOverlayManager) {
+    const overlayStatus = document.getElementById('poc-status');
+    overlayStatus?.setAttribute(
+      'data-ses120-bind-input-revision',
+      sourceRevision === null ? 'null' : String(sourceRevision)
+    );
     try {
       if (sourceRevision === null) {
         activeCorrectionOverlayManager.reset();
+        overlayStatus?.setAttribute('data-ses120-bind-result', 'reset-null-revision');
       } else {
-        await activeCorrectionOverlayManager.bindImportedSource({
+        const bound = await activeCorrectionOverlayManager.bindImportedSource({
           musicXml: text,
           partIds,
           score: applicationInstance.view.score,
           sourceRevision
         });
+        overlayStatus?.setAttribute(
+          'data-ses120-bind-result',
+          bound?.sourceHash ? `bound:${bound.sourceHash}` : 'bound-without-hash'
+        );
       }
     } catch (error) {
       activeCorrectionOverlayManager.reset();
+      overlayStatus?.setAttribute(
+        'data-ses120-bind-result',
+        `error:${String(error?.message || error || 'bind failed').slice(0, 220)}`
+      );
       console.warn('Correction overlay kaynağı kabul edilmedi', error);
     }
   }
@@ -1186,9 +1200,21 @@ function wireMobileControls() {
     });
     xmlInput.addEventListener('change', async (event) => {
       try {
+        const sourceRevision = importedSourceRevision(event);
+        const status = document.getElementById('poc-status');
+        status?.setAttribute(
+          'data-ses120-import-debug',
+          JSON.stringify({
+            eventType: event?.constructor?.name || null,
+            detailContract: event?.detail?.contract || null,
+            detailVersion: event?.detail?.version ?? null,
+            detailRevision: event?.detail?.sourceRevision ?? null,
+            resolvedRevision: sourceRevision
+          }).slice(0, 512)
+        );
         await loadMusicXmlFile(
           xmlInput.files && xmlInput.files[0],
-          importedSourceRevision(event)
+          sourceRevision
         );
       }
       catch (error) { console.error(error); setStatus(`XML hatası: ${String(error)}`); }
