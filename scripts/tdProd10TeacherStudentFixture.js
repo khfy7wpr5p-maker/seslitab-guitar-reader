@@ -370,8 +370,7 @@ function createChordItem() {
     createStudentPrivateChordBoardPackageV1({
       assignment,
       practice: {
-        teacherNote:
-          'C majör açık pozisyonu temiz çal.',
+        repeatCount: 4,
       },
     })
 
