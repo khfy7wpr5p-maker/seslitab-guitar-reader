@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "preparedAt": "2026-10-01",
+  "sourceRevision": "a10cf3e609de5a566294eea58640cf3fd5097716",
+  "scope": "SOURCE_BRANCH_AUTHORITY_ONLY",
+  "service": {
+    "name": "st-student-api",
+    "serviceId": "srv-darsntfavr4c7381t9f0",
+    "url": "https://st-student-api.onrender.com",
+    "startCommand": "node backend/delivery/pilot/server.js",
+    "observedLive": {
+      "trackedBranch": "ses8-pilot-authorization-hardening",
+      "deployCommit": "515189192b139a0924e2adca41bdc47a7cacdc26",
+      "deployId": "dep-daulsgvf3r2c73fv8on0",
+      "deployStatus": "live",
+      "autoDeploy": "yes"
+    },
+    "sourceAuthority": {
+      "canonicalBranch": "main",
+      "canonicalCommit": "a10cf3e609de5a566294eea58640cf3fd5097716",
+      "legacyBranch": "ses8-pilot-authorization-hardening",
+      "legacyBranchCommit": "515189192b139a0924e2adca41bdc47a7cacdc26",
+      "legacyRole": "LIVE_TRACKED_HISTORICAL",
+      "relation": {
+        "mainAheadBy": 21,
+        "mainBehindBy": 0,
+        "fastForwardCompatible": true
+      }
+    },
+    "executionPolicy": {
+      "renderBranchMutationAuthorized": false,
+      "renderDeployAuthorized": false,
+      "environmentMutationAuthorized": false,
+      "teacherWriteActivationAuthorized": false,
+      "firebaseProductionWriteAuthorized": false,
+      "omrMutationAuthorized": false,
+      "legacyBranchMutationAuthorized": false,
+      "newRenderServiceAuthorized": false
+    }
+  },
+  "qualification": {
+    "exactMainSha": "a10cf3e609de5a566294eea58640cf3fd5097716",
+    "ci": {
+      "runNumber": 1458,
+      "attempt": 1,
+      "conclusion": "success"
+    },
+    "regressionQuality": {
+      "runNumber": 795,
+      "attempt": 1,
+      "conclusion": "success"
+    },
+    "dependencySecurity": {
+      "runNumber": 14,
+      "attempt": 1,
+      "conclusion": "success"
+    },
+    "productionGate": {
+      "runNumber": 2,
+      "attempt": 1,
+      "conclusion": "success"
+    }
+  },
+  "historicalEvidence": {
+    "preserve": [
+      "docs/render-production-alignment-dry-run.md",
+      "ops/render-production-alignment.v1.json"
+    ],
+    "reason": "TD-PROD-11 and TD-PROD-12 evidence remains historical and must not be rewritten as if Render already tracked main."
+  },
+  "nextGate": {
+    "action": "SWITCH_EXISTING_RENDER_TRACKED_BRANCH_TO_MAIN",
+    "requiresExplicitUserApproval": true,
+    "requiresFreshRead": true,
+    "requiresExactMainProductionGate": true,
+    "preserveServiceId": "srv-darsntfavr4c7381t9f0",
+    "preserveUrl": "https://st-student-api.onrender.com",
+    "preserveStartCommand": "node backend/delivery/pilot/server.js",
+    "teacherWritesRemainSeparateGate": true,
+    "omrRemainsSeparateGate": true
+  }
+}
