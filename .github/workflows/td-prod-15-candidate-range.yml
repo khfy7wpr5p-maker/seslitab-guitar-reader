@@ -36,6 +36,7 @@ jobs:
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
           NODE
           npm install --package-lock-only --ignore-scripts
+          npm update @grpc/grpc-js --package-lock-only --ignore-scripts
           npm ci --ignore-scripts
           npm audit --omit=dev --audit-level=high
           npm audit --audit-level=high
