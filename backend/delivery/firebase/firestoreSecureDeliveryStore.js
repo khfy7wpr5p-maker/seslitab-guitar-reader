@@ -38,6 +38,7 @@ import {
   restoreAssignmentLifecycleRecordV1,
   restorePoolPublicationRecordV1,
   restorePrivateAssignmentV1,
+  restoreStudentRosterEntryV1,
 } from '../../../src/services/teacherDeliveryWireCodec.js'
 import {
   assertSecureDeliveryPackageMatchesAssignment,
@@ -1305,6 +1306,56 @@ export function createFirestoreSecureDeliveryStore({
       return snap.exists
         ? restoreGrant(snap.data())
         : null
+    },
+
+    async listTeacherStudentGrantsForTeacher(
+      teacherId,
+    ) {
+      const id = normalizeRequiredId(
+        teacherId,
+        'teacherId',
+      )
+      const snap =
+        await collections.grants
+          .where('teacherId', '==', id)
+          .get()
+
+      const grants = snap.docs.map((item) =>
+        restoreGrant(item.data()),
+      )
+      for (const grant of grants) {
+        if (grant.teacherId !== id) {
+          throw new Error(
+            'teacher roster grant authority conflict.',
+          )
+        }
+      }
+      return Object.freeze(grants)
+    },
+
+    async getRosterEntry(studentId) {
+      const id = normalizeRequiredId(
+        studentId,
+        'studentId',
+      )
+      const snap =
+        await collections.roster
+          .doc(documentId(id))
+          .get()
+      if (!snap.exists) {
+        return null
+      }
+
+      const row =
+        restoreStudentRosterEntryV1(
+          snap.data(),
+        )
+      if (row.studentId !== id) {
+        throw new Error(
+          'teacher roster entry authority conflict.',
+        )
+      }
+      return row
     },
 
     getPreparedAssignment,
