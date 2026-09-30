@@ -67,9 +67,17 @@ function editorExportHarness({ rawXml = EXPORT_RAW_XML, trackerState = 'valid' }
         SmoMeasure: measure,
         SmoToXml: { convert(value) { assert.ok(value === score || value === storeScore); conversions += 1; return rawXml } },
         XmlToSmo: { convert() { return score } },
+        SvgHelpers: { outlineRect() {}, eraseOutline() {} },
       }
       if (name === './seslitab-padding-rest-provenance') return { createSmoosicPaddingRestTracker }
       if (name === './seslitab-structural-action-provenance') return { createSmoosicStructuralActionTracker }
+      if (name === './seslitab-correction-overlay') {
+        return {
+          createSmoosicCorrectionOverlayManager() {
+            return { bindImportedSource: async () => null, replace: async () => ({ ok: false, appliedCount: 0, sourceHash: null }), refresh: async () => ({ ok: true, appliedCount: 0, sourceHash: null }), clear: () => ({ ok: true, appliedCount: 0, sourceHash: null }), reset: () => true }
+          },
+        }
+      }
       throw new Error(`Unexpected require: ${name}`)
     },
     document: { addEventListener() {}, getElementById() { return null } },
@@ -259,6 +267,28 @@ function staleSourceHost({
       location: { origin: 'https://seslitab.test' },
       DOMParser: SmoosicTestDOMParser,
       addEventListener(type, listener) { windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener]) },
+      STOmrCorrectionAnalysisRuntime: {
+        contract: 'ST_OMR_CORRECTION_ENGINE_ANALYSIS_BROWSER',
+        contractVersion: '1.0.0',
+        runtimeVersion: '1.0.0',
+        analyzeMusicXmlSuspiciousMeasures({ sourceId }) {
+          return {
+            contract: 'ST_OMR_CORRECTION_ENGINE_SUSPICIOUS_MEASURES_V1',
+            mode: 'SHADOW_ONLY',
+            sourceId,
+            sourceHash: 'a'.repeat(64),
+            partId: 'P1',
+            measureCount: 1,
+            eventCount: 1,
+            findings: [],
+            suspiciousMeasures: [],
+            unmappedFindingCount: 0,
+            sourceGraphMutated: false,
+            automaticApplyAuthority: false,
+            musicXmlWriteBackAuthority: false,
+          }
+        },
+      },
     },
     createElement(tagName) {
       const element = new HostElement(root, tagName)
@@ -277,6 +307,25 @@ function staleSourceHost({
           File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
           Event: class { constructor(type) { this.type = type } },
           postMessage(message) {
+            if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
+              queueMicrotask(() => {
+                for (const listener of windowListeners.get('message') ?? []) listener({
+                  origin: root.defaultView.location.origin,
+                  source: element.contentWindow,
+                  data: {
+                    type: 'seslitab:smoosic-correction-overlay-result',
+                    version: 1,
+                    requestId: message.requestId,
+                    sourceRevision: message.sourceRevision,
+                    ok: true,
+                    appliedCount: Array.isArray(message.targets) ? message.targets.length : 0,
+                    sourceHash: message.sourceHash,
+                  },
+                })
+              })
+              return
+            }
+            assert.equal(message.type, 'seslitab:smoosic-export-request')
             assert.equal(message.version, 1, 'editor export requests remain protocol v1')
             root.postMessageCount += 1
             if (holdExport) return
