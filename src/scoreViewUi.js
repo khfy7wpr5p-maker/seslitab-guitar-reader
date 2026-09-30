@@ -27,20 +27,19 @@ import { resolveCanonicalNoteFromScoreRef } from './services/scoreNoteIdentity.j
 import { deriveScoreMeasureSelection } from './services/scoreMeasureSync.js'
 import {
   analyzeSuspiciousMeasures,
-  resolveCorrectionAnalysisRuntime,
 } from './services/correctionAnalysisConsumer.js'
+import {
+  loadCorrectionAnalysisRuntime,
+} from './services/correctionAnalysisRuntimeLoader.js'
 import { replaceSuspiciousMeasureOverlays } from './services/correctionMeasureOverlay.js'
 
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
-const CE_ANALYSIS_RUNTIME_URL = '/st-omr-correction-analysis-runtime/ce-analysis-browser-runtime.js'
-const CE_ANALYSIS_RUNTIME_READY_TIMEOUT_MS = 10000
 const scoreMeasureSubscriptions = new WeakMap()
 const scoreRuntimeHosts = new WeakMap()
 const scoreCursorSelections = new WeakMap()
 const scoreHighlightSelections = new WeakMap()
 const scoreNoteBindings = new WeakMap()
-const correctionAnalysisLoads = new WeakMap()
 let ticketCounter = 0
 
 function nextTicket() {
@@ -85,49 +84,6 @@ function setCorrectionOverlayState(root, state, count = 0) {
   if (!surface?.dataset) return
   surface.dataset.correctionOverlayState = state
   surface.dataset.correctionOverlayCount = String(count)
-}
-
-async function loadCorrectionAnalysisRuntime(root, timeoutMs = CE_ANALYSIS_RUNTIME_READY_TIMEOUT_MS) {
-  const scope = root?.defaultView ?? globalThis
-  const connected = resolveCorrectionAnalysisRuntime(scope)
-  if (connected) return connected
-  if (!root || typeof root.createElement !== 'function' || !root.head?.appendChild) return null
-
-  const pending = correctionAnalysisLoads.get(root)
-  if (pending) return pending
-
-  const promise = new Promise((resolve) => {
-    let settled = false
-    let timer = null
-    const finish = (value) => {
-      if (settled) return
-      settled = true
-      if (timer !== null) clearTimeout(timer)
-      resolve(value)
-    }
-
-    let script = root.querySelector?.('script[data-seslitab-ce-analysis-runtime="true"]') ?? null
-    const created = !script
-    if (!script) {
-      script = root.createElement('script')
-      script.src = CE_ANALYSIS_RUNTIME_URL
-      script.async = true
-      script.dataset.seslitabCeAnalysisRuntime = 'true'
-    }
-    script.addEventListener?.('load', () => finish(resolveCorrectionAnalysisRuntime(scope)), { once: true })
-    script.addEventListener?.('error', () => finish(null), { once: true })
-    timer = setTimeout(() => finish(resolveCorrectionAnalysisRuntime(scope)), timeoutMs)
-    if (created) root.head.appendChild(script)
-    else {
-      const ready = resolveCorrectionAnalysisRuntime(scope)
-      if (ready) finish(ready)
-    }
-  })
-
-  correctionAnalysisLoads.set(root, promise)
-  const runtime = await promise
-  if (!runtime) correctionAnalysisLoads.delete(root)
-  return runtime
 }
 
 export async function syncCorrectionMeasureOverlays(

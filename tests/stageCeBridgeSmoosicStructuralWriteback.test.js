@@ -273,6 +273,28 @@ function task7Host({
       addEventListener(type, listener) {
         windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener])
       },
+      STOmrCorrectionAnalysisRuntime: {
+        contract: 'ST_OMR_CORRECTION_ENGINE_ANALYSIS_BROWSER',
+        contractVersion: '1.0.0',
+        runtimeVersion: '1.0.0',
+        analyzeMusicXmlSuspiciousMeasures({ sourceId }) {
+          return {
+            contract: 'ST_OMR_CORRECTION_ENGINE_SUSPICIOUS_MEASURES_V1',
+            mode: 'SHADOW_ONLY',
+            sourceId,
+            sourceHash: 'a'.repeat(64),
+            partId: 'P1',
+            measureCount: 1,
+            eventCount: 2,
+            findings: [],
+            suspiciousMeasures: [],
+            unmappedFindingCount: 0,
+            sourceGraphMutated: false,
+            automaticApplyAuthority: false,
+            musicXmlWriteBackAuthority: false,
+          }
+        },
+      },
     },
     createElement(tagName) {
       const element = new Task7Element(root, tagName)
@@ -297,6 +319,27 @@ function task7Host({
           File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
           Event: class { constructor(type) { this.type = type } },
           postMessage(message) {
+            if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
+              queueMicrotask(() => {
+                for (const listener of windowListeners.get('message') ?? []) {
+                  listener({
+                    origin: root.defaultView.location.origin,
+                    source: element.contentWindow,
+                    data: {
+                      type: 'seslitab:smoosic-correction-overlay-result',
+                      version: 1,
+                      requestId: message.requestId,
+                      sourceRevision: message.sourceRevision,
+                      ok: true,
+                      appliedCount: Array.isArray(message.targets) ? message.targets.length : 0,
+                      sourceHash: message.sourceHash,
+                    },
+                  })
+                }
+              })
+              return
+            }
+            assert.equal(message?.type, 'seslitab:smoosic-export-request')
             root.postMessageCount += 1
             queueMicrotask(() => {
               const payload = {

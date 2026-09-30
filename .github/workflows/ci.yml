@@ -94,6 +94,17 @@ jobs:
           path: artifacts/ce-bridge-structural-browser.json
           if-no-files-found: warn
 
+      - name: Verify SES-120 Smoosic correction overlay in real browser
+        run: node scripts/verifySmoosicCorrectionOverlayBrowser.js
+
+      - name: Upload SES-120 Smoosic correction overlay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses-120-smoosic-correction-overlay-browser
+          path: artifacts/ses-120-smoosic-correction-overlay-browser.json
+          if-no-files-found: warn
+
       - name: Verify STI-17 cross-realm iframe renderer in real browser
         run: node scripts/verifySti17CrossRealmBrowser.js
 

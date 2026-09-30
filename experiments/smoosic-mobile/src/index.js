@@ -10,14 +10,19 @@ const {
   SuiAudioPlayer,
   SmoMusic,
   SmoSelection,
-  ScoreRoadMapBuilder
+  ScoreRoadMapBuilder,
+  SvgHelpers
 } = require('smoosic');
 const { createSmoosicPaddingRestTracker } = require('./seslitab-padding-rest-provenance');
 const { createSmoosicStructuralActionTracker } = require('./seslitab-structural-action-provenance');
+const {
+  createSmoosicCorrectionOverlayManager
+} = require('./seslitab-correction-overlay');
 
 let applicationInstance = null;
 let activePaddingRestTracker = null;
 let activeStructuralActionTracker = null;
+let activeCorrectionOverlayManager = null;
 let editorReady = false;
 let activePlaybackInstrument = 'piano';
 let nativeAudioBridgeInstalled = false;
@@ -233,6 +238,45 @@ function readFileText(file) {
   });
 }
 
+async function sha256Text(text) {
+  if (!window.crypto?.subtle) {
+    throw new Error('Güvenli kaynak özeti kullanılamıyor');
+  }
+  const bytes = new TextEncoder().encode(String(text));
+  const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function musicXmlPartIds(xml) {
+  const root = xml?.documentElement;
+  if (!root || String(root.localName || root.tagName).toLowerCase() !== 'score-partwise') {
+    return [];
+  }
+  return Array.from(root.children || [])
+    .filter((child) => String(child.localName || child.tagName).toLowerCase() === 'part')
+    .map((part) => String(part.getAttribute('id') || '').trim());
+}
+
+function clearImportedSourceProvenance(input) {
+  if (!input?.dataset) return;
+  delete input.dataset.seslitabImportContract;
+  delete input.dataset.seslitabImportVersion;
+  delete input.dataset.seslitabImportRevision;
+}
+
+function importedSourceRevision(event, input) {
+  const dataset = event?.currentTarget?.dataset || input?.dataset;
+  if (!dataset
+      || dataset.seslitabImportContract !== 'SESLITAB_SMOOSIC_IMPORT_V1'
+      || dataset.seslitabImportVersion !== '1') {
+    return null;
+  }
+  const value = Number(dataset.seslitabImportRevision);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function stripMusicXmlExtension(name) {
   return String(name || 'score')
     .replace(/\.(musicxml|mxml|xml)$/i, '')
@@ -289,7 +333,7 @@ function sourceMusicXmlDurationByRawOrdinal(xml) {
   })
 }
 
-async function loadMusicXmlFile(file) {
+async function loadMusicXmlFile(file, sourceRevision = null) {
   if (!editorReady || !applicationInstance || !applicationInstance.view) {
     throw new Error('Editör henüz hazır değil');
   }
@@ -307,6 +351,10 @@ async function loadMusicXmlFile(file) {
   const parser = new DOMParser();
   const xml = parser.parseFromString(text, 'text/xml');
   if (xml.querySelector('parsererror')) throw new Error('MusicXML ayrıştırılamadı');
+  const partIds = musicXmlPartIds(xml);
+  if (sourceRevision !== null && (!Number.isSafeInteger(sourceRevision) || sourceRevision < 0)) {
+    throw new Error('SesliTab kaynak sürümü geçersiz');
+  }
 
   const candidateTracker = createSmoosicPaddingRestTracker(SmoMeasure);
   const candidateStructuralTracker = createSmoosicStructuralActionTracker({
@@ -345,6 +393,25 @@ async function loadMusicXmlFile(file) {
   if (activeStructuralActionTracker) activeStructuralActionTracker.clear();
   activePaddingRestTracker = candidateTracker;
   activeStructuralActionTracker = candidateStructuralTracker;
+
+  if (activeCorrectionOverlayManager) {
+    try {
+      if (sourceRevision === null) {
+        activeCorrectionOverlayManager.reset();
+      } else {
+        await activeCorrectionOverlayManager.bindImportedSource({
+          musicXml: text,
+          partIds,
+          score: applicationInstance.view.score,
+          sourceRevision
+        });
+      }
+    } catch (error) {
+      activeCorrectionOverlayManager.reset();
+      console.warn('Correction overlay kaynağı kabul edilmedi', error);
+    }
+  }
+
   await applicationInstance.view.moveHome({
     ctrlKey: true,
     shiftKey: false,
@@ -903,6 +970,11 @@ async function exportMusicXml() {
 const SESLITAB_EXPORT_REQUEST = 'seslitab:smoosic-export-request';
 const SESLITAB_EXPORT_RESULT = 'seslitab:smoosic-export-result';
 const SESLITAB_EXPORT_VERSION = 2;
+const SESLITAB_CORRECTION_OVERLAY_REQUEST = 'seslitab:smoosic-correction-overlay-request';
+const SESLITAB_CORRECTION_OVERLAY_RESULT = 'seslitab:smoosic-correction-overlay-result';
+const SESLITAB_CORRECTION_OVERLAY_VERSION = 1;
+const SESLITAB_CORRECTION_OVERLAY_MAX_TARGETS = 128;
+const SESLITAB_SHA256 = /^[0-9a-f]{64}$/;
 // Match the 10 MiB MusicXML input limit used by the host write-back path.
 const SESLITAB_EXPORT_MAX_XML_BYTES = 10 * 1024 * 1024;
 
@@ -987,6 +1059,77 @@ async function handleSesliTabExportRequest(event) {
   }
 }
 
+async function handleSesliTabCorrectionOverlayRequest(event) {
+  if (event.source !== parent) return;
+  if (event.origin !== window.location.origin) return;
+
+  const message = event.data;
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return;
+  if (message.type !== SESLITAB_CORRECTION_OVERLAY_REQUEST) return;
+  if (message.version !== SESLITAB_CORRECTION_OVERLAY_VERSION) return;
+  if (typeof message.requestId !== 'string'
+    || !message.requestId
+    || message.requestId.length > 256
+    || message.requestId !== message.requestId.trim()) return;
+  if (!Number.isSafeInteger(message.sourceRevision) || message.sourceRevision < 0) return;
+  if (message.action !== 'replace' && message.action !== 'clear') return;
+  if (!Array.isArray(message.targets)
+    || message.targets.length > SESLITAB_CORRECTION_OVERLAY_MAX_TARGETS) return;
+
+  let result = {
+    ok: false,
+    appliedCount: 0,
+    sourceHash: null
+  };
+
+  try {
+    if (!activeCorrectionOverlayManager) {
+      throw new Error('Smoosic correction overlay adapter unavailable');
+    }
+
+    if (message.action === 'clear') {
+      if (message.targets.length !== 0 || message.sourceHash !== null) return;
+      result = activeCorrectionOverlayManager.clear();
+    } else {
+      if (!SESLITAB_SHA256.test(message.sourceHash || '')) return;
+      for (const target of message.targets) {
+        if (!target
+          || typeof target !== 'object'
+          || Array.isArray(target)
+          || typeof target.partId !== 'string'
+          || !target.partId
+          || target.partId.length > 128
+          || !Number.isSafeInteger(target.measureIndex)
+          || target.measureIndex < 0) return;
+      }
+      result = await activeCorrectionOverlayManager.replace({
+        sourceRevision: message.sourceRevision,
+        sourceHash: message.sourceHash,
+        targets: message.targets
+      });
+    }
+  } catch (error) {
+    activeCorrectionOverlayManager?.clear?.();
+    result = {
+      ok: false,
+      appliedCount: 0,
+      sourceHash: null,
+      error: String(error?.message || error || 'overlay rejected').slice(0, 256)
+    };
+  }
+
+  event.source.postMessage({
+    type: SESLITAB_CORRECTION_OVERLAY_RESULT,
+    version: SESLITAB_CORRECTION_OVERLAY_VERSION,
+    requestId: message.requestId,
+    sourceRevision: message.sourceRevision,
+    ok: result.ok === true,
+    appliedCount: Number.isSafeInteger(result.appliedCount) ? result.appliedCount : 0,
+    sourceHash: SESLITAB_SHA256.test(result.sourceHash || '') ? result.sourceHash : null,
+    ...(result.error ? { error: result.error } : {})
+  }, event.origin);
+}
+
 function wireNativeTransportGuard() {
   document.addEventListener('click', async (event) => {
     const target = event.target;
@@ -1045,11 +1188,17 @@ function wireMobileControls() {
   if (xmlButton && xmlInput) {
     xmlButton.addEventListener('click', () => {
       if (!editorReady) return setStatus('Editör hazırlanıyor…');
+      clearImportedSourceProvenance(xmlInput);
       xmlInput.value = '';
       xmlInput.click();
     });
-    xmlInput.addEventListener('change', async () => {
-      try { await loadMusicXmlFile(xmlInput.files && xmlInput.files[0]); }
+    xmlInput.addEventListener('change', async (event) => {
+      try {
+        await loadMusicXmlFile(
+          xmlInput.files && xmlInput.files[0],
+          importedSourceRevision(event, xmlInput)
+        );
+      }
       catch (error) { console.error(error); setStatus(`XML hatası: ${String(error)}`); }
     });
   }
@@ -1084,6 +1233,7 @@ async function boot() {
   wireMobileControls();
   wireNativeTransportGuard();
   window.addEventListener('message', handleSesliTabExportRequest);
+  window.addEventListener('message', handleSesliTabCorrectionOverlayRequest);
   updateMetronomeButton();
   setEditorControlsEnabled(false);
   window.addEventListener('error', (event) => setStatus(`Hata: ${event.message || 'bilinmeyen hata'}`));
@@ -1103,6 +1253,17 @@ async function boot() {
 
     const initialScore = SmoScore.getDefaultScore(SmoScore.defaults, null);
     applicationInstance = await SuiApplication.configure({ mode: 'application', domContainer, initialScore });
+    try {
+      activeCorrectionOverlayManager = createSmoosicCorrectionOverlayManager({
+        SvgHelpers,
+        getView: () => applicationInstance?.view ?? null,
+        hashText: sha256Text,
+        reviewedSmoosicVersion: '1.0.44'
+      });
+    } catch (error) {
+      activeCorrectionOverlayManager = null;
+      console.warn('Correction overlay adapter kullanılamıyor', error);
+    }
     const rendered = Boolean(applicationInstance && applicationInstance.view && applicationInstance.view.renderer);
     editorReady = rendered;
     if (rendered) {
