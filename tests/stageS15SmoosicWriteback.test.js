@@ -497,6 +497,10 @@ test('SES-142 committed revision rebinds Smoosic source authority before correct
       'stale overlay must be cleared for the new revision before reapply',
     )
     assert.equal(root.getElementById('xml-output').textContent, candidateXml)
+    assert.match(
+      root.getElementById('smoosic-editor-host-status').textContent,
+      /Yeni sürüm doğrulandı/,
+    )
   } finally {
     clearPackage3Notes()
     globalThis.document = previousDocument
