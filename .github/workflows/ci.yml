@@ -46,6 +46,9 @@ jobs:
       - name: Verify S16 read-only request guard in serialized real browser
         run: npm run test:s16:browser
 
+      - name: Verify SES-147 authenticated roster gate in real browser
+        run: node scripts/verifySes147AuthRosterBrowser.js
+
       - name: Build production bundle
         run: npm run build
 
