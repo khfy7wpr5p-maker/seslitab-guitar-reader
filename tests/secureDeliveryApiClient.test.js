@@ -81,6 +81,16 @@ test('client maps all TD-06 methods to the bounded HTTP contract', async () => {
   await client.deliverAssignments(['assignment-a'])
   await client.listTeacherDeliveries()
   await client.listTeacherRoster()
+  await client.createTeacherPiece({
+    pieceAssignmentId: 'piece-a',
+    pieceId: 'work-a',
+    arrangementId: 'arrangement-a',
+    studentId: 'student-a',
+    title: 'Etüt',
+    teacherNote: '',
+    scoreAssignmentId: 'assignment-a',
+    chordAssignmentIds: [],
+  })
   await client.applyAssignmentAction('assignment-a', 'COMPLETE')
   await client.listStudentAssignments()
   await client.getStudentAssignment('assignment-a')
@@ -111,6 +121,20 @@ test('client maps all TD-06 methods to the bounded HTTP contract', async () => {
         'https://example.invalid/api/secure-delivery/v1/teacher/roster',
         'GET',
         null,
+      ],
+      [
+        'https://example.invalid/api/secure-delivery/v1/teacher/pieces',
+        'POST',
+        JSON.stringify({
+          pieceAssignmentId: 'piece-a',
+          pieceId: 'work-a',
+          arrangementId: 'arrangement-a',
+          studentId: 'student-a',
+          title: 'Etüt',
+          teacherNote: '',
+          scoreAssignmentId: 'assignment-a',
+          chordAssignmentIds: [],
+        }),
       ],
       [
         'https://example.invalid/api/secure-delivery/v1/teacher/assignments/assignment-a/actions',
