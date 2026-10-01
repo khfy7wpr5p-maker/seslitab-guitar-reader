@@ -284,7 +284,7 @@ export function activateViolinResultTab(root) {
   const panel = root.getElementById('tab-violin')
   if (!panel) return false
   setActiveTabState(root, 'violin')
-  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-xml', 'tab-guitar-tab']) {
+  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-assignment', 'tab-xml', 'tab-guitar-tab']) {
     const existingPanel = root.getElementById(id)
     if (existingPanel) existingPanel.hidden = true
   }
