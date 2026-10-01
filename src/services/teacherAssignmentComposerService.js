@@ -142,6 +142,20 @@ export function createTeacherAssignmentComposerService({
     throw new TypeError('now must be a function.')
   }
 
+  const assignedAtByDraft = new Map()
+
+  function stableDraftNow(draftId) {
+    if (!assignedAtByDraft.has(draftId)) {
+      assignedAtByDraft.set(
+        draftId,
+        requiredText(now(), 'assignedAt'),
+      )
+    }
+    const assignedAt =
+      assignedAtByDraft.get(draftId)
+    return () => assignedAt
+  }
+
   async function liveRosterService() {
     const raw =
       await client.listTeacherRoster()
@@ -212,6 +226,21 @@ export function createTeacherAssignmentComposerService({
         'chordSnapshots must be an array.',
       )
     }
+
+    const chordFingerprints =
+      chordSnapshots.map(
+        (snapshot) =>
+          snapshot?.voicingFingerprint,
+      )
+    if (
+      new Set(chordFingerprints).size !==
+      chordFingerprints.length
+    ) {
+      throw new Error(
+        'assignment-composer-duplicate-chord-snapshot',
+      )
+    }
+
     if (
       scoreUpload === null &&
       chordSnapshots.length === 0
@@ -232,6 +261,8 @@ export function createTeacherAssignmentComposerService({
 
     const rosterService =
       await liveRosterService()
+    const draftNow =
+      stableDraftNow(normalizedDraftId)
     const selected =
       rosterService.preflightActiveStudentIds(
         studentIds,
@@ -292,7 +323,7 @@ export function createTeacherAssignmentComposerService({
                 ),
             })
           },
-          now,
+          now: draftNow,
         })
 
       const assignments =
@@ -374,7 +405,7 @@ export function createTeacherAssignmentComposerService({
                 chordIndex,
               )
             },
-            now,
+            now: draftNow,
           })
 
         const assignments =
