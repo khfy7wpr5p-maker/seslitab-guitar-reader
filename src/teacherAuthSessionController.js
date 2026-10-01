@@ -125,6 +125,7 @@ async function defaultConnectSecureDelivery({
   now,
   createDraftId,
   root,
+  onSessionExpired,
 }) {
   const result =
     await createTeacherAssignmentBrowserComposition({
@@ -134,6 +135,8 @@ async function defaultConnectSecureDelivery({
       now,
       createDraftId,
       root,
+      onAuthFailure:
+        onSessionExpired,
     })
 
   if (result.ok !== true) {
@@ -144,8 +147,18 @@ async function defaultConnectSecureDelivery({
     throw error
   }
 
-  await result.secureDeliveryClient
-    .listTeacherDeliveries()
+  if (
+    typeof result.composition
+      ?.prepareAssignmentAuthority !==
+    'function'
+  ) {
+    throw new Error(
+      'assignment-roster-readiness-unavailable',
+    )
+  }
+
+  await result.composition
+    .prepareAssignmentAuthority()
 
   return Object.freeze({
     composition: result.composition,
@@ -286,6 +299,15 @@ export function createTeacherAuthSessionController({
         .CONNECTING_SECURE_DELIVERY,
     )
 
+    const onSessionExpired = () => {
+      revokeAuthority()
+      publish(
+        TEACHER_AUTH_STATE
+          .SESSION_EXPIRED,
+        'session-expired',
+      )
+    }
+
     try {
       const connection =
         await connectSecureDelivery({
@@ -296,6 +318,7 @@ export function createTeacherAuthSessionController({
           now,
           createDraftId,
           root,
+          onSessionExpired,
           secureDeliveryBaseUrl:
             envText(
               env,
