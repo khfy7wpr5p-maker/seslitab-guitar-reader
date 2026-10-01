@@ -511,3 +511,39 @@ test('Piece lifecycle remains controllable after a child is independently revoke
     '2026-09-24T08:30:00Z',
   )
 })
+
+
+test('SES-141 Piece creation is idempotent for an identical retry and conflicts on changed content', async () => {
+  const { service } = await harness({
+    nowValues: [
+      '2026-09-24T08:10:00Z',
+      '2026-09-24T09:10:00Z',
+      '2026-09-24T10:10:00Z',
+    ],
+  })
+
+  const first = await service.createPiece({
+    providerSubject: 'uid-teacher-a',
+    input: pieceInput(),
+  })
+  const retry = await service.createPiece({
+    providerSubject: 'uid-teacher-a',
+    input: pieceInput(),
+  })
+
+  assert.equal(retry, first)
+  assert.equal(
+    retry.assignedAt,
+    '2026-09-24T08:10:00Z',
+  )
+
+  await assert.rejects(
+    () => service.createPiece({
+      providerSubject: 'uid-teacher-a',
+      input: pieceInput({
+        title: 'Different work',
+      }),
+    }),
+    /piece-assignment-idempotency-conflict/i,
+  )
+})
