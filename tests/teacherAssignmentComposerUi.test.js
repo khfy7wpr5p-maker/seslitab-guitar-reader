@@ -100,6 +100,19 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
     'draft-ui',
   )
 
+  assert.equal(
+    host.querySelector(
+      '.teacher-assignment-composer__score-status',
+    ).textContent,
+    'MusicXML doğrulandı.',
+  )
+  assert.doesNotMatch(
+    host.textContent,
+    /aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/,
+  )
+
+
+
   const symbol =
     host.querySelector(
       'select[name="chordSymbol"]',
