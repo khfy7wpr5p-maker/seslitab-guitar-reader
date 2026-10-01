@@ -687,6 +687,11 @@ async function negativeEvidence({
       TEACHER_ASSIGNMENT_DELIVERY_PHASE
         .DELIVERED_TO_STUDENT
 
+  const revokedDeliveryFailsClosedResult =
+    await revokedDeliveryFailsClosed(score)
+  const malformedMusicXmlRejectedBeforePrepareResult =
+    await malformedMusicXmlRejectedBeforePrepare()
+
   return Object.freeze({
     wrongStudentRejected,
     missingGrantRejected,
@@ -696,6 +701,10 @@ async function negativeEvidence({
     exactReplayIdempotent,
     durablePrepareRetainedAfterDeliveryFailure,
     retryReachedDelivered,
+    revokedDeliveryFailsClosed:
+      revokedDeliveryFailsClosedResult,
+    malformedMusicXmlRejectedBeforePrepare:
+      malformedMusicXmlRejectedBeforePrepareResult,
   })
 }
 
