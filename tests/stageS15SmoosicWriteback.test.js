@@ -262,6 +262,8 @@ function staleSourceHost({
   const root = {
     nodes: new Map(),
     postMessageCount: 0,
+    correctionOverlayMessages: [],
+    importRevisions: [],
     defaultView: {
       crypto: secureIds ? { randomUUID: () => 's15-test-id' } : {},
       location: { origin: 'https://seslitab.test' },
@@ -300,6 +302,7 @@ function staleSourceHost({
         editorInput.dispatchEvent = () => {
           editorStatus.setAttribute('data-loaded-file-name', 's15-writeback.musicxml')
           editorStatus.textContent = 'Yüklendi: s15-writeback.musicxml'
+          root.importRevisions.push(editorInput.dataset.seslitabImportRevision ?? null)
           return true
         }
         element.contentDocument = { getElementById(id) { return id === 'poc-status' ? editorStatus : (id === 'mobile-xml-input' ? editorInput : null) } }
@@ -308,6 +311,7 @@ function staleSourceHost({
           Event: class { constructor(type) { this.type = type } },
           postMessage(message) {
             if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
+              root.correctionOverlayMessages.push(message)
               queueMicrotask(() => {
                 for (const listener of windowListeners.get('message') ?? []) listener({
                   origin: root.defaultView.location.origin,
@@ -453,6 +457,50 @@ test('S15 rejects apply while a replacement source is pending without requesting
   assert.equal(status.dataset.kind, 'error')
   assert.match(status.textContent, /Yeni eser hazırlanırken düzenleme uygulanamaz/)
   globalThis.document = previousDocument
+})
+
+test('SES-142 committed revision rebinds Smoosic source authority before correction overlay reapply', async () => {
+  const candidateXml = S15_SOURCE_XML.replace('<step>C</step>', '<step>D</step>')
+  const root = staleSourceHost({ sourceXml: S15_SOURCE_XML, candidateXml })
+  installResultPublishingSurface(root)
+  publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+
+  const previousDocument = globalThis.document
+  globalThis.document = root
+  try {
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    assert.ok(ensureSmoosicEditorTab(root))
+    root.getElementById('smoosic-tab-btn').click()
+    root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+    await settleWriteback()
+    await settleWriteback()
+
+    const initialReplaces = root.correctionOverlayMessages.filter((message) => message.action === 'replace')
+    assert.ok(initialReplaces.length >= 1)
+    const initialReplace = initialReplaces.at(-1)
+    assert.equal(root.importRevisions.at(-1), String(initialReplace.sourceRevision))
+
+    root.getElementById('smoosic-apply-btn').click()
+    await settleWriteback()
+    await settleWriteback()
+    await settleWriteback()
+
+    const replaceMessages = root.correctionOverlayMessages.filter((message) => message.action === 'replace')
+    assert.ok(replaceMessages.length >= 2, 'new committed revision must receive a fresh overlay replace request')
+    const reapplied = replaceMessages.at(-1)
+    assert.ok(reapplied.sourceRevision > initialReplace.sourceRevision)
+    assert.equal(root.importRevisions.at(-1), String(reapplied.sourceRevision))
+    assert.ok(
+      root.correctionOverlayMessages.some(
+        (message) => message.action === 'clear' && message.sourceRevision === reapplied.sourceRevision,
+      ),
+      'stale overlay must be cleared for the new revision before reapply',
+    )
+    assert.equal(root.getElementById('xml-output').textContent, candidateXml)
+  } finally {
+    clearPackage3Notes()
+    globalThis.document = previousDocument
+  }
 })
 
 test('S15 returns a typed retryable publish failure after the immutable commit when result publication fails', async () => {
