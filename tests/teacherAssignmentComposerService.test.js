@@ -151,6 +151,18 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
     assert.equal(prepared.length, 3)
     assert.ok(prepared.every((item) => item.assignment.studentId === studentId))
     assert.equal(
+      prepared[0].assignment.sourceRef.readinessRoute,
+      'ses141_teacher_export_upload',
+    )
+    assert.equal(
+      prepared[0].assignment.sourceRef.package12Status,
+      'teacher_export_exact_source_verified',
+    )
+    assert.match(
+      prepared[0].assignment.sourceRef.qualityEvidenceId,
+      /^teacher-export:[0-9a-f]{64}$/,
+    )
+    assert.equal(
       result.recipients[index].phase,
       TEACHER_ASSIGNMENT_DELIVERY_PHASE.DELIVERED_TO_STUDENT,
     )
