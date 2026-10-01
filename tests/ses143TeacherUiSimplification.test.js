@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 
 const indexHtml = readFileSync(resolve('index.html'), 'utf8')
 const styleCss = readFileSync(resolve('src/style.css'), 'utf8')
+const package3Ui = readFileSync(resolve('src/package3Ui.js'), 'utf8')
 
 function openingTagForId(id) {
   const pattern = new RegExp(`<[^>]+id=["']${id}["'][^>]*>`, 'i')
@@ -56,10 +57,12 @@ test('SES-143 makes MusicXML the visible default output while preserving core te
   assert.doesNotMatch(xmlPanel, /\shidden(?:\s|>|=)/i)
   assert.doesNotMatch(xmlPanel, /teacher-surface-hidden/i)
 
-  for (const visibleText of ['PDF', 'MusicXML', 'TAB', 'Müziği Dinle']) {
+  for (const visibleText of ['PDF', 'MusicXML', 'TAB']) {
     assert.ok(indexHtml.includes(visibleText), `expected teacher keep-list surface: ${visibleText}`)
   }
 
+  assert.match(package3Ui, /heading:\s*['"]Müziği Dinle['"]/)
+  assert.match(package3Ui, /button:\s*['"][^'"]*Müziği Dinle['"]/)
   assert.ok(indexHtml.includes('id="rhythm-section"'), 'playback surface must remain mounted')
   assert.ok(indexHtml.includes('id="musicxml-download-btn"'), 'MusicXML download must remain mounted')
   assert.ok(indexHtml.includes('id="omr-download-btn"'), 'OMR download must remain mounted')
