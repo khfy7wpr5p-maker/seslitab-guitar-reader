@@ -1,7 +1,5 @@
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
 import { parseMusicXmlToNotes } from './musicEngine.js'
-import { prepareMusicXmlQualityGate } from './appQualityGate.js'
-import { QUALITY_STATE } from './qualityErrorReport.js'
 import {
   approveTeacherWorkspace,
   createTeacherWorkspace,
@@ -60,20 +58,6 @@ export async function prepareTeacherAssignmentScoreUpload({
   }
 
   const sourceNotes = parsed.notes
-  const quality = prepareMusicXmlQualityGate(
-    sourceNotes,
-    musicXml,
-  )
-
-  if (
-    quality?.qualityState !== QUALITY_STATE.SOURCE_VERIFIED ||
-    quality?.structurallyValid !== true ||
-    quality?.sourceVerified !== true ||
-    quality?.reviewRequired !== false ||
-    quality?.reliable !== true
-  ) {
-    fail('quality-not-eligible')
-  }
 
   let workspace = createTeacherWorkspace({
     content: sourceNotes,
