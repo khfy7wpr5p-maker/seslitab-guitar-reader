@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  SmoosicTestDOMParser,
+  SmoosicTestXMLSerializer,
+} from './support/smoosicXmlDom.js'
+
+
+import {
   getChordBoardVoicings,
 } from '../src/services/chordBoardCatalog.js'
 import {
@@ -11,6 +17,9 @@ import {
   createTeacherAssignmentComposerService,
 } from '../src/services/teacherAssignmentComposerService.js'
 
+
+globalThis.DOMParser = SmoosicTestDOMParser
+globalThis.XMLSerializer = SmoosicTestXMLSerializer
 const VALID_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Test</part-name></score-part></part-list>
