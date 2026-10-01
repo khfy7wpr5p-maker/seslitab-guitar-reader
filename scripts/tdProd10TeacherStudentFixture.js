@@ -133,7 +133,7 @@ const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </measure></part>
 </score-partwise>`
 
-const MALFORMED_XML = '<score-partwise version="4.0"><part-list>';
+const MALFORMED_XML = '<score-partwise version="4.0"><part-list>'
 
 function parsedNotes(xml = FINAL_XML) {
   const parsed = parseMusicXmlToNotes(xml)
@@ -507,7 +507,22 @@ async function malformedMusicXmlRejectedBeforePrepare() {
       }),
     )
 
-  return rejectedAtIntake
+  const harness =
+    createDeliveryHarness()
+  const markerAssignmentId =
+    'td-prod-28-malformed-score'
+
+  return (
+    rejectedAtIntake &&
+    await harness.store
+      .getPreparedAssignment(
+        markerAssignmentId,
+      ) === null &&
+    await harness.store
+      .getDelivery(
+        markerAssignmentId,
+      ) === null
+  )
 }
 
 async function negativeEvidence({
