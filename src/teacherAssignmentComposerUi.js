@@ -351,7 +351,7 @@ export function mountTeacherAssignmentComposerUi({
             draftId,
           })
         scoreStatus.textContent =
-          `MusicXML doğrulandı — ${scoreUpload.intake.musicXmlFingerprint}`
+          'MusicXML doğrulandı.'
       } catch {
         scoreUpload = null
         scoreStatus.textContent =
