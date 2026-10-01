@@ -184,3 +184,96 @@ test('SES-141 never reports a failed recipient as sent and does not cross-contam
   assert.equal(calls.pieces[0].studentId, 'student-a')
   assert.doesNotMatch(JSON.stringify(result), /provider detail/i)
 })
+
+
+test('SES-141 retry keeps exact assignment payload authority stable for the same draft', async () => {
+  const calls = { prepare: [], deliver: [], pieces: [] }
+  let tick = 0
+  const secureDeliveryClient = {
+    async listTeacherRoster() {
+      return Object.freeze([
+        Object.freeze({ schemaVersion: 1, studentId: 'student-a', displayNameOrNickname: 'Ada', active: true }),
+      ])
+    },
+    async prepareAssignments(items) {
+      calls.prepare.push(structuredClone(items))
+      return Object.freeze(items.map(preparedAck))
+    },
+    async deliverAssignments(ids) {
+      calls.deliver.push([...ids])
+      const items = calls.prepare.length === 1
+        ? calls.prepare[0]
+        : calls.prepare.at(-1)
+      if (calls.deliver.length === 1) {
+        throw new Error('first delivery response lost')
+      }
+      const byId = new Map(items.map((item) => [item.assignment.assignmentId, item]))
+      return Object.freeze(ids.map((id) => deliveryAck(byId.get(id))))
+    },
+    async createTeacherPiece(input) {
+      calls.pieces.push(structuredClone(input))
+      return Object.freeze({
+        ...input,
+        schemaVersion: 1,
+        state: 'ACTIVE',
+        assignedAt: '2026-10-01T14:33:00Z',
+        revokedAt: null,
+        contentRefs: Object.freeze({
+          scoreAssignmentId: input.scoreAssignmentId,
+          chordAssignmentIds: Object.freeze([...input.chordAssignmentIds]),
+        }),
+      })
+    },
+  }
+  const service = createTeacherAssignmentComposerService({
+    teacherId: 'teacher-a',
+    secureDeliveryClient,
+    now: () => {
+      tick += 1
+      return `2026-10-01T14:30:0${tick}Z`
+    },
+  })
+  const scoreUpload = await service.prepareScoreUpload({
+    musicXml: VALID_XML,
+    draftId: 'draft-retry',
+  })
+
+  const input = {
+    draftId: 'draft-retry',
+    studentIds: ['student-a'],
+    title: 'Retry Etüdü',
+    teacherNote: 'Aynı içerik.',
+    scoreUpload,
+    chordSnapshots: [getChordBoardVoicings('Am')[0]],
+  }
+
+  const first = await service.send(input)
+  assert.equal(first.ok, false)
+  const second = await service.send(input)
+  assert.equal(second.ok, true)
+
+  assert.equal(calls.prepare.length, 2)
+  assert.deepEqual(calls.prepare[1], calls.prepare[0])
+  assert.deepEqual(calls.deliver[1], calls.deliver[0])
+})
+
+test('SES-141 rejects duplicate exact CHORD_BOARD snapshots before Secure Delivery', async () => {
+  const { service, calls } = harness()
+  const snapshot = getChordBoardVoicings('Am')[0]
+
+  await assert.rejects(
+    () => service.send({
+      draftId: 'draft-duplicate-chord',
+      studentIds: ['student-a'],
+      title: 'Akor',
+      teacherNote: '',
+      scoreUpload: null,
+      chordSnapshots: [snapshot, snapshot],
+    }),
+    /duplicate.*chord|chord.*duplicate/i,
+  )
+
+  assert.equal(calls.prepare.length, 0)
+  assert.equal(calls.deliver.length, 0)
+  assert.equal(calls.pieces.length, 0)
+})
