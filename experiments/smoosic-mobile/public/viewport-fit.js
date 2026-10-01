@@ -38,12 +38,21 @@
   function restoreParentScrollAfterFrameWrite(parent, frame, before) {
     if (typeof parent.scrollTo !== 'function') return;
 
-    // Force outer layout so a Chromium scroll-anchor adjustment caused by the
-    // iframe height write is observable before we restore the user's position.
-    frame.getBoundingClientRect();
-    const after = parentScrollPosition(parent);
-    if (Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5) return;
-    parent.scrollTo(before.x, before.y);
+    const restoreIfShifted = () => {
+      // Force outer layout so any Chromium scroll-anchor adjustment caused by
+      // the iframe height write is observable before restoring the user position.
+      frame.getBoundingClientRect();
+      const after = parentScrollPosition(parent);
+      if (Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5) return;
+      parent.scrollTo(before.x, before.y);
+    };
+
+    restoreIfShifted();
+
+    // Chromium may apply scroll anchoring after the synchronous layout read.
+    // Re-check once on the next animation frame so the delayed adjustment is
+    // restored without introducing another iframe-height write.
+    parent.requestAnimationFrame(restoreIfShifted);
   }
 
   function clearMobileFrameState(parent, frame) {
