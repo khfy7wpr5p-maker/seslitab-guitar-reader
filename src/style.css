@@ -181,3 +181,9 @@ body {
   .tab-actions { flex-direction: column; }
   .tab-actions .btn { width: 100%; }
 }
+
+/* SES-143: keep legacy modules mounted for compatibility while removing them
+   from the normal teacher composition and accessibility tree. */
+.teacher-surface-hidden {
+  display: none !important;
+}
