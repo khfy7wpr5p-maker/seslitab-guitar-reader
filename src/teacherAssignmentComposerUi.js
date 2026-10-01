@@ -5,6 +5,9 @@ import {
 import {
   validateMusicXmlFile,
 } from './services/musicXmlFile.js'
+import {
+  TEACHER_ASSIGNMENT_DELIVERY_PHASE,
+} from './services/teacherAssignmentDeliveryOrchestrator.js'
 
 const CHORD_BOARD_URL =
   'https://khfy7wpr5p-maker.github.io/st-guitar-chord-board/'
@@ -45,7 +48,8 @@ function safeResultMessage(result) {
       (row) =>
         row?.ok === true &&
         row?.phase ===
-          'delivered_to_student' &&
+          TEACHER_ASSIGNMENT_DELIVERY_PHASE
+            .DELIVERED_TO_STUDENT &&
         row?.pieceLinked === true,
     )
   ) {
