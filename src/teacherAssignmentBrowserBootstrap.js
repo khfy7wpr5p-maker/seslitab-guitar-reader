@@ -12,9 +12,6 @@ import {
 import {
   createTeacherAssignmentProductionComposition,
 } from './teacherAssignmentProductionComposition.js'
-import {
-  verifySmoosicAssignmentMusicXml,
-} from './smoosicEditorTabUi.js'
 
 const DEFAULT_SECURE_DELIVERY_API_URL =
   'https://st-student-api.onrender.com/api/secure-delivery/v1'
@@ -175,7 +172,12 @@ export async function createTeacherAssignmentBrowserComposition({
       authenticatedTeacher:
         Object.freeze({ teacherId }),
       secureDeliveryClient,
-      verifyScoreSource(musicXml) {
+      async verifyScoreSource(musicXml) {
+        const {
+          verifySmoosicAssignmentMusicXml,
+        } = await import(
+          './smoosicEditorTabUi.js'
+        )
         return verifySmoosicAssignmentMusicXml(
           root,
           musicXml,
