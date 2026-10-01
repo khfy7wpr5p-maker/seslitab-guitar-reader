@@ -515,6 +515,33 @@ function requestEditorMusicXml(root) {
   })
 }
 
+export async function verifySmoosicAssignmentMusicXml(
+  root = document,
+  musicXml,
+) {
+  if (
+    typeof musicXml !== 'string' ||
+    musicXml.trim() === '' ||
+    sourceTransitionPending(root)
+  ) {
+    return false
+  }
+
+  try {
+    const candidate =
+      await requestEditorMusicXml(root)
+    return (
+      typeof candidate?.musicXml ===
+        'string' &&
+      candidate.musicXml === musicXml &&
+      candidate.sourceRevision ===
+        stateFor(root).sourceRevision
+    )
+  } catch {
+    return false
+  }
+}
+
 function scheduleCommittedRevisionCorrectionOverlayResync(root, committedMusicXml) {
   const state = stateFor(root)
   const sourceRevision = state.sourceRevision
