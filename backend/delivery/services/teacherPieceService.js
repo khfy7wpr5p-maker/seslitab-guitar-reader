@@ -228,6 +228,34 @@ export function createTeacherPieceService({
     }
   }
 
+  function pieceInputMatchesExisting(
+    existing,
+    input,
+  ) {
+    return (
+      existing.pieceAssignmentId ===
+        input.pieceAssignmentId &&
+      existing.pieceId === input.pieceId &&
+      existing.arrangementId ===
+        input.arrangementId &&
+      existing.studentId ===
+        input.studentId &&
+      existing.title === input.title &&
+      existing.teacherNote ===
+        input.teacherNote &&
+      existing.contentRefs
+        .scoreAssignmentId ===
+        input.scoreAssignmentId &&
+      JSON.stringify(
+        existing.contentRefs
+          .chordAssignmentIds,
+      ) ===
+        JSON.stringify(
+          input.chordAssignmentIds,
+        )
+    )
+  }
+
   async function createPiece({
     providerSubject,
     input,
@@ -242,6 +270,37 @@ export function createTeacherPieceService({
       await teacherPrincipal(
         providerSubject,
       )
+
+    const pieceAssignmentId =
+      normalizeRequiredId(
+        input.pieceAssignmentId,
+        'pieceAssignmentId',
+      )
+    const existing =
+      await trustedStore
+        .getPieceAssignment(
+          pieceAssignmentId,
+        )
+
+    if (existing !== null) {
+      if (
+        !isPieceAssignment(existing) ||
+        !pieceInputMatchesExisting(
+          existing,
+          input,
+        )
+      ) {
+        throw new Error(
+          'piece-assignment-idempotency-conflict',
+        )
+      }
+
+      await verifyPieceChildren(
+        existing,
+        teacherId,
+      )
+      return existing
+    }
 
     const piece = createPieceAssignment({
       pieceAssignmentId:
