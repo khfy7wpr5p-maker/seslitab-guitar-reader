@@ -133,6 +133,8 @@ const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </measure></part>
 </score-partwise>`
 
+const MALFORMED_XML = '<score-partwise version="4.0"><part-list>';
+
 function parsedNotes(xml = FINAL_XML) {
   const parsed = parseMusicXmlToNotes(xml)
   if (
