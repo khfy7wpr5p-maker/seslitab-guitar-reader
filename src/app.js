@@ -574,6 +574,8 @@ function switchResultTab(tabName) {
   $('tab-rhythmic').hidden = tabName !== 'rhythmic'
   $('tab-html').hidden = tabName !== 'html'
   $('tab-notes').hidden = tabName !== 'notes'
+  const assignmentPanel = $('tab-assignment')
+  if (assignmentPanel) assignmentPanel.hidden = tabName !== 'assignment'
   $('tab-xml').hidden = tabName !== 'xml'
 }
 
