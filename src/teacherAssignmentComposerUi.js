@@ -255,6 +255,10 @@ export function mountTeacherAssignmentComposerUi({
         voicingSelect.appendChild(option)
       },
     )
+    if (snapshots.length > 0) {
+      voicingSelect.value =
+        snapshots[0].voicingFingerprint
+    }
   }
 
   function renderChordSelection() {
@@ -279,6 +283,9 @@ export function mountTeacherAssignmentComposerUi({
     option.value = symbol
     option.textContent = symbol
     symbolSelect.appendChild(option)
+  }
+  if (symbols.length > 0) {
+    symbolSelect.value = symbols[0]
   }
   renderVoicings()
 
