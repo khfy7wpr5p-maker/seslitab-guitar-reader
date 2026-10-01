@@ -105,6 +105,7 @@ export function mountTeacherAssignmentComposerUi({
   let selectedSnapshots = []
   let destroyed = false
   let sending = false
+  let rosterReady = false
 
   const form = element(
     root,
@@ -218,6 +219,7 @@ export function mountTeacherAssignmentComposerUi({
   )
   submit.type = 'submit'
   submit.textContent = 'Öğrenciye Gönder'
+  submit.disabled = true
 
   const status = element(
     root,
@@ -360,7 +362,14 @@ export function mountTeacherAssignmentComposerUi({
     },
   )
 
+  function updateSubmitState() {
+    submit.disabled =
+      sending || !rosterReady
+  }
+
   async function loadRoster() {
+    rosterReady = false
+    updateSubmitState()
     try {
       const rows =
         await service.loadRoster()
@@ -369,6 +378,8 @@ export function mountTeacherAssignmentComposerUi({
       if (rows.length === 0) {
         roster.textContent =
           'Aktif öğrenci bulunamadı.'
+        rosterReady = false
+        updateSubmitState()
         return
       }
       for (const row of rows) {
@@ -386,8 +397,12 @@ export function mountTeacherAssignmentComposerUi({
         )
         roster.appendChild(label)
       }
+      rosterReady = true
+      updateSubmitState()
     } catch {
       if (!destroyed) {
+        rosterReady = false
+        updateSubmitState()
         roster.textContent =
           'Öğrenci listesi yüklenemedi.'
       }
@@ -399,6 +414,11 @@ export function mountTeacherAssignmentComposerUi({
     async (event) => {
       event.preventDefault()
       if (sending) return
+      if (!rosterReady) {
+        status.textContent =
+          'Öğrenci listesi hazır değil.'
+        return
+      }
 
       const studentIds =
         roster
@@ -436,7 +456,7 @@ export function mountTeacherAssignmentComposerUi({
       }
 
       sending = true
-      submit.disabled = true
+      updateSubmitState()
       status.textContent =
         'Gönderiliyor.'
       try {
@@ -458,7 +478,7 @@ export function mountTeacherAssignmentComposerUi({
           'Gönderilemedi. Tekrar deneyin.'
       } finally {
         sending = false
-        submit.disabled = false
+        updateSubmitState()
       }
     },
   )
@@ -470,6 +490,7 @@ export function mountTeacherAssignmentComposerUi({
     destroy() {
       if (destroyed) return
       destroyed = true
+      rosterReady = false
       host.replaceChildren()
     },
   })
