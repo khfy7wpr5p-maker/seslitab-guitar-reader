@@ -49,6 +49,11 @@ test('SES-150 OMR Docker image packages backend src/services runtime imports', (
     /COPY\s+src\/services\/\s+\.\/src\/services\//,
     'OMR Docker image must copy the shared src/services runtime tree',
   )
+  assert.match(
+    dockerfile,
+    /COPY\s+\*\.js\s+\/app\//,
+    'OMR Docker image must include root-level shared JS contracts',
+  )
 })
 
 test('SES-150 OMR Docker build fails early on Secure Delivery resolution drift', () => {
