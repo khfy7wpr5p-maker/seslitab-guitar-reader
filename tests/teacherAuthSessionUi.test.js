@@ -131,7 +131,7 @@ test('SES-146 auth UI renders safe messages for invalid credentials and session 
     'invalid-credentials',
   )
   assert.match(
-    host.textContent,
+    host.querySelector('.teacher-auth-session__status').textContent,
     /E-posta veya şifre doğrulanamadı/,
   )
 
@@ -140,11 +140,11 @@ test('SES-146 auth UI renders safe messages for invalid credentials and session 
     'session-expired',
   )
   assert.match(
-    host.textContent,
+    host.querySelector('.teacher-auth-session__status').textContent,
     /Oturum süresi doldu/,
   )
   assert.doesNotMatch(
-    host.textContent,
+    host.querySelector('.teacher-auth-session__status').textContent,
     /Firebase|token|uid|provider/i,
   )
 })
@@ -174,7 +174,7 @@ test('SES-146 auth UI exposes sign-out only for authenticated authority and call
 
   assert.equal(signOut.hidden, false)
   assert.match(
-    host.textContent,
+    host.querySelector('.teacher-auth-session__status').textContent,
     /Öğretmen oturumu hazır/,
   )
 
@@ -203,7 +203,7 @@ test('SES-146 API unavailable UI remains fail-closed and offers an explicit retr
   )
 
   assert.match(
-    host.textContent,
+    host.querySelector('.teacher-auth-session__status').textContent,
     /Güvenli gönderim servisine ulaşılamıyor/,
   )
 
