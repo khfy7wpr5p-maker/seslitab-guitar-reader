@@ -216,3 +216,92 @@ test('SES-141 UI fails closed when roster authority cannot load', async () => {
   )
   handle.destroy()
 })
+
+
+test('SES-147 send stays disabled until authorized roster readiness and remains disabled on roster failure', async () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  let resolveRoster
+  const rosterPromise =
+    new Promise((resolve) => {
+      resolveRoster = resolve
+    })
+
+  const handle =
+    mountTeacherAssignmentComposerUi({
+      root,
+      host,
+      service: {
+        loadRoster() {
+          return rosterPromise
+        },
+        async prepareScoreUpload() {
+          throw new Error('unused')
+        },
+        async send() {
+          throw new Error(
+            'must not send before roster ready',
+          )
+        },
+      },
+      createDraftId: () =>
+        'draft-roster-gate',
+    })
+
+  const submit = host
+    .querySelectorAll('button')
+    .find(
+      (button) =>
+        button.textContent ===
+        'Öğrenciye Gönder',
+    )
+
+  assert.equal(submit.disabled, true)
+
+  resolveRoster(Object.freeze([
+    Object.freeze({
+      studentId: 'student-a',
+      displayNameOrNickname: 'Ada',
+    }),
+  ]))
+  await settle()
+
+  assert.equal(submit.disabled, false)
+
+  handle.destroy()
+
+  const failedHost =
+    root.createElement('div')
+  mountTeacherAssignmentComposerUi({
+    root,
+    host: failedHost,
+    service: {
+      async loadRoster() {
+        throw new Error('roster unavailable')
+      },
+      async prepareScoreUpload() {
+        throw new Error('unused')
+      },
+      async send() {
+        throw new Error('must not send')
+      },
+    },
+    createDraftId: () =>
+      'draft-roster-fail',
+  })
+
+  await settle()
+
+  const failedSubmit = failedHost
+    .querySelectorAll('button')
+    .find(
+      (button) =>
+        button.textContent ===
+        'Öğrenciye Gönder',
+    )
+
+  assert.equal(
+    failedSubmit.disabled,
+    true,
+  )
+})

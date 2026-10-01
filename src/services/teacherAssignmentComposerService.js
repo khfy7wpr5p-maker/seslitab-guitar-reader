@@ -152,6 +152,7 @@ export function createTeacherAssignmentComposerService({
   }
 
   const assignedAtByDraft = new Map()
+  let authorizedRosterCache = null
 
   function stableDraftNow(draftId) {
     if (!assignedAtByDraft.has(draftId)) {
@@ -188,11 +189,19 @@ export function createTeacherAssignmentComposerService({
   }
 
   async function loadRoster() {
+    if (authorizedRosterCache !== null) {
+      return authorizedRosterCache
+    }
+
     const service =
       await liveRosterService()
-    return service.listStudents({
-      includeInactive: false,
-    })
+    authorizedRosterCache =
+      Object.freeze([
+        ...service.listStudents({
+          includeInactive: false,
+        }),
+      ])
+    return authorizedRosterCache
   }
 
   async function prepareScoreUpload({

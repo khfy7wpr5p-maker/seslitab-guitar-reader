@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>SES-147 auth roster browser proof</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "./firebase-app-browser-stub.js",
+      "firebase/auth": "./firebase-auth-browser-stub.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="results-section" hidden></div>
+  <div id="teacher-assignment-composer-host">
+    <p id="fallback">Güvenli gönderim bağlantısı bekleniyor.</p>
+  </div>
+
+  <script type="module">
+    import {
+      TEACHER_AUTH_STATE,
+      createTeacherAuthSessionController,
+    } from '../../src/teacherAuthSessionController.js'
+    import {
+      mountTeacherAssignmentProduction,
+    } from '../../src/teacherAssignmentProductionMount.js'
+
+    const ENV = Object.freeze({
+      VITE_SESLITAB_FIREBASE_API_KEY:
+        'public-web-key',
+      VITE_SESLITAB_FIREBASE_AUTH_DOMAIN:
+        'project-a.firebaseapp.com',
+      VITE_SESLITAB_FIREBASE_PROJECT_ID:
+        'project-a',
+      VITE_SESLITAB_SECURE_DELIVERY_API_URL:
+        'https://api.example.test/api/secure-delivery/v1',
+    })
+
+    const rosterRow = Object.freeze({
+      schemaVersion: 1,
+      studentId: 'student-a',
+      displayNameOrNickname: 'Ada',
+      active: true,
+    })
+
+    function jsonResponse(payload, status = 200) {
+      return Object.freeze({
+        ok: status >= 200 && status < 300,
+        status,
+        async json() {
+          return payload
+        },
+      })
+    }
+
+    function makeSdk(currentUser) {
+      const auth = {
+        currentUser,
+        async authStateReady() {},
+      }
+      return {
+        auth,
+        sdk: {
+          browserSessionPersistence:
+            Object.freeze({ type: 'SESSION' }),
+          getApps() {
+            return []
+          },
+          initializeApp() {
+            return Object.freeze({
+              name:
+                'seslitab-teacher-assignment',
+            })
+          },
+          getAuth() {
+            return auth
+          },
+          async setPersistence() {},
+          async signInWithEmailAndPassword() {
+            return Object.freeze({
+              user: auth.currentUser,
+            })
+          },
+          async signOut() {
+            auth.currentUser = null
+          },
+        },
+      }
+    }
+
+    function user(counter) {
+      return Object.freeze({
+        uid: 'provider-uid-private',
+        async getIdToken() {
+          counter.count += 1
+          return `token-${counter.count}`
+        },
+      })
+    }
+
+    function mark(name, pass) {
+      document.body.setAttribute(
+        `data-${name}`,
+        pass ? 'true' : 'false',
+      )
+    }
+
+    const configHarness = makeSdk(null)
+    const configController =
+      createTeacherAuthSessionController({
+        env: {},
+        firebaseSdk: configHarness.sdk,
+        connectSecureDelivery:
+          async () => {
+            throw new Error('must-not-connect')
+          },
+      })
+    const configResult =
+      await configController.start()
+    mark(
+      'config-unavailable-pass',
+      configResult.state ===
+        TEACHER_AUTH_STATE.CONFIG_UNAVAILABLE,
+    )
+
+    const signedOutHarness = makeSdk(null)
+    const signedOutController =
+      createTeacherAuthSessionController({
+        env: ENV,
+        firebaseSdk: signedOutHarness.sdk,
+        connectSecureDelivery:
+          async () => {
+            throw new Error('must-not-connect')
+          },
+      })
+    const signedOutResult =
+      await signedOutController.start()
+    mark(
+      'signed-out-pass',
+      signedOutResult.state ===
+        TEACHER_AUTH_STATE.SIGNED_OUT,
+    )
+
+    const failCounter = { count: 0 }
+    const failHarness =
+      makeSdk(user(failCounter))
+    let failReady = 0
+    const failController =
+      createTeacherAuthSessionController({
+        env: ENV,
+        firebaseSdk: failHarness.sdk,
+        fetchImpl: async () =>
+          jsonResponse({
+            success: false,
+            error: {
+              code: 'SERVICE_UNAVAILABLE',
+              message: 'temporary',
+            },
+          }, 503),
+        onReady() {
+          failReady += 1
+        },
+      })
+    const failResult =
+      await failController.start()
+    mark(
+      'roster-failure-pass',
+      failResult.state ===
+        TEACHER_AUTH_STATE.API_UNAVAILABLE &&
+        failReady === 0,
+    )
+
+    const expiredCounter = { count: 0 }
+    const expiredHarness =
+      makeSdk(user(expiredCounter))
+    let expiredReady = 0
+    const expiredController =
+      createTeacherAuthSessionController({
+        env: ENV,
+        firebaseSdk: expiredHarness.sdk,
+        fetchImpl: async () =>
+          jsonResponse({
+            success: false,
+            error: {
+              code: 'AUTH_REQUIRED',
+              message: 'unauthorized',
+            },
+          }, 401),
+        onReady() {
+          expiredReady += 1
+        },
+      })
+    const expiredResult =
+      await expiredController.start()
+    mark(
+      'session-expired-pass',
+      expiredResult.state ===
+        TEACHER_AUTH_STATE.SESSION_EXPIRED &&
+        expiredReady === 0,
+    )
+
+    const successCounter = { count: 0 }
+    const successHarness =
+      makeSdk(user(successCounter))
+    let assignmentHandle = null
+    const successController =
+      createTeacherAuthSessionController({
+        env: ENV,
+        firebaseSdk: successHarness.sdk,
+        fetchImpl: async (url) => {
+          if (!url.endsWith('/teacher/roster')) {
+            throw new Error(
+              'unexpected bootstrap endpoint',
+            )
+          }
+          return jsonResponse({
+            success: true,
+            data: [rosterRow],
+          })
+        },
+        onReady(connection) {
+          assignmentHandle =
+            mountTeacherAssignmentProduction({
+              root: document,
+              composition:
+                connection.composition,
+            })
+        },
+        onAuthorityRevoked() {
+          assignmentHandle?.destroy()
+          assignmentHandle = null
+        },
+      })
+
+    const successResult =
+      await successController.start()
+    await new Promise((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(resolve),
+      ),
+    )
+
+    const submit = Array.from(
+      document.querySelectorAll('button'),
+    ).find(
+      (button) =>
+        button.textContent ===
+        'Öğrenciye Gönder',
+    )
+    const student =
+      document.querySelector(
+        'input[name="studentId"]',
+      )
+
+    mark(
+      'success-mount-pass',
+      successResult.state ===
+        TEACHER_AUTH_STATE.READY &&
+        assignmentHandle?.mounted === true &&
+        Boolean(student) &&
+        submit?.disabled === false &&
+        successCounter.count === 1 &&
+        !document.getElementById('fallback'),
+    )
+  </script>
+</body>
+</html>

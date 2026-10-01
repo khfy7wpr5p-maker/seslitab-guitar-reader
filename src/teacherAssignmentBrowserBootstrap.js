@@ -90,7 +90,14 @@ export async function createTeacherAssignmentBrowserComposition({
   now = () => new Date().toISOString(),
   createDraftId,
   root = globalThis.document,
+  onAuthFailure = () => {},
 } = {}) {
+  if (typeof onAuthFailure !== 'function') {
+    throw new TypeError(
+      'onAuthFailure must be a function.',
+    )
+  }
+
   const config = firebaseConfig(env)
   if (!config) {
     return unavailable(
@@ -151,6 +158,7 @@ export async function createTeacherAssignmentBrowserComposition({
     createSecureDeliveryApiClient({
       baseUrl,
       fetchImpl,
+      onAuthFailure,
       async getIdToken() {
         const current =
           auth?.currentUser

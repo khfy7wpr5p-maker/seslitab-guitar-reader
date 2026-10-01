@@ -44,6 +44,7 @@ export function createSecureDeliveryApiClient({
   baseUrl,
   fetchImpl = globalThis.fetch,
   getIdToken,
+  onAuthFailure = () => {},
 } = {}) {
   const base = normalizeBaseUrl(baseUrl)
   if (typeof fetchImpl !== 'function') {
@@ -56,6 +57,42 @@ export function createSecureDeliveryApiClient({
       'getIdToken must be a function.',
     )
   }
+  if (typeof onAuthFailure !== 'function') {
+    throw new TypeError(
+      'onAuthFailure must be a function.',
+    )
+  }
+
+  function notifyAuthFailure() {
+    try {
+      onAuthFailure()
+    } catch {
+      // Auth revocation notification must never
+      // replace the bounded API error.
+    }
+  }
+
+  function authTokenError() {
+    const error = new Error(
+      'secure-delivery-auth-token-invalid',
+    )
+    error.code =
+      'secure-delivery-auth-token-invalid'
+    return error
+  }
+
+  function isAuthTokenFailure(error) {
+    return (
+      error?.message ===
+        'teacher-auth-required' ||
+      new Set([
+        'auth/user-token-expired',
+        'auth/invalid-user-token',
+        'auth/user-disabled',
+        'secure-delivery-auth-token-invalid',
+      ]).has(error?.code)
+    )
+  }
 
   async function request(
     path,
@@ -64,15 +101,22 @@ export function createSecureDeliveryApiClient({
       body,
     } = {},
   ) {
-    const token = await getIdToken()
+    let token
+    try {
+      token = await getIdToken()
+    } catch (error) {
+      if (isAuthTokenFailure(error)) {
+        notifyAuthFailure()
+      }
+      throw error
+    }
     if (
       typeof token !== 'string' ||
       token.length === 0 ||
       token.length > MAX_TOKEN_LENGTH
     ) {
-      throw new Error(
-        'secure-delivery-auth-token-invalid',
-      )
+      notifyAuthFailure()
+      throw authTokenError()
     }
 
     const headers = {
@@ -106,10 +150,14 @@ export function createSecureDeliveryApiClient({
       !response?.ok ||
       payload?.success !== true
     ) {
-      throw publicApiError(
+      const error = publicApiError(
         payload,
         response?.status ?? 0,
       )
+      if (error.status === 401) {
+        notifyAuthFailure()
+      }
+      throw error
     }
     return payload.data
   }
