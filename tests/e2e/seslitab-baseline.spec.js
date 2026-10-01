@@ -47,4 +47,39 @@ test.describe('SesliTab protected baseline', () => {
     await page.getByRole('button', { name: 'TAB metnini temizle' }).click()
     await expect(tabInput).toHaveValue('')
   })
+  test('SES-143 hides legacy teacher outputs while keeping MusicXML and playback visible', async ({ page }) => {
+    const pageErrors = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'TAB', exact: true }).click()
+    await page.getByRole('button', { name: 'Örnek TAB yükle' }).click()
+    await page.getByRole('button', { name: 'TAB metnini çevir' }).click()
+
+    await expect(page.locator('#results-section')).toBeVisible()
+    await expect(page.locator('#result-xml-btn')).toBeVisible()
+    await expect(page.locator('#result-xml-btn')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('#tab-xml')).toBeVisible()
+
+    for (const selector of [
+      '#result-rhythmic-btn',
+      '#result-html-btn',
+      '#result-notes-btn',
+      '#tab-rhythmic',
+      '#tab-html',
+      '#tab-notes',
+      '#copy-btn',
+      '#notes-summary',
+      '#voice-section',
+    ]) {
+      await expect(page.locator(selector)).toBeHidden()
+    }
+
+    await expect(page.locator('#rhythm-section')).toBeVisible()
+    await expect(page.locator('#musicxml-download-btn')).toHaveCount(1)
+    await expect(page.locator('#omr-download-btn')).toHaveCount(1)
+
+    expect(pageErrors).toEqual([])
+  })
+
 })
