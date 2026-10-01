@@ -515,6 +515,36 @@ function requestEditorMusicXml(root) {
   })
 }
 
+function scheduleCommittedRevisionCorrectionOverlayResync(root, committedMusicXml) {
+  const state = stateFor(root)
+  const sourceRevision = state.sourceRevision
+
+  // A committed revision is a new overlay authority even when the editor already
+  // contains byte-identical MusicXML from the write-back candidate. Force the
+  // next editor sync to re-import the accepted source so Smoosic binds the new
+  // sourceRevision before any fresh Correction Engine overlay is requested.
+  state.lastSourceXml = null
+
+  const frame = state.frame
+  if (!frame?.isConnected || !frame.getAttribute('src')) return false
+
+  void clearSmoosicCorrectionOverlay(root)
+    .then((cleared) => {
+      if (
+        !cleared
+        || state.sourceRevision !== sourceRevision
+        || state.observedSourceXml !== committedMusicXml
+        || sourceTransitionPending(root)
+      ) {
+        return false
+      }
+      return enqueueEditorSync(root)
+    })
+    .catch(() => false)
+
+  return true
+}
+
 function publishCommittedRevision(root, committed) {
   const state = stateFor(root)
   state.publishingWritebackXml = committed.musicXml
@@ -522,10 +552,9 @@ function publishCommittedRevision(root, committed) {
   try {
     applyRevalidatedMusicXmlRevision(committed.revision.content, committed.musicXml)
     state.observedSourceXml = committed.musicXml
-    state.lastSourceXml = committed.musicXml
     state.sourceRevision += 1
     cancelPendingCorrectionOverlay(state)
-    void clearSmoosicCorrectionOverlay(root)
+    scheduleCommittedRevisionCorrectionOverlayResync(root, committed.musicXml)
     state.authoritySourceXml = committed.musicXml
     state.authoritySourceName = state.observedSourceName || state.authoritySourceName
     state.authoritySourceRevision = state.sourceRevision
