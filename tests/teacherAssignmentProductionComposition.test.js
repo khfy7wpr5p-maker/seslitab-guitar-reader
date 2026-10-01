@@ -56,6 +56,7 @@ test('SES-141 production composition mounts only the injected authenticated Secu
         Object.freeze({
           teacherId: 'teacher-a',
         }),
+      verifyScoreSource: async () => true,
       secureDeliveryClient: {
         async listTeacherRoster() {
           return Object.freeze([])
