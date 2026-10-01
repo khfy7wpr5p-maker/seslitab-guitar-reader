@@ -90,8 +90,11 @@ test('SES-141 production composition mounts only the injected authenticated Secu
     setImmediate(resolve),
   )
   assert.equal(results.hidden, false)
+  const mountedForm =
+    host.querySelector('form')
+  assert.ok(mountedForm)
   assert.equal(
-    host.querySelector('h3').textContent,
+    mountedForm.children[0].textContent,
     'Ödev Gönder',
   )
 
