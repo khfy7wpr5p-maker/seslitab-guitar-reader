@@ -14,6 +14,7 @@ import './src/stageJDiscoveryPresentation.css'
 import './src/stageS13SmoosicTransitionCleanup.css'
 import './src/smoosicEditorTab.css'
 import './src/teacherHomeworkUi.css'
+import './src/teacherAuthSessionUi.css'
 
 import './src/app.js'
 import './src/package3Ui.js'
@@ -30,26 +31,44 @@ import { initStageKTunerPresentation } from './src/stageKTunerPresentation.js'
 import { initStageS04MiniTunerUi } from './src/stageS04MiniTunerUi.js'
 import { initSmoosicEditorTab } from './src/smoosicEditorTabUi.js'
 import { mountTeacherAssignmentProduction } from './src/teacherAssignmentProductionMount.js'
-import { createTeacherAssignmentBrowserComposition } from './src/teacherAssignmentBrowserBootstrap.js'
+import { createTeacherAuthSessionController } from './src/teacherAuthSessionController.js'
+import { mountTeacherAuthSessionUi } from './src/teacherAuthSessionUi.js'
 
 if (typeof document !== 'undefined') {
   initStageJDiscoveryPresentation(document)
   initStageKTunerPresentation(document)
   initStageS04MiniTunerUi(document)
   initSmoosicEditorTab(document)
-  void createTeacherAssignmentBrowserComposition()
-    .then((result) => {
-      mountTeacherAssignmentProduction({
-        root: document,
-        composition:
-          result.ok === true
-            ? result.composition
-            : undefined,
-      })
+  const authHost =
+    document.getElementById(
+      'teacher-auth-session-host',
+    )
+  let assignmentHandle = null
+
+  const controller =
+    createTeacherAuthSessionController({
+      root: document,
+      onReady(connection) {
+        assignmentHandle?.destroy()
+        assignmentHandle =
+          mountTeacherAssignmentProduction({
+            root: document,
+            composition:
+              connection.composition,
+          })
+      },
+      onAuthorityRevoked() {
+        assignmentHandle?.destroy()
+        assignmentHandle = null
+      },
     })
-    .catch(() => {
-      mountTeacherAssignmentProduction({
-        root: document,
-      })
+
+  if (authHost) {
+    mountTeacherAuthSessionUi({
+      root: document,
+      host: authHost,
+      controller,
     })
+    void controller.start()
+  }
 }
