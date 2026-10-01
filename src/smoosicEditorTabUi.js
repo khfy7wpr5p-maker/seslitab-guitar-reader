@@ -515,6 +515,36 @@ function requestEditorMusicXml(root) {
   })
 }
 
+function scheduleCommittedRevisionCorrectionOverlayResync(root, committedMusicXml) {
+  const state = stateFor(root)
+  const sourceRevision = state.sourceRevision
+
+  // A committed revision is a new overlay authority even when the editor already
+  // contains byte-identical MusicXML from the write-back candidate. Force the
+  // next editor sync to re-import the accepted source so Smoosic binds the new
+  // sourceRevision before any fresh Correction Engine overlay is requested.
+  state.lastSourceXml = null
+
+  const frame = state.frame
+  if (!frame?.isConnected || !frame.getAttribute('src')) return false
+
+  void clearSmoosicCorrectionOverlay(root)
+    .then((cleared) => {
+      if (
+        !cleared
+        || state.sourceRevision !== sourceRevision
+        || state.observedSourceXml !== committedMusicXml
+        || sourceTransitionPending(root)
+      ) {
+        return false
+      }
+      return enqueueEditorSync(root, { quiet: true })
+    })
+    .catch(() => false)
+
+  return true
+}
+
 function publishCommittedRevision(root, committed) {
   const state = stateFor(root)
   state.publishingWritebackXml = committed.musicXml
@@ -522,10 +552,9 @@ function publishCommittedRevision(root, committed) {
   try {
     applyRevalidatedMusicXmlRevision(committed.revision.content, committed.musicXml)
     state.observedSourceXml = committed.musicXml
-    state.lastSourceXml = committed.musicXml
     state.sourceRevision += 1
     cancelPendingCorrectionOverlay(state)
-    void clearSmoosicCorrectionOverlay(root)
+    scheduleCommittedRevisionCorrectionOverlayResync(root, committed.musicXml)
     state.authoritySourceXml = committed.musicXml
     state.authoritySourceName = state.observedSourceName || state.authoritySourceName
     state.authoritySourceRevision = state.sourceRevision
@@ -822,7 +851,7 @@ function resetIframeStatusForTransfer(frame, fileName) {
   }
 }
 
-async function loadSourceIntoEditor(root, frame) {
+async function loadSourceIntoEditor(root, frame, { quiet = false } = {}) {
   const state = stateFor(root)
 
   if (sourceTransitionPending(root)) {
@@ -843,7 +872,7 @@ async function loadSourceIntoEditor(root, frame) {
   const { xml, fileName } = source
   if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
     frame.hidden = false
-    setHostStatus(root, '', 'ready')
+    if (!quiet) setHostStatus(root, '', 'ready')
     void syncSmoosicCorrectionOverlays(
       root,
       frame,
@@ -864,7 +893,9 @@ async function loadSourceIntoEditor(root, frame) {
   stampIframeImportProvenance(input, targetRevision)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
-  setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
+  if (!quiet) {
+    setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
+  }
   input.dispatchEvent(createIframeImportEvent(frame))
   await waitForMusicXmlLoad(frame, fileName)
 
@@ -883,7 +914,7 @@ async function loadSourceIntoEditor(root, frame) {
 
   state.lastSourceXml = xml
   state.lastSourceName = fileName
-  setHostStatus(root, '', 'ready')
+  if (!quiet) setHostStatus(root, '', 'ready')
   void syncSmoosicCorrectionOverlays(
     root,
     frame,
@@ -908,7 +939,7 @@ function ensureFrame(root, panel) {
   return frame
 }
 
-function enqueueEditorSync(root) {
+function enqueueEditorSync(root, { quiet = false } = {}) {
   const state = stateFor(root)
   state.syncPromise = state.syncPromise
     .catch(() => false)
@@ -918,7 +949,7 @@ function enqueueEditorSync(root) {
       try {
         if (state.frameReadyPromise) await state.frameReadyPromise
         await waitForEditorReady(frame)
-        return await loadSourceIntoEditor(root, frame)
+        return await loadSourceIntoEditor(root, frame, { quiet })
       } catch (error) {
         console.error(error)
         setHostStatus(root, error?.message || 'Nota editörü güncellenemedi.', 'error')

@@ -565,6 +565,23 @@ try {
     `document.getElementById('smoosic-editor-frame')?.hidden === false`,
     'replacement keeps Smoosic visible',
   )
+  const replacementRevision = await waitFor(
+    cdp,
+    `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const doc = frame?.contentDocument;
+      const status = String(doc?.getElementById('poc-status')?.textContent || '');
+      const revision = Number(doc?.getElementById('mobile-xml-input')?.dataset?.seslitabImportRevision);
+      return status.startsWith('Yüklendi:')
+        && status.includes('s15-replacement.musicxml')
+        && Number.isSafeInteger(revision)
+        && revision > ${Number(pendingRequest.sourceRevision)}
+          ? revision
+          : 0;
+    })()`,
+    'replacement Smoosic revision-bound handoff',
+    16000,
+  )
   await evaluate(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
     const requestId = 's15-replacement-probe-' + crypto.randomUUID();
@@ -581,7 +598,7 @@ try {
       type: 'seslitab:smoosic-export-request',
       version: 1,
       requestId,
-      sourceRevision: ${Number(pendingRequest.sourceRevision) + 1},
+      sourceRevision: ${Number(replacementRevision)},
     }, location.origin);
     return true;
   })()`)
