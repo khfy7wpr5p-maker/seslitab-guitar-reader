@@ -61,7 +61,10 @@ function deliveryAck(item) {
   })
 }
 
-function harness({ failStudent = null } = {}) {
+function harness({
+  failStudent = null,
+  verifyScoreSource = async () => true,
+} = {}) {
   const calls = { prepare: [], deliver: [], pieces: [] }
   const secureDeliveryClient = {
     async listTeacherRoster() {
@@ -108,6 +111,7 @@ function harness({ failStudent = null } = {}) {
     service: createTeacherAssignmentComposerService({
       teacherId: 'teacher-a',
       secureDeliveryClient,
+      verifyScoreSource,
       now: () => '2026-10-01T14:30:00Z',
     }),
   }
@@ -228,6 +232,7 @@ test('SES-141 retry keeps exact assignment payload authority stable for the same
   const service = createTeacherAssignmentComposerService({
     teacherId: 'teacher-a',
     secureDeliveryClient,
+    verifyScoreSource: async () => true,
     now: () => {
       tick += 1
       return `2026-10-01T14:30:0${tick}Z`
@@ -276,4 +281,27 @@ test('SES-141 rejects duplicate exact CHORD_BOARD snapshots before Secure Delive
   assert.equal(calls.prepare.length, 0)
   assert.equal(calls.deliver.length, 0)
   assert.equal(calls.pieces.length, 0)
+})
+
+
+test('SES-141 rejects a stale or wrong SCORE export before preparing any assignment', async () => {
+  const seen = []
+  const { service, calls } = harness({
+    verifyScoreSource: async (musicXml) => {
+      seen.push(musicXml)
+      return false
+    },
+  })
+
+  await assert.rejects(
+    () => service.prepareScoreUpload({
+      musicXml: VALID_XML,
+      draftId: 'draft-stale-score',
+    }),
+    /stale-or-wrong-source/i,
+  )
+
+  assert.deepEqual(seen, [VALID_XML])
+  assert.equal(calls.prepare.length, 0)
+  assert.equal(calls.deliver.length, 0)
 })
