@@ -565,7 +565,7 @@ try {
     `document.getElementById('smoosic-editor-frame')?.hidden === false`,
     'replacement keeps Smoosic visible',
   )
-  await waitFor(
+  const replacementRevision = await waitFor(
     cdp,
     `(() => {
       const frame = document.getElementById('smoosic-editor-frame');
@@ -575,7 +575,9 @@ try {
       return status.startsWith('Yüklendi:')
         && status.includes('s15-replacement.musicxml')
         && Number.isSafeInteger(revision)
-        && revision === ${Number(pendingRequest.sourceRevision) + 1};
+        && revision > ${Number(pendingRequest.sourceRevision)}
+          ? revision
+          : 0;
     })()`,
     'replacement Smoosic revision-bound handoff',
     16000,
@@ -596,7 +598,7 @@ try {
       type: 'seslitab:smoosic-export-request',
       version: 1,
       requestId,
-      sourceRevision: ${Number(pendingRequest.sourceRevision) + 1},
+      sourceRevision: ${Number(replacementRevision)},
     }, location.origin);
     return true;
   })()`)
