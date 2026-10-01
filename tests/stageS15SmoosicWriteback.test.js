@@ -793,3 +793,42 @@ test('Task 6 structural outcomes extend writeback status without changing S15 pu
   assert.match(host, /publishCommittedRevision\(root, pendingPublication\)/)
   assert.match(host, /applyRevalidatedMusicXmlRevision\(committed\.revision\.content, committed\.musicXml\)/)
 })
+
+
+test('SES-141 read-only Smoosic assignment verifier accepts only the current editor export', async () => {
+  const currentXml = S15_SOURCE_XML.replace('<step>C</step>', '<step>E</step>')
+  const root = staleSourceHost({
+    sourceXml: S15_SOURCE_XML,
+    candidateXml: currentXml,
+  })
+  const previousDocument = globalThis.document
+  globalThis.document = root
+  try {
+    const {
+      ensureSmoosicEditorTab,
+      verifySmoosicAssignmentMusicXml,
+    } = await import('../src/smoosicEditorTabUi.js')
+
+    assert.ok(ensureSmoosicEditorTab(root))
+    root.getElementById('smoosic-tab-btn').click()
+    root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+    await settleWriteback()
+
+    assert.equal(
+      await verifySmoosicAssignmentMusicXml(root, currentXml),
+      true,
+    )
+    assert.equal(
+      await verifySmoosicAssignmentMusicXml(root, S15_SOURCE_XML),
+      false,
+    )
+    assert.equal(root.postMessageCount, 2)
+    assert.equal(
+      root.getElementById('xml-output').textContent,
+      S15_SOURCE_XML,
+      'assignment verification must not publish or mutate the SesliTab source',
+    )
+  } finally {
+    globalThis.document = previousDocument
+  }
+})
