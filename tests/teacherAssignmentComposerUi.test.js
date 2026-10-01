@@ -8,6 +8,9 @@ import {
   mountTeacherAssignmentComposerUi,
 } from '../src/teacherAssignmentComposerUi.js'
 import {
+  TEACHER_ASSIGNMENT_DELIVERY_PHASE,
+} from '../src/services/teacherAssignmentDeliveryOrchestrator.js'
+import {
   createFakeDocument,
 } from './support/fakeTeacherPoolDom.js'
 
@@ -57,7 +60,8 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
                 studentId,
                 ok: true,
                 phase:
-                  'delivered_to_student',
+                  TEACHER_ASSIGNMENT_DELIVERY_PHASE
+                    .DELIVERED_TO_STUDENT,
                 pieceLinked: true,
               }),
           ),
