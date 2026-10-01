@@ -131,6 +131,7 @@ function boundedRecipient({
 export function createTeacherAssignmentComposerService({
   teacherId,
   secureDeliveryClient,
+  verifyScoreSource,
   now,
 } = {}) {
   const actorId =
@@ -138,6 +139,11 @@ export function createTeacherAssignmentComposerService({
   const client =
     assertClient(secureDeliveryClient)
 
+  if (typeof verifyScoreSource !== 'function') {
+    throw new TypeError(
+      'verifyScoreSource must be a function.',
+    )
+  }
   if (typeof now !== 'function') {
     throw new TypeError('now must be a function.')
   }
@@ -190,6 +196,14 @@ export function createTeacherAssignmentComposerService({
     musicXml,
     draftId,
   } = {}) {
+    const currentSource =
+      await verifyScoreSource(musicXml)
+    if (currentSource !== true) {
+      throw new Error(
+        'assignment-composer-score-upload-stale-or-wrong-source',
+      )
+    }
+
     return prepareTeacherAssignmentScoreUpload({
       musicXml,
       teacherId: actorId,
