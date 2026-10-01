@@ -116,6 +116,16 @@ COPY --from=node-build /build/node_modules /app/node_modules
 # Copy backend source
 COPY backend/ ./backend/
 
+# Secure Delivery backend modules import shared runtime contracts from
+# src/services. Keep this runtime tree explicit so backend/container packaging
+# cannot drift as delivery contracts evolve.
+COPY src/services/ ./src/services/
+
+# Fail the image build before deployment if the Secure Delivery backend import
+# graph cannot resolve inside the final runtime image. This is intentionally a
+# module-resolution smoke only: it does not activate Firebase or start HTTP.
+RUN node --input-type=module -e "await Promise.all([import('./backend/delivery/authorization/secureDeliveryAuthorization.js'), import('./backend/delivery/http/payloadBoundary.js'), import('./backend/delivery/firebase/firestoreSecureDeliveryStore.js')])"
+
 # Shared MusicXML security module imported by backend providers.
 COPY musicXmlSecurity.js /app/musicXmlSecurity.js
 
