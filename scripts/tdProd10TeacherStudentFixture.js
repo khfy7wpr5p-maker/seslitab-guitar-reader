@@ -425,6 +425,37 @@ function browserItem(view, studentId) {
   })
 }
 
+async function malformedMusicXmlRejectedBeforePrepare() {
+  const authority =
+    createSmoosicProductAuthority({
+      notes: parsedNotes(),
+      musicXml: MALFORMED_XML,
+      sourceId:
+        'td-prod-28-malformed-source',
+      automaticRevisionId:
+        'td-prod-28-malformed-root',
+      historyId:
+        'td-prod-28-malformed-history',
+      actorId: TEACHER_ID,
+      createdAt:
+        '2026-10-01T10:00:00Z',
+    })
+  const revision =
+    getTeacherWorkspaceCurrentRevision(
+      authority.workspace,
+    )
+
+  const rejectedAtIntake =
+    await rejected(() =>
+      createFinalMusicXmlIntake({
+        workspace: authority.workspace,
+        revision,
+      }),
+    )
+
+  return rejectedAtIntake
+}
+
 async function negativeEvidence({
   score,
   chord,
