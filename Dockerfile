@@ -121,13 +121,16 @@ COPY backend/ ./backend/
 # cannot drift as delivery contracts evolve.
 COPY src/services/ ./src/services/
 
+# Shared service modules also depend on a small set of repository-root JS
+# contracts (for example canonical consumer policy and note theory). Copy all
+# root-level JS modules as a bounded, deterministic runtime envelope; nested
+# application/test trees are still excluded.
+COPY *.js /app/
+
 # Fail the image build before deployment if the Secure Delivery backend import
 # graph cannot resolve inside the final runtime image. This is intentionally a
 # module-resolution smoke only: it does not activate Firebase or start HTTP.
 RUN node --input-type=module -e "await Promise.all([import('./backend/delivery/authorization/secureDeliveryAuthorization.js'), import('./backend/delivery/http/payloadBoundary.js'), import('./backend/delivery/firebase/firestoreSecureDeliveryStore.js')])"
-
-# Shared MusicXML security module imported by backend providers.
-COPY musicXmlSecurity.js /app/musicXmlSecurity.js
 
 # Copy the root package.json so Node resolves "type": "module" for the
 # ES module backend source. Without this, Node defaults to CommonJS and
