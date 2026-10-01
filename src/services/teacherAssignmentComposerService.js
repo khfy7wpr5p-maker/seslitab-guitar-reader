@@ -14,6 +14,9 @@ import {
   createTeacherScoreAssignmentService,
 } from './teacherScoreAssignmentService.js'
 import {
+  createTeacherExportScoreAssignmentSourceBinding,
+} from './scoreAssignmentSourceBinding.js'
+import {
   createInMemoryTeacherChordBoardAssignmentRepository,
 } from './teacherChordBoardAssignmentRepository.js'
 import {
@@ -335,6 +338,21 @@ export function createTeacherAssignmentComposerService({
                   'score-revalidation',
                   studentId,
                 ),
+            })
+          },
+          createSourceBinding({
+            workspace,
+            studentId,
+            authorizationId,
+            createdAt,
+          }) {
+            return createTeacherExportScoreAssignmentSourceBinding({
+              workspace,
+              intake:
+                scoreUpload.intake,
+              studentId,
+              authorizationId,
+              createdAt,
             })
           },
           now: draftNow,
