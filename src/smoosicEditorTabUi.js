@@ -538,7 +538,7 @@ function scheduleCommittedRevisionCorrectionOverlayResync(root, committedMusicXm
       ) {
         return false
       }
-      return enqueueEditorSync(root)
+      return enqueueEditorSync(root, { quiet: true })
     })
     .catch(() => false)
 
@@ -851,7 +851,7 @@ function resetIframeStatusForTransfer(frame, fileName) {
   }
 }
 
-async function loadSourceIntoEditor(root, frame) {
+async function loadSourceIntoEditor(root, frame, { quiet = false } = {}) {
   const state = stateFor(root)
 
   if (sourceTransitionPending(root)) {
@@ -872,7 +872,7 @@ async function loadSourceIntoEditor(root, frame) {
   const { xml, fileName } = source
   if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
     frame.hidden = false
-    setHostStatus(root, '', 'ready')
+    if (!quiet) setHostStatus(root, '', 'ready')
     void syncSmoosicCorrectionOverlays(
       root,
       frame,
@@ -893,7 +893,9 @@ async function loadSourceIntoEditor(root, frame) {
   stampIframeImportProvenance(input, targetRevision)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
-  setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
+  if (!quiet) {
+    setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
+  }
   input.dispatchEvent(createIframeImportEvent(frame))
   await waitForMusicXmlLoad(frame, fileName)
 
@@ -912,7 +914,7 @@ async function loadSourceIntoEditor(root, frame) {
 
   state.lastSourceXml = xml
   state.lastSourceName = fileName
-  setHostStatus(root, '', 'ready')
+  if (!quiet) setHostStatus(root, '', 'ready')
   void syncSmoosicCorrectionOverlays(
     root,
     frame,
@@ -937,7 +939,7 @@ function ensureFrame(root, panel) {
   return frame
 }
 
-function enqueueEditorSync(root) {
+function enqueueEditorSync(root, { quiet = false } = {}) {
   const state = stateFor(root)
   state.syncPromise = state.syncPromise
     .catch(() => false)
@@ -947,7 +949,7 @@ function enqueueEditorSync(root) {
       try {
         if (state.frameReadyPromise) await state.frameReadyPromise
         await waitForEditorReady(frame)
-        return await loadSourceIntoEditor(root, frame)
+        return await loadSourceIntoEditor(root, frame, { quiet })
       } catch (error) {
         console.error(error)
         setHostStatus(root, error?.message || 'Nota editörü güncellenemedi.', 'error')
