@@ -10,23 +10,17 @@ import {
 
 const VALID_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
-  <part-list>
-    <score-part id="P1"><part-name>Guitar</part-name></score-part>
-  </part-list>
+  <part-list><score-part id="P1"><part-name>Test</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
       <attributes>
-        <divisions>4</divisions>
+        <divisions>1</divisions>
         <time><beats>4</beats><beat-type>4</beat-type></time>
-        <clef><sign>G</sign><line>2</line></clef>
       </attributes>
-      <note>
-        <pitch><step>E</step><octave>4</octave></pitch>
-        <duration>4</duration>
-        <voice>1</voice>
-        <type>quarter</type>
-        <staff>1</staff>
-      </note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
     </measure>
   </part>
 </score-partwise>`
@@ -42,8 +36,8 @@ test('SES-141 validates and fingerprints the exact uploaded MusicXML as teacher-
   assert.equal(upload.musicXml, VALID_XML)
   assert.equal(upload.intake.musicXml, VALID_XML)
   assert.match(upload.intake.musicXmlFingerprint, /^[a-f0-9]{64}$/)
-  assert.equal(upload.sourceNotes.length, 1)
-  assert.equal(upload.semanticNoteCount, 1)
+  assert.equal(upload.sourceNotes.length, 4)
+  assert.equal(upload.semanticNoteCount, 4)
   assert.equal(Object.isFrozen(upload), true)
 
   const approval = getTeacherWorkspaceApplicableApproval(upload.workspace)
