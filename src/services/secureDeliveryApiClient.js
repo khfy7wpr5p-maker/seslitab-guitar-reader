@@ -147,6 +147,16 @@ export function createSecureDeliveryApiClient({
       )
     },
 
+    createTeacherPiece(input) {
+      return request(
+        'teacher/pieces',
+        {
+          method: 'POST',
+          body: input,
+        },
+      )
+    },
+
     applyAssignmentAction(
       assignmentId,
       action,

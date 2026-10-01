@@ -144,6 +144,7 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
             <button class="tab-btn teacher-surface-hidden" id="result-rhythmic-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="rhythmic">Metin</button>
             <button class="tab-btn teacher-surface-hidden" id="result-html-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="html">HTML</button>
             <button class="tab-btn teacher-surface-hidden" id="result-notes-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="notes">Notalar</button>
+            <button class="tab-btn" id="result-assignment-btn" role="tab" aria-selected="false" aria-controls="tab-assignment" data-tab="assignment">Ödev Gönder</button>
             <button class="tab-btn active" id="result-xml-btn" role="tab" aria-selected="true" data-tab="xml">MusicXML</button>
           </div>
 
@@ -159,6 +160,18 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
 
           <div class="tab-content teacher-surface-hidden" id="tab-notes" role="tabpanel" aria-hidden="true" hidden>
             <div class="notes-grid" id="notes-output" aria-label="Nota kartları"></div>
+          </div>
+
+          <div class="tab-content teacher-assignment-composer-panel" id="tab-assignment" role="tabpanel" aria-labelledby="result-assignment-btn" hidden>
+            <div id="teacher-assignment-composer-host">
+              <h3>Ödev Gönder</h3>
+              <p>MusicXML ve akor çalışmalarını öğrenciye göndermek için öğretmen oturumu gerekir.</p>
+              <p>
+                Akor çalışması:
+                <a href="https://khfy7wpr5p-maker.github.io/st-guitar-chord-board/" target="_blank" rel="noopener noreferrer">ST Guitar Chord Board</a>
+              </p>
+              <div class="teacher-assignment-composer__status" role="status" aria-live="polite">Güvenli gönderim bağlantısı bekleniyor.</div>
+            </div>
           </div>
 
           <div class="tab-content" id="tab-xml" role="tabpanel">
