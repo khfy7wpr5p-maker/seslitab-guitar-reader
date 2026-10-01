@@ -129,6 +129,99 @@ export function createScoreAssignmentSourceBinding(input = {}) {
   })
 }
 
+
+export const SCORE_ASSIGNMENT_TEACHER_EXPORT_ROUTE =
+  'ses141_teacher_export_upload'
+export const SCORE_ASSIGNMENT_TEACHER_EXPORT_STATUS =
+  'teacher_export_exact_source_verified'
+
+export function createTeacherExportScoreAssignmentSourceBinding({
+  workspace,
+  intake,
+  studentId,
+  authorizationId,
+  createdAt,
+} = {}) {
+  const normalizedStudentId =
+    normalizeRequiredId(studentId, 'studentId')
+  const normalizedAuthorizationId =
+    normalizeRequiredId(
+      authorizationId,
+      'authorizationId',
+    )
+  const boundAt =
+    normalizeNullableTimestamp(
+      createdAt,
+      'createdAt',
+    )
+  const revision =
+    getTeacherWorkspaceCurrentRevision(
+      workspace,
+    )
+  const approval =
+    getTeacherWorkspaceApplicableApproval(
+      workspace,
+    )
+
+  if (!approval) {
+    throw new Error(
+      'score-assignment-approval-required',
+    )
+  }
+
+  if (
+    !intake ||
+    typeof intake !== 'object' ||
+    intake.sourceId !== revision.sourceId ||
+    intake.sourceRevisionId !==
+      revision.sourceRevisionId ||
+    intake.revisionId !== revision.revisionId ||
+    intake.revisionKind !== revision.revisionKind ||
+    intake.contentFingerprint !==
+      revision.contentFingerprint ||
+    intake.lineageFingerprint !==
+      revision.lineageFingerprint
+  ) {
+    throw new Error(
+      'score-assignment-teacher-export-intake-mismatch',
+    )
+  }
+
+  const authorityEvidenceId =
+    normalizeRequiredId(
+      `teacher-export:${intake.authorityFingerprint}`,
+      'authorityEvidenceId',
+    )
+
+  return Object.freeze({
+    schemaVersion:
+      SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION,
+    sourceKind:
+      SCORE_ASSIGNMENT_SOURCE_KIND,
+    studentId: normalizedStudentId,
+    sourceId: revision.sourceId,
+    sourceRevisionId:
+      revision.sourceRevisionId,
+    revisionId: revision.revisionId,
+    revisionKind: revision.revisionKind,
+    contentFingerprint:
+      revision.contentFingerprint,
+    lineageFingerprint:
+      revision.lineageFingerprint,
+    approvalId: approval.approvalId,
+    authorizationId:
+      normalizedAuthorizationId,
+    qualityEvidenceId:
+      authorityEvidenceId,
+    revalidationEvidenceId: null,
+    readinessRoute:
+      SCORE_ASSIGNMENT_TEACHER_EXPORT_ROUTE,
+    package12Status:
+      SCORE_ASSIGNMENT_TEACHER_EXPORT_STATUS,
+    boundAt,
+  })
+}
+
 export function isScoreAssignmentSourceBinding(value) {
   try {
     if (
