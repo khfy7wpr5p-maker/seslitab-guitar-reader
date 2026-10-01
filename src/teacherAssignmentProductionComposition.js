@@ -41,6 +41,10 @@ export function createTeacherAssignmentProductionComposition({
     authenticatedTeacher:
       Object.freeze({ teacherId }),
 
+    async prepareAssignmentAuthority() {
+      return service.loadRoster()
+    },
+
     mountAssignmentSurface({
       root,
       teacherId: mountedTeacherId,
