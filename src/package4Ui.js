@@ -128,7 +128,7 @@ export function activateGuitarTabResultTab(root) {
   if (!panel) return false
 
   setActiveTabState(root, 'guitar-tab')
-  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-xml']) {
+  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-assignment', 'tab-xml']) {
     const existingPanel = root.getElementById(id)
     if (existingPanel) existingPanel.hidden = true
   }
