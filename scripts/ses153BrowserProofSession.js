@@ -161,12 +161,20 @@ export async function runSes153BrowserProof({ url, chrome = findSes153Chrome(), 
     child.removeAllListeners('exit')
     if (child.pid && child.exitCode === null && child.signalCode === null) {
       const exit = new Promise(resolve => child.once('exit', resolve))
+      let waitForExit = true
       if (process.platform === 'win32') child.kill('SIGKILL')
       else {
         try { process.kill(-child.pid, 'SIGKILL') }
-        catch (error) { if (error.code !== 'ESRCH') throw error }
+        catch (error) {
+          waitForExit = false
+          if (error.code !== 'ESRCH') {
+            report.outcome = 'FAIL'
+            report.reason = `Chrome cleanup failed: ${String(error?.stack || error)}`
+            record('cleanup_error', report.reason)
+          }
+        }
       }
-      await exit
+      if (waitForExit) await exit
     }
     child.stdio[3].destroy()
     child.stdio[4].destroy()
