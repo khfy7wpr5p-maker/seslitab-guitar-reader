@@ -260,6 +260,56 @@ test('SES-153 rejects unsafe XML but never uses semantic complexity as send auth
   )
 })
 
+test('SES-153 send revalidates exact SCORE integrity and rejects forged prepared uploads', async () => {
+  const { service, calls } = harness()
+
+  await assert.rejects(
+    () => service.send({
+      draftId: 'ses153-forged',
+      studentIds: ['student-a'],
+      title: 'Forged',
+      teacherNote: '',
+      scoreUpload: Object.freeze({
+        draftId: 'ses153-forged',
+        musicXml: '<not-musicxml/>',
+        musicXmlFingerprint: 'a'.repeat(64),
+        createdAt: '2026-10-02T01:30:00Z',
+        canonicalEvents: Object.freeze([]),
+      }),
+      chordSnapshots: [],
+    }),
+    /score-upload|invalid|integrity/i,
+  )
+
+  assert.equal(calls.prepare.length, 0)
+  assert.equal(calls.deliver.length, 0)
+})
+
+test('SES-153 send rejects a fingerprint that does not match the exact selected MusicXML', async () => {
+  const { service, calls } = harness()
+
+  await assert.rejects(
+    () => service.send({
+      draftId: 'ses153-hash-mismatch',
+      studentIds: ['student-a'],
+      title: 'Hash mismatch',
+      teacherNote: '',
+      scoreUpload: Object.freeze({
+        draftId: 'ses153-hash-mismatch',
+        musicXml: PIANO_TWO_STAFF_XML,
+        musicXmlFingerprint: 'b'.repeat(64),
+        createdAt: '2026-10-02T01:30:00Z',
+        canonicalEvents: Object.freeze([]),
+      }),
+      chordSnapshots: [],
+    }),
+    /integrity-mismatch/i,
+  )
+
+  assert.equal(calls.prepare.length, 0)
+  assert.equal(calls.deliver.length, 0)
+})
+
 test('SES-153 bounds teacher SCORE intake below the Firestore single-document ceiling', async () => {
   const { service } = harness()
   const padding = 'x'.repeat(930 * 1024)

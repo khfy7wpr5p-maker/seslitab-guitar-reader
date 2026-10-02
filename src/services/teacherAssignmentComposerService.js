@@ -306,10 +306,7 @@ export function createTeacherAssignmentComposerService({
           scoreUpload.musicXmlFingerprint,
         ) ||
         scoreUpload?.draftId !==
-          normalizedDraftId ||
-        !Array.isArray(
-          scoreUpload?.canonicalEvents,
-        )
+          normalizedDraftId
       ) {
         throw new TypeError(
           'scoreUpload must be a prepared SES-153 teacher-selected SCORE upload.',
@@ -317,6 +314,23 @@ export function createTeacherAssignmentComposerService({
       }
 
       const assignedAt = draftNow()
+      const verifiedScoreUpload =
+        await prepareTeacherAssignmentScoreUpload({
+          musicXml: scoreUpload.musicXml,
+          teacherId: actorId,
+          draftId: normalizedDraftId,
+          now: draftNow,
+        })
+
+      if (
+        verifiedScoreUpload
+          .musicXmlFingerprint !==
+        scoreUpload.musicXmlFingerprint
+      ) {
+        throw new Error(
+          'assignment-composer-score-upload-integrity-mismatch',
+        )
+      }
 
       for (const studentId of selectedIds) {
         const authorizationId =
@@ -366,10 +380,10 @@ export function createTeacherAssignmentComposerService({
             approvedAt: assignedAt,
             studentId,
             musicXml:
-              scoreUpload.musicXml,
+              verifiedScoreUpload.musicXml,
             guitarTabMusicXml: null,
             canonicalEvents:
-              scoreUpload.canonicalEvents,
+              verifiedScoreUpload.canonicalEvents,
             practice: {},
           })
 
