@@ -102,6 +102,7 @@ export function mountTeacherAssignmentComposerUi({
   }
 
   let scoreUpload = null
+  let scoreFileSelected = false
   let selectedSnapshots = []
   let destroyed = false
   let sending = false
@@ -335,6 +336,12 @@ export function mountTeacherAssignmentComposerUi({
     async () => {
       scoreUpload = null
       const file = fileInput.files?.[0]
+      scoreFileSelected = Boolean(file)
+      if (!file) {
+        scoreStatus.textContent =
+          'MusicXML isteğe bağlıdır.'
+        return
+      }
       const validation =
         validateMusicXmlFile(file)
       if (validation) {
@@ -436,6 +443,14 @@ export function mountTeacherAssignmentComposerUi({
       if (studentIds.length === 0) {
         status.textContent =
           'En az bir öğrenci seçin.'
+        return
+      }
+      if (
+        scoreFileSelected &&
+        scoreUpload === null
+      ) {
+        status.textContent =
+          'MusicXML hazır değil. Dosyayı düzeltin veya seçimi kaldırın.'
         return
       }
       if (

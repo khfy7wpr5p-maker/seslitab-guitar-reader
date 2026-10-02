@@ -1,13 +1,7 @@
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
-import { parseMusicXmlToNotes } from './musicEngine.js'
-import {
-  approveTeacherWorkspace,
-  createTeacherWorkspace,
-  getTeacherWorkspaceCurrentRevision,
-} from './teacherWorkspaceModel.js'
-import { registerPrDProductMusicXml } from './editorPrDRevisionMusicXmlRegistry.js'
-import { createFinalMusicXmlIntake } from './finalMusicXmlIntake.js'
-import { MAX_MUSIC_XML_FILE_SIZE } from './musicXmlFile.js'
+
+export const TEACHER_ASSIGNMENT_SCORE_DELIVERY_MAX_BYTES =
+  900 * 1024
 
 function requiredText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -27,84 +21,69 @@ function fail(code) {
   throw new Error(`assignment-composer-score-upload-${code}`)
 }
 
+function hexFromBuffer(buffer) {
+  return [...new Uint8Array(buffer)]
+    .map((byte) =>
+      byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function sha256Utf8(value) {
+  const subtle = globalThis.crypto?.subtle
+  if (
+    !subtle ||
+    typeof subtle.digest !== 'function'
+  ) {
+    fail('crypto-unavailable')
+  }
+
+  const bytes =
+    new TextEncoder().encode(value)
+  const digest =
+    await subtle.digest('SHA-256', bytes)
+  return hexFromBuffer(digest)
+}
+
 export async function prepareTeacherAssignmentScoreUpload({
   musicXml,
   teacherId,
   draftId,
   now,
 } = {}) {
-  const actorId = requiredText(teacherId, 'teacherId')
-  const workDraftId = requiredText(draftId, 'draftId')
-  const createdAt = requiredTimestamp(now)
+  requiredText(teacherId, 'teacherId')
+  const workDraftId =
+    requiredText(draftId, 'draftId')
+  const createdAt =
+    requiredTimestamp(now)
 
-  if (typeof musicXml !== 'string' || musicXml.trim() === '') {
+  if (
+    typeof musicXml !== 'string' ||
+    musicXml.trim() === ''
+  ) {
     fail('invalid-empty')
   }
 
-  const inspection = inspectMusicXml(musicXml, {
-    maxBytes: MAX_MUSIC_XML_FILE_SIZE,
-  })
-  if (!inspection.ok) {
-    fail(`invalid-${inspection.code ?? 'structure'}`)
-  }
-
-  const parsed = parseMusicXmlToNotes(musicXml)
-  if (
-    parsed?.error ||
-    !Array.isArray(parsed?.notes) ||
-    parsed.notes.length === 0
-  ) {
-    fail('semantic-parse-failed')
-  }
-
-  const sourceNotes = parsed.notes
-
-  let workspace = createTeacherWorkspace({
-    content: sourceNotes,
-    actorId,
-    sourceId: `assignment-composer:${workDraftId}:score`,
-    automaticRevisionId:
-      `assignment-composer:${workDraftId}:revision`,
-    historyId:
-      `assignment-composer:${workDraftId}:history`,
-    createdAt,
-  })
-
-  workspace = approveTeacherWorkspace({
-    workspace,
-    approvalId:
-      `assignment-composer:${workDraftId}:approval`,
-    createdAt,
-  })
-
-  const revision =
-    getTeacherWorkspaceCurrentRevision(workspace)
-
-  registerPrDProductMusicXml(
-    revision,
+  const inspection = inspectMusicXml(
     musicXml,
     {
-      evidence:
-        'ses-141-assignment-composer-upload',
+      maxBytes:
+        TEACHER_ASSIGNMENT_SCORE_DELIVERY_MAX_BYTES,
     },
   )
-
-  const intake =
-    await createFinalMusicXmlIntake({
-      workspace,
-      revision,
-    })
-
-  if (intake.musicXml !== musicXml) {
-    fail('authority-mismatch')
+  if (!inspection.ok) {
+    fail(
+      `invalid-${inspection.code ?? 'structure'}`,
+    )
   }
 
+  const musicXmlFingerprint =
+    await sha256Utf8(musicXml)
+
   return Object.freeze({
+    draftId: workDraftId,
     musicXml,
-    sourceNotes,
-    workspace,
-    intake,
-    semanticNoteCount:
-      intake.semanticNoteCount,
+    musicXmlFingerprint,
+    createdAt,
+    canonicalEvents: Object.freeze([]),
   })
 }

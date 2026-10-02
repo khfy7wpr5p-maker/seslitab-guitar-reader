@@ -16,6 +16,18 @@ import {
 
 export const SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION = 1
 export const SCORE_ASSIGNMENT_SOURCE_KIND = 'score_exact_revision'
+export const SCORE_ASSIGNMENT_TEACHER_SELECTED_SOURCE_KIND =
+  'score_teacher_selected_musicxml'
+export const SCORE_ASSIGNMENT_TEACHER_SELECTED_ROUTE =
+  'ses153_teacher_selected_musicxml'
+export const SCORE_ASSIGNMENT_TEACHER_SELECTED_STATUS =
+  'teacher_selected_safe_musicxml'
+
+const SCORE_ASSIGNMENT_SOURCE_KINDS =
+  new Set([
+    SCORE_ASSIGNMENT_SOURCE_KIND,
+    SCORE_ASSIGNMENT_TEACHER_SELECTED_SOURCE_KIND,
+  ])
 
 const INPUT_FIELDS = Object.freeze([
   'workspace',
@@ -222,11 +234,99 @@ export function createTeacherExportScoreAssignmentSourceBinding({
   })
 }
 
+function requiredSha256(value, fieldName) {
+  const normalized =
+    normalizeRequiredId(value, fieldName)
+  if (!/^[0-9a-f]{64}$/u.test(normalized)) {
+    throw new TypeError(
+      `${fieldName} must be a lowercase SHA-256 hex digest.`,
+    )
+  }
+  return normalized
+}
+
+export function createTeacherSelectedMusicXmlScoreAssignmentSourceBinding({
+  scoreUpload,
+  studentId,
+  authorizationId,
+  createdAt,
+} = {}) {
+  const normalizedStudentId =
+    normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+  const normalizedAuthorizationId =
+    normalizeRequiredId(
+      authorizationId,
+      'authorizationId',
+    )
+  const boundAt =
+    normalizeNullableTimestamp(
+      createdAt,
+      'createdAt',
+    )
+
+  if (
+    !scoreUpload ||
+    typeof scoreUpload !== 'object' ||
+    Array.isArray(scoreUpload)
+  ) {
+    throw new TypeError(
+      'scoreUpload must be a prepared teacher-selected SCORE upload.',
+    )
+  }
+
+  const digest = requiredSha256(
+    scoreUpload.musicXmlFingerprint,
+    'musicXmlFingerprint',
+  )
+  normalizeRequiredId(
+    scoreUpload.draftId,
+    'draftId',
+  )
+
+  const sourceId =
+    `teacher-selected-score:${digest}`
+  const revisionId =
+    `teacher-selected-revision:${digest}`
+  const contentFingerprint =
+    `sha256:${digest}`
+
+  return Object.freeze({
+    schemaVersion:
+      SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION,
+    sourceKind:
+      SCORE_ASSIGNMENT_TEACHER_SELECTED_SOURCE_KIND,
+    studentId: normalizedStudentId,
+    sourceId,
+    sourceRevisionId: revisionId,
+    revisionId,
+    revisionKind:
+      'teacher_selected_musicxml',
+    contentFingerprint,
+    lineageFingerprint:
+      contentFingerprint,
+    approvalId:
+      `teacher-selected-approval:${digest}`,
+    authorizationId:
+      normalizedAuthorizationId,
+    qualityEvidenceId:
+      `teacher-selected:${digest}`,
+    revalidationEvidenceId: null,
+    readinessRoute:
+      SCORE_ASSIGNMENT_TEACHER_SELECTED_ROUTE,
+    package12Status:
+      SCORE_ASSIGNMENT_TEACHER_SELECTED_STATUS,
+    boundAt,
+  })
+}
+
 export function isScoreAssignmentSourceBinding(value) {
   try {
     if (
       value?.schemaVersion !== SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION ||
-      value?.sourceKind !== SCORE_ASSIGNMENT_SOURCE_KIND ||
+      !SCORE_ASSIGNMENT_SOURCE_KINDS.has(value?.sourceKind) ||
       !isStrictFrozenRecord(value, RECORD_FIELDS)
     ) {
       return false
