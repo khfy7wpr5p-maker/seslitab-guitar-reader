@@ -152,15 +152,15 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
     assert.ok(prepared.every((item) => item.assignment.studentId === studentId))
     assert.equal(
       prepared[0].assignment.sourceRef.readinessRoute,
-      'ses141_teacher_export_upload',
+      'ses153_teacher_selected_musicxml',
     )
     assert.equal(
       prepared[0].assignment.sourceRef.package12Status,
-      'teacher_export_exact_source_verified',
+      'teacher_selected_safe_musicxml',
     )
     assert.match(
       prepared[0].assignment.sourceRef.qualityEvidenceId,
-      /^teacher-export:[0-9a-f]{64}$/,
+      /^teacher-selected:[0-9a-f]{64}$/,
     )
     assert.equal(
       result.recipients[index].phase,
@@ -296,7 +296,7 @@ test('SES-141 rejects duplicate exact CHORD_BOARD snapshots before Secure Delive
 })
 
 
-test('SES-141 rejects a stale or wrong SCORE export before preparing any assignment', async () => {
+test('SES-153 teacher-selected SCORE no longer consults Smoosic source equality', async () => {
   const seen = []
   const { service, calls } = harness({
     verifyScoreSource: async (musicXml) => {
@@ -305,15 +305,14 @@ test('SES-141 rejects a stale or wrong SCORE export before preparing any assignm
     },
   })
 
-  await assert.rejects(
-    () => service.prepareScoreUpload({
+  const upload =
+    await service.prepareScoreUpload({
       musicXml: VALID_XML,
-      draftId: 'draft-stale-score',
-    }),
-    /stale-or-wrong-source/i,
-  )
+      draftId: 'draft-teacher-selected-score',
+    })
 
-  assert.deepEqual(seen, [VALID_XML])
+  assert.equal(upload.musicXml, VALID_XML)
+  assert.deepEqual(seen, [])
   assert.equal(calls.prepare.length, 0)
   assert.equal(calls.deliver.length, 0)
 })

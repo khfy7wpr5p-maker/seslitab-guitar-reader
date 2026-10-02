@@ -8,23 +8,21 @@ import {
   restoreStudentRosterEntryV1,
 } from './teacherDeliveryWireCodec.js'
 import {
-  createInMemoryTeacherScoreAssignmentRepository,
-} from './teacherScoreAssignmentRepository.js'
+  PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+  createPrivateAssignment,
+} from './privateAssignment.js'
 import {
-  createTeacherScoreAssignmentService,
-} from './teacherScoreAssignmentService.js'
-import {
-  createTeacherExportScoreAssignmentSourceBinding,
+  createTeacherSelectedMusicXmlScoreAssignmentSourceBinding,
 } from './scoreAssignmentSourceBinding.js'
+import {
+  createStudentPrivatePracticePackageV1,
+} from './studentPracticePackageV1.js'
 import {
   createInMemoryTeacherChordBoardAssignmentRepository,
 } from './teacherChordBoardAssignmentRepository.js'
 import {
   createTeacherChordBoardAssignmentService,
 } from './teacherChordBoardAssignmentService.js'
-import {
-  createScorePracticePackageFromFinalMusicXml,
-} from './scorePracticePackageBuilder.js'
 import {
   createStudentPrivateChordBoardPackageV1,
 } from './studentChordBoardPackageV1.js'
@@ -117,7 +115,18 @@ function boundedRecipient({
   studentId,
   delivery,
   pieceLinked,
+  deliveredContentTypes,
 }) {
+  const actualTypes =
+    delivery.ok === true &&
+    delivery.phase ===
+      TEACHER_ASSIGNMENT_DELIVERY_PHASE
+        .DELIVERED_TO_STUDENT
+      ? Object.freeze([
+          ...deliveredContentTypes,
+        ])
+      : Object.freeze([])
+
   return Object.freeze({
     studentId,
     ok:
@@ -128,13 +137,14 @@ function boundedRecipient({
       pieceLinked === true,
     phase: delivery.phase,
     pieceLinked,
+    deliveredContentTypes:
+      actualTypes,
   })
 }
 
 export function createTeacherAssignmentComposerService({
   teacherId,
   secureDeliveryClient,
-  verifyScoreSource,
   now,
 } = {}) {
   const actorId =
@@ -142,11 +152,6 @@ export function createTeacherAssignmentComposerService({
   const client =
     assertClient(secureDeliveryClient)
 
-  if (typeof verifyScoreSource !== 'function') {
-    throw new TypeError(
-      'verifyScoreSource must be a function.',
-    )
-  }
   if (typeof now !== 'function') {
     throw new TypeError('now must be a function.')
   }
@@ -208,14 +213,6 @@ export function createTeacherAssignmentComposerService({
     musicXml,
     draftId,
   } = {}) {
-    const currentSource =
-      await verifyScoreSource(musicXml)
-    if (currentSource !== true) {
-      throw new Error(
-        'assignment-composer-score-upload-stale-or-wrong-source',
-      )
-    }
-
     return prepareTeacherAssignmentScoreUpload({
       musicXml,
       teacherId: actorId,
@@ -299,113 +296,99 @@ export function createTeacherAssignmentComposerService({
     const scoreByStudent = new Map()
     if (scoreUpload !== null) {
       if (
-        scoreUpload?.workspace === undefined ||
-        !Array.isArray(
-          scoreUpload?.sourceNotes,
+        typeof scoreUpload?.musicXml !==
+          'string' ||
+        scoreUpload.musicXml.length === 0 ||
+        typeof scoreUpload
+          ?.musicXmlFingerprint !==
+          'string' ||
+        !/^[0-9a-f]{64}$/u.test(
+          scoreUpload.musicXmlFingerprint,
         ) ||
-        scoreUpload?.intake === undefined
+        scoreUpload?.draftId !==
+          normalizedDraftId
       ) {
         throw new TypeError(
-          'scoreUpload must be a prepared SES-141 score upload.',
+          'scoreUpload must be a prepared SES-153 teacher-selected SCORE upload.',
         )
       }
 
-      const repository =
-        createInMemoryTeacherScoreAssignmentRepository()
-      const scoreService =
-        createTeacherScoreAssignmentService({
-          repository,
-          rosterService,
-          createAssignmentId({
-            studentId,
-          }) {
-            return deterministicId(
-              normalizedDraftId,
-              'score-assignment',
-              studentId,
-            )
-          },
-          createReadinessIds({
-            studentId,
-          }) {
-            return Object.freeze({
-              authorizationId:
-                deterministicId(
-                  normalizedDraftId,
-                  'score-authorization',
-                  studentId,
-                ),
-              rootQualityEvidenceId:
-                deterministicId(
-                  normalizedDraftId,
-                  'score-quality',
-                  studentId,
-                ),
-              revalidationEvidenceId:
-                deterministicId(
-                  normalizedDraftId,
-                  'score-revalidation',
-                  studentId,
-                ),
-            })
-          },
-          createSourceBinding({
-            workspace,
-            studentId,
-            authorizationId,
-            createdAt,
-          }) {
-            return createTeacherExportScoreAssignmentSourceBinding({
-              workspace,
-              intake:
-                scoreUpload.intake,
-              studentId,
-              authorizationId,
-              createdAt,
-            })
-          },
+      const assignedAt = draftNow()
+      const verifiedScoreUpload =
+        await prepareTeacherAssignmentScoreUpload({
+          musicXml: scoreUpload.musicXml,
+          teacherId: actorId,
+          draftId: normalizedDraftId,
           now: draftNow,
         })
 
-      const assignments =
-        scoreService
-          .prepareScoreAssignments({
-            workspace:
-              scoreUpload.workspace,
-            sourceNotes:
-              scoreUpload.sourceNotes,
-            studentIds: selectedIds,
-            commonTeacherNote:
-              normalizedTeacherNote,
-            teacherNoteOverrides: [],
+      if (
+        verifiedScoreUpload
+          .musicXmlFingerprint !==
+        scoreUpload.musicXmlFingerprint
+      ) {
+        throw new Error(
+          'assignment-composer-score-upload-integrity-mismatch',
+        )
+      }
+
+      for (const studentId of selectedIds) {
+        const authorizationId =
+          deterministicId(
+            normalizedDraftId,
+            'score-authorization',
+            studentId,
+          )
+        const sourceRef =
+          createTeacherSelectedMusicXmlScoreAssignmentSourceBinding({
+            scoreUpload,
+            studentId,
+            authorizationId,
+            createdAt: assignedAt,
           })
 
-      for (
-        let index = 0;
-        index < assignments.length;
-        index += 1
-      ) {
         const assignment =
-          assignments[index]
+          createPrivateAssignment({
+            assignmentId:
+              deterministicId(
+                normalizedDraftId,
+                'score-assignment',
+                studentId,
+              ),
+            studentId,
+            practiceType:
+              PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+                .SCORE,
+            teacherNote:
+              normalizedTeacherNote,
+            assignedAt,
+            sourceRef,
+          })
+
         const pkg =
-          await createScorePracticePackageFromFinalMusicXml({
-            workspace:
-              scoreUpload.workspace,
-            assignment,
-            intake: scoreUpload.intake,
+          createStudentPrivatePracticePackageV1({
             packageId:
               deterministicId(
                 normalizedDraftId,
                 'score-package',
-                assignment.studentId,
+                studentId,
               ),
+            workId: sourceRef.sourceId,
             title: normalizedTitle,
-            practice: {},
+            revisionId:
+              sourceRef.revisionId,
+            approvedAt: assignedAt,
+            studentId,
+            musicXml:
+              verifiedScoreUpload.musicXml,
             guitarTabMusicXml: null,
+            canonicalEvents:
+              verifiedScoreUpload.canonicalEvents,
+            practice: {},
           })
 
         scoreByStudent.set(
-          assignment.studentId,
+          studentId,
           Object.freeze({
             assignment,
             package: pkg,
@@ -493,6 +476,18 @@ export function createTeacherAssignmentComposerService({
         ...(chordsByStudent.get(studentId) ?? []),
       )
 
+      const deliveredContentTypes =
+        Object.freeze([
+          ...(scoreItem
+            ? ['SCORE']
+            : []),
+          ...((chordsByStudent
+            .get(studentId) ?? [])
+            .length > 0
+            ? ['CHORD_BOARD']
+            : []),
+        ])
+
       const delivery =
         await deliveryOrchestrator
           .deliver(items)
@@ -508,6 +503,8 @@ export function createTeacherAssignmentComposerService({
             studentId,
             delivery,
             pieceLinked: false,
+            deliveredContentTypes:
+              Object.freeze([]),
           }),
         )
         continue
@@ -572,6 +569,7 @@ export function createTeacherAssignmentComposerService({
           studentId,
           delivery,
           pieceLinked,
+          deliveredContentTypes,
         }),
       )
     }

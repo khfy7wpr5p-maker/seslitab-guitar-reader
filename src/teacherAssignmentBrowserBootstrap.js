@@ -180,17 +180,6 @@ export async function createTeacherAssignmentBrowserComposition({
       authenticatedTeacher:
         Object.freeze({ teacherId }),
       secureDeliveryClient,
-      async verifyScoreSource(musicXml) {
-        const {
-          verifySmoosicAssignmentMusicXml,
-        } = await import(
-          './smoosicEditorTabUi.js'
-        )
-        return verifySmoosicAssignmentMusicXml(
-          root,
-          musicXml,
-        )
-      },
       now,
       createDraftId,
     })

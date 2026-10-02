@@ -20,7 +20,6 @@ function requiredTeacherId(value) {
 export function createTeacherAssignmentProductionComposition({
   authenticatedTeacher,
   secureDeliveryClient,
-  verifyScoreSource,
   now,
   createDraftId,
 } = {}) {
@@ -33,7 +32,6 @@ export function createTeacherAssignmentProductionComposition({
     createTeacherAssignmentComposerService({
       teacherId,
       secureDeliveryClient,
-      verifyScoreSource,
       now,
     })
 
