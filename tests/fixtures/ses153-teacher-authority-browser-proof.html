@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>SES-153 teacher-authority SCORE browser proof</title>
+</head>
+<body>
+  <div id="score-only-host"></div>
+  <div id="combined-host"></div>
+
+  <script type="module">
+    import {
+      createTeacherAssignmentComposerService,
+    } from '../../src/services/teacherAssignmentComposerService.js'
+    import {
+      PRIVATE_ASSIGNMENT_PRACTICE_TYPE,
+    } from '../../src/services/privateAssignment.js'
+    import {
+      getChordBoardVoicings,
+    } from '../../src/services/chordBoardCatalog.js'
+    import {
+      mountTeacherAssignmentComposerUi,
+    } from '../../src/teacherAssignmentComposerUi.js'
+
+    const PIANO_TWO_STAFF_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <staves>2</staves>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff>
+      </note>
+      <backup><duration>1</duration></backup>
+      <note>
+        <pitch><step>C</step><octave>3</octave></pitch>
+        <duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff>
+      </note>
+    </measure>
+  </part>
+</score-partwise>`
+
+    const NON_SMOOSIC_TIMEWISE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<score-timewise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Imported score</part-name></score-part>
+  </part-list>
+  <measure number="1">
+    <part id="P1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><voice>1</voice><type>quarter</type>
+      </note>
+    </part>
+  </measure>
+</score-timewise>`
+
+    function preparedAck(item) {
+      return Object.freeze({
+        schemaVersion: 1,
+        teacherId: 'teacher-a',
+        assignment:
+          structuredClone(item.assignment),
+        packageId: item.package.packageId,
+        packageFingerprint: 'a'.repeat(64),
+        preparedAt:
+          '2026-10-02T01:31:00Z',
+      })
+    }
+
+    function deliveryAck(item) {
+      return Object.freeze({
+        schemaVersion: 1,
+        deliveryId:
+          item.assignment.assignmentId,
+        assignmentId:
+          item.assignment.assignmentId,
+        packageId: item.package.packageId,
+        teacherId: 'teacher-a',
+        studentId:
+          item.assignment.studentId,
+        deliveredAt:
+          '2026-10-02T01:32:00Z',
+        revokedAt: null,
+      })
+    }
+
+    function createHarness() {
+      const calls = {
+        prepared: [],
+        delivered: [],
+        pieces: [],
+      }
+
+      const client = {
+        async listTeacherRoster() {
+          return Object.freeze([
+            Object.freeze({
+              schemaVersion: 1,
+              studentId: 'student-a',
+              displayNameOrNickname: 'Ada',
+              active: true,
+            }),
+          ])
+        },
+        async prepareAssignments(items) {
+          calls.prepared.push(
+            Object.freeze([...items]),
+          )
+          return Object.freeze(
+            items.map(preparedAck),
+          )
+        },
+        async deliverAssignments(ids) {
+          calls.delivered.push(
+            Object.freeze([...ids]),
+          )
+          const items =
+            calls.prepared.at(-1)
+          const byId = new Map(
+            items.map((item) => [
+              item.assignment.assignmentId,
+              item,
+            ]),
+          )
+          return Object.freeze(
+            ids.map((id) =>
+              deliveryAck(byId.get(id))),
+          )
+        },
+        async createTeacherPiece(input) {
+          calls.pieces.push(
+            structuredClone(input),
+          )
+          return Object.freeze({
+            schemaVersion: 1,
+            pieceAssignmentId:
+              input.pieceAssignmentId,
+            pieceId: input.pieceId,
+            arrangementId:
+              input.arrangementId,
+            studentId: input.studentId,
+            title: input.title,
+            teacherNote:
+              input.teacherNote,
+            state: 'assigned',
+            assignedAt:
+              '2026-10-02T01:33:00Z',
+            contentRefs: Object.freeze({
+              scoreAssignmentId:
+                input.scoreAssignmentId,
+              chordAssignmentIds:
+                Object.freeze([
+                  ...input
+                    .chordAssignmentIds,
+                ]),
+            }),
+          })
+        },
+      }
+
+      return {
+        calls,
+        service:
+          createTeacherAssignmentComposerService({
+            teacherId: 'teacher-a',
+            secureDeliveryClient: client,
+            now: () =>
+              '2026-10-02T01:30:00Z',
+          }),
+      }
+    }
+
+    function frame() {
+      return new Promise((resolve) =>
+        requestAnimationFrame(resolve))
+    }
+
+    async function waitFor(predicate, label) {
+      for (let index = 0; index < 180; index += 1) {
+        if (predicate()) return
+        await frame()
+      }
+      throw new Error(
+        `SES-153 browser proof timeout: ${label}`,
+      )
+    }
+
+    function mark(name, pass) {
+      document.body.setAttribute(
+        `data-${name}`,
+        pass ? 'true' : 'false',
+      )
+    }
+
+    async function uploadScore(
+      host,
+      musicXml,
+      filename,
+    ) {
+      const input =
+        host.querySelector(
+          'input[name="scoreMusicXml"]',
+        )
+      const transfer = new DataTransfer()
+      transfer.items.add(
+        new File(
+          [musicXml],
+          filename,
+          { type: 'application/xml' },
+        ),
+      )
+      input.files = transfer.files
+      input.dispatchEvent(
+        new Event('change', {
+          bubbles: true,
+        }),
+      )
+
+      const scoreStatus =
+        host.querySelector(
+          '.teacher-assignment-composer__score-status',
+        )
+      await waitFor(
+        () =>
+          scoreStatus.textContent ===
+            'MusicXML doğrulandı.' ||
+          scoreStatus.textContent ===
+            'MusicXML doğrulanamadı.',
+        `${filename} validation`,
+      )
+      if (
+        scoreStatus.textContent !==
+        'MusicXML doğrulandı.'
+      ) {
+        throw new Error(
+          `SES-153 browser proof SCORE rejected: ${filename}`,
+        )
+      }
+    }
+
+    function selectStudentAndTitle(
+      host,
+      title,
+    ) {
+      const student =
+        host.querySelector(
+          'input[name="studentId"]',
+        )
+      student.checked = true
+      host.querySelector(
+        'input[name="assignmentTitle"]',
+      ).value = title
+    }
+
+    async function submit(host) {
+      const form =
+        host.querySelector('form')
+      form.dispatchEvent(
+        new Event('submit', {
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+      const status =
+        host.querySelector(
+          '.teacher-assignment-composer__status',
+        )
+      await waitFor(
+        () =>
+          status.textContent ===
+            'Gönderildi.' ||
+          status.textContent.startsWith(
+            'Gönderilemedi',
+          ),
+        'send completion',
+      )
+      return status.textContent
+    }
+
+    const scoreOnlyHarness =
+      createHarness()
+    const scoreOnlyHost =
+      document.getElementById(
+        'score-only-host',
+      )
+    const scoreOnlyUi =
+      mountTeacherAssignmentComposerUi({
+        root: document,
+        host: scoreOnlyHost,
+        service: scoreOnlyHarness.service,
+        createDraftId: () =>
+          'ses153-browser-score-only',
+      })
+
+    await waitFor(
+      () =>
+        Boolean(
+          scoreOnlyHost.querySelector(
+            'input[name="studentId"]',
+          ),
+        ),
+      'score-only roster',
+    )
+    await uploadScore(
+      scoreOnlyHost,
+      PIANO_TWO_STAFF_XML,
+      'piano-two-staff.musicxml',
+    )
+    selectStudentAndTitle(
+      scoreOnlyHost,
+      'Piyano iki porte',
+    )
+    const scoreOnlyStatus =
+      await submit(scoreOnlyHost)
+
+    const scoreOnlyItems =
+      scoreOnlyHarness.calls
+        .prepared[0] ?? []
+    const scoreOnlyScore =
+      scoreOnlyItems.find(
+        (item) =>
+          item.assignment.practiceType ===
+            PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+              .SCORE,
+      )
+
+    mark(
+      'score-only-pass',
+      scoreOnlyStatus === 'Gönderildi.' &&
+      scoreOnlyItems.length === 1 &&
+      scoreOnlyScore?.package
+        ?.content?.score?.data ===
+        PIANO_TWO_STAFF_XML &&
+      scoreOnlyScore.package
+        .content.canonicalEvents
+        .length === 0 &&
+      scoreOnlyHarness.calls
+        .pieces[0]
+        ?.scoreAssignmentId ===
+        scoreOnlyScore.assignment
+          .assignmentId &&
+      scoreOnlyHarness.calls
+        .pieces[0]
+        ?.chordAssignmentIds
+        ?.length === 0,
+    )
+    scoreOnlyUi.destroy()
+
+    const combinedHarness =
+      createHarness()
+    const combinedHost =
+      document.getElementById(
+        'combined-host',
+      )
+    const combinedUi =
+      mountTeacherAssignmentComposerUi({
+        root: document,
+        host: combinedHost,
+        service: combinedHarness.service,
+        createDraftId: () =>
+          'ses153-browser-combined',
+      })
+
+    await waitFor(
+      () =>
+        Boolean(
+          combinedHost.querySelector(
+            'input[name="studentId"]',
+          ),
+        ),
+      'combined roster',
+    )
+    await uploadScore(
+      combinedHost,
+      NON_SMOOSIC_TIMEWISE_XML,
+      'non-smoosic-timewise.musicxml',
+    )
+
+    const symbolSelect =
+      combinedHost.querySelector(
+        'select[name="chordSymbol"]',
+      )
+    symbolSelect.value = 'Am'
+    symbolSelect.dispatchEvent(
+      new Event('change', {
+        bubbles: true,
+      }),
+    )
+    await frame()
+
+    const targetVoicing =
+      getChordBoardVoicings('Am')[0]
+    const voicingSelect =
+      combinedHost.querySelector(
+        'select[name="chordVoicing"]',
+      )
+    voicingSelect.value =
+      targetVoicing.voicingFingerprint
+
+    Array.from(
+      combinedHost
+        .querySelectorAll('button'),
+    ).find(
+      (button) =>
+        button.textContent ===
+        'Akoru Ekle',
+    ).click()
+
+    selectStudentAndTitle(
+      combinedHost,
+      'Non-Smoosic SCORE ve akor',
+    )
+    const combinedStatus =
+      await submit(combinedHost)
+
+    const combinedItems =
+      combinedHarness.calls
+        .prepared[0] ?? []
+    const combinedScore =
+      combinedItems.find(
+        (item) =>
+          item.assignment.practiceType ===
+            PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+              .SCORE,
+      )
+    const combinedChord =
+      combinedItems.find(
+        (item) =>
+          item.assignment.practiceType ===
+            PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+              .CHORD_BOARD,
+      )
+
+    mark(
+      'combined-pass',
+      combinedStatus === 'Gönderildi.' &&
+      combinedItems.length === 2 &&
+      Boolean(combinedScore) &&
+      Boolean(combinedChord) &&
+      combinedScore.package
+        .content.score.data ===
+        NON_SMOOSIC_TIMEWISE_XML &&
+      combinedScore.package
+        .content.canonicalEvents
+        .length === 0 &&
+      combinedHarness.calls
+        .pieces[0]
+        ?.scoreAssignmentId ===
+        combinedScore.assignment
+          .assignmentId &&
+      combinedHarness.calls
+        .pieces[0]
+        ?.chordAssignmentIds
+        ?.length === 1,
+    )
+    combinedUi.destroy()
+  </script>
+</body>
+</html>

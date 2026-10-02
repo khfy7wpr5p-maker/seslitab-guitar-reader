@@ -49,6 +49,9 @@ jobs:
       - name: Verify SES-147 authenticated roster gate in real browser
         run: node scripts/verifySes147AuthRosterBrowser.js
 
+      - name: Verify SES-153 teacher-authority SCORE sends in real browser
+        run: node scripts/verifySes153TeacherAuthorityBrowser.js
+
       - name: Build production bundle
         run: npm run build
 
