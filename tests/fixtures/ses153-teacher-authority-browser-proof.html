@@ -445,27 +445,44 @@
               .CHORD_BOARD,
       )
 
+    const combinedChecks = {
+      status:
+        combinedStatus === 'Gönderildi.',
+      itemCount:
+        combinedItems.length === 2,
+      score: Boolean(combinedScore),
+      chord: Boolean(combinedChord),
+      exactXml:
+        combinedScore?.package
+          ?.content?.score?.data ===
+          NON_SMOOSIC_TIMEWISE_XML,
+      canonicalEmpty:
+        combinedScore?.package
+          ?.content?.canonicalEvents
+          ?.length === 0,
+      scorePieceLink:
+        combinedHarness.calls
+          .pieces[0]
+          ?.scoreAssignmentId ===
+          combinedScore?.assignment
+            ?.assignmentId,
+      oneChordPieceLink:
+        combinedHarness.calls
+          .pieces[0]
+          ?.chordAssignmentIds
+          ?.length === 1,
+    }
+    document.body.setAttribute(
+      'data-combined-diagnostics',
+      Object.entries(combinedChecks)
+        .map(([key, value]) =>
+          `${key}:${value ? '1' : '0'}`)
+        .join(','),
+    )
     mark(
       'combined-pass',
-      combinedStatus === 'Gönderildi.' &&
-      combinedItems.length === 2 &&
-      Boolean(combinedScore) &&
-      Boolean(combinedChord) &&
-      combinedScore.package
-        .content.score.data ===
-        NON_SMOOSIC_TIMEWISE_XML &&
-      combinedScore.package
-        .content.canonicalEvents
-        .length === 0 &&
-      combinedHarness.calls
-        .pieces[0]
-        ?.scoreAssignmentId ===
-        combinedScore.assignment
-          .assignmentId &&
-      combinedHarness.calls
-        .pieces[0]
-        ?.chordAssignmentIds
-        ?.length === 1,
+      Object.values(combinedChecks)
+        .every(Boolean),
     )
     combinedUi.destroy()
   </script>

@@ -78,6 +78,15 @@ for (const marker of [
     console.error(
       `SES-153 browser proof missing ${marker}`,
     )
+    const diagnostics =
+      dom.match(
+        /data-combined-diagnostics="([^"]*)"/u,
+      )?.[1]
+    if (diagnostics) {
+      console.error(
+        `SES-153 combined diagnostics: ${diagnostics}`,
+      )
+    }
     console.error(dom.slice(-10000))
     process.exit(1)
   }
