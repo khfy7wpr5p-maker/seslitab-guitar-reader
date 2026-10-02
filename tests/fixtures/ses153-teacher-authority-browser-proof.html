@@ -184,307 +184,144 @@
       }
     }
 
-    function frame() {
-      return new Promise((resolve) =>
-        requestAnimationFrame(resolve))
+    function stage(label) {
+      document.body.dataset.stage = label
+      const scenario = ['score-only', 'combined'].find(name => label.startsWith(`${name}:`))
+      if (scenario) document.body.setAttribute(`data-${scenario}-stage`, label)
     }
 
-    async function waitFor(predicate, label) {
-      for (let index = 0; index < 180; index += 1) {
-        if (predicate()) return
-        await frame()
-      }
-      throw new Error(
-        `SES-153 browser proof timeout: ${label}`,
-      )
+    // Application mutations wake this wait; only the host owns the deadline.
+    function waitFor(predicate, label) {
+      stage(label)
+      if (predicate()) return Promise.resolve()
+      return new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          if (!predicate()) return
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(document.body, {
+          subtree: true, childList: true, characterData: true, attributes: true,
+        })
+      })
     }
 
-    function mark(name, pass) {
-      document.body.setAttribute(
-        `data-${name}`,
-        pass ? 'true' : 'false',
-      )
-    }
-
-    async function uploadScore(
-      host,
-      musicXml,
-      filename,
-    ) {
-      const input =
-        host.querySelector(
-          'input[name="scoreMusicXml"]',
-        )
+    async function uploadScore(host, musicXml, filename, name) {
+      stage(`${name}:file_created`)
+      const input = host.querySelector('input[name="scoreMusicXml"]')
       const transfer = new DataTransfer()
-      transfer.items.add(
-        new File(
-          [musicXml],
-          filename,
-          { type: 'application/xml' },
-        ),
-      )
+      transfer.items.add(new File([musicXml], filename, { type: 'application/xml' }))
       input.files = transfer.files
-      input.dispatchEvent(
-        new Event('change', {
-          bubbles: true,
-        }),
-      )
-
-      const scoreStatus =
-        host.querySelector(
-          '.teacher-assignment-composer__score-status',
-        )
-      await waitFor(
-        () =>
-          scoreStatus.textContent ===
-            'MusicXML doğrulandı.' ||
-          scoreStatus.textContent ===
-            'MusicXML doğrulanamadı.',
-        `${filename} validation`,
-      )
-      if (
-        scoreStatus.textContent !==
-        'MusicXML doğrulandı.'
-      ) {
-        throw new Error(
-          `SES-153 browser proof SCORE rejected: ${filename}`,
-        )
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      const status = host.querySelector('.teacher-assignment-composer__score-status')
+      await waitFor(() => ['MusicXML doğrulandı.', 'MusicXML doğrulanamadı.'].includes(status.textContent), `${name}:upload_started`)
+      if (status.textContent !== 'MusicXML doğrulandı.') {
+        throw new Error(`SCORE rejected: ${filename}, status=${status.textContent}`)
       }
+      stage(`${name}:validated`)
     }
 
-    function selectStudentAndTitle(
-      host,
-      title,
-    ) {
-      const student =
-        host.querySelector(
-          'input[name="studentId"]',
-        )
-      student.checked = true
-      host.querySelector(
-        'input[name="assignmentTitle"]',
-      ).value = title
+    function selectStudentAndTitle(host, title) {
+      host.querySelector('input[name="studentId"]').checked = true
+      host.querySelector('input[name="assignmentTitle"]').value = title
     }
 
-    async function submit(host) {
-      const form =
-        host.querySelector('form')
-      form.dispatchEvent(
-        new Event('submit', {
-          bubbles: true,
-          cancelable: true,
-        }),
-      )
-      const status =
-        host.querySelector(
-          '.teacher-assignment-composer__status',
-        )
-      await waitFor(
-        () =>
-          status.textContent ===
-            'Gönderildi.' ||
-          status.textContent.startsWith(
-            'Gönderilemedi',
-          ),
-        'send completion',
-      )
+    async function submit(host, name) {
+      stage(`${name}:submit`)
+      host.querySelector('form').dispatchEvent(new Event('submit', {
+        bubbles: true, cancelable: true,
+      }))
+      const status = host.querySelector('.teacher-assignment-composer__status')
+      await waitFor(() => status.textContent === 'Gönderildi.' || status.textContent.startsWith('Gönderilemedi'), `${name}:send_completion`)
       return status.textContent
     }
 
-    const scoreOnlyHarness =
-      createHarness()
-    const scoreOnlyHost =
-      document.getElementById(
-        'score-only-host',
-      )
-    const scoreOnlyUi =
-      mountTeacherAssignmentComposerUi({
-        root: document,
-        host: scoreOnlyHost,
-        service: scoreOnlyHarness.service,
-        createDraftId: () =>
-          'ses153-browser-score-only',
-      })
-
-    await waitFor(
-      () =>
-        Boolean(
-          scoreOnlyHost.querySelector(
-            'input[name="studentId"]',
-          ),
-        ),
-      'score-only roster',
-    )
-    await uploadScore(
-      scoreOnlyHost,
-      PIANO_TWO_STAFF_XML,
-      'piano-two-staff.musicxml',
-    )
-    selectStudentAndTitle(
-      scoreOnlyHost,
-      'Piyano iki porte',
-    )
-    const scoreOnlyStatus =
-      await submit(scoreOnlyHost)
-
-    const scoreOnlyItems =
-      scoreOnlyHarness.calls
-        .prepared[0] ?? []
-    const scoreOnlyScore =
-      scoreOnlyItems.find(
-        (item) =>
-          item.assignment.practiceType ===
-            PRIVATE_ASSIGNMENT_PRACTICE_TYPE
-              .SCORE,
-      )
-
-    mark(
-      'score-only-pass',
-      scoreOnlyStatus === 'Gönderildi.' &&
-      scoreOnlyItems.length === 1 &&
-      scoreOnlyScore?.package
-        ?.content?.score?.data ===
-        PIANO_TWO_STAFF_XML &&
-      scoreOnlyScore.package
-        .content.canonicalEvents
-        .length === 0 &&
-      scoreOnlyHarness.calls
-        .pieces[0]
-        ?.scoreAssignmentId ===
-        scoreOnlyScore.assignment
-          .assignmentId &&
-      scoreOnlyHarness.calls
-        .pieces[0]
-        ?.chordAssignmentIds
-        ?.length === 0,
-    )
-    scoreOnlyUi.destroy()
-
-    const combinedHarness =
-      createHarness()
-    const combinedHost =
-      document.getElementById(
-        'combined-host',
-      )
-    const combinedUi =
-      mountTeacherAssignmentComposerUi({
-        root: document,
-        host: combinedHost,
-        service: combinedHarness.service,
-        createDraftId: () =>
-          'ses153-browser-combined',
-      })
-
-    await waitFor(
-      () =>
-        Boolean(
-          combinedHost.querySelector(
-            'input[name="studentId"]',
-          ),
-        ),
-      'combined roster',
-    )
-    await uploadScore(
-      combinedHost,
-      NON_SMOOSIC_TIMEWISE_XML,
-      'non-smoosic-timewise.musicxml',
-    )
-
-    const symbolSelect =
-      combinedHost.querySelector(
-        'select[name="chordSymbol"]',
-      )
-    symbolSelect.value = 'Am'
-    symbolSelect.dispatchEvent(
-      new Event('change', {
-        bubbles: true,
-      }),
-    )
-    await frame()
-
-    const targetVoicing =
-      getChordBoardVoicings('Am')[0]
-    const voicingSelect =
-      combinedHost.querySelector(
-        'select[name="chordVoicing"]',
-      )
-    voicingSelect.value =
-      targetVoicing.voicingFingerprint
-
-    Array.from(
-      combinedHost
-        .querySelectorAll('button'),
-    ).find(
-      (button) =>
-        button.textContent ===
-        'Akoru Ekle',
-    ).click()
-
-    selectStudentAndTitle(
-      combinedHost,
-      'Non-Smoosic SCORE ve akor',
-    )
-    const combinedStatus =
-      await submit(combinedHost)
-
-    const combinedItems =
-      combinedHarness.calls
-        .prepared[0] ?? []
-    const combinedScore =
-      combinedItems.find(
-        (item) =>
-          item.assignment.practiceType ===
-            PRIVATE_ASSIGNMENT_PRACTICE_TYPE
-              .SCORE,
-      )
-    const combinedChord =
-      combinedItems.find(
-        (item) =>
-          item.assignment.practiceType ===
-            PRIVATE_ASSIGNMENT_PRACTICE_TYPE
-              .CHORD_BOARD,
-      )
-
-    const combinedChecks = {
-      status:
-        combinedStatus === 'Gönderildi.',
-      itemCount:
-        combinedItems.length === 2,
-      score: Boolean(combinedScore),
-      chord: Boolean(combinedChord),
-      exactXml:
-        combinedScore?.package
-          ?.content?.score?.data ===
-          NON_SMOOSIC_TIMEWISE_XML,
-      canonicalEmpty:
-        combinedScore?.package
-          ?.content?.canonicalEvents
-          ?.length === 0,
-      scorePieceLink:
-        combinedHarness.calls
-          .pieces[0]
-          ?.scoreAssignmentId ===
-          combinedScore?.assignment
-            ?.assignmentId,
-      oneChordPieceLink:
-        combinedHarness.calls
-          .pieces[0]
-          ?.chordAssignmentIds
-          ?.length === 1,
+    async function xmlHash(value) {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+      return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
     }
-    document.body.setAttribute(
-      'data-combined-diagnostics',
-      Object.entries(combinedChecks)
-        .map(([key, value]) =>
-          `${key}:${value ? '1' : '0'}`)
-        .join(','),
-    )
-    mark(
-      'combined-pass',
-      Object.values(combinedChecks)
-        .every(Boolean),
-    )
-    combinedUi.destroy()
+
+    async function runScenario({ name, hostId, musicXml, filename, withChord }) {
+      const harness = createHarness()
+      const host = document.getElementById(hostId)
+      let ui
+      let sendResult
+      let upload
+      const service = {
+        loadRoster: harness.service.loadRoster,
+        async prepareScoreUpload(input) {
+          upload = await harness.service.prepareScoreUpload(input)
+          return upload
+        },
+        async send(input) {
+          sendResult = await harness.service.send(input)
+          return sendResult
+        },
+      }
+      try {
+        stage(`${name}:mount`)
+        ui = mountTeacherAssignmentComposerUi({
+          root: document, host, service,
+          createDraftId: () => `ses153-browser-${name}`,
+        })
+        await waitFor(() => Boolean(host.querySelector('input[name="studentId"]')), `${name}:roster`)
+        await uploadScore(host, musicXml, filename, name)
+        let targetVoicing
+        if (withChord) {
+          const symbol = host.querySelector('select[name="chordSymbol"]')
+          symbol.value = 'Am'
+          symbol.dispatchEvent(new Event('change', { bubbles: true }))
+          targetVoicing = getChordBoardVoicings('Am')[0]
+          const voicing = host.querySelector('select[name="chordVoicing"]')
+          await waitFor(() => Array.from(voicing.options).some(option => option.value === targetVoicing.voicingFingerprint), `${name}:chord_ready`)
+          voicing.value = targetVoicing.voicingFingerprint
+          Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Akoru Ekle').click()
+        }
+        selectStudentAndTitle(host, name)
+        const status = await submit(host, name)
+        const items = harness.calls.prepared[0] ?? []
+        const score = items.find(item => item.assignment.practiceType === PRIVATE_ASSIGNMENT_PRACTICE_TYPE.SCORE)
+        const chords = items.filter(item => item.assignment.practiceType === PRIVATE_ASSIGNMENT_PRACTICE_TYPE.CHORD_BOARD)
+        const ids = items.map(item => item.assignment.assignmentId)
+        const piece = harness.calls.pieces[0]
+        const expectedTypes = withChord ? ['SCORE', 'CHORD_BOARD'] : ['SCORE']
+        const checks = {
+          status: status === 'Gönderildi.',
+          itemCount: items.length === (withChord ? 2 : 1),
+          exactXml: score?.package?.content?.score?.data === musicXml,
+          exactHash: upload?.musicXmlFingerprint === await xmlHash(musicXml),
+          canonicalEmpty: score?.package?.content?.canonicalEvents?.length === 0,
+          recipientIsolation: items.every(item => item.assignment.studentId === 'student-a') && piece?.studentId === 'student-a',
+          acknowledgement: sendResult?.ok === true && sendResult.recipients.length === 1 && sendResult.recipients[0].ok === true,
+          deliveredTypes: JSON.stringify(sendResult?.recipients[0]?.deliveredContentTypes) === JSON.stringify(expectedTypes),
+          deliveredIds: JSON.stringify(harness.calls.delivered[0]) === JSON.stringify(ids),
+          scorePieceLink: Boolean(score) && piece?.scoreAssignmentId === score.assignment.assignmentId,
+          chordPieceLinks: JSON.stringify(piece?.chordAssignmentIds) === JSON.stringify(chords.map(item => item.assignment.assignmentId)),
+          chordCount: chords.length === (withChord ? 1 : 0),
+          exactChord: !withChord || chords[0]?.package?.content?.chordBoard?.voicingFingerprint === targetVoicing.voicingFingerprint,
+        }
+        document.body.setAttribute(`data-${name}-diagnostics`, JSON.stringify(checks))
+        document.body.setAttribute(`data-${name}-pass`, String(Object.values(checks).every(Boolean)))
+        stage(`${name}:complete`)
+      } catch (error) {
+        document.body.setAttribute(`data-${name}-pass`, 'false')
+        document.body.setAttribute(`data-${name}-diagnostics`, String(error.stack || error))
+        stage(`${name}:failed`)
+      } finally {
+        ui?.destroy()
+      }
+    }
+
+    stage('fixture_loaded')
+    // Do not let one scenario's exception conceal the other's result.
+    await Promise.all([
+      runScenario({ name: 'score-only', hostId: 'score-only-host',
+        musicXml: PIANO_TWO_STAFF_XML, filename: 'piano-two-staff.musicxml', withChord: false }),
+      runScenario({ name: 'combined', hostId: 'combined-host',
+        musicXml: NON_SMOOSIC_TIMEWISE_XML, filename: 'non-smoosic-timewise.musicxml', withChord: true }),
+    ])
+    stage(document.body.dataset.scoreOnlyPass === 'true' && document.body.dataset.combinedPass === 'true' ? 'final_pass' : 'final_fail')
+    document.body.dataset.proofStatus = 'done'
   </script>
 </body>
 </html>

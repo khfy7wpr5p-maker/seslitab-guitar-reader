@@ -50,7 +50,17 @@ jobs:
         run: node scripts/verifySes147AuthRosterBrowser.js
 
       - name: Verify SES-153 teacher-authority SCORE sends in real browser
-        run: node scripts/verifySes153TeacherAuthorityBrowser.js
+        run: |
+          node --test --test-concurrency=1 browser-tests/ses153BrowserQualification.browser.test.mjs
+          node scripts/verifySes153TeacherAuthorityBrowser.js
+
+      - name: Upload SES-153 browser qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses153-teacher-authority-browser
+          path: artifacts/ses153-teacher-authority-browser.json
+          if-no-files-found: warn
 
       - name: Build production bundle
         run: npm run build
