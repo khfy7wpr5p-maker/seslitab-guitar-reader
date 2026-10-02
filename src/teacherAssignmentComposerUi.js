@@ -36,12 +36,12 @@ function createDefaultDraftId() {
   return value
 }
 
-function safeResultMessage(result) {
+function isExactDeliverySuccess(result) {
   const recipients =
     Array.isArray(result?.recipients)
       ? result.recipients
       : []
-  if (
+  return (
     result?.ok === true &&
     recipients.length > 0 &&
     recipients.every(
@@ -52,7 +52,15 @@ function safeResultMessage(result) {
             .DELIVERED_TO_STUDENT &&
         row?.pieceLinked === true,
     )
-  ) {
+  )
+}
+
+function safeResultMessage(result) {
+  const recipients =
+    Array.isArray(result?.recipients)
+      ? result.recipients
+      : []
+  if (isExactDeliverySuccess(result)) {
     return 'Gönderildi.'
   }
   if (
@@ -93,14 +101,18 @@ export function mountTeacherAssignmentComposerUi({
     )
   }
 
-  const draftId =
-    String(createDraftId()).trim()
-  if (!draftId) {
-    throw new Error(
-      'assignment-composer-draft-id-invalid',
-    )
+  function nextDraftId() {
+    const value =
+      String(createDraftId()).trim()
+    if (!value) {
+      throw new Error(
+        'assignment-composer-draft-id-invalid',
+      )
+    }
+    return value
   }
 
+  let draftId = nextDraftId()
   let scoreUpload = null
   let scoreFileSelected = false
   let selectedSnapshots = []
@@ -296,6 +308,35 @@ export function mountTeacherAssignmentComposerUi({
   }
   renderVoicings()
 
+  function resetCompletedAssignment() {
+    const nextId = nextDraftId()
+
+    scoreUpload = null
+    scoreFileSelected = false
+    selectedSnapshots = []
+
+    titleInput.value = ''
+    noteInput.value = ''
+    fileInput.value = ''
+    for (
+      const input of roster.querySelectorAll(
+        'input[name="studentId"]',
+      )
+    ) {
+      input.checked = false
+    }
+
+    renderChordSelection()
+    scoreStatus.textContent =
+      'MusicXML isteğe bağlıdır.'
+    if (symbols.length > 0) {
+      symbolSelect.value = symbols[0]
+      renderVoicings()
+    }
+
+    draftId = nextId
+  }
+
   symbolSelect.addEventListener(
     'change',
     renderVoicings,
@@ -486,8 +527,19 @@ export function mountTeacherAssignmentComposerUi({
             chordSnapshots:
               selectedSnapshots,
           })
+        const exactSuccess =
+          isExactDeliverySuccess(result)
         status.textContent =
           safeResultMessage(result)
+        if (exactSuccess) {
+          try {
+            resetCompletedAssignment()
+          } catch {
+            rosterReady = false
+            status.textContent =
+              'Gönderildi. Yeni ödev hazırlanamadı; sayfayı yenileyin.'
+          }
+        }
       } catch {
         status.textContent =
           'Gönderilemedi. Tekrar deneyin.'
