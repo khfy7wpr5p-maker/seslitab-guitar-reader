@@ -1,8 +1,9 @@
+import { runBrowserFixture } from './support/browserFixture.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import { STAGE_S04_TUNER_COPY } from '../src/stageS04MiniTunerUi.js'
@@ -18,18 +19,7 @@ function findChrome() {
 }
 
 function runBrowser(chrome, viewport) {
-  const result = spawnSync(chrome, [
-    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--allow-file-access-from-files', '--virtual-time-budget=5000', `--window-size=${viewport}`,
-    '--dump-dom', pathToFileURL(fixturePath).href,
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 30000,
-    maxBuffer: 8 * 1024 * 1024,
-  })
-  assert.equal(result.status, 0, result.error?.message || result.stderr)
-  return result.stdout || ''
+  return runBrowserFixture(chrome, fixturePath, viewport)
 }
 
 test('S04 stays presentation-only and preserves explicit microphone authority', () => {
@@ -54,21 +44,21 @@ test('S04 stays presentation-only and preserves explicit microphone authority', 
   assert.ok(main.indexOf('initStageKTunerPresentation(document)') < main.indexOf('initStageS04MiniTunerUi(document)'))
 })
 
-test('S04 real Chrome proof covers desktop/mobile and pending microphone close safety', (t) => {
+test('S04 real Chrome proof covers desktop/mobile and pending microphone close safety', async (t) => {
   const chrome = findChrome()
   if (!chrome) {
     t.skip('Chrome/Chromium not available in this environment')
     return
   }
 
-  const desktop = runBrowser(chrome, '1280,900')
+  const desktop = await runBrowser(chrome, '1280,900')
   assert.match(desktop, /data-stage-s04-layout-pass="true"/)
   assert.match(desktop, /data-stage-s04-desktop-pass="true"/)
   assert.match(desktop, /data-stage-s04-local-audio-pass="true"/)
   assert.match(desktop, /data-stage-s04-no-auto-mic-pass="true"/)
   assert.match(desktop, /data-stage-s04-pending-close-pass="true"/)
 
-  const mobile = runBrowser(chrome, '390,844')
+  const mobile = await runBrowser(chrome, '390,844')
   assert.match(mobile, /data-stage-s04-layout-pass="true"/)
   assert.match(mobile, /data-stage-s04-mobile-pass="true"/)
   assert.match(mobile, /data-stage-s04-local-audio-pass="true"/)
