@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 
 import {
@@ -12,6 +13,10 @@ import {
   createInitialPieceLifecycleRecord,
   isPieceAssignmentLifecycleRecord,
 } from '../../../src/services/pieceAssignmentLifecycleRecord.js'
+import {
+  buildPieceChildCascadeMutation,
+  PIECE_LIFECYCLE_ACTION,
+} from '../../../src/services/pieceLifecycleCascade.js'
 import {
   createDeliveryRecord,
   isDeliveryRecord,
@@ -47,6 +52,7 @@ import {
 import {
   assertStrictInputObject,
   normalizeRequiredId,
+  normalizeRequiredTimestamp,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
 import {
   canonicalPackageJson,
@@ -77,6 +83,46 @@ function pairDocumentId(teacherId, studentId) {
     JSON.stringify([teacher, student]),
     'utf8',
   ).toString('base64url')
+}
+
+function derivedHistoryEventId(...parts) {
+  return `piece-${createHash('sha256')
+    .update(JSON.stringify(parts), 'utf8')
+    .digest('hex')}`
+}
+
+function hasOwn(input, key) {
+  return Object.prototype.hasOwnProperty.call(input, key)
+}
+
+function pieceChildren(piece) {
+  const rows = []
+  const seen = new Set()
+  const scoreId = piece.contentRefs.scoreAssignmentId
+
+  if (scoreId !== null) {
+    if (seen.has(scoreId)) {
+      throw new Error('Piece child membership conflict.')
+    }
+    seen.add(scoreId)
+    rows.push(Object.freeze({
+      assignmentId: scoreId,
+      expectedPracticeType: 'SCORE',
+    }))
+  }
+
+  for (const assignmentId of piece.contentRefs.chordAssignmentIds) {
+    if (seen.has(assignmentId)) {
+      throw new Error('Piece child membership conflict.')
+    }
+    seen.add(assignmentId)
+    rows.push(Object.freeze({
+      assignmentId,
+      expectedPracticeType: 'CHORD_BOARD',
+    }))
+  }
+
+  return Object.freeze(rows)
 }
 
 function restoreIdentity(raw) {
@@ -129,7 +175,6 @@ function restoreDelivery(raw) {
   }
   return record
 }
-
 
 function restorePieceAssignment(raw) {
   const restored = createPieceAssignment({
@@ -358,7 +403,6 @@ export function createFirestoreSecureDeliveryStore({
       : null
   }
 
-
   async function getPieceAssignment(
     pieceAssignmentId,
   ) {
@@ -480,6 +524,10 @@ export function createFirestoreSecureDeliveryStore({
       [
         'currentLifecycle',
         'nextLifecycle',
+        'teacherId',
+        'action',
+        'changedAt',
+        'historyEventId',
       ],
       'PieceLifecycleMutation',
     )
@@ -519,6 +567,49 @@ export function createFirestoreSecureDeliveryStore({
       )
     }
 
+    const cascadeFields = [
+      'teacherId',
+      'action',
+      'changedAt',
+      'historyEventId',
+    ]
+    const cascadeRequested =
+      cascadeFields.some((field) =>
+        hasOwn(input, field),
+      )
+
+    let teacherId = null
+    let changedAt = null
+    let historyEventId = null
+    let childDescriptors = []
+    let pieceHistoryRef = null
+
+    if (cascadeRequested) {
+      if (
+        !cascadeFields.every((field) =>
+          hasOwn(input, field),
+        ) ||
+        !Object.values(PIECE_LIFECYCLE_ACTION)
+          .includes(input.action)
+      ) {
+        throw new TypeError(
+          'Piece cascade mutation requires teacherId, action, changedAt and historyEventId.',
+        )
+      }
+      teacherId = normalizeRequiredId(
+        input.teacherId,
+        'teacherId',
+      )
+      changedAt = normalizeRequiredTimestamp(
+        input.changedAt,
+        'changedAt',
+      )
+      historyEventId = normalizeRequiredId(
+        input.historyEventId,
+        'historyEventId',
+      )
+    }
+
     const pieceRef =
       collections.pieces.doc(
         documentId(id),
@@ -528,12 +619,77 @@ export function createFirestoreSecureDeliveryStore({
         documentId(id),
       )
 
+    if (cascadeRequested) {
+      pieceHistoryRef = lifecycleRef
+        .collection('history')
+        .doc(documentId(historyEventId))
+      childDescriptors =
+        pieceChildren(currentLifecycle.piece)
+          .map((child) => {
+            const key = documentId(
+              child.assignmentId,
+            )
+            const childLifecycleRef =
+              collections.lifecycle.doc(key)
+            const childHistoryEventId =
+              derivedHistoryEventId(
+                historyEventId,
+                child.assignmentId,
+              )
+            return Object.freeze({
+              ...child,
+              preparedRef:
+                collections.prepared.doc(key),
+              lifecycleRef: childLifecycleRef,
+              deliveryRef:
+                collections.deliveries.doc(key),
+              historyEventId:
+                childHistoryEventId,
+              historyRef:
+                childLifecycleRef
+                  .collection('history')
+                  .doc(
+                    documentId(
+                      childHistoryEventId,
+                    ),
+                  ),
+            })
+          })
+    }
+
     return db.runTransaction(
       async (tx) => {
         const pieceSnap =
           await tx.get(pieceRef)
         const lifecycleSnap =
           await tx.get(lifecycleRef)
+
+        let pieceHistorySnap = null
+        const childSnapshots = []
+        if (cascadeRequested) {
+          pieceHistorySnap =
+            await tx.get(pieceHistoryRef)
+          for (const child of childDescriptors) {
+            childSnapshots.push({
+              prepared:
+                await tx.get(
+                  child.preparedRef,
+                ),
+              lifecycle:
+                await tx.get(
+                  child.lifecycleRef,
+                ),
+              delivery:
+                await tx.get(
+                  child.deliveryRef,
+                ),
+              history:
+                await tx.get(
+                  child.historyRef,
+                ),
+            })
+          }
+        }
 
         if (!pieceSnap.exists) {
           throw new Error(
@@ -591,20 +747,138 @@ export function createFirestoreSecureDeliveryStore({
           )
         }
 
-        if (
-          same(
-            currentLifecycle,
-            nextLifecycle,
+        if (!cascadeRequested) {
+          if (
+            same(
+              currentLifecycle,
+              nextLifecycle,
+            )
+          ) {
+            return storedLifecycle ??
+              currentLifecycle
+          }
+
+          tx.set(
+            lifecycleRef,
+            plain(nextLifecycle),
           )
+          return nextLifecycle
+        }
+
+        if (pieceHistorySnap.exists) {
+          throw new Error(
+            'Piece lifecycle history event conflict.',
+          )
+        }
+
+        const childMutations = []
+        for (
+          let index = 0;
+          index < childDescriptors.length;
+          index += 1
         ) {
-          return storedLifecycle ??
-            currentLifecycle
+          const child = childDescriptors[index]
+          const snaps = childSnapshots[index]
+          const prepared = snaps.prepared.exists
+            ? restorePrepared(
+                snaps.prepared.data(),
+              )
+            : null
+          const childLifecycle =
+            snaps.lifecycle.exists && prepared !== null
+              ? restoreAssignmentLifecycleRecordV1(
+                  snaps.lifecycle.data(),
+                  prepared.assignment,
+                )
+              : null
+          const delivery = snaps.delivery.exists
+            ? restoreDelivery(
+                snaps.delivery.data(),
+              )
+            : null
+
+          childMutations.push(
+            Object.freeze({
+              child,
+              historyExists:
+                snaps.history.exists,
+              mutation:
+                buildPieceChildCascadeMutation({
+                  prepared,
+                  delivery,
+                  lifecycle: childLifecycle,
+                  assignmentId:
+                    child.assignmentId,
+                  expectedPracticeType:
+                    child.expectedPracticeType,
+                  teacherId,
+                  studentId:
+                    storedPiece.studentId,
+                  action: input.action,
+                  changedAt,
+                }),
+            }),
+          )
+        }
+
+        for (const row of childMutations) {
+          if (
+            row.mutation.changed &&
+            row.historyExists
+          ) {
+            throw new Error(
+              'lifecycle history event conflict.',
+            )
+          }
         }
 
         tx.set(
           lifecycleRef,
           plain(nextLifecycle),
         )
+        tx.create(pieceHistoryRef, {
+          schemaVersion: 1,
+          teacherId,
+          historyEventId,
+          action: input.action,
+          changedAt,
+          lifecycle: plain(nextLifecycle),
+          childAssignmentIds:
+            childMutations.map(
+              (row) =>
+                row.child.assignmentId,
+            ),
+        })
+
+        for (const row of childMutations) {
+          if (!row.mutation.changed) continue
+          tx.set(
+            row.child.lifecycleRef,
+            plain(
+              row.mutation.nextLifecycle,
+            ),
+          )
+          tx.set(
+            row.child.deliveryRef,
+            plain(
+              row.mutation.deliveryAfter,
+            ),
+          )
+          tx.create(row.child.historyRef, {
+            schemaVersion: 1,
+            teacherId,
+            historyEventId:
+              row.child.historyEventId,
+            lifecycle:
+              plain(
+                row.mutation.nextLifecycle,
+              ),
+            deliveryRevokedAt:
+              row.mutation.deliveryAfter
+                .revokedAt,
+          })
+        }
+
         return nextLifecycle
       },
     )
