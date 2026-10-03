@@ -1,8 +1,9 @@
+import { runBrowserFixture } from './support/browserFixture.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import {
@@ -99,18 +100,7 @@ function findChrome() {
 }
 
 function runBrowser(chrome, viewport) {
-  const result = spawnSync(chrome, [
-    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--allow-file-access-from-files', '--virtual-time-budget=7000', `--window-size=${viewport}`,
-    '--dump-dom', pathToFileURL(fixturePath).href,
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 35000,
-    maxBuffer: 8 * 1024 * 1024,
-  })
-  assert.equal(result.status, 0, result.error?.message || result.stderr)
-  return result.stdout || ''
+  return runBrowserFixture(chrome, fixturePath, viewport)
 }
 
 test('S07 inspector exposes only the four normal teacher fields and no internal authority metadata', () => {
@@ -288,7 +278,7 @@ test('S07 verified-selection implementation remains tested while S14 retires its
   assert.match(projectionSource, /clearPackage3SelectionProjection/)
 })
 
-test('S07 real Chrome proof covers inline fields, hidden internals, stale selection, approval separation, coherence and undo', (t) => {
+test('S07 real Chrome proof covers inline fields, hidden internals, stale selection, approval separation, coherence and undo', async (t) => {
   const chrome = findChrome()
   if (!chrome) {
     t.skip('Chrome/Chromium not available in this environment')
@@ -296,7 +286,7 @@ test('S07 real Chrome proof covers inline fields, hidden internals, stale select
   }
 
   for (const viewport of ['1280,900', '390,844']) {
-    const html = runBrowser(chrome, viewport)
+    const html = await runBrowser(chrome, viewport)
     assert.match(html, /data-stage-s07-inline-pass="true"/)
     assert.match(html, /data-stage-s07-hidden-internals-pass="true"/)
     assert.match(html, /data-stage-s07-stale-pass="true"/)

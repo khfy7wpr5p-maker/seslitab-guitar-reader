@@ -82,3 +82,45 @@ Any new high/critical finding or previously unclassified moderate finding blocks
 ## Safety decision
 
 No `npm audit fix --force` was used for the committed candidate. No dependency was intentionally downgraded. No application feature, authorization boundary, Firebase production project, Render setting, teacher-write flag, deployment state, or OMR service state is changed by TD-PROD-15.
+
+
+## SES-172 follow-up (2026-10-03)
+
+At PR #312 baseline `ae94b6965dae881a6ee370c026079e7fb5565151`, newly published
+advisories changed the full graph to 7 high / 4 moderate (production: 0 high /
+2 moderate). The seven high package records arose from two underlying paths:
+
+- `firebase-tools → chokidar@3.6.0 → braces@3.0.3`:
+  [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+  No patched braces release was available. A Firebase CLI-scoped override to
+  `chokidar@4.0.3` removes the vulnerable brace parser entirely.
+- `firebase-tools → proxy-agent → pac-proxy-agent → get-uri → basic-ftp@5.3.1`:
+  [GHSA-c475-qrg2-pj4r](https://github.com/advisories/GHSA-c475-qrg2-pj4r).
+  A Firebase CLI-scoped override selects patched `basic-ftp@6.2.1`.
+
+These are deliberate, bounded major transitive overrides; they do not upgrade
+Firebase CLI, the application Firebase SDK/Admin dependencies, or production
+application behavior. The lockfile was generated with npm and reinstalled using
+`npm ci --ignore-scripts`.
+
+Compatibility checks exercise the literal-file rules watcher, its change event
+and cleanup, plus the CommonJS FTP Client methods and real Unix listing parser
+used by get-uri. The repository configures only Auth and Firestore emulators.
+Chokidar 4 no longer expands glob inputs; Functions emulator glob/ignore semantics
+are outside this qualification and must be separately checked before adding a
+Functions emulator. Existing application assertions and security gates remain
+unchanged.
+
+The refreshed full audit has 0 high / 0 critical and five moderate package
+records (`@opentelemetry/core`, `@google-cloud/pubsub`, `firebase-tools`, `gaxios`,
+`uuid`). Production retains 0 high / 0 critical and the same two reviewed
+moderate records (`gaxios`, `uuid`). Firebase CLI is now classified moderate
+rather than high; the change from four to five moderate records is not an added
+underlying advisory. All residual records remain within the existing CI allowlist.
+The major OpenTelemetry/Storage dependency changes described above remain
+unqualified and were not forced.
+
+The managed environment returned proxy CONNECT 403 for the Firestore emulator
+jar on `storage.googleapis.com`. The complete emulator suite therefore still
+requires that specific saved network allowance to be applied. The local watcher
+compatibility tests do not substitute for that blocked emulator suite.
