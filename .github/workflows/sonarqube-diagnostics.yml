@@ -35,9 +35,6 @@ jobs:
        github.event.workflow_run.head_repository.fork == false &&
        github.event.workflow_run.head_branch == 'main')
 
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,27 +43,19 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Resolve source Regression Quality run
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Resolve and validate source Regression Quality run
         id: source-run
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
           MANUAL_RUN_ID: ${{ inputs.source_run_id }}
-        run: |
-          set -euo pipefail
-
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            source_run_id="$WORKFLOW_RUN_ID"
-          else
-            source_run_id="$MANUAL_RUN_ID"
-          fi
-
-          if ! [[ "$source_run_id" =~ ^[0-9]+$ ]]; then
-            echo "::error::A valid Regression Quality workflow run ID is required."
-            exit 1
-          fi
-
-          echo "run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+        run: node scripts/sonarDiagnostics.mjs verify-source
 
       - name: Download exact Sonar Compute Engine task metadata
         uses: actions/download-artifact@v4
@@ -76,217 +65,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ steps.source-run.outputs.run_id }}
 
-      - name: Resolve SonarQube project and exact CE task
-        id: task
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "$SONAR_TOKEN" ]; then
-            echo "::error::SONAR_TOKEN is not configured."
-            exit 1
-          fi
-
-          project_key="$(sed -n 's/^sonar\.projectKey=//p' sonar-project.properties | head -n 1 | xargs)"
-          if [ -z "$project_key" ]; then
-            echo "::error::sonar.projectKey is missing from sonar-project.properties."
-            exit 1
-          fi
-
-          report_file="artifacts/sonar-report-task/report-task.txt"
-          if [ ! -s "$report_file" ]; then
-            echo "::error::Sonar report-task.txt artifact is missing or empty."
-            exit 1
-          fi
-
-          ce_task_id="$(sed -n 's/^ceTaskId=//p' "$report_file" | head -n 1 | xargs)"
-          server_url="$(sed -n 's/^serverUrl=//p' "$report_file" | head -n 1 | xargs)"
-
-          if [ -z "$ce_task_id" ]; then
-            echo "::error::ceTaskId is missing from report-task.txt."
-            exit 1
-          fi
-          if [ -z "$server_url" ] || ! [[ "$server_url" =~ ^https?:// ]]; then
-            echo "::error::A valid serverUrl is missing from report-task.txt."
-            exit 1
-          fi
-
-          server_url="${server_url%/}"
-          echo "project_key=$project_key" >> "$GITHUB_OUTPUT"
-          echo "ce_task_id=$ce_task_id" >> "$GITHUB_OUTPUT"
-          echo "server_url=$server_url" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for exact Sonar Compute Engine task
-        id: ce-task
+      - name: Export exact-analysis Security and Reliability diagnostics
+        id: export
         shell: bash
         env:
-          CE_TASK_ID: ${{ steps.task.outputs.ce_task_id }}
-          SONAR_HOST_URL: ${{ steps.task.outputs.server_url }}
-        run: |
-          set -euo pipefail
-
-          for attempt in $(seq 1 120); do
-            response="$(
-              curl --fail-with-body --silent --show-error \
-                --user "$SONAR_TOKEN:" \
-                --get "$SONAR_HOST_URL/api/ce/task" \
-                --data-urlencode "id=$CE_TASK_ID"
-            )"
-
-            status="$(jq -r '.task.status // empty' <<<"$response")"
-            analysis_id="$(jq -r '.task.analysisId // empty' <<<"$response")"
-
-            case "$status" in
-              SUCCESS)
-                if [ -z "$analysis_id" ]; then
-                  echo "::error::Exact CE task succeeded without an analysisId."
-                  exit 1
-                fi
-                echo "analysis_id=$analysis_id" >> "$GITHUB_OUTPUT"
-                echo "SonarQube exact CE task $CE_TASK_ID completed successfully."
-                exit 0
-                ;;
-              FAILED|CANCELED)
-                echo "::error::SonarQube exact CE task $CE_TASK_ID ended with status $status."
-                jq -c '.task | {id,status,errorMessage,errorStacktrace}' <<<"$response" || true
-                exit 1
-                ;;
-              PENDING|IN_PROGRESS)
-                echo "Waiting for exact SonarQube CE task $CE_TASK_ID ($attempt/120): $status"
-                sleep 5
-                ;;
-              *)
-                echo "::error::Unexpected or missing SonarQube CE task status for $CE_TASK_ID."
-                jq -c '.task // .' <<<"$response" || true
-                exit 1
-                ;;
-            esac
-          done
-
-          echo "::error::Exact SonarQube CE task $CE_TASK_ID did not complete within 600 seconds."
-          exit 1
-
-      - name: Export Security and Reliability issues
-        shell: bash
-        env:
-          PROJECT_KEY: ${{ steps.task.outputs.project_key }}
-          SONAR_HOST_URL: ${{ steps.task.outputs.server_url }}
-          ANALYSIS_ID: ${{ steps.ce-task.outputs.analysis_id }}
-        run: |
-          set -euo pipefail
-          out="artifacts/sonarqube-diagnostics"
-          mkdir -p "$out"
-
-          fetch_page() {
-            local quality="$1"
-            local page="$2"
-            local destination="$3"
-
-            curl --fail-with-body --silent --show-error \
-              --user "$SONAR_TOKEN:" \
-              --get "$SONAR_HOST_URL/api/issues/search" \
-              --data-urlencode "componentKeys=$PROJECT_KEY" \
-              --data-urlencode "branch=main" \
-              --data-urlencode "impactSoftwareQualities=$quality" \
-              --data-urlencode "issueStatuses=OPEN,CONFIRMED,ACCEPTED,FALSE_POSITIVE" \
-              --data-urlencode "s=IMPACT_RANK" \
-              --data-urlencode "ps=500" \
-              --data-urlencode "p=$page" \
-              > "$destination"
-          }
-
-          fetch_all_issues() {
-            local quality="$1"
-            local destination="$2"
-            local first_page="$out/.${quality,,}-page-1.json"
-
-            fetch_page "$quality" 1 "$first_page"
-
-            local total
-            local page_size
-            local pages
-            total="$(jq -r '.paging.total // (.issues | length)' "$first_page")"
-            page_size="$(jq -r '.paging.pageSize // 500' "$first_page")"
-            pages=$(( (total + page_size - 1) / page_size ))
-
-            cp "$first_page" "$destination"
-
-            if [ "$pages" -gt 1 ]; then
-              for page in $(seq 2 "$pages"); do
-                local page_file="$out/.${quality,,}-page-$page.json"
-                local merged="$out/.${quality,,}-merged.json"
-
-                fetch_page "$quality" "$page" "$page_file"
-                jq -s '{
-                  paging: .[0].paging,
-                  issues: (.[0].issues + .[1].issues),
-                  components: ((.[0].components // []) + (.[1].components // []) | unique_by(.key)),
-                  rules: ((.[0].rules // []) + (.[1].rules // []) | unique_by(.key))
-                }' "$destination" "$page_file" > "$merged"
-                mv "$merged" "$destination"
-              done
-            fi
-
-            local collected
-            collected="$(jq -r '.issues | length' "$destination")"
-            if [ "$collected" -ne "$total" ]; then
-              echo "::error::$quality export incomplete: collected $collected of $total issues."
-              exit 1
-            fi
-
-            rm -f "$out"/".${quality,,}-page-"*.json
-          }
-
-          fetch_all_issues "SECURITY" "$out/security-issues.raw.json"
-          fetch_all_issues "RELIABILITY" "$out/reliability-issues.raw.json"
-
-          curl --fail-with-body --silent --show-error \
-            --user "$SONAR_TOKEN:" \
-            --get "$SONAR_HOST_URL/api/qualitygates/project_status" \
-            --data-urlencode "analysisId=$ANALYSIS_ID" \
-            > "$out/quality-gate.json"
-
-          jq '{
-            total: (.paging.total // (.issues | length)),
-            issues: [
-              .issues[] | {
-                key,
-                rule,
-                severity,
-                status,
-                component,
-                line,
-                message,
-                impacts,
-                creationDate,
-                updateDate
-              }
-            ]
-          }' "$out/security-issues.raw.json" > "$out/security-issues.json"
-
-          jq '{
-            total: (.paging.total // (.issues | length)),
-            issues: [
-              .issues[] | {
-                key,
-                rule,
-                severity,
-                status,
-                component,
-                line,
-                message,
-                impacts,
-                creationDate,
-                updateDate
-              }
-            ]
-          }' "$out/reliability-issues.raw.json" > "$out/reliability-issues.json"
-
-          jq -s '{
-            generatedFrom: "SonarQube Web API",
-            branch: "main",
-            security: .[0],
-            reliability: .[1]
-          }' "$out/security-issues.json" "$out/reliability-issues.json" > "$out/issues.json"
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+        run: node scripts/sonarDiagnostics.mjs export
 
       - name: Build diagnostic summary
         shell: bash
@@ -357,6 +143,7 @@ jobs:
           ' "$out/issues.json" | head -n 50 || true
 
       - name: Upload SonarQube diagnostic artifact
+        if: success() && steps.export.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: sonarqube-diagnostics

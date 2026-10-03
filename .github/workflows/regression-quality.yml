@@ -131,6 +131,7 @@ jobs:
         with:
           name: sonar-report-task
           path: .scannerwork/report-task.txt
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
