@@ -47,6 +47,8 @@ const ACTIONS = Object.freeze({
   COMPLETE: 'COMPLETE',
   MOVE_TO_REPERTOIRE:
     'MOVE_TO_REPERTOIRE',
+  PLACE_IN_REPERTOIRE:
+    'PLACE_IN_REPERTOIRE',
   REVOKE: 'REVOKE',
 })
 
@@ -461,7 +463,7 @@ export function createTeacherPieceService({
         .includes(action)
     ) {
       throw new TypeError(
-        'action must be COMPLETE, MOVE_TO_REPERTOIRE or REVOKE.',
+        'action must be COMPLETE, MOVE_TO_REPERTOIRE, PLACE_IN_REPERTOIRE or REVOKE.',
       )
     }
 
@@ -485,6 +487,7 @@ export function createTeacherPieceService({
 
     let next
     let changedAt
+    let commitAction = action
 
     if (action === ACTIONS.REVOKE) {
       changedAt = normalizeRequiredTimestamp(
@@ -495,6 +498,46 @@ export function createTeacherPieceService({
         current,
         changedAt,
       )
+    } else if (
+      action === ACTIONS.PLACE_IN_REPERTOIRE
+    ) {
+      if (
+        current.state ===
+        PIECE_ASSIGNMENT_STATE.REPERTOIRE
+      ) {
+        return current
+      }
+
+      changedAt = normalizeRequiredTimestamp(
+        now(),
+        'transitionedAt',
+      )
+
+      if (
+        current.state ===
+        PIECE_ASSIGNMENT_STATE.ACTIVE
+      ) {
+        const completed =
+          transitionPieceLifecycleRecord(
+            current,
+            PIECE_ASSIGNMENT_STATE.COMPLETED,
+            changedAt,
+          )
+        next = transitionPieceLifecycleRecord(
+          completed,
+          PIECE_ASSIGNMENT_STATE.REPERTOIRE,
+          changedAt,
+        )
+      } else {
+        next = transitionPieceLifecycleRecord(
+          current,
+          PIECE_ASSIGNMENT_STATE.REPERTOIRE,
+          changedAt,
+        )
+      }
+
+      commitAction =
+        ACTIONS.MOVE_TO_REPERTOIRE
     } else {
       const target =
         action === ACTIONS.COMPLETE
@@ -525,7 +568,7 @@ export function createTeacherPieceService({
           currentLifecycle: current,
           nextLifecycle: next,
           teacherId,
-          action,
+          action: commitAction,
           changedAt,
           historyEventId:
             pieceHistoryEventId({
