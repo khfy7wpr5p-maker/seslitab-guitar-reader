@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import {
   isAssignmentLifecycleRecord,
 } from '../../../src/services/assignmentLifecycleRecord.js'
@@ -59,6 +61,25 @@ function childAuthorityError() {
   return new Error(
     'piece-child-authority-mismatch',
   )
+}
+
+function pieceHistoryEventId({
+  pieceAssignmentId,
+  action,
+  changedAt,
+}) {
+  const digest = createHash('sha256')
+    .update(
+      JSON.stringify([
+        pieceAssignmentId,
+        action,
+        changedAt,
+      ]),
+      'utf8',
+    )
+    .digest('hex')
+
+  return `piece-${digest}`
 }
 
 export function createTeacherPieceService({
@@ -424,6 +445,7 @@ export function createTeacherPieceService({
     }
 
     return Object.freeze({
+      teacherId,
       piece,
       lifecycle,
     })
@@ -444,6 +466,7 @@ export function createTeacherPieceService({
     }
 
     const {
+      teacherId,
       piece,
       lifecycle: current,
     } = await loadPieceContext({
@@ -461,14 +484,16 @@ export function createTeacherPieceService({
     }
 
     let next
+    let changedAt
 
     if (action === ACTIONS.REVOKE) {
+      changedAt = normalizeRequiredTimestamp(
+        now(),
+        'revokedAt',
+      )
       next = revokePieceLifecycleRecord(
         current,
-        normalizeRequiredTimestamp(
-          now(),
-          'revokedAt',
-        ),
+        changedAt,
       )
     } else {
       const target =
@@ -482,14 +507,15 @@ export function createTeacherPieceService({
         return current
       }
 
+      changedAt = normalizeRequiredTimestamp(
+        now(),
+        'transitionedAt',
+      )
       next =
         transitionPieceLifecycleRecord(
           current,
           target,
-          normalizeRequiredTimestamp(
-            now(),
-            'transitionedAt',
-          ),
+          changedAt,
         )
     }
 
@@ -498,6 +524,16 @@ export function createTeacherPieceService({
         .commitPieceLifecycleMutation({
           currentLifecycle: current,
           nextLifecycle: next,
+          teacherId,
+          action,
+          changedAt,
+          historyEventId:
+            pieceHistoryEventId({
+              pieceAssignmentId:
+                piece.pieceAssignmentId,
+              action,
+              changedAt,
+            }),
         })
 
     if (
