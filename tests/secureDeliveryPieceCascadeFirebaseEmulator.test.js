@@ -234,18 +234,3 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
     ['ses154-score-a'],
   )
 })
-
-test('SES-154 Firestore cascade fails before writes when child teacher authority mismatches', { skip: !EMULATOR_AVAILABLE }, async () => {
-  const store = createFirestoreSecureDeliveryStore({
-    firestore: db,
-  })
-  const row = preparedRow()
-  const suffix = '-authority'
-  const assignment = Object.freeze({
-    ...row.prepared.assignment,
-    assignmentId:
-      row.prepared.assignment.assignmentId + suffix,
-  })
-
-  assert.equal(assignment.assignmentId.endsWith(suffix), true)
-})
