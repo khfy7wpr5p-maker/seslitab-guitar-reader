@@ -125,6 +125,15 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
+      - name: Upload Sonar Compute Engine task metadata
+        if: steps.sonar-config.outputs.mode == 'server' || steps.sonar-config.outputs.mode == 'cloud'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-report-task
+          path: .scannerwork/report-task.txt
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Report SonarCloud PR issues
         if: steps.sonar-config.outputs.mode == 'cloud' && github.event_name == 'pull_request'
         shell: bash

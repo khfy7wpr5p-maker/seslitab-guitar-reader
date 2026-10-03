@@ -2,17 +2,20 @@ name: SonarQube Diagnostics Export
 
 on:
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Regression Quality main workflow run ID that produced sonar-report-task
+        required: true
+        type: string
   workflow_run:
     workflows:
       - Regression Quality
     types:
       - completed
-  pull_request:
-    paths:
-      - .github/workflows/sonarqube-diagnostics.yml
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: sonarqube-diagnostics-${{ github.workflow }}-${{ github.ref }}
@@ -22,17 +25,14 @@ jobs:
   export:
     name: Export SonarQube issues
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main') ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+       github.event.workflow_run.head_branch == 'main')
 
     env:
-      SONAR_HOST_URL: https://sonarcloud.io
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
@@ -42,8 +42,38 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Resolve SonarQube project and target revision
-        id: project
+      - name: Resolve source Regression Quality run
+        id: source-run
+        shell: bash
+        env:
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          MANUAL_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            source_run_id="$WORKFLOW_RUN_ID"
+          else
+            source_run_id="$MANUAL_RUN_ID"
+          fi
+
+          if ! [[ "$source_run_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::A valid Regression Quality workflow run ID is required."
+            exit 1
+          fi
+
+          echo "run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download exact Sonar Compute Engine task metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: sonar-report-task
+          path: artifacts/sonar-report-task
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.source-run.outputs.run_id }}
+
+      - name: Resolve SonarQube project and exact CE task
+        id: task
         shell: bash
         run: |
           set -euo pipefail
@@ -58,55 +88,85 @@ jobs:
             exit 1
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            target_revision="${{ github.event.workflow_run.head_sha }}"
-          else
-            target_revision="$(git rev-parse HEAD)"
-          fi
-
-          if ! [[ "$target_revision" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Unable to resolve a valid main revision."
+          report_file="artifacts/sonar-report-task/report-task.txt"
+          if [ ! -s "$report_file" ]; then
+            echo "::error::Sonar report-task.txt artifact is missing or empty."
             exit 1
           fi
 
-          echo "project_key=$project_key" >> "$GITHUB_OUTPUT"
-          echo "target_revision=$target_revision" >> "$GITHUB_OUTPUT"
+          ce_task_id="$(sed -n 's/^ceTaskId=//p' "$report_file" | head -n 1 | xargs)"
+          server_url="$(sed -n 's/^serverUrl=//p' "$report_file" | head -n 1 | xargs)"
 
-      - name: Wait for corresponding main analysis
+          if [ -z "$ce_task_id" ]; then
+            echo "::error::ceTaskId is missing from report-task.txt."
+            exit 1
+          fi
+          if [ -z "$server_url" ] || ! [[ "$server_url" =~ ^https?:// ]]; then
+            echo "::error::A valid serverUrl is missing from report-task.txt."
+            exit 1
+          fi
+
+          server_url="${server_url%/}"
+          echo "project_key=$project_key" >> "$GITHUB_OUTPUT"
+          echo "ce_task_id=$ce_task_id" >> "$GITHUB_OUTPUT"
+          echo "server_url=$server_url" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact Sonar Compute Engine task
+        id: ce-task
         shell: bash
         env:
-          PROJECT_KEY: ${{ steps.project.outputs.project_key }}
-          TARGET_REVISION: ${{ steps.project.outputs.target_revision }}
+          CE_TASK_ID: ${{ steps.task.outputs.ce_task_id }}
+          SONAR_HOST_URL: ${{ steps.task.outputs.server_url }}
         run: |
           set -euo pipefail
 
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 120); do
             response="$(
               curl --fail-with-body --silent --show-error \
                 --user "$SONAR_TOKEN:" \
-                --get "$SONAR_HOST_URL/api/project_analyses/search" \
-                --data-urlencode "project=$PROJECT_KEY" \
-                --data-urlencode "branch=main" \
-                --data-urlencode "ps=1"
+                --get "$SONAR_HOST_URL/api/ce/task" \
+                --data-urlencode "id=$CE_TASK_ID"
             )"
 
-            latest_revision="$(jq -r '.analyses[0].revision // empty' <<<"$response")"
-            if [ "$latest_revision" = "$TARGET_REVISION" ]; then
-              echo "SonarQube processed main revision $TARGET_REVISION."
-              exit 0
-            fi
+            status="$(jq -r '.task.status // empty' <<<"$response")"
+            analysis_id="$(jq -r '.task.analysisId // empty' <<<"$response")"
 
-            echo "Waiting for SonarQube main analysis ($attempt/30). Latest revision: ${latest_revision:-none}"
-            sleep 5
+            case "$status" in
+              SUCCESS)
+                if [ -z "$analysis_id" ]; then
+                  echo "::error::Exact CE task succeeded without an analysisId."
+                  exit 1
+                fi
+                echo "analysis_id=$analysis_id" >> "$GITHUB_OUTPUT"
+                echo "SonarQube exact CE task $CE_TASK_ID completed successfully."
+                exit 0
+                ;;
+              FAILED|CANCELED)
+                echo "::error::SonarQube exact CE task $CE_TASK_ID ended with status $status."
+                jq -c '.task | {id,status,errorMessage,errorStacktrace}' <<<"$response" || true
+                exit 1
+                ;;
+              PENDING|IN_PROGRESS)
+                echo "Waiting for exact SonarQube CE task $CE_TASK_ID ($attempt/120): $status"
+                sleep 5
+                ;;
+              *)
+                echo "::error::Unexpected or missing SonarQube CE task status for $CE_TASK_ID."
+                jq -c '.task // .' <<<"$response" || true
+                exit 1
+                ;;
+            esac
           done
 
-          echo "::error::SonarQube did not expose analysis for main revision $TARGET_REVISION within 150 seconds."
+          echo "::error::Exact SonarQube CE task $CE_TASK_ID did not complete within 600 seconds."
           exit 1
 
       - name: Export Security and Reliability issues
         shell: bash
         env:
-          PROJECT_KEY: ${{ steps.project.outputs.project_key }}
+          PROJECT_KEY: ${{ steps.task.outputs.project_key }}
+          SONAR_HOST_URL: ${{ steps.task.outputs.server_url }}
+          ANALYSIS_ID: ${{ steps.ce-task.outputs.analysis_id }}
         run: |
           set -euo pipefail
           out="artifacts/sonarqube-diagnostics"
@@ -178,8 +238,7 @@ jobs:
           curl --fail-with-body --silent --show-error \
             --user "$SONAR_TOKEN:" \
             --get "$SONAR_HOST_URL/api/qualitygates/project_status" \
-            --data-urlencode "projectKey=$PROJECT_KEY" \
-            --data-urlencode "branch=main" \
+            --data-urlencode "analysisId=$ANALYSIS_ID" \
             > "$out/quality-gate.json"
 
           jq '{
@@ -219,7 +278,7 @@ jobs:
           }' "$out/reliability-issues.raw.json" > "$out/reliability-issues.json"
 
           jq -s '{
-            generatedFrom: "SonarQube Cloud Web API",
+            generatedFrom: "SonarQube Web API",
             branch: "main",
             security: .[0],
             reliability: .[1]
