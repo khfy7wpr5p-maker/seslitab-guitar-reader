@@ -20,3 +20,14 @@ test('Sonar diagnostics follows the triggering run exact CE task instead of late
   assert.doesNotMatch(diagnosticsWorkflow, /\/api\/project_analyses\/search/)
   assert.doesNotMatch(diagnosticsWorkflow, /\.analyses\[0\]\.revision/)
 })
+
+test('Sonar diagnostics does not interpolate workflow expressions inside shell control flow', () => {
+  assert.doesNotMatch(
+    diagnosticsWorkflow,
+    /if \[ "\$\{\{\s*github\.event_name\s*\}\}" = "workflow_run" \]; then/,
+  )
+  assert.match(
+    diagnosticsWorkflow,
+    /if \[ "\$GITHUB_EVENT_NAME" = "workflow_run" \]; then/,
+  )
+})
