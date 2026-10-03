@@ -359,7 +359,7 @@ test('teacher Piece creation rejects revoked child delivery without leaking owne
   )
 })
 
-test('Piece lifecycle actions mutate only Piece lifecycle and leave child delivery active', async () => {
+test('SES-154 Piece lifecycle actions cascade parent and child lifecycle atomically', async () => {
   const { service, store } =
     await harness()
 
@@ -376,6 +376,22 @@ test('Piece lifecycle actions mutate only Piece lifecycle and leave child delive
       action: 'COMPLETE',
     })
   assert.equal(completed.state, 'COMPLETED')
+  assert.equal(
+    (await store.getLifecycle('score-a')).state,
+    'COMPLETED',
+  )
+  assert.equal(
+    (await store.getLifecycle('chord-a')).state,
+    'COMPLETED',
+  )
+  assert.equal(
+    (await store.getDelivery('score-a')).revokedAt,
+    null,
+  )
+  assert.equal(
+    (await store.getDelivery('chord-a')).revokedAt,
+    null,
+  )
 
   const repertoire =
     await service.applyPieceAction({
@@ -386,6 +402,14 @@ test('Piece lifecycle actions mutate only Piece lifecycle and leave child delive
     })
   assert.equal(
     repertoire.state,
+    'REPERTOIRE',
+  )
+  assert.equal(
+    (await store.getLifecycle('score-a')).state,
+    'REPERTOIRE',
+  )
+  assert.equal(
+    (await store.getLifecycle('chord-a')).state,
     'REPERTOIRE',
   )
 
@@ -405,18 +429,23 @@ test('Piece lifecycle actions mutate only Piece lifecycle and leave child delive
     '2026-09-24T11:00:00Z',
   )
 
-  assert.equal(
-    (
-      await store.getDelivery('score-a')
-    ).revokedAt,
-    null,
-  )
-  assert.equal(
-    (
-      await store.getDelivery('chord-a')
-    ).revokedAt,
-    null,
-  )
+  for (const assignmentId of [
+    'score-a',
+    'chord-a',
+  ]) {
+    assert.equal(
+      (await store.getLifecycle(assignmentId)).revokedAt,
+      '2026-09-24T11:00:00Z',
+    )
+    assert.equal(
+      (await store.getDelivery(assignmentId)).revokedAt,
+      '2026-09-24T11:00:00Z',
+    )
+    assert.equal(
+      (await store.getLifecycleHistory(assignmentId)).length,
+      3,
+    )
+  }
 })
 
 test('Piece action rejects invalid action and cannot skip ACTIVE directly to repertoire', async () => {
@@ -509,6 +538,22 @@ test('Piece lifecycle remains controllable after a child is independently revoke
       )
     ).revokedAt,
     '2026-09-24T08:30:00Z',
+  )
+  assert.equal(
+    (
+      await store.getLifecycle(
+        'score-a',
+      )
+    ).revokedAt,
+    '2026-09-24T08:30:00Z',
+  )
+  assert.equal(
+    (
+      await store.getDelivery(
+        'chord-a',
+      )
+    ).revokedAt,
+    '2026-09-24T09:00:00Z',
   )
 })
 
