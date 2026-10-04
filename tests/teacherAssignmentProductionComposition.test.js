@@ -70,6 +70,18 @@ test('SES-141 production composition mounts only the injected authenticated Secu
         async createTeacherPiece() {
           return Object.freeze({})
         },
+        async listTeacherPieces() {
+          return Object.freeze([])
+        },
+        async listTeacherWorkRequests() {
+          return Object.freeze([])
+        },
+        async applyPieceAction() {
+          return Object.freeze({})
+        },
+        async applyTeacherWorkRequestAction() {
+          return Object.freeze({})
+        },
       },
       now: () =>
         '2026-10-01T14:30:00Z',
