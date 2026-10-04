@@ -64,6 +64,7 @@ function pendingRequest() {
     requestedAt: '2026-10-04T07:30:00Z',
     updatedAt: '2026-10-04T07:30:00Z',
     targetState: null,
+    pieceAssignmentId: null,
   })
 }
 
@@ -107,6 +108,10 @@ async function managementHarness(overrides = {}) {
     async listPendingForTeacher(input) {
       calls.push(['listPendingForTeacher', input])
       return Object.freeze([pendingRequest()])
+    },
+    async getForTeacher(input) {
+      calls.push(['getForTeacher', input])
+      return pendingRequest()
     },
     async revokePending(input) {
       calls.push(['revokePending', input])
