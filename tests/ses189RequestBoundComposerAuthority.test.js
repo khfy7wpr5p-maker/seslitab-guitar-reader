@@ -38,7 +38,9 @@ function harness({ request = pendingRequest(), roster } = {}) {
   ])
 
   const pieceAssignmentId =
+    request.pieceAssignmentId ??
     `ses141:ses189:${request.requestId}:piece-assignment:${request.studentId}`
+  let lifecycleState = request.targetState ?? 'ACTIVE'
 
   const service = createRequestBoundAssignmentComposerService({
     authorization: {
@@ -82,15 +84,16 @@ function harness({ request = pendingRequest(), roster } = {}) {
             }),
           }),
           lifecycle: Object.freeze({
-            state: request.targetState ?? 'ACTIVE',
+            state: lifecycleState,
             revokedAt: null,
           }),
         })
       },
       async applyPieceAction(input) {
         calls.push(['applyPieceAction', input])
+        lifecycleState = 'REPERTOIRE'
         return Object.freeze({
-          state: 'REPERTOIRE',
+          state: lifecycleState,
           revokedAt: null,
         })
       },
