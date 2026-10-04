@@ -12,6 +12,7 @@ import {
   createPieceAssignment,
 } from '../../../src/services/pieceAssignment.js'
 import {
+  createInitialPieceLifecycleRecord,
   isPieceAssignmentLifecycleRecord,
 } from '../../../src/services/pieceAssignmentLifecycleRecord.js'
 import {
@@ -125,13 +126,13 @@ export function createFirestoreStudentWorkRequestStore({ firestore } = {}) {
     const id = normalizeRequiredId(pieceAssignmentId, 'pieceAssignmentId')
     const pieceRef = pieces.doc(documentId(id))
     const lifecycleRef = pieceLifecycles.doc(documentId(id))
-    const [pieceSnap, lifecycleSnap] = await Promise.all([
-      reader(pieceRef),
-      reader(lifecycleRef),
-    ])
-    if (!pieceSnap.exists || !lifecycleSnap.exists) return null
+    const pieceSnap = await reader(pieceRef)
+    if (!pieceSnap.exists) return null
+    const lifecycleSnap = await reader(lifecycleRef)
     const piece = restorePiece(pieceSnap.data())
-    const lifecycle = restorePieceLifecycle(lifecycleSnap.data(), piece)
+    const lifecycle = lifecycleSnap.exists
+      ? restorePieceLifecycle(lifecycleSnap.data(), piece)
+      : createInitialPieceLifecycleRecord(piece)
     return Object.freeze({ piece, lifecycle })
   }
 
