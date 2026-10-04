@@ -288,19 +288,24 @@ test('SES-156 Piece action refreshes only Piece authority and later tab switches
   const item = host.querySelector('.teacher-assignment-workspace__item')
   const repertoire = item.querySelectorAll('button')[0]
   assert.equal(repertoire.textContent, 'Repertuara Al')
+
+  const piecesBeforeMutation = calls.pieces
+  const requestsBeforeMutation = calls.requests
   await repertoire.dispatchEventAsync({ type: 'click' })
 
   assert.deepEqual(
     calls.pieceActions,
     [['piece-active', 'PLACE_IN_REPERTOIRE']],
   )
-  assert.equal(calls.pieces, 2)
-  assert.equal(calls.requests, 1)
+  assert.equal(calls.pieces, piecesBeforeMutation + 1)
+  assert.equal(calls.requests, requestsBeforeMutation)
 
+  const piecesAfterMutation = calls.pieces
+  const requestsAfterMutation = calls.requests
   await tabs[2].dispatchEventAsync({ type: 'click' })
   await tabs[1].dispatchEventAsync({ type: 'click' })
-  assert.equal(calls.pieces, 2)
-  assert.equal(calls.requests, 1)
+  assert.equal(calls.pieces, piecesAfterMutation)
+  assert.equal(calls.requests, requestsAfterMutation)
 
   handle.destroy()
 })
