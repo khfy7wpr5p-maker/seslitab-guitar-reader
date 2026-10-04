@@ -1,0 +1,197 @@
+import {
+  assertStrictInputObject,
+  isStrictFrozenRecord,
+  normalizeNullableTimestamp,
+  normalizeRequiredId,
+  normalizeRequiredText,
+  normalizeRequiredTimestamp,
+} from './teacherDeliveryContractValidation.js'
+
+export const STUDENT_WORK_REQUEST_SCHEMA_VERSION = 1
+export const STUDENT_WORK_REQUEST_STATE = Object.freeze({
+  PENDING: 'PENDING',
+  CONVERTED: 'CONVERTED',
+  REVOKED: 'REVOKED',
+})
+export const STUDENT_WORK_REQUEST_TARGET = Object.freeze({
+  ACTIVE: 'ACTIVE',
+  REPERTOIRE: 'REPERTOIRE',
+})
+export const STUDENT_WORK_REQUEST_MAX_TITLE_LENGTH = 200
+
+const INPUT_FIELDS = Object.freeze([
+  'requestId',
+  'teacherId',
+  'studentId',
+  'title',
+  'state',
+  'requestedAt',
+  'updatedAt',
+  'pieceAssignmentId',
+  'targetState',
+  'revokedAt',
+])
+const RECORD_FIELDS = Object.freeze([
+  'schemaVersion',
+  ...INPUT_FIELDS,
+])
+
+function normalizeNullableId(value, fieldName) {
+  return value === null || value === undefined
+    ? null
+    : normalizeRequiredId(value, fieldName)
+}
+
+function normalizeState(value) {
+  if (!Object.values(STUDENT_WORK_REQUEST_STATE).includes(value)) {
+    throw new TypeError('state is unsupported.')
+  }
+  return value
+}
+
+function normalizeTarget(value) {
+  if (value === null || value === undefined) return null
+  if (!Object.values(STUDENT_WORK_REQUEST_TARGET).includes(value)) {
+    throw new TypeError('targetState is unsupported.')
+  }
+  return value
+}
+
+export function createStudentWorkRequest(input = {}) {
+  assertStrictInputObject(input, INPUT_FIELDS, 'StudentWorkRequest')
+  const state = normalizeState(input.state)
+  const pieceAssignmentId = normalizeNullableId(
+    input.pieceAssignmentId,
+    'pieceAssignmentId',
+  )
+  const targetState = normalizeTarget(input.targetState)
+  const revokedAt = normalizeNullableTimestamp(input.revokedAt, 'revokedAt')
+
+  if (
+    state === STUDENT_WORK_REQUEST_STATE.PENDING &&
+    (pieceAssignmentId !== null || targetState !== null || revokedAt !== null)
+  ) {
+    throw new Error('PENDING work request cannot contain terminal fields.')
+  }
+  if (
+    state === STUDENT_WORK_REQUEST_STATE.CONVERTED &&
+    (pieceAssignmentId === null || targetState === null || revokedAt !== null)
+  ) {
+    throw new Error('CONVERTED work request requires Piece evidence and no revoke.')
+  }
+  if (
+    state === STUDENT_WORK_REQUEST_STATE.REVOKED &&
+    (pieceAssignmentId !== null || targetState !== null || revokedAt === null)
+  ) {
+    throw new Error('REVOKED work request requires revokedAt only.')
+  }
+
+  return Object.freeze({
+    schemaVersion: STUDENT_WORK_REQUEST_SCHEMA_VERSION,
+    requestId: normalizeRequiredId(input.requestId, 'requestId'),
+    teacherId: normalizeRequiredId(input.teacherId, 'teacherId'),
+    studentId: normalizeRequiredId(input.studentId, 'studentId'),
+    title: normalizeRequiredText(
+      input.title,
+      'title',
+      STUDENT_WORK_REQUEST_MAX_TITLE_LENGTH,
+    ),
+    state,
+    requestedAt: normalizeRequiredTimestamp(input.requestedAt, 'requestedAt'),
+    updatedAt: normalizeRequiredTimestamp(input.updatedAt, 'updatedAt'),
+    pieceAssignmentId,
+    targetState,
+    revokedAt,
+  })
+}
+
+export function createPendingStudentWorkRequest({
+  requestId,
+  teacherId,
+  studentId,
+  title,
+  requestedAt,
+}) {
+  return createStudentWorkRequest({
+    requestId,
+    teacherId,
+    studentId,
+    title,
+    state: STUDENT_WORK_REQUEST_STATE.PENDING,
+    requestedAt,
+    updatedAt: requestedAt,
+    pieceAssignmentId: null,
+    targetState: null,
+    revokedAt: null,
+  })
+}
+
+export function convertStudentWorkRequest(
+  current,
+  { pieceAssignmentId, targetState, changedAt },
+) {
+  if (!isStudentWorkRequest(current)) {
+    throw new TypeError('current work request must be valid.')
+  }
+  if (current.state === STUDENT_WORK_REQUEST_STATE.CONVERTED) {
+    if (
+      current.pieceAssignmentId === pieceAssignmentId &&
+      current.targetState === targetState
+    ) {
+      return current
+    }
+    throw new Error('work request terminal transition conflict.')
+  }
+  if (current.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
+    throw new Error('work request cannot be converted from its current state.')
+  }
+  return createStudentWorkRequest({
+    ...current,
+    state: STUDENT_WORK_REQUEST_STATE.CONVERTED,
+    updatedAt: changedAt,
+    pieceAssignmentId,
+    targetState,
+    revokedAt: null,
+  })
+}
+
+export function revokeStudentWorkRequest(current, { changedAt }) {
+  if (!isStudentWorkRequest(current)) {
+    throw new TypeError('current work request must be valid.')
+  }
+  if (current.state === STUDENT_WORK_REQUEST_STATE.REVOKED) return current
+  if (current.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
+    throw new Error('work request cannot be revoked from its current state.')
+  }
+  return createStudentWorkRequest({
+    ...current,
+    state: STUDENT_WORK_REQUEST_STATE.REVOKED,
+    updatedAt: changedAt,
+    pieceAssignmentId: null,
+    targetState: null,
+    revokedAt: changedAt,
+  })
+}
+
+export function isStudentWorkRequest(value) {
+  try {
+    return (
+      value?.schemaVersion === STUDENT_WORK_REQUEST_SCHEMA_VERSION &&
+      isStrictFrozenRecord(value, RECORD_FIELDS) &&
+      createStudentWorkRequest({
+        requestId: value.requestId,
+        teacherId: value.teacherId,
+        studentId: value.studentId,
+        title: value.title,
+        state: value.state,
+        requestedAt: value.requestedAt,
+        updatedAt: value.updatedAt,
+        pieceAssignmentId: value.pieceAssignmentId,
+        targetState: value.targetState,
+        revokedAt: value.revokedAt,
+      }).requestId === value.requestId
+    )
+  } catch {
+    return false
+  }
+}
