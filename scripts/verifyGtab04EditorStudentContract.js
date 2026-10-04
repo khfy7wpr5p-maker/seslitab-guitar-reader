@@ -58,7 +58,7 @@ const POSITION_BY_MIDI = new Map([
 const sourceSession = editor.createSourceSession(SOURCE_XML)
 assert.equal(sourceSession.events.length, 4)
 assert.deepEqual(
-  [...new Set(sourceSession.events.map((event) => event.voice))].sort(),
+  [...new Set(sourceSession.events.map((event) => event.voice))].sort((left, right) => Number(left) - Number(right)),
   ['1', '2', '3', '4'],
 )
 assert.equal(sourceSession.groups.length, 1)

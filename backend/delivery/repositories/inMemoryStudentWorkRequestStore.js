@@ -1,5 +1,6 @@
 import {
   isStudentWorkRequest,
+  assertStudentWorkRequestTransition,
   STUDENT_WORK_REQUEST_STATE,
 } from '../../../src/services/studentWorkRequest.js'
 import {
@@ -144,12 +145,7 @@ export function createInMemoryStudentWorkRequestStore({
     },
 
     async commitWorkRequestTransition(current, next) {
-      if (!isStudentWorkRequest(current) || !isStudentWorkRequest(next)) {
-        throw new TypeError('work request transition rows must be valid.')
-      }
-      if (current.requestId !== next.requestId) {
-        throw new Error('work request transition identity mismatch.')
-      }
+      assertStudentWorkRequestTransition(current, next)
       const stored = requestById.get(current.requestId) ?? null
       if (stored === null || !sameRecord(stored, current)) {
         if (stored !== null && sameRecord(stored, next)) return stored

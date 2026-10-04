@@ -218,3 +218,34 @@ export function isStudentWorkRequest(value) {
     return false
   }
 }
+
+// Store boundaries must validate the relationship between valid rows, not just
+// their individual shapes. Every terminal replay is the exact same snapshot.
+export function assertStudentWorkRequestTransition(current, next) {
+  if (!isStudentWorkRequest(current) || !isStudentWorkRequest(next)) {
+    throw new TypeError('work request transition rows must be valid.')
+  }
+  const immutableFields = [
+    'schemaVersion', 'requestId', 'teacherId', 'studentId', 'title', 'requestedAt',
+  ]
+  if (immutableFields.some((field) => current[field] !== next[field])) {
+    throw new Error('work request immutable authority transition conflict.')
+  }
+  if (RECORD_FIELDS.every((field) => current[field] === next[field])) return
+  if (current.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
+    throw new Error('work request terminal transition conflict.')
+  }
+  let expected = current
+  if (next.state === STUDENT_WORK_REQUEST_STATE.CONVERTED) {
+    expected = convertStudentWorkRequest(current, {
+      pieceAssignmentId: next.pieceAssignmentId,
+      targetState: next.targetState,
+      changedAt: next.updatedAt,
+    })
+  } else if (next.state === STUDENT_WORK_REQUEST_STATE.REVOKED) {
+    expected = revokeStudentWorkRequest(current, { changedAt: next.updatedAt })
+  }
+  if (!RECORD_FIELDS.every((field) => expected[field] === next[field])) {
+    throw new Error('work request transition snapshot conflict.')
+  }
+}

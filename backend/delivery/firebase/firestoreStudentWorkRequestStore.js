@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import {
   createStudentWorkRequest,
   isStudentWorkRequest,
+  assertStudentWorkRequestTransition,
   STUDENT_WORK_REQUEST_STATE,
 } from '../../../src/services/studentWorkRequest.js'
 import {
@@ -190,12 +191,7 @@ export function createFirestoreStudentWorkRequestStore({ firestore } = {}) {
     },
 
     async commitWorkRequestTransition(current, next) {
-      if (!isStudentWorkRequest(current) || !isStudentWorkRequest(next)) {
-        throw new TypeError('work request transition rows must be valid.')
-      }
-      if (current.requestId !== next.requestId) {
-        throw new Error('work request transition identity mismatch.')
-      }
+      assertStudentWorkRequestTransition(current, next)
       const requestRef = requests.doc(documentId(current.requestId))
       return db.runTransaction(async (transaction) => {
         const snap = await transaction.get(requestRef)
