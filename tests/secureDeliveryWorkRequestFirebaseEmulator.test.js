@@ -68,6 +68,8 @@ after(async () => {
 
 test('SES-170 Firestore request authority stays separate from pool and commits exact ACTIVE Piece evidence', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreStudentWorkRequestStore({ firestore: db })
+  const poolSizeBefore =
+    (await db.collection('poolPublications').get()).size
   const grant = createTeacherStudentGrant({
     teacherId: 'ses170-teacher-a',
     studentId: 'ses170-student-a',
@@ -112,8 +114,9 @@ test('SES-170 Firestore request authority stays separate from pool and commits e
     'CONVERTED',
   )
 
-  const poolSnapshot = await db.collection('poolPublications').get()
-  assert.equal(poolSnapshot.size, 0)
+  const poolSizeAfter =
+    (await db.collection('poolPublications').get()).size
+  assert.equal(poolSizeAfter, poolSizeBefore)
 })
 
 test('SES-170 conversion transaction fails closed when Piece becomes revoked before commit', { skip: !EMULATOR_AVAILABLE }, async () => {
