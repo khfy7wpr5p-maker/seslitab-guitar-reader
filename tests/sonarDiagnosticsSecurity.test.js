@@ -23,10 +23,11 @@ async function harness(t, options = {}) {
     if (options.redirect && url.pathname === '/api/ce/task') {
       res.writeHead(302, { location: options.redirect }).end(); return
     }
+    if (options.ceHttp && url.pathname === '/api/ce/task') { res.writeHead(options.ceHttp).end('{}'); return }
     let body
     if (url.pathname.endsWith('/actions/workflows/regression-quality.yml')) body = options.workflow ?? workflow
     else if (url.pathname.endsWith('/actions/runs/123')) body = options.run ?? trustedRun()
-    else if (url.pathname === '/api/ce/task') body = { task: { id: 'task_123', componentKey: 'project:key',
+    else if (url.pathname === '/api/ce/task') body = options.ceResponse ?? { task: { id: 'task_123', componentKey: 'project:key',
       status: 'SUCCESS', analysisId: 'analysis_123', ...options.task } }
     else if (url.pathname === '/api/project_analyses/search') {
       const key = options.analysisKeys?.[analysisReads++] ?? 'analysis_123'
@@ -212,3 +213,39 @@ test('collects every issue page and preserves raw component/rule evidence under 
   assert.deepEqual(raw.components.map((entry) => entry.key), ['component-1', 'component-2'])
   assert.deepEqual(raw.rules.map((entry) => entry.key), ['rule-1', 'rule-2'])
 })
+
+for (const status of ['FAILED', 'CANCELED', 'UNRECOGNIZED', null]) {
+  test(`CE ${JSON.stringify(status)} fails closed with bounded non-private evidence`, async (t) => {
+    const h = await harness(t, { task: { status, errorMessage: 'private-score-name local-sonar-fixture\nIllegalStateException: internal data' } })
+    const result = await h.run('export')
+    assert.notEqual(result.status, 0)
+    const failure = JSON.parse(await readFile(join(h.directory, 'artifacts/sonarqube-ce-failure/status.json')))
+    assert.equal(failure.taskId, 'task_123')
+    assert.equal(failure.status, ['FAILED', 'CANCELED'].includes(status) ? status : 'INVALID_STATUS')
+    assert.equal(failure.errorMessagePresent, true)
+    assert.equal(failure.errorCategory, 'IllegalStateException')
+    assert.ok(!JSON.stringify(failure).includes('private-score-name'))
+    assert.ok(!result.stderr.includes('private-score-name'))
+    assert.ok(!h.requests.some((req) => req.path === '/api/issues/search'))
+    await assert.rejects(access(join(h.directory, 'artifacts/sonarqube-diagnostics')))
+  })
+}
+
+for (const [label, options, status, reason] of [
+  ['missing task', { ceResponse: {} }, 'INVALID_SCHEMA', 'invalid-ce-task-schema'],
+  ['wrong identity', { task: { id: 'other-task' } }, 'IDENTITY_MISMATCH', 'ce-task-project-branch-mismatch'],
+  ['wrong project', { task: { componentKey: 'other-project' } }, 'IDENTITY_MISMATCH', 'ce-task-project-branch-mismatch'],
+  ['missing analysis', { task: { analysisId: '' } }, 'INVALID_SCHEMA', 'invalid-exact-analysis-id'],
+  ['unauthorized', { ceHttp: 401 }, 'API_ERROR', 'ce-http-401'],
+  ['not found', { ceHttp: 404 }, 'API_ERROR', 'ce-http-404'],
+]) {
+  test(`CE ${label} is distinguished without issue publication`, async (t) => {
+    const h = await harness(t, options)
+    assert.notEqual((await h.run('export')).status, 0)
+    const failure = JSON.parse(await readFile(join(h.directory, 'artifacts/sonarqube-ce-failure/status.json')))
+    assert.equal(failure.status, status)
+    assert.equal(failure.reason, reason)
+    assert.equal(h.requests.length, 1)
+    await assert.rejects(access(join(h.directory, 'artifacts/sonarqube-diagnostics')))
+  })
+}

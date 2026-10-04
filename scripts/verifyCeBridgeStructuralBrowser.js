@@ -1,9 +1,11 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   createS14CdpProofSession,
   musicXmlUploadExpression,
 } from './s14CdpProofHarness.js'
+
+import { framePayloadScript } from './ceBridgeFixtureTransport.js'
 
 const SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
@@ -67,6 +69,10 @@ async function openSource(session, fileName) {
     `${fileName} Smoosic handoff`,
   )
   if (String(status).startsWith('ERROR:')) throw new Error(String(status).slice(6))
+  // The iframe's loaded label precedes completion of the host transfer poll.
+  // Wait for the parent to finish that same handoff before applying edits.
+  await waitFor(`document.getElementById('smoosic-editor-host-status')?.dataset.kind === 'ready'`,
+    `${fileName} parent handoff completion`)
   await waitFor(
     `!!document.getElementById('smoosic-editor-frame')?.contentDocument?.querySelector('button[data-key="."]')`,
     '2× süre control',
@@ -297,15 +303,28 @@ async function deliverForgedManifest(session, request, mode) {
       shapeOk: true,
       semanticOk: true,
     };
-    const script = frame.contentDocument.createElement('script');
-    script.textContent = 'parent.postMessage('
-      + JSON.stringify(payload).replace(/</g, '\\\\u003c')
-      + ', location.origin);';
-    frame.contentDocument.body.appendChild(script);
-    script.remove();
-    return true;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { window.removeEventListener('message', handler); reject(new Error('Forged frame payload was not received')); }, 5000);
+      const handler = (event) => {
+        if (event.data?.requestId !== payload.requestId || event.data?.type !== payload.type) return;
+        window.removeEventListener('message', handler);
+        clearTimeout(timer);
+        if (event.source !== frame.contentWindow || event.origin !== location.origin
+            || JSON.stringify(event.data) !== JSON.stringify(payload)) {
+          reject(new Error('Forged frame source/origin/serialization mismatch'));
+          return;
+        }
+        resolve({ sameFrame: true, sameOrigin: true, exactPayload: true, sourceRevision: payload.sourceRevision });
+      };
+      window.addEventListener('message', handler);
+      const script = frame.contentDocument.createElement('script');
+      script.textContent = (${framePayloadScript.toString()})(payload);
+      frame.contentDocument.body.appendChild(script);
+      script.remove();
+    });
   })()`)
   if (!delivered) throw new Error(`Could not deliver ${mode} manifest proof.`)
+  return delivered
 }
 
 async function restoreForgedManifest(session) {
@@ -421,7 +440,8 @@ async function runMainProof() {
     if (!await armForgedManifest(session)) throw new Error('Could not arm malformed manifest proof.')
     await clickApply(session)
     const malformedRequest = await capturedWritebackRequest(session, 'captured malformed provenance request')
-    await deliverForgedManifest(session, malformedRequest, 'malformed')
+    const beforeMalformed = await visibleFirstNote(session)
+    const malformedTransport = await deliverForgedManifest(session, malformedRequest, 'malformed')
     const malformedStatus = await waitFor(
       `(() => {
         const text = String(document.getElementById('smoosic-editor-host-status')?.textContent || '');
@@ -430,12 +450,14 @@ async function runMainProof() {
       'malformed action provenance',
       16000,
     )
-    evidence.malformed = { status: malformedStatus }
+    const afterMalformed = await visibleFirstNote(session)
+    if (afterMalformed.xml !== beforeMalformed.xml) throw new Error('Malformed manifest changed accepted MusicXML.')
+    evidence.malformed = { status: malformedStatus, transport: malformedTransport, acceptedSourceUnchanged: true }
 
     if (!await armForgedManifest(session)) throw new Error('Could not arm stale manifest proof.')
     await clickApply(session)
     const staleRequest = await capturedWritebackRequest(session, 'captured stale provenance request')
-    await deliverForgedManifest(session, staleRequest, 'stale')
+    const staleTransport = await deliverForgedManifest(session, staleRequest, 'stale')
     const staleStatus = await waitFor(
       `(() => {
         const text = String(document.getElementById('smoosic-editor-host-status')?.textContent || '');
@@ -448,13 +470,19 @@ async function runMainProof() {
     if (staleVisible.duration !== 1 || staleVisible.step !== 'C') {
       throw new Error('Malformed/stale manifest changed the accepted revision.')
     }
-    evidence.stale = { status: staleStatus }
+    if (staleVisible.xml !== beforeMalformed.xml || staleRequest.sourceRevision !== malformedRequest.sourceRevision) {
+      throw new Error('Rejected provenance changed the accepted source or revision.')
+    }
+    evidence.stale = { status: staleStatus, transport: staleTransport, acceptedSourceUnchanged: true }
     await restoreForgedManifest(session)
   } finally {
     try { await restoreForgedManifest(session) } catch {}
     await session?.close()
   }
 }
+
+// A failed rerun must never leave a previous successful evidence artifact.
+rmSync(resolve('artifacts/ce-bridge-structural-browser.json'), { force: true })
 
 try {
   await runRuntimeUnavailableProof()
