@@ -1,5 +1,6 @@
 import {
   isStudentWorkRequest,
+  STUDENT_WORK_REQUEST_STATE,
 } from '../../../src/services/studentWorkRequest.js'
 import {
   isTeacherStudentGrant,
@@ -8,6 +9,7 @@ import {
   isPieceAssignment,
 } from '../../../src/services/pieceAssignment.js'
 import {
+  createInitialPieceLifecycleRecord,
   isPieceAssignmentLifecycleRecord,
 } from '../../../src/services/pieceAssignmentLifecycleRecord.js'
 import {
@@ -20,6 +22,23 @@ function exactJson(value) {
 
 function sameRecord(left, right) {
   return left === right || exactJson(left) === exactJson(right)
+}
+
+function assertConversionEvidence(next, pieceById, lifecycleById) {
+  if (next.state !== STUDENT_WORK_REQUEST_STATE.CONVERTED) return
+  const piece = pieceById.get(next.pieceAssignmentId) ?? null
+  const lifecycle = piece === null
+    ? null
+    : lifecycleById.get(next.pieceAssignmentId) ?? createInitialPieceLifecycleRecord(piece)
+  if (
+    piece === null ||
+    lifecycle.piece.pieceAssignmentId !== next.pieceAssignmentId ||
+    piece.studentId !== next.studentId ||
+    lifecycle.revokedAt !== null ||
+    lifecycle.state !== next.targetState
+  ) {
+    throw new Error('work-request-piece-evidence-mismatch')
+  }
 }
 
 export function createInMemoryStudentWorkRequestStore({
@@ -118,8 +137,9 @@ export function createInMemoryStudentWorkRequestStore({
         'pieceAssignmentId',
       )
       const piece = pieceById.get(id) ?? null
-      const lifecycle = pieceLifecycleById.get(id) ?? null
-      if (piece === null || lifecycle === null) return null
+      if (piece === null) return null
+      const lifecycle =
+        pieceLifecycleById.get(id) ?? createInitialPieceLifecycleRecord(piece)
       return Object.freeze({ piece, lifecycle })
     },
 
@@ -132,9 +152,11 @@ export function createInMemoryStudentWorkRequestStore({
       }
       const stored = requestById.get(current.requestId) ?? null
       if (stored === null || !sameRecord(stored, current)) {
+        if (stored !== null && sameRecord(stored, next)) return stored
         throw new Error('work request current-state conflict.')
       }
       if (sameRecord(stored, next)) return stored
+      assertConversionEvidence(next, pieceById, pieceLifecycleById)
       const updated = new Map(requestById)
       updated.set(next.requestId, next)
       requestById = updated
