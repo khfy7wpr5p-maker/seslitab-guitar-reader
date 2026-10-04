@@ -2,8 +2,8 @@ import {
   createTeacherAssignmentComposerService,
 } from './services/teacherAssignmentComposerService.js'
 import {
-  mountTeacherAssignmentComposerUi,
-} from './teacherAssignmentComposerUi.js'
+  mountTeacherAssignmentWorkspaceUi,
+} from './teacherAssignmentWorkspaceUi.js'
 
 function requiredTeacherId(value) {
   if (
@@ -73,10 +73,11 @@ export function createTeacherAssignmentProductionComposition({
         )
       if (results) results.hidden = false
 
-      return mountTeacherAssignmentComposerUi({
+      return mountTeacherAssignmentWorkspaceUi({
         root,
         host,
-        service,
+        composerService: service,
+        managementClient: secureDeliveryClient,
         createDraftId,
       })
     },
