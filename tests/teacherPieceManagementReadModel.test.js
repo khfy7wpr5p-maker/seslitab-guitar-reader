@@ -411,7 +411,6 @@ test('SES-155 teacher management router authenticates reads and gates mutations'
         providerSubject: 'uid-teacher-a',
         actionKey: 'request-a',
         action: 'REJECT',
-        piece: undefined,
       },
     ],
   ])

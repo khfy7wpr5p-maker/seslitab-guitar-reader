@@ -236,7 +236,6 @@ export function createSecureDeliveryApiClient({
     applyTeacherWorkRequestAction(
       actionKey,
       action,
-      piece,
     ) {
       const key = encodeURIComponent(
         String(actionKey),
@@ -245,10 +244,27 @@ export function createSecureDeliveryApiClient({
         `teacher/work-requests/${key}/actions`,
         {
           method: 'POST',
-          body:
-            piece === undefined
-              ? { action }
-              : { action, piece },
+          body: { action },
+        },
+      )
+    },
+
+    convertTeacherWorkRequest(
+      actionKey,
+      targetState,
+      composerDraft,
+    ) {
+      const key = encodeURIComponent(
+        String(actionKey),
+      )
+      return request(
+        `teacher/work-requests/${key}/conversions`,
+        {
+          method: 'POST',
+          body: {
+            targetState,
+            composerDraft,
+          },
         },
       )
     },
