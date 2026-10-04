@@ -1,6 +1,6 @@
 # SES-172 exact-main Sonar acceptance follow-up
 
-Status: review preparation. No merge or deployment authorized. SES-170/155–158 remains blocked until an actual merged-main analysis passes, independently of this PR's checks.
+Status: implementation locally verified; PR #314 under review (https://github.com/khfy7wpr5p-maker/seslitab-guitar-reader/pull/314). Fresh exact-head server Sonar acceptance is pending root verification. No merge or deployment authorized. SES-170/155–158 remains blocked until an actual merged-main analysis passes, independently of this PR's checks.
 
 ## Confirmed baseline (public API evidence supplied by root)
 
@@ -36,4 +36,18 @@ The generic legacy sonar-report-task artifact is retained for diagnostics, while
 
 ## Verification record
 
-Results will be updated after clean install, focused adversarial tests, full Node tests, build, browser proof and full/production audit. A PR gate pass does not prove that the currently merged main passes. Final main acceptance requires a subsequent exact-main CE/analysis/gate observation.
+Validated implementation commit: `05f51a2f95232de8b5ad57681721e869f574e9c1`, branch `fix/ses-172-exact-main-sonar-gate`, base `6f9b6f6b1aa9b178f00ea39c0d4925d6cf06670d` (fresh fetch unchanged).
+
+- Clean `npm_config_cache=/workspace/.npm-cache npm ci --ignore-scripts --no-fund --no-audit`: PASS, 796 packages. Initial use of the default unwritable cache failed; rerunning with the documented workspace cache passed without a dependency/lockfile change.
+- Focused Sonar/gate/path/async/workflow/TD-PROD-10 regressions: 93 PASS, 0 FAIL/SKIP (92 in the combined run, plus the subsequently added workflow artifact-selection test; all included in the final full run).
+- `CHROME_BIN=/usr/bin/chromium npm test`: 2527 tests, 2503 PASS, 0 FAIL, 24 pre-existing emulator skips, exit 0, 64.6 seconds. No skip/assertion/timeout changes. First local full invocation through the old shell Chrome wrapper held child pipes open; that invocation was stopped and repeated with the actual browser executable. This is a local launcher issue, not a reproduction of the original CI malformed-action timeout.
+- `npm_config_package_lock=false npm run build`: PASS, exit 0, composition manifest bound to implementation head. Existing large-chunk warnings remain. No tracked generated assets or lockfiles changed.
+- `node scripts/verifyCeBridgeStructuralBrowser.js`: three consecutive PASS, each preserving source/current accepted revision on rejected malformed actions and recording same-frame/same-origin/exact serialization provenance.
+- `npm run test:s16:browser`: 1 PASS, 0 FAIL/SKIP.
+- `npm audit --json` and `npm audit --omit=dev --json`: both exit 0, all severities and total vulnerabilities 0.
+- Focused native Node coverage: postMergeProductionGate.js, studentFixtureOutput.js, verifyExactMainSonar.mjs and writeSonarRunProvenance.mjs each 100% line coverage; the adversarial tests exercise real local HTTP, subprocess CLI, file/symlink/hardlink behavior and the actual embedded GitHub scripts. Coverage is not a claim of branch completeness or server gate acceptance.
+- `git diff --check`: PASS. Security source inventory/exclusions and prior PATH/SSH guards unchanged.
+
+Browser environment: writable XDG configuration and real Chromium; the CDN is proxy-blocked. Proofs use the exact npm-registry jquery 3.6.0 slim asset substituted only into generated dist after the successful normal build. No tracked CDN/product changes; these proofs do not establish CDN reachability. The complete cross-repository Student App Chromium/WebKit qualification is left to PR CI; local tests verify registration Promise completion/rejection and the actual fixed sibling writer's filesystem boundaries.
+
+Evidence logs, audits, repeated browser artifacts and complete patch are retained at `/workspace/.cloud-setup/ses172-exact-main-final`. PR #314 is open; root is checking exact final head CI/Sonar. A PR gate pass does not prove that the currently merged main passes. Main still has the confirmed C/C baseline above until a new exact merged-main CE/analysis/gate observation establishes otherwise. No merge or deployment performed.
