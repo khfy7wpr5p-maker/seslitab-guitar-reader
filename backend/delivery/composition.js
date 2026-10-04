@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import {
   createSecureDeliveryAuthorization,
 } from './authorization/secureDeliveryAuthorization.js'
@@ -9,6 +11,12 @@ import {
   createUnavailableSecureDeliveryRouter,
 } from './http/router.js'
 import {
+  createStudentWorkRequestRouter,
+} from './http/studentWorkRequestRouter.js'
+import {
+  createFirestoreStudentWorkRequestStore,
+} from './firebase/firestoreStudentWorkRequestStore.js'
+import {
   createPreparedAssignmentService,
 } from './services/preparedAssignmentService.js'
 import {
@@ -17,6 +25,9 @@ import {
 import {
   createStudentDeliveryReadService,
 } from './services/studentDeliveryReadService.js'
+import {
+  createStudentWorkRequestService,
+} from './services/studentWorkRequestService.js'
 import {
   createTeacherSecureDeliveryService,
 } from './services/teacherDeliveryService.js'
@@ -51,6 +62,14 @@ function assertFactories(factories) {
     }
   }
   return factories
+}
+
+function supportsWorkRequestStore(firestore) {
+  return Boolean(
+    firestore &&
+    typeof firestore.collection === 'function' &&
+    typeof firestore.runTransaction === 'function'
+  )
 }
 
 export function createSecureDeliveryComposition({
@@ -177,6 +196,29 @@ export function createSecureDeliveryComposition({
       config,
       observeRequest: requestObserver,
     })
+
+  if (supportsWorkRequestStore(admin.firestore)) {
+    const workRequestStore =
+      createFirestoreStudentWorkRequestStore({
+        firestore: admin.firestore,
+      })
+    const workRequestService =
+      createStudentWorkRequestService({
+        authorization,
+        store: workRequestStore,
+        now,
+        createRequestId: () =>
+          `work-request-${randomUUID()}`,
+      })
+    router.use(
+      createStudentWorkRequestRouter({
+        tokenVerifier,
+        service: workRequestService,
+        config,
+        observeRequest: requestObserver,
+      }),
+    )
+  }
 
   return Object.freeze({
     enabled: true,
