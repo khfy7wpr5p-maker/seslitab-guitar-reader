@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url'
 import { readFile, appendFile, mkdir, mkdtemp, writeFile, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -35,7 +36,7 @@ async function requestJson(host, path, query, authorization) {
   let response
   try {
     response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(15000),
-      headers: { authorization, accept: 'application/json' } })
+      headers: { ...(authorization ? { authorization } : {}), accept: 'application/json' } })
   } catch { throw new Error('API request failed') }
   if (!response.ok) throw new Error(`API request rejected: HTTP ${response.status}`)
   try { return await response.json() } catch { throw new Error('Invalid API JSON response') }
@@ -192,6 +193,9 @@ async function exportDiagnostics(env) {
   } finally { await rm(staging, { recursive: true, force: true }) }
 }
 
+export { configuredHost, metadata, requestJson }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 try {
   const command = process.argv[2]
   if (command === 'verify-source') await verifySource(process.env)
@@ -200,4 +204,6 @@ try {
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
+}
+
 }

@@ -18,144 +18,131 @@ jobs:
   exact-main-production-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
-      - name: Reject non-push CI triggers
-        if: ${{ github.event.workflow_run.event != 'push' }}
-        run: |
-          echo "Production Gate requires a CI push run on main."
-          exit 1
+      - name: Validate trusted CI source before checkout
+        id: source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const repository = `${owner}/${repo}`
+            const eventRun = context.payload.workflow_run
+            function validate(run, workflowId) {
+              if (!run || run.repository?.full_name !== repository || run.repository?.fork !== false ||
+                  run.head_repository?.full_name !== repository || run.head_repository?.fork !== false ||
+                  run.event !== 'push' || run.head_branch !== 'main' || run.name !== 'CI' ||
+                  run.status !== 'completed' || run.conclusion !== 'success' || run.run_attempt !== 1 ||
+                  !Number.isSafeInteger(run.id) || run.id < 1 || !/^[0-9a-f]{40}$/.test(run.head_sha ?? '') ||
+                  !['.github/workflows/ci.yml', '.github/workflows/ci.yml@main', '.github/workflows/ci.yml@refs/heads/main'].includes(run.path) ||
+                  run.workflow_id !== workflowId) throw new Error('production-gate-untrusted-ci-source')
+            }
+            const { data: workflow } = await github.rest.actions.getWorkflow({ owner, repo, workflow_id: 'ci.yml' })
+            if (workflow.path !== '.github/workflows/ci.yml' || workflow.name !== 'CI' ||
+                !Number.isSafeInteger(workflow.id) || workflow.id < 1) throw new Error('production-gate-ci-workflow-invalid')
+            validate(eventRun, workflow.id)
+            const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: eventRun.id })
+            validate(run, workflow.id)
+            const { data: main } = await github.rest.repos.getBranch({ owner, repo, branch: 'main' })
+            if (run.id !== eventRun.id || run.head_sha !== eventRun.head_sha || main.commit.sha !== run.head_sha) {
+              throw new Error('production-gate-source-drift')
+            }
+            core.setOutput('sha', run.head_sha)
 
       - name: Checkout exact merged main revision
-        if: ${{ github.event.workflow_run.event == 'push' }}
+        if: ${{ success() && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.repository.fork == false && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_repository.fork == false && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.source.outputs.sha }}
           persist-credentials: false
 
       - name: Set up Node.js 24
-        if: ${{ github.event.workflow_run.event == 'push' }}
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Verify exact-main CI and Regression Quality evidence
-        if: ${{ github.event.workflow_run.event == 'push' }}
+      - name: Select trusted exact-main Regression Quality attempt
+        id: evidence
         uses: actions/github-script@v8
-        env:
-          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
-          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('node:fs')
-            const path = require('node:path')
             const { pathToFileURL } = require('node:url')
-
-            const owner = context.repo.owner
-            const repo = context.repo.repo
+            const { selectPostMergeGitHubEvidence } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/postMergeProductionGate.js`).href)
+            const { owner, repo } = context.repo
             const repository = `${owner}/${repo}`
-            const triggerRunId = Number(process.env.TRIGGER_RUN_ID)
-            const triggerHeadSha = String(process.env.TRIGGER_HEAD_SHA || '').toLowerCase()
-
-            if (!Number.isInteger(triggerRunId) || triggerRunId <= 0) {
-              throw new Error('production-gate-trigger-run-id-invalid')
-            }
-
-            const moduleUrl = pathToFileURL(
-              path.join(
-                process.env.GITHUB_WORKSPACE,
-                'scripts',
-                'postMergeProductionGate.js',
-              ),
-            ).href
-            const { evaluatePostMergeProductionGate } = await import(moduleUrl)
-
-            const { data: triggerRun } =
-              await github.rest.actions.getWorkflowRun({
-                owner,
-                repo,
-                run_id: triggerRunId,
-              })
-
-            if (String(triggerRun.head_sha || '').toLowerCase() !== triggerHeadSha) {
-              throw new Error('production-gate-trigger-sha-drift')
-            }
-            if (triggerRun.run_attempt !== 1) {
-              throw new Error('production-gate-ci-first-attempt-required')
-            }
-
-            const retryable = new Set([
-              'production-gate-regression-missing',
-              'production-gate-regression-pending',
-            ])
-
-            let attestation = null
-            let lastRetryableError = null
-
-            for (let attempt = 0; attempt < 60; attempt += 1) {
-              const { data: mainBranch } = await github.rest.repos.getBranch({
-                owner,
-                repo,
-                branch: 'main',
-              })
-              const currentMainSha =
-                String(mainBranch.commit.sha || '').toLowerCase()
-
-              const { data: runs } =
-                await github.rest.actions.listWorkflowRunsForRepo({
-                  owner,
-                  repo,
-                  head_sha: triggerHeadSha,
-                  event: 'push',
-                  per_page: 100,
-                })
-
-              const regressionRuns = (runs.workflow_runs || [])
-                .filter((run) => run.name === 'Regression Quality')
-
+            const triggerRunId = context.payload.workflow_run.id
+            const { data: ciWorkflow } = await github.rest.actions.getWorkflow({ owner, repo, workflow_id: 'ci.yml' })
+            const { data: regressionWorkflow } = await github.rest.actions.getWorkflow({ owner, repo, workflow_id: 'regression-quality.yml' })
+            if (ciWorkflow.path !== '.github/workflows/ci.yml' || regressionWorkflow.path !== '.github/workflows/regression-quality.yml' ||
+                regressionWorkflow.name !== 'Regression Quality') throw new Error('production-gate-workflow-invalid')
+            const workflowIds = { ci: ciWorkflow.id, regression: regressionWorkflow.id }
+            let selected
+            for (let attempt = 0; attempt < 36; attempt += 1) {
+              const { data: triggerRun } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: triggerRunId })
+              const { data: main } = await github.rest.repos.getBranch({ owner, repo, branch: 'main' })
+              const { data: runs } = await github.rest.actions.listWorkflowRunsForRepo({ owner, repo,
+                head_sha: context.payload.workflow_run.head_sha, event: 'push', per_page: 100 })
               try {
-                attestation = evaluatePostMergeProductionGate({
-                  repository,
-                  triggerRun,
-                  regressionRuns,
-                  currentMainSha,
-                  verifiedAt: new Date().toISOString(),
-                })
+                selected = selectPostMergeGitHubEvidence({ repository, triggerRun, regressionRuns: runs.workflow_runs,
+                  currentMainSha: main.commit.sha, workflowIds, verifiedAt: new Date().toISOString() })
                 break
               } catch (error) {
-                if (!retryable.has(error?.message)) {
-                  throw error
-                }
-                lastRetryableError = error
+                if (!['production-gate-regression-missing', 'production-gate-regression-pending'].includes(error.message)) throw error
               }
-
-              await new Promise((resolve) => setTimeout(resolve, 10000))
+              if (attempt < 35) await new Promise((resolve) => setTimeout(resolve, 10000))
             }
+            if (!selected) throw new Error('production-gate-regression-timeout')
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({ owner, repo,
+              run_id: selected.regressionQuality.runId, per_page: 100 })
+            const matches = artifacts.artifacts.filter((artifact) => artifact.name === selected.artifactName)
+            if (matches.length !== 1 || matches[0].expired || matches[0].workflow_run?.id !== selected.regressionQuality.runId ||
+                matches[0].workflow_run?.head_sha !== selected.headSha) throw new Error('production-gate-attempt-artifact-invalid')
+            fs.mkdirSync('artifacts', { recursive: true })
+            fs.writeFileSync('artifacts/github-gate-input.json', JSON.stringify(selected), { mode: 0o600 })
+            core.setOutput('run_id', String(selected.regressionQuality.runId))
+            core.setOutput('artifact_name', selected.artifactName)
 
-            if (!attestation) {
-              throw new Error(
-                `production-gate-regression-timeout:${lastRetryableError?.message || 'unknown'}`,
-              )
-            }
+      - name: Download exact attempt Sonar metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.evidence.outputs.artifact_name }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.evidence.outputs.run_id }}
+          path: artifacts/sonar-report-task
 
-            const outputDir = path.join(
-              process.env.GITHUB_WORKSPACE,
-              'artifacts',
-            )
-            fs.mkdirSync(outputDir, { recursive: true })
-            fs.writeFileSync(
-              path.join(outputDir, 'production-gate.json'),
-              `${JSON.stringify(attestation, null, 2)}\n`,
-              { encoding: 'utf8', mode: 0o600 },
-            )
+      - name: Verify exact CE and current-main Sonar quality acceptance
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: node scripts/verifyExactMainSonar.mjs
 
-            core.info(
-              `Production Gate PASS for ${attestation.headSha}`,
-            )
+      - name: Recheck main and run attempt before issuing acceptance
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs')
+            const { pathToFileURL } = require('node:url')
+            const { evaluatePostMergeProductionGate } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/postMergeProductionGate.js`).href)
+            const selected = JSON.parse(fs.readFileSync('artifacts/github-gate-input.json', 'utf8'))
+            const sonarEvidence = JSON.parse(fs.readFileSync('artifacts/production-sonar-evidence.json', 'utf8'))
+            const { owner, repo } = context.repo
+            const { data: triggerRun } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: selected.ci.runId })
+            const { data: regression } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: selected.regressionQuality.runId })
+            if (regression.run_attempt !== selected.regressionQuality.runAttempt) throw new Error('production-gate-attempt-changed')
+            const { data: main } = await github.rest.repos.getBranch({ owner, repo, branch: 'main' })
+            const { data: runs } = await github.rest.actions.listWorkflowRunsForRepo({ owner, repo, head_sha: selected.headSha, event: 'push', per_page: 100 })
+            const currentRuns = runs.workflow_runs.map((run) => run.id === regression.id ? regression : run)
+            const projectKeys = [...fs.readFileSync('sonar-project.properties', 'utf8').matchAll(/^sonar\.projectKey=(.*)$/gm)]
+            if (projectKeys.length !== 1) throw new Error('production-gate-project-invalid')
+            const attestation = evaluatePostMergeProductionGate({ repository: selected.repository, triggerRun,
+              regressionRuns: currentRuns, currentMainSha: main.commit.sha,
+              workflowIds: { ci: selected.ci.workflowId, regression: selected.regressionQuality.workflowId },
+              projectKey: projectKeys[0][1], sonarEvidence, verifiedAt: new Date().toISOString() })
+            fs.writeFileSync('artifacts/production-gate.json', JSON.stringify(attestation, null, 2) + '\n', { mode: 0o600 })
+            core.info(`Production Gate PASS for ${attestation.headSha}`)
 
       - name: Upload production-gate attestation
-        if: ${{ github.event.workflow_run.event == 'push' && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: production-gate-attestation-${{ github.event.workflow_run.head_sha }}

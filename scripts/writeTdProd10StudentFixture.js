@@ -1,5 +1,4 @@
-import { writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { writeStudentFixture } from './studentFixtureOutput.js'
 
 import {
   buildTdProd10QualificationFixture,
@@ -33,8 +32,4 @@ const source =
   JSON.stringify(fixture, null, 2) +
   '\n'
 
-await writeFile(
-  resolve(outputPath),
-  source,
-  'utf8',
-)
+await writeStudentFixture(outputPath, source)
