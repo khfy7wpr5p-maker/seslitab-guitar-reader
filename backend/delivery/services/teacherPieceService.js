@@ -453,6 +453,24 @@ export function createTeacherPieceService({
     })
   }
 
+  async function getPieceForTeacher({
+    providerSubject,
+    pieceAssignmentId,
+  } = {}) {
+    const {
+      piece,
+      lifecycle,
+    } = await loadPieceContext({
+      providerSubject,
+      pieceAssignmentId,
+    })
+
+    return Object.freeze({
+      piece,
+      lifecycle,
+    })
+  }
+
   async function applyPieceAction({
     providerSubject,
     pieceAssignmentId,
@@ -612,6 +630,7 @@ export function createTeacherPieceService({
 
   return Object.freeze({
     createPiece,
+    getPieceForTeacher,
     applyPieceAction,
   })
 }
