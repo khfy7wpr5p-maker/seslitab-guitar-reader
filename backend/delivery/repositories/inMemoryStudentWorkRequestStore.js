@@ -61,7 +61,10 @@ export function createInMemoryStudentWorkRequestStore({
     if (!isPieceAssignmentLifecycleRecord(lifecycle)) {
       throw new TypeError('initial Piece lifecycle must be valid.')
     }
-    pieceLifecycleById.set(lifecycle.pieceAssignmentId, lifecycle)
+    pieceLifecycleById.set(
+      lifecycle.piece.pieceAssignmentId,
+      lifecycle,
+    )
   }
 
   return Object.freeze({
