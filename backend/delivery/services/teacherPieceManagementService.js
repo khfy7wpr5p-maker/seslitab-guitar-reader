@@ -162,32 +162,40 @@ export function createTeacherPieceManagementService({
     return Object.freeze({ piece, lifecycle })
   }
 
+  async function pieceRow(entry, piece, providerSubject) {
+    if (piece?.studentId !== entry.studentId) {
+      throw new Error('piece-student-authority-mismatch')
+    }
+    const context = await readPieceContext(piece, providerSubject)
+    const lifecycle = context.lifecycle
+    if (
+      ![
+        PIECE_ASSIGNMENT_STATE.ACTIVE,
+        PIECE_ASSIGNMENT_STATE.COMPLETED,
+        PIECE_ASSIGNMENT_STATE.REPERTOIRE,
+      ].includes(lifecycle.state)
+    ) {
+      throw new Error('piece-read-model-state-invalid')
+    }
+    return lifecycle.revokedAt === null
+      ? pieceDto(context.piece, lifecycle, entry)
+      : null
+  }
+
   async function listPieces({ providerSubject } = {}) {
     const roster = await currentRoster(providerSubject)
-    const rows = []
-    for (const entry of roster.values()) {
-      const pieces = await store.listPieceAssignmentsForStudent(entry.studentId)
-      if (!Array.isArray(pieces)) throw new Error('piece-read-model-invalid')
-      for (const piece of pieces) {
-        if (piece?.studentId !== entry.studentId) {
-          throw new Error('piece-student-authority-mismatch')
-        }
-        const context = await readPieceContext(piece, providerSubject)
-        const lifecycle = context.lifecycle
-        if (
-          ![
-            PIECE_ASSIGNMENT_STATE.ACTIVE,
-            PIECE_ASSIGNMENT_STATE.COMPLETED,
-            PIECE_ASSIGNMENT_STATE.REPERTOIRE,
-          ].includes(lifecycle.state)
-        ) {
-          throw new Error('piece-read-model-state-invalid')
-        }
-        if (lifecycle.revokedAt === null) {
-          rows.push(pieceDto(context.piece, lifecycle, entry))
-        }
-      }
-    }
+    const groups = await Promise.all(
+      [...roster.values()].map(async (entry) => {
+        const pieces = await store.listPieceAssignmentsForStudent(entry.studentId)
+        if (!Array.isArray(pieces)) throw new Error('piece-read-model-invalid')
+        return Promise.all(
+          pieces.map((piece) =>
+            pieceRow(entry, piece, providerSubject),
+          ),
+        )
+      }),
+    )
+    const rows = groups.flat().filter((row) => row !== null)
     rows.sort((left, right) =>
       left.assignedAt === right.assignedAt
         ? left.actionKey.localeCompare(right.actionKey)
