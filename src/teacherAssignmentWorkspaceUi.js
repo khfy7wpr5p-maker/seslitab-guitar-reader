@@ -309,7 +309,7 @@ export function mountTeacherAssignmentWorkspaceUi({
     dialog.appendChild(cancel)
     dialog.appendChild(confirm)
     managementPanel.appendChild(dialog)
-    cancel.focus()
+    cancel.focus?.()
   }
 
   async function mutatePiece(row, action, successMessage) {
@@ -359,24 +359,23 @@ export function mountTeacherAssignmentWorkspaceUi({
   }
 
   function renderRequestActions(article, row) {
-    const active = actionButton(
+    for (const label of [
       'Aktife Al',
-      () => {
-        managementStatus.textContent =
-          'Bu istek için içerik kanıtı hazırlanmalıdır. Yeni Ödev ekranından SCORE veya akor seçin.'
-        selectPrimary(PRIMARY_VIEW.NEW)
-      },
-    )
-    const repertoire = actionButton(
       'Doğrudan Repertuara Al',
-      () => {
-        managementStatus.textContent =
-          'Doğrudan repertuar için önce SCORE veya akor içerik kanıtı hazırlanmalıdır.'
-        selectPrimary(PRIMARY_VIEW.NEW)
-      },
+    ]) {
+      const button = actionButton(label, () => {})
+      button.disabled = true
+      button.setAttribute('aria-disabled', 'true')
+      article.appendChild(button)
+    }
+    const hint = element(
+      root,
+      'p',
+      'teacher-assignment-workspace__request-hint',
     )
-    article.appendChild(active)
-    article.appendChild(repertoire)
+    hint.textContent =
+      'İçerik kanıtı güvenli bağlanana kadar bu dönüşüm kapalıdır.'
+    article.appendChild(hint)
     article.appendChild(
       actionButton('Kaldır', () =>
         confirmRemoval(
@@ -471,7 +470,7 @@ export function mountTeacherAssignmentWorkspaceUi({
     const button = element(
       root,
       'button',
-      'teacher-assignment-workspace__primary-tab',
+      'tab-btn teacher-assignment-workspace__primary-tab',
     )
     button.type = 'button'
     button.setAttribute('role', 'tab')
@@ -491,7 +490,7 @@ export function mountTeacherAssignmentWorkspaceUi({
     const button = element(
       root,
       'button',
-      'teacher-assignment-workspace__management-tab',
+      'tab-btn teacher-assignment-workspace__management-tab',
     )
     button.type = 'button'
     button.setAttribute('role', 'tab')
