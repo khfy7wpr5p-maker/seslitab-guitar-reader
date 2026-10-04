@@ -316,13 +316,17 @@ test('SES-156 Kaldır confirmation exposes one-way warning and Cancel-first cont
 
   const dialog = host.querySelector('[role="alertdialog"]')
   assert.ok(dialog)
-  assert.match(dialog.textContent, /Yeni Etüt/)
-  assert.match(dialog.textContent, /Ada/)
-  assert.match(dialog.textContent, /geri alınamaz/)
+  const dialogText = dialog.children
+    .map((child) => child.textContent)
+    .join(' ')
+  assert.match(dialogText, /Yeni Etüt/)
+  assert.match(dialogText, /Ada/)
+  assert.match(dialogText, /geri alınamaz/)
   assert.deepEqual(
     dialog.querySelectorAll('button').map((button) => button.textContent),
     ['İptal', 'Kaldır'],
   )
+  assert.equal(dialog.querySelectorAll('button')[0].focused, true)
 
   handle.destroy()
 })
