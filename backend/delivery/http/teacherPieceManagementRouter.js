@@ -115,11 +115,20 @@ export function createTeacherPieceManagementRouter({
     try {
       if (!config.enabled) throw new Error('secure-delivery-feature-disabled')
       if (!config.writesEnabled) throw new Error('secure-delivery-writes-disabled')
+      assertStrictInputObject(
+        req.body ?? {},
+        ['action'],
+        'teacher work-request action',
+      )
+      if (req.body?.action !== 'REJECT') {
+        throw new TypeError(
+          'work-request-conversion-requires-request-bound-composer',
+        )
+      }
       const data = await service.applyPendingRequestAction({
         providerSubject: await providerSubject(req, tokenVerifier),
         actionKey: req.params.actionKey,
-        action: req.body?.action,
-        piece: req.body?.piece,
+        action: req.body.action,
       })
       return res.status(200).json({ success: true, data })
     } catch (error) {
