@@ -195,12 +195,60 @@ export function createSecureDeliveryApiClient({
       )
     },
 
+    listTeacherPieces() {
+      return request(
+        'teacher/pieces',
+      )
+    },
+
     createTeacherPiece(input) {
       return request(
         'teacher/pieces',
         {
           method: 'POST',
           body: input,
+        },
+      )
+    },
+
+    applyPieceAction(
+      pieceAssignmentId,
+      action,
+    ) {
+      const id = encodeURIComponent(
+        String(pieceAssignmentId),
+      )
+      return request(
+        `teacher/pieces/${id}/actions`,
+        {
+          method: 'POST',
+          body: { action },
+        },
+      )
+    },
+
+    listTeacherWorkRequests() {
+      return request(
+        'teacher/work-requests',
+      )
+    },
+
+    applyTeacherWorkRequestAction(
+      actionKey,
+      action,
+      piece,
+    ) {
+      const key = encodeURIComponent(
+        String(actionKey),
+      )
+      return request(
+        `teacher/work-requests/${key}/actions`,
+        {
+          method: 'POST',
+          body:
+            piece === undefined
+              ? { action }
+              : { action, piece },
         },
       )
     },
