@@ -96,21 +96,47 @@ async function exportDiagnostics(env) {
   const { host, project, taskId } = await metadata(env)
   const authorization = 'Basic ' + Buffer.from(requireValue(env.SONAR_TOKEN, 'Sonar token') + ':').toString('base64')
   const get = (path, query) => requestJson(host, path, query, authorization)
+  async function failCe(status, reason, task = {}) {
+    // Never publish raw server errors, stack traces, source data or credentials.
+    const errorCategory = ['IllegalStateException', 'IllegalArgumentException', 'OutOfMemoryError']
+      .find((name) => typeof task.errorMessage === 'string' && task.errorMessage.includes(name)) ?? 'UNCLASSIFIED'
+    const failureDirectory = 'artifacts/sonarqube-ce-failure'
+    await mkdir(failureDirectory, { recursive: true })
+    await writeFile(join(failureDirectory, 'status.json'), JSON.stringify({ taskId, projectKey: project,
+      status, reason, errorMessagePresent: typeof task.errorMessage === 'string' && task.errorMessage.length > 0,
+      errorCategory }))
+    throw new Error(`CE task did not succeed: status=${status}; reason=${reason}; category=${errorCategory}`)
+  }
   let analysisId
   for (let attempt = 0; attempt < 120; attempt++) {
-    const { task } = await get('/api/ce/task', { id: taskId })
-    if (task?.id !== taskId || task.componentKey !== project || (task.branch && task.branch !== 'main')) {
-      throw new Error('CE task identity/project/branch mismatch')
+    let response
+    try { response = await get('/api/ce/task', { id: taskId }) }
+    catch (error) {
+      const httpStatus = /^API request rejected: HTTP ([0-9]{3})$/.exec(error.message)?.[1]
+      await failCe('API_ERROR', httpStatus ? `ce-http-${httpStatus}`
+        : error.message === 'Invalid API JSON response' ? 'invalid-ce-json' : 'ce-request-failed')
+    }
+    const task = response?.task
+    if (!task || typeof task !== 'object' || Array.isArray(task) ||
+        typeof task.id !== 'string' || typeof task.componentKey !== 'string') {
+      await failCe('INVALID_SCHEMA', 'invalid-ce-task-schema')
+    }
+    if (task.id !== taskId || task.componentKey !== project || (task.branch && task.branch !== 'main')) {
+      await failCe('IDENTITY_MISMATCH', 'ce-task-project-branch-mismatch')
     }
     if (task.status === 'SUCCESS') {
-      if (!ID.test(task.analysisId ?? '')) throw new Error('Invalid exact analysis ID')
+      if (!ID.test(task.analysisId ?? '')) await failCe('INVALID_SCHEMA', 'invalid-exact-analysis-id')
       analysisId = task.analysisId
       break
     }
-    if (!['PENDING', 'IN_PROGRESS'].includes(task.status)) throw new Error('CE task did not succeed')
+    if (!['PENDING', 'IN_PROGRESS'].includes(task.status)) {
+      const status = ['FAILED', 'CANCELED'].includes(task.status) ? task.status : 'INVALID_STATUS'
+      await failCe(status, status === 'FAILED' ? 'upstream-compute-failure'
+        : status === 'CANCELED' ? 'upstream-compute-canceled' : 'unexpected-ce-status-schema', task)
+    }
     if (attempt < 119) await new Promise((resolve) => setTimeout(resolve, 5000))
   }
-  if (!analysisId) throw new Error('Exact CE task timed out')
+  if (!analysisId) await failCe('TIMEOUT', 'exact-ce-task-poll-budget-exhausted')
   async function requireCurrentAnalysis() {
     const result = await get('/api/project_analyses/search', { project, branch: 'main', ps: '1' })
     if (result.analyses?.[0]?.key !== analysisId) throw new Error('Main analysis changed or exact analysis is stale')

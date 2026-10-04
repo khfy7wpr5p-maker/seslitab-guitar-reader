@@ -74,6 +74,15 @@ jobs:
           SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
         run: node scripts/sonarDiagnostics.mjs export
 
+      - name: Upload bounded CE failure status
+        if: failure() && steps.export.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-ce-failure
+          path: artifacts/sonarqube-ce-failure/status.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build diagnostic summary
         shell: bash
         run: |
