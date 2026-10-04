@@ -43,6 +43,7 @@ function teacherInternalRequestDto(request) {
     requestedAt: request.requestedAt,
     updatedAt: request.updatedAt,
     targetState: request.targetState,
+    pieceAssignmentId: request.pieceAssignmentId,
   })
 }
 
@@ -106,6 +107,23 @@ export function createStudentWorkRequestService({
         .filter((row) => row.state === STUDENT_WORK_REQUEST_STATE.PENDING)
         .map(teacherInternalRequestDto),
     )
+  }
+
+  async function getForTeacher({ providerSubject, requestId } = {}) {
+    const principal = await authorization.resolvePrincipal(
+      providerSubject,
+      'TEACHER',
+    )
+    const teacherId = normalizeRequiredId(principal.teacherId, 'teacherId')
+    const normalizedRequestId = normalizeRequiredId(requestId, 'requestId')
+    const current = requireOwnedRequest(
+      await store.getWorkRequest(normalizedRequestId),
+      teacherId,
+    )
+    if (current.requestId !== normalizedRequestId) {
+      throw new Error('work-request-not-found')
+    }
+    return teacherInternalRequestDto(current)
   }
 
   async function revokePending({ providerSubject, requestId } = {}) {
@@ -177,6 +195,7 @@ export function createStudentWorkRequestService({
   return Object.freeze({
     requestWork,
     listPendingForTeacher,
+    getForTeacher,
     revokePending,
     acknowledgeConversion,
   })
