@@ -23,6 +23,9 @@ import {
   createPreparedAssignmentService,
 } from './services/preparedAssignmentService.js'
 import {
+  createRequestBoundAssignmentComposerService,
+} from './services/requestBoundAssignmentComposerService.js'
+import {
   createSecureDeliveryRequestObserver,
 } from './observability/secureDeliveryRequestObserver.js'
 import {
@@ -223,11 +226,22 @@ export function createSecureDeliveryComposition({
         pieceService: teacherPieceService,
         workRequestService,
       })
+    const requestBoundComposerService =
+      createRequestBoundAssignmentComposerService({
+        authorization,
+        rosterService: teacherRosterService,
+        preparedService,
+        teacherDeliveryService: teacherService,
+        pieceService: teacherPieceService,
+        workRequestService,
+        now,
+      })
 
     router.use(
       createTeacherPieceManagementRouter({
         tokenVerifier,
         service: teacherPieceManagementService,
+        requestBoundComposerService,
         config,
       }),
     )
