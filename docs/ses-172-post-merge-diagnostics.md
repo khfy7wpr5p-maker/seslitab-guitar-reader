@@ -56,3 +56,54 @@ First-party catalog `src/data/chordBoardCatalogSnapshotV1.json` (23,574 physical
 Recommendation: in a separate reviewed change, preserve exact task metadata with failure-safe upload, and establish an authenticated exact-task acceptance check that fails on CE failure/failed gate with bounded time, for PR and push analyses. Keep the current trusted-source boundary or explicitly redesign its failure eligibility with equivalent workflow/repository/branch/artifact authority checks before changing waiting. This change does not flip waiting, accept failed processing, disable any rule, or weaken Production Gate. PR #313 needs a fresh exact-head server analysis; a green upload job alone cannot close the quota incident.
 
 Root connector verified PR #313 initial head `2bfe2a3899efeeef7a7e33f1c8d9e5376e12f5ff`: all seven checks passed, including full test-and-build with CE-BRIDGE and SonarCloud Code Analysis. Sonar bot comment `5976080060` reports gate PASS, zero new issues/hotspots, 87.0% new coverage and zero duplication. These results apply to that PR head; they do not establish merged-main LOC acceptance or validate the subsequent scope change's exact head.
+
+
+## Audited browser proof test classification (follow-up)
+
+Initial lockfile-only inventory remains unchanged as recorded above and in the handoff artifacts. The explicit lock boundary is not a proven quota fix.
+
+Only 18 browser proofs executed by `.github/workflows/ci.yml` and their three test-only helpers are added to the exact `sonar.test.inclusions` safelist. `scripts` is added as a test root so those exact paths can be indexed as TEST. Every remaining script stays source unless already excluded by the existing boundaries. No broad `scripts/**` or `verify*` pattern is added. Product entrypoints (`src`, `backend`, root JS, package entrypoints) have no references to the safelisted helpers/proofs; full tracked caller references are captured separately. Legacy non-CI browser proofs are deliberately not added just to chase the quota.
+
+| Exact TEST path | Physical lines | Nonblank physical lines |
+| --- | ---: | ---: |
+| `scripts/ceBridgeFixtureTransport.js` | 5 | 5 |
+| `scripts/s14CdpProofHarness.js` | 312 | 287 |
+| `scripts/ses153BrowserProofSession.js` | 185 | 183 |
+| `scripts/verifyCeBridgeStructuralBrowser.js` | 500 | 474 |
+| `scripts/verifyPrCKeypadBrowser.js` | 59 | 54 |
+| `scripts/verifyPrDEditorBrowser.js` | 60 | 55 |
+| `scripts/verifyPrECoexistenceBrowser.js` | 64 | 59 |
+| `scripts/verifyPrFAccessibilityBrowser.js` | 236 | 218 |
+| `scripts/verifyS14CoreRuntimeBrowser.js` | 109 | 99 |
+| `scripts/verifyS14FailedReplacementBrowser.js` | 136 | 126 |
+| `scripts/verifyS14MobileMenuHostOcclusionBrowser.js` | 407 | 377 |
+| `scripts/verifyS14MobileScrollSettleProductionBrowser.js` | 293 | 271 |
+| `scripts/verifyS14SmoosicProductionCdpBrowser.js` | 480 | 435 |
+| `scripts/verifyS14SourceLifecycleAcceptanceBrowser.js` | 201 | 183 |
+| `scripts/verifyS15SmoosicWritebackBrowser.js` | 1146 | 1076 |
+| `scripts/verifySes147AuthRosterBrowser.js` | 91 | 83 |
+| `scripts/verifySes153TeacherAuthorityBrowser.js` | 24 | 23 |
+| `scripts/verifySmoosicCorrectionOverlayBrowser.js` | 326 | 297 |
+| `scripts/verifySti17CrossRealmBrowser.js` | 145 | 131 |
+| `scripts/verifySti17MobileEditorCleanupBrowser.js` | 60 | 54 |
+| `scripts/verifySti17SingleSelectionAuthorityBrowser.js` | 138 | 125 |
+
+Total: 21 files, 4,977 physical / 4,615 nonblank physical lines. These are not Sonar NCLOC. Even the physical-line upper bound is below the original 5,199 excess, leaving at least 222 lines of that original excess under the optimistic bound, before new source changes/organization accounting. This narrow classification therefore cannot alone establish quota resolution. If legitimate remaining first-party code still exceeds the allowance, the incident remains externally quota BLOCKED; a plan/capacity decision belongs to the user. No plan upgrade or project removal is performed.
+
+`verifyS16DeployedCompositionBrowser.js`, `sonarDiagnostics.mjs`, `postMergeProductionGate.js`, build/runtime preparation, legacy non-CI proofs, and all product JS/CSS/JSON remain source. The inventory model now records source/test/excluded type and incorporates the scanner's automatic source-exclusion behavior for test-inclusion patterns. Tests require exactly the audited list, real CI references, no product-entrypoint consumers, and retained product/deploy/security sources.
+
+### Official indexing evidence
+
+The SonarSource official repository at tag `10.7.0.96327` (commit `9e1fded16c1dc80f886af1db4413cbe78a245d7f`) was fetched read-only:
+
+- [AbstractExclusionFilters.java](https://github.com/SonarSource/sonarqube/blob/9e1fded16c1dc80f886af1db4413cbe78a245d7f/sonar-scanner-engine/src/main/java/org/sonar/scanner/scan/filesystem/AbstractExclusionFilters.java#L180): `prepareMainExclusions` combines `sourceExclusions` and `testInclusions`; TEST matching has separate inclusion/exclusion patterns.
+- [ProjectFileIndexer.java](https://github.com/SonarSource/sonarqube/blob/9e1fded16c1dc80f886af1db4413cbe78a245d7f/sonar-scanner-engine/src/main/java/org/sonar/scanner/scan/filesystem/ProjectFileIndexer.java#L121): main sources indexed as `Type.MAIN`; test roots indexed as `Type.TEST`.
+- [FileIndexer.java](https://github.com/SonarSource/sonarqube/blob/9e1fded16c1dc80f886af1db4413cbe78a245d7f/sonar-scanner-engine/src/main/java/org/sonar/scanner/scan/filesystem/FileIndexer.java#L121): indexed-file debug log explicitly identifies `as test`.
+
+This proves the public scanner indexing semantics, not the exact deployed Cloud version, analyzer test-rule safelist, or actual billed LOC. Official documentation URL retrieval was proxy403; no claim is made that its current text was read. New exact-head scanner/server evidence must confirm the 21 files are indexed as tests, retained source files remain sources, and report actual analysis/billable LOC. A PR PASS alone does not prove merged-main quota acceptance.
+
+### PATH security finding fixed without exclusion
+
+Root supplied GitHub check-run `111352303927` annotation on `scripts/sonarSourceInventory.mjs` line22: “Make sure the PATH variable only contains fixed, unwriteable directories.” Issue ID `AaEE7sz0SHsnK_btESsA`; the rule key was not supplied and is not asserted.
+
+The inventory now invokes `/usr/bin/git` directly (system binary on Ubuntu CI and the managed cloud machine), without environment/repository executable overrides or PATH search. Git filesystem-monitor execution is disabled for this read-only inventory. It remains SOURCE. A regression places an executable attacker `git` first in PATH, proves that shadow executable is effective, then runs the actual inventory through absolute Node and requires successful real tracked output with no attacker marker. The test failed on the old implementation and passes after the fix. The exact-head Sonar check must still confirm disappearance of the finding; no acceptance/suppression/exclusion substitutes for that check.

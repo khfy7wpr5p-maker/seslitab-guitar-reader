@@ -3,11 +3,21 @@ import { readFileSync } from 'node:fs'
 import { matchesGlob } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+function patterns(properties, key) {
+  return properties.split(/\r?\n/).find((line) => line.startsWith(key + '='))?.slice(key.length + 1).split(',').filter(Boolean) ?? []
+}
 export function exclusionPatterns(properties) {
-  return /^sonar\.exclusions=(.*)$/m.exec(properties)?.[1].split(',').filter(Boolean) ?? []
+  // Official scanner prepareMainExclusions adds test inclusions to source exclusions.
+  return [...patterns(properties, 'sonar.exclusions'), ...patterns(properties, 'sonar.test.inclusions')]
 }
 export function sourceIncluded(path, patterns) {
   return !patterns.some((pattern) => matchesGlob(path, pattern))
+}
+export function analysisType(path, properties) {
+  const testRoot = patterns(properties, 'sonar.tests').some((root) => path === root || path.startsWith(root + '/'))
+  const testMatch = patterns(properties, 'sonar.test.inclusions').some((pattern) => matchesGlob(path, pattern))
+  if (testRoot && testMatch) return 'test'
+  return sourceIncluded(path, exclusionPatterns(properties)) ? 'source' : 'excluded'
 }
 function language(path) {
   if (/\.(?:js|mjs|cjs|jsx)$/.test(path)) return 'js'
@@ -19,7 +29,9 @@ function language(path) {
   return null
 }
 export function trackedInventory(properties, root = '.') {
-  const paths = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
+  // Ubuntu CI and this cloud image provide system-owned git here; never resolve
+  // an executable from inherited PATH or a repository/environment override.
+  const paths = execFileSync('/usr/bin/git', ['-c', 'core.fsmonitor=false', 'ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
   const patterns = exclusionPatterns(properties)
   const files = paths.flatMap((path) => {
     const type = language(path)
@@ -27,7 +39,7 @@ export function trackedInventory(properties, root = '.') {
     const text = readFileSync(`${root}/${path}`, 'utf8')
     const lines = text.split(/\r?\n/)
     if (lines.at(-1) === '') lines.pop()
-    return [{ path, language: type, included: sourceIncluded(path, patterns),
+    return [{ path, language: type, included: sourceIncluded(path, patterns), analysisType: analysisType(path, properties),
       physicalLines: lines.length, nonblankPhysicalLines: lines.filter((line) => line.trim()).length }]
   })
   const included = files.filter((file) => file.included)
