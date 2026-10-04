@@ -23,8 +23,9 @@
 - No runtime dependency from SesliTab or Student App to `st-guitar-tab-editor`.
 - No runtime dependency from this flow to `musicxml-to-guitar-tab-engine` or alphaTab.
 - Editor output accepted here is one Guitar part, two staffs, TAB staff 2, exactly six TAB lines, standard E2 A2 D3 G3 B3 E4 tuning, frets `0..20`, and 1–6 simultaneous pitched notes.
+- One Guitar part may contain Voice 1, Voice 2, Voice 3 and Voice 4. Voice identity and timing must be preserved end-to-end; notes from different voices that share an onset are validated as one simultaneous physical TAB group.
 - Every TAB staff pitched note must contain explicit MusicXML `<technical><string>` and `<fret>`.
-- A simultaneous group cannot assign two notes to the same physical string.
+- A simultaneous group cannot assign two notes to the same physical string, including collisions across different voices.
 - Mismatched/stale/malformed/incomplete TAB fails closed and is never delivered.
 - Existing SCORE-only assignments remain byte-for-byte behavior-compatible when no Guitar TAB is supplied.
 - Student App remains read-only; it does not infer, repair, or regenerate TAB positions.
@@ -33,8 +34,8 @@
 ## Review Focus
 
 1. **Stale TAB + newer SCORE:** reject before package creation; prove score fingerprint/draft binding and semantic mismatch detection.
-2. **Same notes but wrong timing/voice:** reject; compare measure/onset/duration/voice/pitch/tie semantics, not only pitch count.
-3. **Physical collision:** reject two simultaneous staff-2 notes that use the same string.
+2. **Same notes but wrong timing/voice:** reject; compare measure/onset/duration/voice/pitch/tie semantics, not only pitch count, including Voice 1–4.
+3. **Physical collision:** reject two simultaneous staff-2 notes that use the same string, including notes contributed by different voices.
 4. **Wrong technical position:** reject any string/fret that is not a valid physical candidate for that written guitar pitch; enforce Editor fret ceiling `20` even though legacy SesliTab candidate enumeration reaches 24.
 5. **Consumer regression:** prove Student App receives TAB as `content.guitarTab` and renders it independently while SCORE playback/timing remains sourced from `content.score`.
 
@@ -58,8 +59,8 @@
 - [ ] **Step 1: Write RED tests for input/security/shape.** Require non-empty raw XML; `score-partwise`; one part; two staffs; staff 2 TAB clef; `staff-lines=6`; exact standard tuning; no unpitched/percussion; all staff-2 pitched notes have explicit technical string/fret; fret in `0..20`.
 - [ ] **Step 2: Run `node --test tests/editorGuitarTabHandoff.test.js` and require the new tests to fail for missing implementation.**
 - [ ] **Step 3: Implement the smallest strict XML evidence reader in `editorGuitarTabHandoff.js`.** Use the existing `inspectMusicXml` boundary before DOM parsing; do not add an XML dependency.
-- [ ] **Step 4: Add RED semantic-parity tests.** Compare original SCORE pitched events to TAB staff 1, and TAB staff 1 to staff 2, using stable event semantics: measure index, onset, duration, voice, written pitch, tie start/stop. Rests may be represented by forward gaps and are not required to exist as TAB note nodes.
-- [ ] **Step 5: Add RED guitar-physics tests.** For every staff-2 note, prove the exact teacher string/fret exists in `enumerateCanonicalGuitarPositionCandidates(note)`; reject generated fallback, fret >20, and duplicate string within one same-onset group.
+- [ ] **Step 4: Add RED semantic-parity tests.** Compare original SCORE pitched events to TAB staff 1, and TAB staff 1 to staff 2, using stable event semantics: measure index, onset, duration, voice, written pitch, tie start/stop. Include explicit Voice 1, 2, 3 and 4 cases, with cross-voice same-onset groups. Rests may be represented by forward gaps and are not required to exist as TAB note nodes.
+- [ ] **Step 5: Add RED guitar-physics tests.** For every staff-2 note, prove the exact teacher string/fret exists in `enumerateCanonicalGuitarPositionCandidates(note)`; reject generated fallback, fret >20, and duplicate string within one same-onset group across all voices.
 - [ ] **Step 6: Implement semantic/physical validation and SHA-256 fingerprinting.** `scoreUpload.musicXmlFingerprint` is authoritative for the source binding; compute a separate SHA-256 for the TAB bytes. The Editor's internal FNV session fingerprint is not a delivery authority.
 - [ ] **Step 7: Run the focused test and then `npm test`; require PASS.**
 - [ ] **Step 8: Commit only Task 1 files.**
@@ -112,11 +113,11 @@
 - Producer fixture must be generated from the actual `st-guitar-tab-editor` API at the pinned Editor SHA, not by inventing a hand-written TAB substitute.
 - Consumer checkout is pinned to `st-student-app@5f7d1d5a1b70616e599dec21ac384649d4803fcd` for the first qualification run.
 
-- [ ] **Step 1: Build a fixture source MusicXML containing single notes plus 2-, 3-, 4-, 5-, and 6-note simultaneous groups and at least one two-digit fret.**
+- [ ] **Step 1: Build a fixture source MusicXML containing single notes plus 2-, 3-, 4-, 5-, and 6-note simultaneous groups, explicit Voice 1–4 polyphony/cross-voice same-onset cases, and at least one two-digit fret.**
 - [ ] **Step 2: Generate the Guitar TAB MusicXML through the real Editor serializer and feed it through the new SesliTab handoff + composer path.**
-- [ ] **Step 3: Assert delivered package has unchanged SCORE XML plus `content.guitarTab.format === 'musicxml'` and exact validated TAB data.**
+- [ ] **Step 3: Assert delivered package has unchanged SCORE XML plus `content.guitarTab.format === 'musicxml'` and exact validated TAB data, with Voice 1–4 preserved.**
 - [ ] **Step 4: Run the package through the Student App production contract/workspace path and real browser renderer acceptance.** Require visible six-line TAB and the expected teacher frets; SCORE notation/playback remains available independently.
-- [ ] **Step 5: Add negative cross-repo cases: stale/mismatched TAB, same-string collision, missing technical data, fret 21+, malformed XML, and >6 simultaneous notes. All must fail before delivery.**
+- [ ] **Step 5: Add negative cross-repo cases: stale/mismatched TAB, cross-voice same-string collision, missing technical data, fret 21+, malformed XML, >6 simultaneous notes, and altered voice identity/timing. All must fail before delivery.**
 - [ ] **Step 6: Run SesliTab full CI and the exact-sha cross-repo browser qualification. Require GREEN.**
 - [ ] **Step 7: Commit Task 4.**
 
