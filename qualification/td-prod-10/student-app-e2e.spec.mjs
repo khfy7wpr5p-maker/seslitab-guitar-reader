@@ -109,7 +109,7 @@ async function assertNoAuthorityLeakage(page) {
   );
 }
 
-test(
+await test(
   "SES-122 teacher-delivered SCORE + CHORD_BOARD survives real Student App online/offline journey",
   { timeout: 120_000 },
   async () => {

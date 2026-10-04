@@ -109,6 +109,7 @@ jobs:
           fi
 
       - name: SonarQube Server scan
+        id: server-scan
         if: steps.sonar-config.outputs.mode == 'server'
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
@@ -116,6 +117,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
       - name: SonarQube Cloud scan
+        id: cloud-scan
         if: steps.sonar-config.outputs.mode == 'cloud'
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         with:
@@ -125,11 +127,30 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
+      - name: Stamp attempt-qualified Sonar task provenance
+        if: always() && (steps.sonar-config.outputs.mode == 'server' || steps.sonar-config.outputs.mode == 'cloud')
+        env:
+          SONAR_SCAN_OUTCOME: ${{ steps.sonar-config.outputs.mode == 'server' && steps.server-scan.outcome || steps.cloud-scan.outcome }}
+        run: node scripts/writeSonarRunProvenance.mjs
+
+      - name: Upload attempt-qualified Sonar task provenance
+        if: always() && (steps.sonar-config.outputs.mode == 'server' || steps.sonar-config.outputs.mode == 'cloud')
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-task-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .scannerwork/report-task.txt
+            .scannerwork/run-provenance.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload Sonar Compute Engine task metadata
-        if: steps.sonar-config.outputs.mode == 'server' || steps.sonar-config.outputs.mode == 'cloud'
+        if: always() && (steps.sonar-config.outputs.mode == 'server' || steps.sonar-config.outputs.mode == 'cloud')
         uses: actions/upload-artifact@v4
         with:
           name: sonar-report-task
+          overwrite: true
           path: .scannerwork/report-task.txt
           include-hidden-files: true
           if-no-files-found: error

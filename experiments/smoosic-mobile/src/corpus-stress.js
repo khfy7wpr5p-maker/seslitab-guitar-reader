@@ -212,7 +212,13 @@ function wireCorpusStress() {
   });
   input.addEventListener('change', () => {
     const file = input.files && input.files[0];
-    if (file) runCorpusStress(file);
+    if (file) {
+      runCorpusStress(file).catch(() => {
+        console.error('Corpus stres testi tamamlanamadı');
+        setStatus('Corpus hatası: işlem tamamlanamadı');
+        button.disabled = false;
+      });
+    }
   });
 }
 
