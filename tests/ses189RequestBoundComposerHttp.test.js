@@ -148,6 +148,49 @@ test('SES-189 router rejects browser-invented recipient authority before service
   assert.equal(calls, 0)
 })
 
+test('SES-189 legacy work-request action endpoint rejects browser Piece conversion payloads', async () => {
+  let calls = 0
+  const router = createTeacherPieceManagementRouter({
+    tokenVerifier: {
+      async verifyIdToken() { return { uid: 'uid-teacher-a' } },
+    },
+    service: Object.freeze({
+      async listPieces() { return [] },
+      async listPendingRequests() { return [] },
+      async applyPendingRequestAction() {
+        calls += 1
+        return null
+      },
+    }),
+    requestBoundComposerService: {
+      async convert() { return null },
+    },
+    config: { enabled: true, writesEnabled: true },
+  })
+
+  const response = await request(
+    appFor(router),
+    '/secure-delivery/teacher/work-requests/request-a/actions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer teacher-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'PLACE_IN_ACTIVE',
+        piece: {
+          pieceAssignmentId: 'piece-invented',
+          studentId: 'student-invented',
+        },
+      }),
+    },
+  )
+
+  assert.equal(response.status, 400)
+  assert.equal(calls, 0)
+})
+
 test('SES-189 browser client sends only bounded conversion fields', async () => {
   const calls = []
   const client = createSecureDeliveryApiClient({
