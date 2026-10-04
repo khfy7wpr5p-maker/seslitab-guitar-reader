@@ -70,6 +70,21 @@ test('SES-141 production composition mounts only the injected authenticated Secu
         async createTeacherPiece() {
           return Object.freeze({})
         },
+        async listTeacherPieces() {
+          return Object.freeze([])
+        },
+        async listTeacherWorkRequests() {
+          return Object.freeze([])
+        },
+        async applyPieceAction() {
+          return Object.freeze({})
+        },
+        async applyTeacherWorkRequestAction() {
+          return Object.freeze({})
+        },
+        async convertTeacherWorkRequest() {
+          return Object.freeze({})
+        },
       },
       now: () =>
         '2026-10-01T14:30:00Z',
@@ -91,13 +106,13 @@ test('SES-141 production composition mounts only the injected authenticated Secu
     setImmediate(resolve),
   )
   assert.equal(results.hidden, false)
-  const mountedForm =
-    host.querySelector('form')
-  assert.ok(mountedForm)
-  assert.equal(
-    mountedForm.children[0].textContent,
-    'Ödev Gönder',
+  assert.deepEqual(
+    host.querySelectorAll(
+      '.teacher-assignment-workspace__primary-tab',
+    ).map((button) => button.textContent),
+    ['Yeni Ödev', 'Ödev Yönetimi'],
   )
+  assert.ok(host.querySelector('form'))
 
   handle.destroy()
   assert.equal(host.children.length, 0)
