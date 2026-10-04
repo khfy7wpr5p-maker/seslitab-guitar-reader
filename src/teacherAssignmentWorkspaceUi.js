@@ -232,11 +232,11 @@ export function mountTeacherAssignmentWorkspaceUi({
     }
   }
 
-  async function loadManagementSnapshot({ force = false } = {}) {
-    if (!force && managementSnapshot !== null) {
+  async function loadManagementSnapshot() {
+    if (managementSnapshot !== null) {
       return managementSnapshot
     }
-    if (!force && snapshotPromise !== null) {
+    if (snapshotPromise !== null) {
       return snapshotPromise
     }
 
@@ -261,6 +261,30 @@ export function mountTeacherAssignmentWorkspaceUi({
     }
   }
 
+  async function reconcileManagement({
+    pieces = false,
+    requests = false,
+  } = {}) {
+    if (managementSnapshot === null) {
+      return loadManagementSnapshot()
+    }
+    const current = managementSnapshot
+    const [nextPieces, nextRequests] = await Promise.all([
+      pieces
+        ? managementClient.listTeacherPieces()
+        : current.pieces,
+      requests
+        ? managementClient.listTeacherWorkRequests()
+        : current.requests,
+    ])
+    const snapshot = Object.freeze({
+      pieces: frozenRows(nextPieces, 'teacher pieces'),
+      requests: frozenRows(nextRequests, 'teacher work requests'),
+    })
+    if (!destroyed) managementSnapshot = snapshot
+    return snapshot
+  }
+
   function actionButton(label, operation) {
     const button = element(
       root,
@@ -277,7 +301,7 @@ export function mountTeacherAssignmentWorkspaceUi({
     dialog.remove()
   }
 
-  function confirmRemoval(row, operation) {
+  function confirmRemoval(row, operation, reconcile) {
     const dialog = element(
       root,
       'div',
@@ -303,7 +327,7 @@ export function mountTeacherAssignmentWorkspaceUi({
       managementStatus.textContent = 'Kaldırılıyor.'
       try {
         await operation()
-        await loadManagementSnapshot({ force: true })
+        await reconcileManagement(reconcile)
         managementStatus.textContent = 'Kaldırıldı.'
         closeDialog(dialog)
         renderManagementRows()
@@ -334,7 +358,7 @@ export function mountTeacherAssignmentWorkspaceUi({
         row.actionKey,
         action,
       )
-      await loadManagementSnapshot({ force: true })
+      await reconcileManagement({ pieces: true })
       managementStatus.textContent = successMessage
       renderManagementRows()
     } catch {
@@ -366,6 +390,7 @@ export function mountTeacherAssignmentWorkspaceUi({
               row.actionKey,
               'REVOKE',
             ),
+          { pieces: true },
         ),
       ),
     )
@@ -384,7 +409,10 @@ export function mountTeacherAssignmentWorkspaceUi({
           targetState,
           composerDraft,
         )
-        await loadManagementSnapshot({ force: true })
+        await reconcileManagement({
+          pieces: true,
+          requests: true,
+        })
         managementView = targetState === 'REPERTOIRE'
           ? MANAGEMENT_VIEW.REPERTOIRE
           : MANAGEMENT_VIEW.ACTIVE
@@ -421,6 +449,7 @@ export function mountTeacherAssignmentWorkspaceUi({
                 row.actionKey,
                 'REJECT',
               ),
+          { requests: true },
         ),
       ),
     )
@@ -572,11 +601,13 @@ export function mountTeacherAssignmentWorkspaceUi({
 
   return Object.freeze({
     refreshManagement() {
-      return loadManagementSnapshot({ force: true })
-        .then(() => {
-          if (!destroyed) renderManagementRows()
-          return managementSnapshot
-        })
+      return reconcileManagement({
+        pieces: true,
+        requests: true,
+      }).then(() => {
+        if (!destroyed) renderManagementRows()
+        return managementSnapshot
+      })
     },
     destroy() {
       if (destroyed) return
