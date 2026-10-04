@@ -104,9 +104,16 @@ export function createTeacherPieceManagementService({
 } = {}) {
   requireMethod(rosterService, 'listRoster', 'rosterService')
   requireMethod(store, 'listPieceAssignmentsForStudent', 'store')
-  requireMethod(store, 'getPieceLifecycle', 'store')
   for (const method of ['createPiece', 'applyPieceAction']) {
     requireMethod(pieceService, method, 'pieceService')
+  }
+  if (
+    typeof pieceService.getPieceForTeacher !== 'function' &&
+    typeof store.getPieceLifecycle !== 'function'
+  ) {
+    throw new TypeError(
+      'pieceService.getPieceForTeacher() or store.getPieceLifecycle() is required.',
+    )
   }
   for (const method of [
     'listPendingForTeacher',
@@ -120,8 +127,25 @@ export function createTeacherPieceManagementService({
     return rosterMap(await rosterService.listRoster({ providerSubject }))
   }
 
-  async function readLifecycle(piece) {
+  async function readPieceContext(piece, providerSubject) {
     if (!isPieceAssignment(piece)) throw new Error('piece-read-model-invalid')
+
+    if (typeof pieceService.getPieceForTeacher === 'function') {
+      const context = await pieceService.getPieceForTeacher({
+        providerSubject,
+        pieceAssignmentId: piece.pieceAssignmentId,
+      })
+      if (
+        !context ||
+        !isPieceAssignment(context.piece) ||
+        !isPieceAssignmentLifecycleRecord(context.lifecycle) ||
+        JSON.stringify(context.piece) !== JSON.stringify(piece)
+      ) {
+        throw new Error('piece-lifecycle-authority-mismatch')
+      }
+      return context
+    }
+
     const stored = await store.getPieceLifecycle(piece.pieceAssignmentId)
     const lifecycle = stored ?? createInitialPieceLifecycleRecord(piece)
     if (
@@ -131,7 +155,7 @@ export function createTeacherPieceManagementService({
     ) {
       throw new Error('piece-lifecycle-authority-mismatch')
     }
-    return lifecycle
+    return Object.freeze({ piece, lifecycle })
   }
 
   async function listPieces({ providerSubject } = {}) {
@@ -144,7 +168,8 @@ export function createTeacherPieceManagementService({
         if (piece?.studentId !== entry.studentId) {
           throw new Error('piece-student-authority-mismatch')
         }
-        const lifecycle = await readLifecycle(piece)
+        const context = await readPieceContext(piece, providerSubject)
+        const lifecycle = context.lifecycle
         if (
           ![
             PIECE_ASSIGNMENT_STATE.ACTIVE,
@@ -155,7 +180,7 @@ export function createTeacherPieceManagementService({
           throw new Error('piece-read-model-state-invalid')
         }
         if (lifecycle.revokedAt === null) {
-          rows.push(pieceDto(piece, lifecycle, entry))
+          rows.push(pieceDto(context.piece, lifecycle, entry))
         }
       }
     }
