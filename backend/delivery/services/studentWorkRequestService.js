@@ -24,9 +24,20 @@ function requireOwnedRequest(request, teacherId) {
   return request
 }
 
-function publicRequestDto(request) {
+function studentRequestDto(request) {
+  return Object.freeze({
+    title: request.title,
+    state: request.state,
+    requestedAt: request.requestedAt,
+    updatedAt: request.updatedAt,
+    targetState: request.targetState,
+  })
+}
+
+function teacherInternalRequestDto(request) {
   return Object.freeze({
     requestId: request.requestId,
+    studentId: request.studentId,
     title: request.title,
     state: request.state,
     requestedAt: request.requestedAt,
@@ -80,7 +91,7 @@ export function createStudentWorkRequestService({
       requestedAt,
     })
     const stored = await store.putWorkRequest(request)
-    return publicRequestDto(stored)
+    return studentRequestDto(stored)
   }
 
   async function listPendingForTeacher({ providerSubject } = {}) {
@@ -93,10 +104,7 @@ export function createStudentWorkRequestService({
     return Object.freeze(
       rows
         .filter((row) => row.state === STUDENT_WORK_REQUEST_STATE.PENDING)
-        .map((row) => Object.freeze({
-          ...publicRequestDto(row),
-          studentId: row.studentId,
-        })),
+        .map(teacherInternalRequestDto),
     )
   }
 
@@ -112,7 +120,7 @@ export function createStudentWorkRequestService({
     )
     const next = revokeStudentWorkRequest(current, { changedAt: now() })
     const stored = await store.commitWorkRequestTransition(current, next)
-    return publicRequestDto(stored)
+    return teacherInternalRequestDto(stored)
   }
 
   async function acknowledgeConversion({
@@ -143,7 +151,7 @@ export function createStudentWorkRequestService({
       current.pieceAssignmentId === normalizedPieceId &&
       current.targetState === targetState
     ) {
-      return publicRequestDto(current)
+      return teacherInternalRequestDto(current)
     }
 
     const evidence = await store.getPieceEvidence(normalizedPieceId)
@@ -163,7 +171,7 @@ export function createStudentWorkRequestService({
       changedAt: now(),
     })
     const stored = await store.commitWorkRequestTransition(current, next)
-    return publicRequestDto(stored)
+    return teacherInternalRequestDto(stored)
   }
 
   return Object.freeze({
