@@ -57,6 +57,22 @@ function normalizeTarget(value) {
   return value
 }
 
+function transitionInput(current, overrides) {
+  return {
+    requestId: current.requestId,
+    teacherId: current.teacherId,
+    studentId: current.studentId,
+    title: current.title,
+    state: current.state,
+    requestedAt: current.requestedAt,
+    updatedAt: current.updatedAt,
+    pieceAssignmentId: current.pieceAssignmentId,
+    targetState: current.targetState,
+    revokedAt: current.revokedAt,
+    ...overrides,
+  }
+}
+
 export function createStudentWorkRequest(input = {}) {
   assertStrictInputObject(input, INPUT_FIELDS, 'StudentWorkRequest')
   const state = normalizeState(input.state)
@@ -133,10 +149,18 @@ export function convertStudentWorkRequest(
   if (!isStudentWorkRequest(current)) {
     throw new TypeError('current work request must be valid.')
   }
+  const normalizedPieceId = normalizeRequiredId(
+    pieceAssignmentId,
+    'pieceAssignmentId',
+  )
+  const normalizedTarget = normalizeTarget(targetState)
+  if (normalizedTarget === null) {
+    throw new TypeError('targetState is required for conversion.')
+  }
   if (current.state === STUDENT_WORK_REQUEST_STATE.CONVERTED) {
     if (
-      current.pieceAssignmentId === pieceAssignmentId &&
-      current.targetState === targetState
+      current.pieceAssignmentId === normalizedPieceId &&
+      current.targetState === normalizedTarget
     ) {
       return current
     }
@@ -145,14 +169,13 @@ export function convertStudentWorkRequest(
   if (current.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
     throw new Error('work request cannot be converted from its current state.')
   }
-  return createStudentWorkRequest({
-    ...current,
+  return createStudentWorkRequest(transitionInput(current, {
     state: STUDENT_WORK_REQUEST_STATE.CONVERTED,
     updatedAt: changedAt,
-    pieceAssignmentId,
-    targetState,
+    pieceAssignmentId: normalizedPieceId,
+    targetState: normalizedTarget,
     revokedAt: null,
-  })
+  }))
 }
 
 export function revokeStudentWorkRequest(current, { changedAt }) {
@@ -163,14 +186,14 @@ export function revokeStudentWorkRequest(current, { changedAt }) {
   if (current.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
     throw new Error('work request cannot be revoked from its current state.')
   }
-  return createStudentWorkRequest({
-    ...current,
+  const normalizedChangedAt = normalizeRequiredTimestamp(changedAt, 'changedAt')
+  return createStudentWorkRequest(transitionInput(current, {
     state: STUDENT_WORK_REQUEST_STATE.REVOKED,
-    updatedAt: changedAt,
+    updatedAt: normalizedChangedAt,
     pieceAssignmentId: null,
     targetState: null,
-    revokedAt: changedAt,
-  })
+    revokedAt: normalizedChangedAt,
+  }))
 }
 
 export function isStudentWorkRequest(value) {
