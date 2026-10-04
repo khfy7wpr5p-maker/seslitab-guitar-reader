@@ -277,7 +277,7 @@ test('SES-156 Havuz direct Repertuar conversion uses the same request-bound path
   handle.destroy()
 })
 
-test('SES-156 Piece action performs one authoritative reconcile instead of refetching on tab switches', async () => {
+test('SES-156 Piece action refreshes only Piece authority and later tab switches do not refetch', async () => {
   const { host, calls, handle } = mountHarness()
   await nextTurn()
   await openManagement(host)
@@ -295,12 +295,12 @@ test('SES-156 Piece action performs one authoritative reconcile instead of refet
     [['piece-active', 'PLACE_IN_REPERTOIRE']],
   )
   assert.equal(calls.pieces, 2)
-  assert.equal(calls.requests, 2)
+  assert.equal(calls.requests, 1)
 
   await tabs[2].dispatchEventAsync({ type: 'click' })
   await tabs[1].dispatchEventAsync({ type: 'click' })
   assert.equal(calls.pieces, 2)
-  assert.equal(calls.requests, 2)
+  assert.equal(calls.requests, 1)
 
   handle.destroy()
 })
