@@ -1,6 +1,11 @@
 import {
   PIECE_ASSIGNMENT_STATE,
+  isPieceAssignment,
 } from '../../../src/services/pieceAssignment.js'
+import {
+  createInitialPieceLifecycleRecord,
+  isPieceAssignmentLifecycleRecord,
+} from '../../../src/services/pieceAssignmentLifecycleRecord.js'
 import {
   normalizeRequiredId,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
@@ -18,9 +23,7 @@ function requireMethod(value, method, label) {
 }
 
 function rosterMap(rows) {
-  if (!Array.isArray(rows)) {
-    throw new Error('teacher-roster-read-invalid')
-  }
+  if (!Array.isArray(rows)) throw new Error('teacher-roster-read-invalid')
   return new Map(
     rows
       .filter((row) => row?.active === true)
@@ -28,22 +31,23 @@ function rosterMap(rows) {
   )
 }
 
+function requireRosterEntry(map, studentId) {
+  const entry = map.get(studentId)
+  if (!entry) throw new Error('roster-authority-mismatch')
+  return entry
+}
+
 function pieceDto(piece, lifecycle, rosterEntry) {
   return Object.freeze({
     actionKey: piece.pieceAssignmentId,
     title: piece.title,
-    displayNameOrNickname:
-      rosterEntry.displayNameOrNickname,
+    displayNameOrNickname: rosterEntry.displayNameOrNickname,
     state: lifecycle.state,
     revoked: lifecycle.revokedAt !== null,
     assignedAt: piece.assignedAt,
     contentSummary: Object.freeze({
-      score:
-        piece.contentRefs.scoreAssignmentId !==
-        null,
-      chordCount:
-        piece.contentRefs.chordAssignmentIds
-          .length,
+      score: piece.contentRefs.scoreAssignmentId !== null,
+      chordCount: piece.contentRefs.chordAssignmentIds.length,
     }),
   })
 }
@@ -52,8 +56,7 @@ function requestDto(request, rosterEntry) {
   return Object.freeze({
     actionKey: request.requestId,
     title: request.title,
-    displayNameOrNickname:
-      rosterEntry.displayNameOrNickname,
+    displayNameOrNickname: rosterEntry.displayNameOrNickname,
     state: request.state,
     revoked: request.state === 'REVOKED',
     requestedAt: request.requestedAt,
@@ -64,8 +67,7 @@ function requestDto(request, rosterEntry) {
 function conversionDto(request, rosterEntry) {
   return Object.freeze({
     title: request.title,
-    displayNameOrNickname:
-      rosterEntry.displayNameOrNickname,
+    displayNameOrNickname: rosterEntry.displayNameOrNickname,
     state: request.state,
     revoked: request.state === 'REVOKED',
     targetState: request.targetState,
@@ -73,42 +75,20 @@ function conversionDto(request, rosterEntry) {
   })
 }
 
-function requireRosterEntry(map, studentId) {
-  const entry = map.get(studentId)
-  if (!entry) {
-    throw new Error('roster-authority-mismatch')
-  }
-  return entry
-}
-
 function normalizePieceInput(piece) {
   if (!piece || typeof piece !== 'object' || Array.isArray(piece)) {
     throw new TypeError('piece must be an object for conversion actions.')
   }
   return {
-    pieceAssignmentId: normalizeRequiredId(
-      piece.pieceAssignmentId,
-      'pieceAssignmentId',
-    ),
+    pieceAssignmentId: normalizeRequiredId(piece.pieceAssignmentId, 'pieceAssignmentId'),
     pieceId: normalizeRequiredId(piece.pieceId, 'pieceId'),
-    arrangementId: normalizeRequiredId(
-      piece.arrangementId,
-      'arrangementId',
-    ),
-    teacherNote:
-      typeof piece.teacherNote === 'string'
-        ? piece.teacherNote
-        : '',
+    arrangementId: normalizeRequiredId(piece.arrangementId, 'arrangementId'),
+    teacherNote: typeof piece.teacherNote === 'string' ? piece.teacherNote : '',
     scoreAssignmentId:
       piece.scoreAssignmentId === null
         ? null
-        : normalizeRequiredId(
-            piece.scoreAssignmentId,
-            'scoreAssignmentId',
-          ),
-    chordAssignmentIds: Array.isArray(
-      piece.chordAssignmentIds,
-    )
+        : normalizeRequiredId(piece.scoreAssignmentId, 'scoreAssignmentId'),
+    chordAssignmentIds: Array.isArray(piece.chordAssignmentIds)
       ? piece.chordAssignmentIds.map((id) =>
           normalizeRequiredId(id, 'chordAssignmentId'),
         )
@@ -123,16 +103,9 @@ export function createTeacherPieceManagementService({
   workRequestService,
 } = {}) {
   requireMethod(rosterService, 'listRoster', 'rosterService')
-  requireMethod(
-    store,
-    'listPieceAssignmentsForStudent',
-    'store',
-  )
-  for (const method of [
-    'getPieceForTeacher',
-    'createPiece',
-    'applyPieceAction',
-  ]) {
+  requireMethod(store, 'listPieceAssignmentsForStudent', 'store')
+  requireMethod(store, 'getPieceLifecycle', 'store')
+  for (const method of ['createPiece', 'applyPieceAction']) {
     requireMethod(pieceService, method, 'pieceService')
   }
   for (const method of [
@@ -140,64 +113,52 @@ export function createTeacherPieceManagementService({
     'revokePending',
     'acknowledgeConversion',
   ]) {
-    requireMethod(
-      workRequestService,
-      method,
-      'workRequestService',
-    )
+    requireMethod(workRequestService, method, 'workRequestService')
   }
 
   async function currentRoster(providerSubject) {
-    return rosterMap(
-      await rosterService.listRoster({
-        providerSubject,
-      }),
-    )
+    return rosterMap(await rosterService.listRoster({ providerSubject }))
+  }
+
+  async function readLifecycle(piece) {
+    if (!isPieceAssignment(piece)) throw new Error('piece-read-model-invalid')
+    const stored = await store.getPieceLifecycle(piece.pieceAssignmentId)
+    const lifecycle = stored ?? createInitialPieceLifecycleRecord(piece)
+    if (
+      !isPieceAssignmentLifecycleRecord(lifecycle) ||
+      lifecycle.piece.pieceAssignmentId !== piece.pieceAssignmentId ||
+      JSON.stringify(lifecycle.piece) !== JSON.stringify(piece)
+    ) {
+      throw new Error('piece-lifecycle-authority-mismatch')
+    }
+    return lifecycle
   }
 
   async function listPieces({ providerSubject } = {}) {
     const roster = await currentRoster(providerSubject)
     const rows = []
-
     for (const entry of roster.values()) {
-      const pieces =
-        await store.listPieceAssignmentsForStudent(
-          entry.studentId,
-        )
-      if (!Array.isArray(pieces)) {
-        throw new Error('piece-read-model-invalid')
-      }
-
+      const pieces = await store.listPieceAssignmentsForStudent(entry.studentId)
+      if (!Array.isArray(pieces)) throw new Error('piece-read-model-invalid')
       for (const piece of pieces) {
-        const context =
-          await pieceService.getPieceForTeacher({
-            providerSubject,
-            pieceAssignmentId:
-              piece.pieceAssignmentId,
-          })
+        if (piece?.studentId !== entry.studentId) {
+          throw new Error('piece-student-authority-mismatch')
+        }
+        const lifecycle = await readLifecycle(piece)
         if (
-          context.lifecycle.state !==
-            PIECE_ASSIGNMENT_STATE.ACTIVE &&
-          context.lifecycle.state !==
-            PIECE_ASSIGNMENT_STATE.COMPLETED &&
-          context.lifecycle.state !==
-            PIECE_ASSIGNMENT_STATE.REPERTOIRE
+          ![
+            PIECE_ASSIGNMENT_STATE.ACTIVE,
+            PIECE_ASSIGNMENT_STATE.COMPLETED,
+            PIECE_ASSIGNMENT_STATE.REPERTOIRE,
+          ].includes(lifecycle.state)
         ) {
           throw new Error('piece-read-model-state-invalid')
         }
-        if (context.lifecycle.revokedAt !== null) {
-          continue
+        if (lifecycle.revokedAt === null) {
+          rows.push(pieceDto(piece, lifecycle, entry))
         }
-        rows.push(
-          pieceDto(
-            context.piece,
-            context.lifecycle,
-            entry,
-          ),
-        )
       }
     }
-
     rows.sort((left, right) =>
       left.assignedAt === right.assignedAt
         ? left.actionKey.localeCompare(right.actionKey)
@@ -209,30 +170,17 @@ export function createTeacherPieceManagementService({
   async function pendingContext(providerSubject) {
     const [roster, requests] = await Promise.all([
       currentRoster(providerSubject),
-      workRequestService.listPendingForTeacher({
-        providerSubject,
-      }),
+      workRequestService.listPendingForTeacher({ providerSubject }),
     ])
-    if (!Array.isArray(requests)) {
-      throw new Error('work-request-read-model-invalid')
-    }
+    if (!Array.isArray(requests)) throw new Error('work-request-read-model-invalid')
     return { roster, requests }
   }
 
-  async function listPendingRequests({
-    providerSubject,
-  } = {}) {
-    const { roster, requests } =
-      await pendingContext(providerSubject)
+  async function listPendingRequests({ providerSubject } = {}) {
+    const { roster, requests } = await pendingContext(providerSubject)
     return Object.freeze(
       requests.map((request) =>
-        requestDto(
-          request,
-          requireRosterEntry(
-            roster,
-            request.studentId,
-          ),
-        ),
+        requestDto(request, requireRosterEntry(roster, request.studentId)),
       ),
     )
   }
@@ -248,31 +196,17 @@ export function createTeacherPieceManagementService({
         'action must be PLACE_IN_ACTIVE, PLACE_IN_REPERTOIRE or REJECT.',
       )
     }
-
-    const requestId = normalizeRequiredId(
-      actionKey,
-      'actionKey',
-    )
-    const { roster, requests } =
-      await pendingContext(providerSubject)
-    const request = requests.find(
-      (candidate) =>
-        candidate.requestId === requestId,
-    )
-    if (!request) {
-      throw new Error('work-request-not-found')
-    }
-    const rosterEntry = requireRosterEntry(
-      roster,
-      request.studentId,
-    )
+    const requestId = normalizeRequiredId(actionKey, 'actionKey')
+    const { roster, requests } = await pendingContext(providerSubject)
+    const request = requests.find((candidate) => candidate.requestId === requestId)
+    if (!request) throw new Error('work-request-not-found')
+    const rosterEntry = requireRosterEntry(roster, request.studentId)
 
     if (action === PENDING_ACTIONS.REJECT) {
-      const revoked =
-        await workRequestService.revokePending({
-          providerSubject,
-          requestId,
-        })
+      const revoked = await workRequestService.revokePending({
+        providerSubject,
+        requestId,
+      })
       return conversionDto(revoked, rosterEntry)
     }
 
@@ -287,20 +221,14 @@ export function createTeacherPieceManagementService({
     })
 
     let targetState = PIECE_ASSIGNMENT_STATE.ACTIVE
-    if (
-      action ===
-      PENDING_ACTIONS.PLACE_IN_REPERTOIRE
-    ) {
-      const lifecycle =
-        await pieceService.applyPieceAction({
-          providerSubject,
-          pieceAssignmentId:
-            created.pieceAssignmentId,
-          action: 'PLACE_IN_REPERTOIRE',
-        })
+    if (action === PENDING_ACTIONS.PLACE_IN_REPERTOIRE) {
+      const lifecycle = await pieceService.applyPieceAction({
+        providerSubject,
+        pieceAssignmentId: created.pieceAssignmentId,
+        action: 'PLACE_IN_REPERTOIRE',
+      })
       if (
-        lifecycle.state !==
-          PIECE_ASSIGNMENT_STATE.REPERTOIRE ||
+        lifecycle.state !== PIECE_ASSIGNMENT_STATE.REPERTOIRE ||
         lifecycle.revokedAt !== null
       ) {
         throw new Error('piece-conversion-state-mismatch')
@@ -308,19 +236,13 @@ export function createTeacherPieceManagementService({
       targetState = PIECE_ASSIGNMENT_STATE.REPERTOIRE
     }
 
-    const converted =
-      await workRequestService.acknowledgeConversion({
-        providerSubject,
-        requestId,
-        pieceAssignmentId:
-          created.pieceAssignmentId,
-        targetState,
-      })
-
-    return conversionDto(
-      converted,
-      rosterEntry,
-    )
+    const converted = await workRequestService.acknowledgeConversion({
+      providerSubject,
+      requestId,
+      pieceAssignmentId: created.pieceAssignmentId,
+      targetState,
+    })
+    return conversionDto(converted, rosterEntry)
   }
 
   return Object.freeze({
