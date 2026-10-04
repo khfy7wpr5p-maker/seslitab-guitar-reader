@@ -253,6 +253,26 @@ export function createSecureDeliveryApiClient({
       )
     },
 
+    convertTeacherWorkRequest(
+      actionKey,
+      targetState,
+      composerDraft,
+    ) {
+      const key = encodeURIComponent(
+        String(actionKey),
+      )
+      return request(
+        `teacher/work-requests/${key}/conversions`,
+        {
+          method: 'POST',
+          body: {
+            targetState,
+            composerDraft,
+          },
+        },
+      )
+    },
+
     applyAssignmentAction(
       assignmentId,
       action,
