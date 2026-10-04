@@ -221,6 +221,16 @@ export function createSecureDeliveryApiClient({
       )
     },
 
+    requestStudentWork(title) {
+      return request(
+        'student/work-requests',
+        {
+          method: 'POST',
+          body: { title },
+        },
+      )
+    },
+
     listStudentPool() {
       return request(
         'student/pool',
