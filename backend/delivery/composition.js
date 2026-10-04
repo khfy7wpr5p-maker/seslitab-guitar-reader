@@ -14,6 +14,9 @@ import {
   createStudentWorkRequestRouter,
 } from './http/studentWorkRequestRouter.js'
 import {
+  createTeacherPieceManagementRouter,
+} from './http/teacherPieceManagementRouter.js'
+import {
   createFirestoreStudentWorkRequestStore,
 } from './firebase/firestoreStudentWorkRequestStore.js'
 import {
@@ -31,6 +34,9 @@ import {
 import {
   createTeacherSecureDeliveryService,
 } from './services/teacherDeliveryService.js'
+import {
+  createTeacherPieceManagementService,
+} from './services/teacherPieceManagementService.js'
 import {
   createTeacherPieceService,
 } from './services/teacherPieceService.js'
@@ -210,6 +216,21 @@ export function createSecureDeliveryComposition({
         createRequestId: () =>
           `work-request-${randomUUID()}`,
       })
+    const teacherPieceManagementService =
+      createTeacherPieceManagementService({
+        rosterService: teacherRosterService,
+        store,
+        pieceService: teacherPieceService,
+        workRequestService,
+      })
+
+    router.use(
+      createTeacherPieceManagementRouter({
+        tokenVerifier,
+        service: teacherPieceManagementService,
+        config,
+      }),
+    )
     router.use(
       createStudentWorkRequestRouter({
         tokenVerifier,
