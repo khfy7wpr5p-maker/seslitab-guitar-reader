@@ -119,6 +119,7 @@ export function mountTeacherAssignmentComposerUi({
   let destroyed = false
   let sending = false
   let rosterReady = false
+  let requestConversion = null
 
   const form = element(
     root,
@@ -219,6 +220,13 @@ export function mountTeacherAssignmentComposerUi({
   rosterFieldset.appendChild(rosterLegend)
   rosterFieldset.appendChild(roster)
 
+  const requestRecipient = element(
+    root,
+    'p',
+    'teacher-assignment-composer__request-recipient',
+  )
+  requestRecipient.hidden = true
+
   const noteLabel = element(root, 'label')
   noteLabel.textContent = 'Öğretmen notu'
   const noteInput = element(root, 'textarea')
@@ -250,6 +258,7 @@ export function mountTeacherAssignmentComposerUi({
     scoreFieldset,
     chordFieldset,
     rosterFieldset,
+    requestRecipient,
     noteLabel,
     submit,
     status,
@@ -337,6 +346,15 @@ export function mountTeacherAssignmentComposerUi({
     draftId = nextId
   }
 
+  function leaveRequestConversion() {
+    requestConversion = null
+    titleInput.disabled = false
+    rosterFieldset.hidden = false
+    requestRecipient.hidden = true
+    requestRecipient.textContent = ''
+    submit.textContent = 'Öğrenciye Gönder'
+  }
+
   symbolSelect.addEventListener(
     'change',
     renderVoicings,
@@ -412,7 +430,8 @@ export function mountTeacherAssignmentComposerUi({
 
   function updateSubmitState() {
     submit.disabled =
-      sending || !rosterReady
+      sending ||
+      (requestConversion === null && !rosterReady)
   }
 
   async function loadRoster() {
@@ -462,30 +481,35 @@ export function mountTeacherAssignmentComposerUi({
     async (event) => {
       event.preventDefault()
       if (sending) return
-      if (!rosterReady) {
-        status.textContent =
-          'Öğrenci listesi hazır değil.'
-        return
-      }
 
-      const studentIds =
-        roster
-          .querySelectorAll(
-            'input[type="checkbox"]:checked',
+      let studentIds = []
+      if (requestConversion === null) {
+        if (!rosterReady) {
+          status.textContent =
+            'Öğrenci listesi hazır değil.'
+          return
+        }
+
+        studentIds =
+          roster
+            .querySelectorAll(
+              'input[type="checkbox"]:checked',
+            )
+            .map?.((row) => row.value) ??
+          Array.from(
+            roster.querySelectorAll(
+              'input[type="checkbox"]:checked',
+            ),
+            (row) => row.value,
           )
-          .map?.((row) => row.value) ??
-        Array.from(
-          roster.querySelectorAll(
-            'input[type="checkbox"]:checked',
-          ),
-          (row) => row.value,
-        )
 
-      if (studentIds.length === 0) {
-        status.textContent =
-          'En az bir öğrenci seçin.'
-        return
+        if (studentIds.length === 0) {
+          status.textContent =
+            'En az bir öğrenci seçin.'
+          return
+        }
       }
+
       if (
         scoreFileSelected &&
         scoreUpload === null
@@ -516,28 +540,42 @@ export function mountTeacherAssignmentComposerUi({
       status.textContent =
         'Gönderiliyor.'
       try {
-        const result =
-          await service.send({
-            draftId,
-            studentIds,
-            title,
-            teacherNote:
-              noteInput.value,
-            scoreUpload,
-            chordSnapshots:
-              selectedSnapshots,
-          })
-        const exactSuccess =
-          isExactDeliverySuccess(result)
-        status.textContent =
-          safeResultMessage(result)
-        if (exactSuccess) {
-          try {
-            resetCompletedAssignment()
-          } catch {
-            rosterReady = false
-            status.textContent =
-              'Gönderildi. Yeni ödev hazırlanamadı; sayfayı yenileyin.'
+        if (requestConversion !== null) {
+          await requestConversion.onSubmit(
+            Object.freeze({
+              teacherNote: noteInput.value,
+              scoreUpload,
+              guitarTabUpload: null,
+              chordSnapshots: Object.freeze([...selectedSnapshots]),
+            }),
+          )
+          status.textContent = 'Gönderildi.'
+          leaveRequestConversion()
+          resetCompletedAssignment()
+        } else {
+          const result =
+            await service.send({
+              draftId,
+              studentIds,
+              title,
+              teacherNote:
+                noteInput.value,
+              scoreUpload,
+              chordSnapshots:
+                selectedSnapshots,
+            })
+          const exactSuccess =
+            isExactDeliverySuccess(result)
+          status.textContent =
+            safeResultMessage(result)
+          if (exactSuccess) {
+            try {
+              resetCompletedAssignment()
+            } catch {
+              rosterReady = false
+              status.textContent =
+                'Gönderildi. Yeni ödev hazırlanamadı; sayfayı yenileyin.'
+            }
           }
         }
       } catch {
@@ -554,10 +592,68 @@ export function mountTeacherAssignmentComposerUi({
   void loadRoster()
 
   return Object.freeze({
+    startRequestConversion({
+      title,
+      displayNameOrNickname,
+      targetState,
+      onSubmit,
+    } = {}) {
+      if (destroyed) {
+        throw new Error('assignment-composer-destroyed')
+      }
+      const normalizedTitle =
+        typeof title === 'string' ? title.trim() : ''
+      const normalizedName =
+        typeof displayNameOrNickname === 'string'
+          ? displayNameOrNickname.trim()
+          : ''
+      if (!normalizedTitle || !normalizedName) {
+        throw new TypeError(
+          'request conversion requires title and display name.',
+        )
+      }
+      if (!['ACTIVE', 'REPERTOIRE'].includes(targetState)) {
+        throw new TypeError(
+          'request conversion targetState must be ACTIVE or REPERTOIRE.',
+        )
+      }
+      if (typeof onSubmit !== 'function') {
+        throw new TypeError(
+          'request conversion onSubmit must be a function.',
+        )
+      }
+
+      resetCompletedAssignment()
+      requestConversion = Object.freeze({
+        targetState,
+        onSubmit,
+      })
+      titleInput.value = normalizedTitle
+      titleInput.disabled = true
+      rosterFieldset.hidden = true
+      requestRecipient.hidden = false
+      requestRecipient.textContent =
+        `Öğrenci: ${normalizedName}`
+      submit.textContent =
+        targetState === 'REPERTOIRE'
+          ? 'Repertuara Gönder'
+          : 'Aktif Çalışmaya Gönder'
+      status.textContent =
+        'İçeriği seçip gönderin.'
+      updateSubmitState()
+      titleInput.focus?.()
+    },
+    cancelRequestConversion() {
+      if (requestConversion === null) return
+      leaveRequestConversion()
+      resetCompletedAssignment()
+      updateSubmitState()
+    },
     destroy() {
       if (destroyed) return
       destroyed = true
       rosterReady = false
+      requestConversion = null
       host.replaceChildren()
     },
   })
