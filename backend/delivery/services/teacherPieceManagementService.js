@@ -7,6 +7,9 @@ import {
   isPieceAssignmentLifecycleRecord,
 } from '../../../src/services/pieceAssignmentLifecycleRecord.js'
 import {
+  STUDENT_WORK_REQUEST_STATE,
+} from '../../../src/services/studentWorkRequest.js'
+import {
   normalizeRequiredId,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
 
@@ -58,7 +61,7 @@ function requestDto(request, rosterEntry) {
     title: request.title,
     displayNameOrNickname: rosterEntry.displayNameOrNickname,
     state: request.state,
-    revoked: request.state === 'REVOKED',
+    revoked: request.state === STUDENT_WORK_REQUEST_STATE.REVOKED,
     requestedAt: request.requestedAt,
     contentSummary: null,
   })
@@ -69,7 +72,7 @@ function conversionDto(request, rosterEntry) {
     title: request.title,
     displayNameOrNickname: rosterEntry.displayNameOrNickname,
     state: request.state,
-    revoked: request.state === 'REVOKED',
+    revoked: request.state === STUDENT_WORK_REQUEST_STATE.REVOKED,
     targetState: request.targetState,
     updatedAt: request.updatedAt,
   })
@@ -117,6 +120,7 @@ export function createTeacherPieceManagementService({
   }
   for (const method of [
     'listPendingForTeacher',
+    'getForTeacher',
     'revokePending',
     'acknowledgeConversion',
   ]) {
@@ -222,12 +226,19 @@ export function createTeacherPieceManagementService({
       )
     }
     const requestId = normalizeRequiredId(actionKey, 'actionKey')
-    const { roster, requests } = await pendingContext(providerSubject)
-    const request = requests.find((candidate) => candidate.requestId === requestId)
-    if (!request) throw new Error('work-request-not-found')
+    const [roster, request] = await Promise.all([
+      currentRoster(providerSubject),
+      workRequestService.getForTeacher({ providerSubject, requestId }),
+    ])
     const rosterEntry = requireRosterEntry(roster, request.studentId)
 
     if (action === PENDING_ACTIONS.REJECT) {
+      if (request.state === STUDENT_WORK_REQUEST_STATE.REVOKED) {
+        return conversionDto(request, rosterEntry)
+      }
+      if (request.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
+        throw new Error('work-request-state-conflict')
+      }
       const revoked = await workRequestService.revokePending({
         providerSubject,
         requestId,
@@ -236,6 +247,30 @@ export function createTeacherPieceManagementService({
     }
 
     const normalizedPiece = normalizePieceInput(piece)
+    const targetState = action === PENDING_ACTIONS.PLACE_IN_REPERTOIRE
+      ? PIECE_ASSIGNMENT_STATE.REPERTOIRE
+      : PIECE_ASSIGNMENT_STATE.ACTIVE
+
+    if (request.state === STUDENT_WORK_REQUEST_STATE.CONVERTED) {
+      if (
+        request.pieceAssignmentId !== normalizedPiece.pieceAssignmentId ||
+        request.targetState !== targetState
+      ) {
+        throw new Error('work-request-idempotency-conflict')
+      }
+      const converted = await workRequestService.acknowledgeConversion({
+        providerSubject,
+        requestId,
+        pieceAssignmentId: normalizedPiece.pieceAssignmentId,
+        targetState,
+      })
+      return conversionDto(converted, rosterEntry)
+    }
+
+    if (request.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
+      throw new Error('work-request-state-conflict')
+    }
+
     const created = await pieceService.createPiece({
       providerSubject,
       input: {
@@ -245,7 +280,6 @@ export function createTeacherPieceManagementService({
       },
     })
 
-    let targetState = PIECE_ASSIGNMENT_STATE.ACTIVE
     if (action === PENDING_ACTIONS.PLACE_IN_REPERTOIRE) {
       const lifecycle = await pieceService.applyPieceAction({
         providerSubject,
@@ -258,7 +292,6 @@ export function createTeacherPieceManagementService({
       ) {
         throw new Error('piece-conversion-state-mismatch')
       }
-      targetState = PIECE_ASSIGNMENT_STATE.REPERTOIRE
     }
 
     const converted = await workRequestService.acknowledgeConversion({
