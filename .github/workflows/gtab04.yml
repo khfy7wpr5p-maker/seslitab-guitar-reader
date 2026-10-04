@@ -1,0 +1,55 @@
+name: GTAB-04 Exact-SHA Qualification
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gtab04-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  editor-to-current-student-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GTAB_EDITOR_SHA: 9fc2a5b8eae19bcf1972cd6c3a451210b9a0c243
+      STUDENT_APP_SHA: 5f7d1d5a1b70616e599dec21ac384649d4803fcd
+
+    steps:
+      - name: Checkout SesliTab exact head
+        uses: actions/checkout@v4
+        with:
+          path: teacher
+
+      - name: Checkout ST Guitar TAB Editor exact approved main
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-guitar-tab-editor
+          ref: ${{ env.GTAB_EDITOR_SHA }}
+          path: editor
+
+      - name: Checkout Student App current approved main
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-student-app
+          ref: ${{ env.STUDENT_APP_SHA }}
+          path: student-app
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify exact Editor output through SesliTab into Student contract
+        working-directory: teacher
+        env:
+          GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
+          STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
+        run: node scripts/verifyGtab04EditorStudentContract.js

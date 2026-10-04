@@ -33,6 +33,9 @@ import {
 import {
   prepareTeacherAssignmentScoreUpload,
 } from './teacherAssignmentComposerScoreUpload.js'
+import {
+  prepareEditorGuitarTabHandoff,
+} from './editorGuitarTabHandoff.js'
 
 function requiredText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -47,6 +50,12 @@ function optionalText(value, fieldName) {
     throw new TypeError(`${fieldName} must be text.`)
   }
   return value.trim()
+}
+
+function isRecord(value) {
+  return value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value)
 }
 
 function assertClient(client) {
@@ -142,6 +151,36 @@ function boundedRecipient({
   })
 }
 
+function assertPreparedGuitarTabUpload(
+  guitarTabUpload,
+  scoreUpload,
+  draftId,
+) {
+  if (!isRecord(guitarTabUpload)) {
+    throw new TypeError(
+      'assignment-composer-guitar-tab-upload-invalid',
+    )
+  }
+  if (
+    guitarTabUpload.schemaVersion !== '1.0.0' ||
+    guitarTabUpload.draftId !== draftId ||
+    guitarTabUpload.scoreMusicXmlFingerprint !==
+      scoreUpload.musicXmlFingerprint ||
+    typeof guitarTabUpload.guitarTabMusicXml !== 'string' ||
+    guitarTabUpload.guitarTabMusicXml.length === 0 ||
+    typeof guitarTabUpload.guitarTabMusicXmlFingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(
+      guitarTabUpload.guitarTabMusicXmlFingerprint,
+    ) ||
+    !Number.isInteger(guitarTabUpload.pitchedEventCount) ||
+    guitarTabUpload.pitchedEventCount <= 0
+  ) {
+    throw new Error(
+      'assignment-composer-guitar-tab-authority-mismatch',
+    )
+  }
+}
+
 export function createTeacherAssignmentComposerService({
   teacherId,
   secureDeliveryClient,
@@ -221,12 +260,25 @@ export function createTeacherAssignmentComposerService({
     })
   }
 
+  async function prepareGuitarTabUpload({
+    scoreUpload,
+    guitarTabMusicXml,
+    draftId,
+  } = {}) {
+    return prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml,
+      draftId,
+    })
+  }
+
   async function send({
     draftId,
     studentIds,
     title,
     teacherNote = '',
     scoreUpload = null,
+    guitarTabUpload = null,
     chordSnapshots = [],
   } = {}) {
     const normalizedDraftId =
@@ -247,6 +299,14 @@ export function createTeacherAssignmentComposerService({
     if (!Array.isArray(chordSnapshots)) {
       throw new TypeError(
         'chordSnapshots must be an array.',
+      )
+    }
+    if (
+      guitarTabUpload !== null &&
+      scoreUpload === null
+    ) {
+      throw new Error(
+        'assignment-composer-guitar-tab-requires-score',
       )
     }
 
@@ -296,6 +356,14 @@ export function createTeacherAssignmentComposerService({
     const scoreByStudent = new Map()
     if (scoreUpload !== null) {
       if (
+        scoreUpload?.draftId !==
+          normalizedDraftId
+      ) {
+        throw new Error(
+          'assignment-composer-score-upload-draft-mismatch',
+        )
+      }
+      if (
         typeof scoreUpload?.musicXml !==
           'string' ||
         scoreUpload.musicXml.length === 0 ||
@@ -304,9 +372,7 @@ export function createTeacherAssignmentComposerService({
           'string' ||
         !/^[0-9a-f]{64}$/u.test(
           scoreUpload.musicXmlFingerprint,
-        ) ||
-        scoreUpload?.draftId !==
-          normalizedDraftId
+        )
       ) {
         throw new TypeError(
           'scoreUpload must be a prepared SES-153 teacher-selected SCORE upload.',
@@ -330,6 +396,39 @@ export function createTeacherAssignmentComposerService({
         throw new Error(
           'assignment-composer-score-upload-integrity-mismatch',
         )
+      }
+
+      let verifiedGuitarTabUpload = null
+      if (guitarTabUpload !== null) {
+        assertPreparedGuitarTabUpload(
+          guitarTabUpload,
+          scoreUpload,
+          normalizedDraftId,
+        )
+        const revalidatedGuitarTabUpload =
+          await prepareEditorGuitarTabHandoff({
+            scoreUpload: verifiedScoreUpload,
+            guitarTabMusicXml:
+              guitarTabUpload.guitarTabMusicXml,
+            draftId: normalizedDraftId,
+          })
+        if (
+          revalidatedGuitarTabUpload
+            .scoreMusicXmlFingerprint !==
+            guitarTabUpload.scoreMusicXmlFingerprint ||
+          revalidatedGuitarTabUpload
+            .guitarTabMusicXmlFingerprint !==
+            guitarTabUpload.guitarTabMusicXmlFingerprint ||
+          revalidatedGuitarTabUpload
+            .pitchedEventCount !==
+            guitarTabUpload.pitchedEventCount
+        ) {
+          throw new Error(
+            'assignment-composer-guitar-tab-integrity-mismatch',
+          )
+        }
+        verifiedGuitarTabUpload =
+          revalidatedGuitarTabUpload
       }
 
       for (const studentId of selectedIds) {
@@ -381,7 +480,9 @@ export function createTeacherAssignmentComposerService({
             studentId,
             musicXml:
               verifiedScoreUpload.musicXml,
-            guitarTabMusicXml: null,
+            guitarTabMusicXml:
+              verifiedGuitarTabUpload
+                ?.guitarTabMusicXml ?? null,
             canonicalEvents:
               verifiedScoreUpload.canonicalEvents,
             practice: {},
@@ -591,6 +692,7 @@ export function createTeacherAssignmentComposerService({
   return Object.freeze({
     loadRoster,
     prepareScoreUpload,
+    prepareGuitarTabUpload,
     send,
   })
 }
