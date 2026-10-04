@@ -6,7 +6,7 @@
 
 **Architecture:** `st-guitar-tab-editor` remains an independent offline/PC authoring tool. SesliTab owns the integration trust boundary: it accepts a prepared SCORE upload plus Guitar TAB MusicXML, validates the TAB structurally and semantically against that SCORE, binds the two to the same draft/fingerprint, and then passes the exact validated TAB bytes through the already-existing `guitarTabMusicXml → content.guitarTab` PracticePackage contract. Student App production code is not changed for this slice; existing `content.guitarTab` + ST renderer behavior is qualified at an exact Student App SHA.
 
-**Tech Stack:** JavaScript ESM; Node 24; Web Crypto SHA-256; existing SesliTab MusicXML security/parser and guitar-position candidate modules; Student PracticePackage v1; ST Score Rendering Layer / OSMD 2.1.2 consumer boundary.
+**Tech Stack:** JavaScript ESM; Node 24; Web Crypto SHA-256; existing SesliTab MusicXML security/parser boundaries; Editor-aligned direct standard-tuning physical validation; Student PracticePackage v1; ST Score Rendering Layer / OSMD 2.1.2 consumer boundary.
 
 **Spec:** `st-guitar-tab-editor` architecture and MVP plan merged at `main@9fc2a5b8eae19bcf1972cd6c3a451210b9a0c243`; Notion MVP plan: https://app.notion.com/p/3ef2be2e5664817797b6d7febf79947f?pvs=204
 
@@ -26,6 +26,7 @@
 - One Guitar part may contain Voice 1, Voice 2, Voice 3 and Voice 4. Voice identity and timing must be preserved end-to-end; notes from different voices that share an onset are validated as one simultaneous physical TAB group.
 - Every TAB staff pitched note must contain explicit MusicXML `<technical><string>` and `<fret>`.
 - A simultaneous group cannot assign two notes to the same physical string, including collisions across different voices.
+- Physical validation follows the Editor contract exactly: open-string MIDI `{1:64,2:59,3:55,4:50,5:45,6:40}` plus fret must equal the event's source MusicXML pitch MIDI. Do **not** use SesliTab legacy `BASIC_GUITAR_WRITTEN_TRANSPOSITION = -12` / generated-basic candidate resolution for Editor handoff validation.
 - Mismatched/stale/malformed/incomplete TAB fails closed and is never delivered.
 - Existing SCORE-only assignments remain byte-for-byte behavior-compatible when no Guitar TAB is supplied.
 - Student App remains read-only; it does not infer, repair, or regenerate TAB positions.
@@ -36,7 +37,7 @@
 1. **Stale TAB + newer SCORE:** reject before package creation; prove score fingerprint/draft binding and semantic mismatch detection.
 2. **Same notes but wrong timing/voice:** reject; compare measure/onset/duration/voice/pitch/tie semantics, not only pitch count, including Voice 1–4.
 3. **Physical collision:** reject two simultaneous staff-2 notes that use the same string, including notes contributed by different voices.
-4. **Wrong technical position:** reject any string/fret that is not a valid physical candidate for that written guitar pitch; enforce Editor fret ceiling `20` even though legacy SesliTab candidate enumeration reaches 24.
+4. **Wrong technical position:** reject any string/fret whose direct standard-tuning MIDI does not equal the source pitch; enforce Editor fret ceiling `20` and never invoke legacy `-12` generated-basic mapping.
 5. **Consumer regression:** prove Student App receives TAB as `content.guitarTab` and renders it independently while SCORE playback/timing remains sourced from `content.score`.
 
 ---
@@ -47,9 +48,9 @@
 - Create: `src/services/editorGuitarTabHandoff.js`
 - Create: `tests/editorGuitarTabHandoff.test.js`
 - Reuse: `musicXmlSecurity.js`
-- Reuse: `musicXmlParser.js`
-- Reuse: `guitarPositionResolver.js`
+- Reuse: `musicXmlParser.js` structural conventions where safe
 - Reuse: `src/services/teacherAssignmentComposerScoreUpload.js`
+- Do not reuse: `guitarPositionResolver.js` for physical acceptance; its legacy written-guitar `-12` transposition contract does not match `st-guitar-tab-editor` direct source-pitch validation.
 
 **Interfaces:**
 - Consumes: prepared SES-153 SCORE upload `{ draftId, musicXml, musicXmlFingerprint, createdAt, canonicalEvents }` and raw Editor Guitar TAB MusicXML.
@@ -60,7 +61,7 @@
 - [ ] **Step 2: Run `node --test tests/editorGuitarTabHandoff.test.js` and require the new tests to fail for missing implementation.**
 - [ ] **Step 3: Implement the smallest strict XML evidence reader in `editorGuitarTabHandoff.js`.** Use the existing `inspectMusicXml` boundary before DOM parsing; do not add an XML dependency.
 - [ ] **Step 4: Add RED semantic-parity tests.** Compare original SCORE pitched events to TAB staff 1, and TAB staff 1 to staff 2, using stable event semantics: measure index, onset, duration, voice, written pitch, tie start/stop. Include explicit Voice 1, 2, 3 and 4 cases, with cross-voice same-onset groups. Rests may be represented by forward gaps and are not required to exist as TAB note nodes.
-- [ ] **Step 5: Add RED guitar-physics tests.** For every staff-2 note, prove the exact teacher string/fret exists in `enumerateCanonicalGuitarPositionCandidates(note)`; reject generated fallback, fret >20, and duplicate string within one same-onset group across all voices.
+- [ ] **Step 5: Add RED guitar-physics tests.** For every staff-2 note, compute direct MIDI from MusicXML pitch and require `EDITOR_STANDARD_TUNING_MIDI[string] + fret === pitchMidi`; reject missing technical data, fret >20, and duplicate string within one same-onset group across all voices. Include a regression proving a valid Editor C4 → string 2 fret 1 assignment is accepted rather than rejected by legacy `-12` mapping.
 - [ ] **Step 6: Implement semantic/physical validation and SHA-256 fingerprinting.** `scoreUpload.musicXmlFingerprint` is authoritative for the source binding; compute a separate SHA-256 for the TAB bytes. The Editor's internal FNV session fingerprint is not a delivery authority.
 - [ ] **Step 7: Run the focused test and then `npm test`; require PASS.**
 - [ ] **Step 8: Commit only Task 1 files.**
@@ -97,7 +98,7 @@
 - Existing contract remains `content.guitarTab = { format: 'musicxml', data: <validated XML> } | null`.
 
 - [ ] **Step 1: Add tests proving exact TAB bytes survive package creation/restoration and SCORE-only package behavior is unchanged.**
-- [ ] **Step 2: Add a regression test that explicit teacher technical positions are not run through `lowest-fret-v1` / `generated-basic`.**
+- [ ] **Step 2: Add a regression test that explicit teacher technical positions are not run through `lowest-fret-v1` / `generated-basic`.
 - [ ] **Step 3: Run the affected test files, then the full suite; require PASS.**
 - [ ] **Step 4: Commit Task 3 tests only.**
 
