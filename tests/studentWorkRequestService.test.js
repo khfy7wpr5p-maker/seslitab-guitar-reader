@@ -8,6 +8,9 @@ import {
   STUDENT_WORK_REQUEST_STATE,
 } from '../src/services/studentWorkRequest.js'
 import {
+  createTeacherStudentGrant,
+} from '../src/services/teacherStudentGrant.js'
+import {
   createStudentWorkRequestService,
 } from '../backend/delivery/services/studentWorkRequestService.js'
 
@@ -117,12 +120,13 @@ test('revocation is one-way and cannot be converted', () => {
 
 test('student request creates only PENDING request under exactly one active teacher grant', async () => {
   const h = makeHarness({
-    grants: [{
+    grants: [createTeacherStudentGrant({
       teacherId: 'teacher-a',
       studentId: 'student-a',
       active: true,
+      createdAt: '2026-10-04T07:59:00Z',
       revokedAt: null,
-    }],
+    })],
   })
   const dto = await h.service.requestWork({
     providerSubject: 'uid-student',

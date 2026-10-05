@@ -215,6 +215,7 @@ export function createSecureDeliveryComposition({
       createStudentWorkRequestService({
         authorization,
         store: workRequestStore,
+        rosterStore: store,
         now,
         createRequestId: () =>
           `work-request-${randomUUID()}`,
