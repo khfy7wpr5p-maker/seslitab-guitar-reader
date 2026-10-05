@@ -5,6 +5,11 @@ import {
   activateGuitarTabResultTab,
   ensureGuitarTabPanel,
 } from '../src/package4Ui.js'
+import {
+  getGuitarTabTeacherWorkspaceState,
+  loadGuitarTabTeacherSource,
+  resetGuitarTabTeacherWorkspace,
+} from '../src/guitarTabTeacherWorkspaceUi.js'
 
 class FakeClassList {
   constructor(element) { this.element = element }
@@ -34,6 +39,7 @@ class FakeElement {
     this.classList = new FakeClassList(this)
     this.textContent = ''
     this.type = ''
+    this.value = ''
     this.parentElement = null
     this._id = ''
   }
@@ -117,6 +123,39 @@ function fakeDocument() {
   return root
 }
 
+function sourceSession(id) {
+  return Object.freeze({
+    sessionId: id,
+    sourceFingerprint: `fp-${id}`,
+    events: Object.freeze([]),
+    groups: Object.freeze([]),
+  })
+}
+
+function successfulAdapters(observations = {}) {
+  const renderer = { id: 'renderer' }
+  return {
+    loadEditorRuntime: async () => ({
+      createSourceSession(xml) {
+        observations.editorXml = xml
+        return sourceSession(observations.sessionId ?? 'source-1')
+      },
+    }),
+    loadScoreRuntime: async () => renderer,
+    async renderScore(runtime, xml, options) {
+      observations.rendererRuntime = runtime
+      observations.renderXml = xml
+      observations.renderOptions = options
+      return { renderEpoch: 'epoch-1' }
+    },
+    async clearScore(runtime) {
+      observations.clearedRuntime = runtime
+      observations.clearCount = (observations.clearCount ?? 0) + 1
+      return true
+    },
+  }
+}
+
 test('GTAB-09B mounts the teacher workspace inside the existing accessible Gitar TAB tab', () => {
   const root = fakeDocument()
   const panel = ensureGuitarTabPanel(root)
@@ -142,4 +181,98 @@ test('GTAB-09B mounts the teacher workspace inside the existing accessible Gitar
   assert.equal(panel.hidden, false)
   assert.equal(root.getElementById('tab-assignment').hidden, true)
   assert.equal(root.getElementById('tab-violin').hidden, true)
+})
+
+test('GTAB-09B preserves exact source XML and sends the same immutable source to the ST renderer boundary', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const observations = { sessionId: 'audiveris-source' }
+  const adapters = successfulAdapters(observations)
+  const exactXml = '  <?xml version="1.0"?>\n<score-partwise version="4.0"></score-partwise>\n'
+
+  const result = await loadGuitarTabTeacherSource(
+    root,
+    { name: 'audiveris-export.musicxml', text: async () => exactXml },
+    adapters,
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(result.rendererAvailable, true)
+  assert.equal(observations.editorXml, exactXml)
+  assert.equal(observations.renderXml, exactXml)
+  assert.equal(observations.rendererRuntime.id, 'renderer')
+  assert.equal(observations.renderOptions.pageMode, 'continuous')
+
+  const state = getGuitarTabTeacherWorkspaceState(root)
+  assert.equal(state.sourceName, 'audiveris-export.musicxml')
+  assert.equal(state.sourceSession.sessionId, 'audiveris-source')
+  assert.equal(state.rendererAvailable, true)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'ready')
+})
+
+test('GTAB-09B keeps source session and six-string editor available when notation rendering fails', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const observations = { sessionId: 'smoosic-source' }
+  const adapters = successfulAdapters(observations)
+  adapters.renderScore = async () => { throw new Error('renderer failed') }
+  const xml = '<score-partwise version="4.0"></score-partwise>'
+
+  const result = await loadGuitarTabTeacherSource(
+    root,
+    { name: 'edited-in-smoosic.xml', text: async () => xml },
+    adapters,
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(result.rendererAvailable, false)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession.sessionId, 'smoosic-source')
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).rendererAvailable, false)
+  assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
+  assert.match(root.getElementById('guitar-tab-source-status').textContent, /TAB çalışma alanı kullanılabilir/)
+})
+
+test('GTAB-09B fails closed on unsupported source without removing the editor shell', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() { throw new Error('unsupported') },
+  })
+
+  const result = await loadGuitarTabTeacherSource(root, '<not-musicxml/>', adapters)
+
+  assert.deepEqual(result, { ok: false, reason: 'SOURCE_UNSUPPORTED' })
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
+  assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
+})
+
+test('GTAB-09B source replacement and reset clear prior renderer state deterministically', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const observations = { sessionId: 'first' }
+  const adapters = successfulAdapters(observations)
+
+  await loadGuitarTabTeacherSource(
+    root,
+    { name: 'first.musicxml', text: async () => '<score-partwise id="first"></score-partwise>' },
+    adapters,
+  )
+  observations.sessionId = 'second'
+  await loadGuitarTabTeacherSource(
+    root,
+    { name: 'second.musicxml', text: async () => '<score-partwise id="second"></score-partwise>' },
+    adapters,
+  )
+
+  assert.equal(observations.clearCount, 1)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'second.musicxml')
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession.sessionId, 'second')
+
+  await resetGuitarTabTeacherWorkspace(root, adapters)
+  assert.equal(observations.clearCount, 2)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, null)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession, null)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'empty')
+  assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
 })
