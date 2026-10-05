@@ -37,7 +37,7 @@ class FakeElement {
     this.hidden = false
     this.className = ''
     this.classList = new FakeClassList(this)
-    this.textContent = ''
+    this._textContent = ''
     this.type = ''
     this.value = ''
     this.parentElement = null
@@ -48,19 +48,42 @@ class FakeElement {
     if (value) this.root.nodes.set(value, this)
   }
   get id() { return this._id }
+  set textContent(value) {
+    for (const child of this.children) child.parentElement = null
+    this.children = []
+    this._textContent = String(value ?? '')
+  }
+  get textContent() { return this._textContent }
   setAttribute(name, value) { this.attributes.set(name, String(value)) }
   getAttribute(name) { return this.attributes.get(name) ?? null }
   appendChild(child) {
+    if (child.parentElement) {
+      child.parentElement.children = child.parentElement.children.filter((candidate) => candidate !== child)
+    }
     child.parentElement = this
     this.children.push(child)
     return child
   }
   insertBefore(child, before) {
+    if (child.parentElement) {
+      child.parentElement.children = child.parentElement.children.filter((candidate) => candidate !== child)
+    }
     child.parentElement = this
     const index = this.children.indexOf(before)
     if (index < 0) this.children.push(child)
     else this.children.splice(index, 0, child)
     return child
+  }
+  replaceChildren(...children) {
+    for (const child of this.children) child.parentElement = null
+    this.children = []
+    this._textContent = ''
+    for (const child of children) this.appendChild(child)
+  }
+  remove() {
+    if (!this.parentElement) return
+    this.parentElement.children = this.parentElement.children.filter((child) => child !== this)
+    this.parentElement = null
   }
   addEventListener(name, listener) {
     const list = this.listeners.get(name) ?? []
@@ -78,29 +101,38 @@ function fakeDocument() {
   const root = {
     nodes: new Map(),
     elements: [],
+    documentElement: null,
     createElement(tagName) {
       const element = new FakeElement(root, tagName)
       root.elements.push(element)
       return element
     },
     getElementById(id) { return root.nodes.get(id) ?? null },
+    isConnected(element) {
+      let current = element
+      while (current) {
+        if (current === root.documentElement) return true
+        current = current.parentElement
+      }
+      return false
+    },
     querySelector(selector) {
       if (selector.startsWith('.')) {
         const className = selector.slice(1)
-        return root.elements.find((element) => element.classList.contains(className)) ?? null
+        return root.elements.find((element) => root.isConnected(element) && element.classList.contains(className)) ?? null
       }
       return null
     },
     querySelectorAll(selector) {
       if (selector.startsWith('.')) {
         const className = selector.slice(1)
-        return root.elements.filter((element) => element.classList.contains(className))
+        return root.elements.filter((element) => root.isConnected(element) && element.classList.contains(className))
       }
       return []
     },
   }
 
-  const results = root.createElement('section'); results.id = 'results-section'
+  const results = root.createElement('section'); results.id = 'results-section'; root.documentElement = results
   const body = root.createElement('div'); body.className = 'card-body'; results.appendChild(body)
   const tabList = root.createElement('div'); tabList.className = 'result-tabs'; body.appendChild(tabList)
 
