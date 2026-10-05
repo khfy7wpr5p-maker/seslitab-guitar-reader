@@ -455,7 +455,14 @@ function projectPartDivisions(partXml, sourcePartXml) {
 function normalizeSmoosicDivisionsIdentity(musicXml, currentMusicXml) {
   const candidateParts = [...musicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
   const sourceParts = [...currentMusicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
-  if (candidateParts.length === 0 || candidateParts.length !== sourceParts.length) return musicXml
+  const hasSmoosicTimingEvidence = /<divisions\b[^>]*>\s*4096\s*<\/divisions>/i.test(musicXml)
+  if (candidateParts.length === 0 || candidateParts.length !== sourceParts.length) {
+    return Object.freeze({
+      ok: !hasSmoosicTimingEvidence,
+      musicXml,
+    })
+  }
+
   let partIndex = 0
   let failed = false
   const projected = musicXml.replace(/<part\b[^>]*>[\s\S]*?<\/part>/gi, (partXml) => {
@@ -467,7 +474,17 @@ function normalizeSmoosicDivisionsIdentity(musicXml, currentMusicXml) {
     }
     return value
   })
-  return failed || partIndex !== candidateParts.length ? musicXml : projected
+
+  if (failed || partIndex !== candidateParts.length) {
+    return Object.freeze({
+      ok: !hasSmoosicTimingEvidence,
+      musicXml,
+    })
+  }
+  return Object.freeze({
+    ok: true,
+    musicXml: projected,
+  })
 }
 
 function parseCandidate(musicXml, DOMParserCtor) {
@@ -914,12 +931,18 @@ export function applySmoosicProductWriteback({
   }
 
   const partNormalizedMusicXml = normalizeSinglePartIdentity(paddingNormalizedMusicXml, currentRevision)
-  const divisionsNormalizedMusicXml = normalizeSmoosicDivisionsIdentity(
+  const divisionsNormalization = normalizeSmoosicDivisionsIdentity(
     partNormalizedMusicXml,
     currentRecord.musicXml,
   )
+  if (!divisionsNormalization.ok) {
+    return Object.freeze({
+      status: SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE,
+      authority,
+    })
+  }
   const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
-    divisionsNormalizedMusicXml,
+    divisionsNormalization.musicXml,
     currentRevision,
   )
 
