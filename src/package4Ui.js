@@ -12,6 +12,7 @@ import {
   buildQualityGatedGuitarTab,
   GUITAR_TAB_CONSUMER_STATE,
 } from './services/guitarTabConsumer.js'
+import { ensureGuitarTabTeacherWorkspace } from './guitarTabTeacherWorkspaceUi.js'
 
 export const GUITAR_TAB_UI_STATE = Object.freeze({
   EMPTY: 'empty',
@@ -128,7 +129,7 @@ export function activateGuitarTabResultTab(root) {
   if (!panel) return false
 
   setActiveTabState(root, 'guitar-tab')
-  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-assignment', 'tab-xml']) {
+  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-assignment', 'tab-xml', 'tab-violin']) {
     const existingPanel = root.getElementById(id)
     if (existingPanel) existingPanel.hidden = true
   }
@@ -146,7 +147,10 @@ export function ensureGuitarTabPanel(root) {
   }
 
   const existing = root.getElementById('tab-guitar-tab')
-  if (existing) return existing
+  if (existing) {
+    ensureGuitarTabTeacherWorkspace(root, existing)
+    return existing
+  }
 
   const tabList = root.querySelector?.('.result-tabs') ?? null
   const notesSummary = root.getElementById('notes-summary')
@@ -192,6 +196,7 @@ export function ensureGuitarTabPanel(root) {
   output.setAttribute('tabindex', '0')
 
   panel.appendChild(heading)
+  ensureGuitarTabTeacherWorkspace(root, panel)
   panel.appendChild(status)
   panel.appendChild(output)
   if (notesSummary && notesSummary.parentElement === host) host.insertBefore(panel, notesSummary)
