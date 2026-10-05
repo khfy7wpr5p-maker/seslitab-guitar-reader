@@ -44,7 +44,16 @@ const SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML = SOURCE_XML
     '<part id="P2"><measure number="1">\n    <attributes><divisions>4096</divisions>',
     '<part id="P2"><measure number="1">\n    <attributes>',
   )
-  .replace('<step>G</step><octave>3</octave>', '<step>F</step><octave>3</octave>')
+  .replace('<step>C</step><octave>4</octave>', '<step>B</step><octave>4</octave>')
+
+const SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML =
+  SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML.replace(
+    '<part id="P2"><measure number="1">\n    <attributes>',
+    '<part id="P2"><measure number="1">\n    <attributes>',
+  ).replace(
+    '<note><pitch><step>G</step><octave>3</octave></pitch><duration>4096</duration>',
+    '<note><pitch><step>G</step><octave>3</octave></pitch><duration>1234</duration>',
+  )
 
 function notes(xml) {
   const parsed = parseMusicXmlToNotes(xml)
@@ -92,8 +101,8 @@ test('SMPB-01 restores a missing later-part Smoosic timing basis before immutabl
   })
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
-  assert.deepEqual(result.changedIndexes, [4])
-  assert.equal(result.revision.content[4].step, 'F')
+  assert.deepEqual(result.changedIndexes, [0])
+  assert.equal(result.revision.content[0].step, 'B')
   assert.equal(root.workspace.history.revisions.length, 1)
   assert.equal(result.authority.workspace.history.revisions.length, 2)
   assert.equal(resolvePrDProductMusicXml(current)?.musicXml, SOURCE_XML)
@@ -104,4 +113,28 @@ test('SMPB-01 restores a missing later-part Smoosic timing basis before immutabl
   assert.equal((result.musicXml.match(/<divisions>12<\/divisions>/g) ?? []).length, 2)
   assert.doesNotMatch(result.musicXml, /<divisions>4096<\/divisions>/)
   assert.doesNotMatch(result.musicXml, /<duration>4096<\/duration>/)
+})
+
+test('SMPB-01 fails closed when a later-part Smoosic timing basis cannot be proven', () => {
+  const root = authority()
+  const current = getTeacherWorkspaceCurrentRevision(root.workspace)
+
+  const result = applySmoosicProductWriteback({
+    authority: root,
+    musicXml: SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML,
+    paddingRestProvenance: emptyProof(SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML),
+    sourceRevision: 7,
+    revisionId: 'smpb-01-unproven-edit',
+    eventId: 'smpb-01-unproven-event',
+    operationIdPrefix: 'smpb-01-unproven-op',
+    createdAt: '2026-10-05T18:47:00Z',
+    DOMParserCtor: SmoosicTestDOMParser,
+    XMLSerializerCtor: SmoosicTestXMLSerializer,
+  })
+
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE)
+  assert.equal(result.authority, root)
+  assert.equal(root.workspace.history.revisions.length, 1)
+  assert.equal(getTeacherWorkspaceCurrentRevision(root.workspace), current)
+  assert.equal(resolvePrDProductMusicXml(current)?.musicXml, SOURCE_XML)
 })
