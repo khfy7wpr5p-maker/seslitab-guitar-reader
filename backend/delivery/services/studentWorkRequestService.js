@@ -6,6 +6,12 @@ import {
   STUDENT_WORK_REQUEST_TARGET,
 } from '../../../src/services/studentWorkRequest.js'
 import {
+  isStudentRosterEntry,
+} from '../../../src/services/studentRosterEntry.js'
+import {
+  isTeacherStudentGrant,
+} from '../../../src/services/teacherStudentGrant.js'
+import {
   normalizeRequiredId,
   normalizeRequiredText,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
@@ -24,6 +30,22 @@ function requireOwnedRequest(request, teacherId) {
   return request
 }
 
+function requireSingleActiveTeacherGrant(grants, studentId) {
+  if (!Array.isArray(grants) || grants.length !== 1) {
+    throw new Error('work-request-teacher-authority-ambiguous')
+  }
+  const grant = grants[0]
+  if (
+    !isTeacherStudentGrant(grant) ||
+    grant.studentId !== studentId ||
+    grant.active !== true ||
+    grant.revokedAt !== null
+  ) {
+    throw new Error('work-request-teacher-authority-invalid')
+  }
+  return grant
+}
+
 function studentRequestDto(request) {
   return Object.freeze({
     title: request.title,
@@ -31,6 +53,13 @@ function studentRequestDto(request) {
     requestedAt: request.requestedAt,
     updatedAt: request.updatedAt,
     targetState: request.targetState,
+  })
+}
+
+function sharedPendingRequestDto(request, rosterEntry) {
+  return Object.freeze({
+    title: request.title,
+    displayNameOrNickname: rosterEntry.displayNameOrNickname,
   })
 }
 
@@ -50,6 +79,7 @@ function teacherInternalRequestDto(request) {
 export function createStudentWorkRequestService({
   authorization,
   store,
+  rosterStore = null,
   now,
   createRequestId,
 } = {}) {
@@ -75,14 +105,10 @@ export function createStudentWorkRequestService({
       'STUDENT',
     )
     const studentId = normalizeRequiredId(principal.studentId, 'studentId')
-    const grants = await store.listActiveTeacherGrantsForStudent(studentId)
-    if (!Array.isArray(grants) || grants.length !== 1) {
-      throw new Error('work-request-teacher-authority-ambiguous')
-    }
-    const grant = grants[0]
-    if (grant.studentId !== studentId || grant.active !== true || grant.revokedAt !== null) {
-      throw new Error('work-request-teacher-authority-invalid')
-    }
+    const grant = requireSingleActiveTeacherGrant(
+      await store.listActiveTeacherGrantsForStudent(studentId),
+      studentId,
+    )
     const requestedAt = now()
     const request = createPendingStudentWorkRequest({
       requestId: createRequestId(),
@@ -93,6 +119,81 @@ export function createStudentWorkRequestService({
     })
     const stored = await store.putWorkRequest(request)
     return studentRequestDto(stored)
+  }
+
+  async function listSharedPendingForStudent({ providerSubject } = {}) {
+    assertDependency(
+      rosterStore,
+      'listTeacherStudentGrantsForTeacher',
+      'rosterStore',
+    )
+    assertDependency(rosterStore, 'getRosterEntry', 'rosterStore')
+
+    const principal = await authorization.resolvePrincipal(
+      providerSubject,
+      'STUDENT',
+    )
+    const studentId = normalizeRequiredId(principal.studentId, 'studentId')
+    const currentGrant = requireSingleActiveTeacherGrant(
+      await store.listActiveTeacherGrantsForStudent(studentId),
+      studentId,
+    )
+    const teacherId = normalizeRequiredId(currentGrant.teacherId, 'teacherId')
+
+    const [requests, cohortGrants] = await Promise.all([
+      store.listWorkRequestsForTeacher(teacherId),
+      rosterStore.listTeacherStudentGrantsForTeacher(teacherId),
+    ])
+    if (!Array.isArray(requests)) {
+      throw new TypeError('work-request listing must return an array.')
+    }
+    if (!Array.isArray(cohortGrants)) {
+      throw new TypeError('secure-delivery-roster-grant-list-invalid')
+    }
+
+    const activeStudentIds = new Set()
+    const seenStudentIds = new Set()
+    for (const grant of cohortGrants) {
+      if (!isTeacherStudentGrant(grant) || grant.teacherId !== teacherId) {
+        throw new Error('secure-delivery-roster-grant-mismatch')
+      }
+      if (seenStudentIds.has(grant.studentId)) {
+        throw new Error('secure-delivery-roster-grant-duplicate')
+      }
+      seenStudentIds.add(grant.studentId)
+      if (grant.active === true && grant.revokedAt === null) {
+        activeStudentIds.add(grant.studentId)
+      }
+    }
+
+    if (!activeStudentIds.has(studentId)) {
+      throw new Error('secure-delivery-roster-current-student-missing')
+    }
+
+    const rows = []
+    for (const request of requests) {
+      if (request?.teacherId !== teacherId) {
+        throw new Error('work-request-teacher-authority-invalid')
+      }
+      if (request.state !== STUDENT_WORK_REQUEST_STATE.PENDING) {
+        continue
+      }
+      if (!activeStudentIds.has(request.studentId)) {
+        throw new Error('secure-delivery-roster-requester-missing')
+      }
+
+      const rosterEntry = await rosterStore.getRosterEntry(request.studentId)
+      if (
+        !isStudentRosterEntry(rosterEntry) ||
+        rosterEntry.studentId !== request.studentId ||
+        rosterEntry.active !== true
+      ) {
+        throw new Error('secure-delivery-roster-entry-mismatch')
+      }
+      rows.push(sharedPendingRequestDto(request, rosterEntry))
+    }
+
+    return Object.freeze(rows)
   }
 
   async function listPendingForTeacher({ providerSubject } = {}) {
@@ -194,6 +295,7 @@ export function createStudentWorkRequestService({
 
   return Object.freeze({
     requestWork,
+    listSharedPendingForStudent,
     listPendingForTeacher,
     getForTeacher,
     revokePending,
