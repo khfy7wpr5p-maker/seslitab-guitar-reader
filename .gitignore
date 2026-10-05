@@ -16,6 +16,10 @@ dist-ssr
 .score-runtime-build/
 public/st-score-runtime/
 
+# Generated ST Guitar TAB Editor runtime assets
+.guitar-tab-editor-runtime-build/
+public/st-guitar-tab-editor-runtime/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
