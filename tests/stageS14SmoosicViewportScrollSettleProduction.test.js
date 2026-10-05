@@ -28,6 +28,7 @@ function createHarness() {
   let scrollY = 0
   let scrollToCalls = 0
   let anchorShiftOnHeightWrite = 0
+  let delayedAnchorShiftOnHeightWrite = 0
 
   const dataset = {}
   let inlineHeight = ''
@@ -54,6 +55,18 @@ function createHarness() {
         scrollY += anchorShiftOnHeightWrite
         frameTop -= anchorShiftOnHeightWrite
         anchorShiftOnHeightWrite = 0
+      }
+      if (delayedAnchorShiftOnHeightWrite && previous !== inlineHeight) {
+        const shift = delayedAnchorShiftOnHeightWrite
+        delayedAnchorShiftOnHeightWrite = 0
+        const id = nextRafId++
+        rafQueue.push({
+          id,
+          callback() {
+            scrollY += shift
+            frameTop -= shift
+          },
+        })
       }
     },
   })
@@ -256,6 +269,9 @@ function createHarness() {
     armScrollAnchorShift(value) {
       anchorShiftOnHeightWrite = Number(value)
     },
+    armDelayedScrollAnchorShift(value) {
+      delayedAnchorShiftOnHeightWrite = Number(value)
+    },
     setHostStatusHidden(value, nextFrameTop = frameTop) {
       hostStatus.hidden = value
       frameTop = nextFrameTop
@@ -364,6 +380,25 @@ test('S14 production viewport fit preserves parent scroll when browser anchoring
   const harness = createHarness()
   harness.setScrollState(240, 20)
   harness.armScrollAnchorShift(202)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+
+  harness.advance(140)
+  assert.equal(harness.metrics().height, '820px')
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().scrollY, 240)
+  assert.equal(harness.metrics().frameTop, 20)
+  assert.equal(harness.metrics().scrollToCalls, 1)
+
+  harness.advance(220)
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().scrollY, 240)
+})
+
+test('S14 production viewport fit restores parent scroll when Chromium applies anchoring on the next animation frame', () => {
+  const harness = createHarness()
+  harness.setScrollState(240, 20)
+  harness.armDelayedScrollAnchorShift(87)
   harness.parentListeners.get('scroll')()
   harness.flushRaf()
 
