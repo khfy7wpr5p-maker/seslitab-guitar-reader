@@ -301,6 +301,8 @@ function normalizeSinglePartIdentity(musicXml, currentRevision) {
     : musicXml
 }
 
+const SMOOSIC_TIMING_DIVISIONS = 4096
+
 function positiveIntegerText(value) {
   const text = String(value).trim()
   const number = Number(text)
@@ -323,6 +325,17 @@ function divisionsDeclaration(measureXml) {
     ambiguous: false,
     value: positiveIntegerText(matches[0][1]),
   })
+}
+
+function restoreInitialSourceDivisions(measureXml, sourceDivisions) {
+  if (!Number.isSafeInteger(sourceDivisions) || sourceDivisions <= 0) return null
+  if (/<divisions\b/i.test(measureXml)) return null
+  const attributeOpenings = [...measureXml.matchAll(/<attributes\b[^>]*>/gi)]
+  if (attributeOpenings.length !== 1) return null
+  return measureXml.replace(
+    /(<attributes\b[^>]*>)/i,
+    `$1<divisions>${sourceDivisions}</divisions>`,
+  )
 }
 
 function projectMeasureDurations(measureXml, sourceDivisions, candidateDivisions) {
@@ -370,11 +383,17 @@ function projectPartDivisions(partXml, sourcePartXml) {
   let measureIndex = 0
   let failed = false
   const projected = partXml.replace(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi, (measureXml) => {
+    const isFirstMeasure = measureIndex === 0
     const sourceMeasure = sourceMeasures[measureIndex]?.[0]
     measureIndex += 1
     const sourceDeclaration = divisionsDeclaration(sourceMeasure)
     const candidateDeclaration = divisionsDeclaration(measureXml)
     const previousSourceDivisions = sourceDivisions
+    const missingInitialCandidateDivisions = isFirstMeasure
+      && candidateDivisions === null
+      && candidateDeclaration.value === null
+      && sourceDeclaration.value !== null
+      && !/<divisions\b/i.test(measureXml)
     if (
       sourceDeclaration.ambiguous
       || candidateDeclaration.ambiguous
@@ -385,7 +404,14 @@ function projectPartDivisions(partXml, sourcePartXml) {
       return measureXml
     }
     if (sourceDeclaration.value !== null) sourceDivisions = sourceDeclaration.value
-    if (candidateDeclaration.value !== null) candidateDivisions = candidateDeclaration.value
+    if (candidateDeclaration.value !== null) {
+      candidateDivisions = candidateDeclaration.value
+    } else if (missingInitialCandidateDivisions) {
+      // Smoosic's writer uses a fixed 4096 timing grid. Recover only a
+      // missing first declaration inside this part; never inherit timing
+      // state from a previous MusicXML part.
+      candidateDivisions = SMOOSIC_TIMING_DIVISIONS
+    }
     if (sourceDivisions === null || candidateDivisions === null) {
       failed = true
       return measureXml
@@ -393,6 +419,7 @@ function projectPartDivisions(partXml, sourcePartXml) {
     if (
       sourceDeclaration.value !== null
       && candidateDeclaration.value === null
+      && !missingInitialCandidateDivisions
       && sourceDeclaration.value !== previousSourceDivisions
     ) {
       failed = true
@@ -407,6 +434,14 @@ function projectPartDivisions(partXml, sourcePartXml) {
     if (durations === null) {
       failed = true
       return measureXml
+    }
+    if (missingInitialCandidateDivisions) {
+      const restored = restoreInitialSourceDivisions(durations, sourceDeclaration.value)
+      if (restored === null) {
+        failed = true
+        return measureXml
+      }
+      return restored
     }
     if (candidateDeclaration.value === null || sourceDeclaration.value === null) return durations
     return durations.replace(
