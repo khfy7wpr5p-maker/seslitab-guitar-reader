@@ -301,6 +301,8 @@ function normalizeSinglePartIdentity(musicXml, currentRevision) {
     : musicXml
 }
 
+const SMOOSIC_TIMING_DIVISIONS = 4096
+
 function positiveIntegerText(value) {
   const text = String(value).trim()
   const number = Number(text)
@@ -323,6 +325,91 @@ function divisionsDeclaration(measureXml) {
     ambiguous: false,
     value: positiveIntegerText(matches[0][1]),
   })
+}
+
+function firstMeasureXml(partXml) {
+  return partXml.match(/<measure\b[^>]*>[\s\S]*?<\/measure>/i)?.[0] ?? null
+}
+
+function initialDivisionsState(partXml) {
+  const measureXml = firstMeasureXml(partXml)
+  if (!measureXml) {
+    return Object.freeze({
+      ambiguous: false,
+      malformed: false,
+      missing: true,
+      value: null,
+    })
+  }
+  const declaration = divisionsDeclaration(measureXml)
+  const hasDeclaration = /<divisions\b/i.test(measureXml)
+  return Object.freeze({
+    ambiguous: declaration.ambiguous,
+    malformed: hasDeclaration && declaration.value === null,
+    missing: !hasDeclaration,
+    value: declaration.value,
+  })
+}
+
+function partElementId(partXml) {
+  return partXml.match(/<part\b[^>]*\bid\s*=\s*(["'])(.*?)\1/i)?.[2] ?? null
+}
+
+function noteCountsByMeasure(partXml) {
+  return [...partXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
+    .map((match) => (match[0].match(/<note\b/gi) ?? []).length)
+}
+
+function compatiblePartTopology(candidatePartXml, sourcePartXml) {
+  const candidateCounts = noteCountsByMeasure(candidatePartXml)
+  const sourceCounts = noteCountsByMeasure(sourcePartXml)
+  return candidateCounts.length === sourceCounts.length
+    && candidateCounts.every((count, index) => count === sourceCounts[index])
+}
+
+function definitelyReorderedParts(candidatePartXmls, sourcePartXmls) {
+  const candidateIds = candidatePartXmls.map(partElementId)
+  const sourceIds = sourcePartXmls.map(partElementId)
+  if (candidateIds.some((id) => id === null) || sourceIds.some((id) => id === null)) return false
+  if (new Set(candidateIds).size !== candidateIds.length || new Set(sourceIds).size !== sourceIds.length) {
+    return true
+  }
+  const sameIdSet = candidateIds.length === sourceIds.length
+    && candidateIds.every((id) => sourceIds.includes(id))
+  if (!sameIdSet) return false
+  return candidateIds.some((id, index) => id !== sourceIds[index])
+}
+
+function timingNormalizationRequired(candidatePartXmls, sourcePartXmls) {
+  for (let index = 0; index < candidatePartXmls.length; index += 1) {
+    const candidate = initialDivisionsState(candidatePartXmls[index])
+    const source = sourcePartXmls[index]
+      ? initialDivisionsState(sourcePartXmls[index])
+      : null
+    if (candidate.ambiguous || candidate.malformed) return true
+    if (candidate.value === SMOOSIC_TIMING_DIVISIONS) return true
+    if (candidate.missing && source?.value !== null && source?.value !== undefined) return true
+  }
+  return false
+}
+
+function hasSmoosicTimingProof(candidatePartXmls) {
+  if (candidatePartXmls.length === 0) return false
+  const first = initialDivisionsState(candidatePartXmls[0])
+  return !first.ambiguous
+    && !first.malformed
+    && first.value === SMOOSIC_TIMING_DIVISIONS
+}
+
+function restoreInitialSourceDivisions(measureXml, sourceDivisions) {
+  if (!Number.isSafeInteger(sourceDivisions) || sourceDivisions <= 0) return null
+  if (/<divisions\b/i.test(measureXml)) return null
+  const attributeOpenings = [...measureXml.matchAll(/<attributes\b[^>]*>/gi)]
+  if (attributeOpenings.length !== 1) return null
+  return measureXml.replace(
+    /(<attributes\b[^>]*>)/i,
+    `$1<divisions>${sourceDivisions}</divisions>`,
+  )
 }
 
 function projectMeasureDurations(measureXml, sourceDivisions, candidateDivisions) {
@@ -360,7 +447,9 @@ function projectMeasureDurations(measureXml, sourceDivisions, candidateDivisions
   return invalid ? null : projected
 }
 
-function projectPartDivisions(partXml, sourcePartXml) {
+function projectPartDivisions(partXml, sourcePartXml, {
+  allowMissingInitialSmoosicGrid = false,
+} = {}) {
   const candidateMeasures = [...partXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
   const sourceMeasures = [...sourcePartXml.matchAll(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi)]
   if (candidateMeasures.length !== sourceMeasures.length) return null
@@ -370,11 +459,18 @@ function projectPartDivisions(partXml, sourcePartXml) {
   let measureIndex = 0
   let failed = false
   const projected = partXml.replace(/<measure\b[^>]*>[\s\S]*?<\/measure>/gi, (measureXml) => {
+    const isFirstMeasure = measureIndex === 0
     const sourceMeasure = sourceMeasures[measureIndex]?.[0]
     measureIndex += 1
     const sourceDeclaration = divisionsDeclaration(sourceMeasure)
     const candidateDeclaration = divisionsDeclaration(measureXml)
     const previousSourceDivisions = sourceDivisions
+    const missingInitialCandidateDivisions = allowMissingInitialSmoosicGrid
+      && isFirstMeasure
+      && candidateDivisions === null
+      && candidateDeclaration.value === null
+      && sourceDeclaration.value !== null
+      && !/<divisions\b/i.test(measureXml)
     if (
       sourceDeclaration.ambiguous
       || candidateDeclaration.ambiguous
@@ -385,7 +481,14 @@ function projectPartDivisions(partXml, sourcePartXml) {
       return measureXml
     }
     if (sourceDeclaration.value !== null) sourceDivisions = sourceDeclaration.value
-    if (candidateDeclaration.value !== null) candidateDivisions = candidateDeclaration.value
+    if (candidateDeclaration.value !== null) {
+      candidateDivisions = candidateDeclaration.value
+    } else if (missingInitialCandidateDivisions) {
+      // This is not cross-part timing inheritance. The document boundary has
+      // already proven Smoosic's fixed 4096 exporter grid from part 1, so a
+      // later part may repair only the known missing-initial-divisions defect.
+      candidateDivisions = SMOOSIC_TIMING_DIVISIONS
+    }
     if (sourceDivisions === null || candidateDivisions === null) {
       failed = true
       return measureXml
@@ -393,6 +496,7 @@ function projectPartDivisions(partXml, sourcePartXml) {
     if (
       sourceDeclaration.value !== null
       && candidateDeclaration.value === null
+      && !missingInitialCandidateDivisions
       && sourceDeclaration.value !== previousSourceDivisions
     ) {
       failed = true
@@ -408,6 +512,14 @@ function projectPartDivisions(partXml, sourcePartXml) {
       failed = true
       return measureXml
     }
+    if (missingInitialCandidateDivisions) {
+      const restored = restoreInitialSourceDivisions(durations, sourceDeclaration.value)
+      if (restored === null) {
+        failed = true
+        return measureXml
+      }
+      return restored
+    }
     if (candidateDeclaration.value === null || sourceDeclaration.value === null) return durations
     return durations.replace(
       /(<divisions\b[^>]*>)[\s\S]*?(<\/divisions>)/i,
@@ -418,13 +530,39 @@ function projectPartDivisions(partXml, sourcePartXml) {
 }
 
 function normalizeSmoosicDivisionsIdentity(musicXml, currentMusicXml) {
-  const candidateParts = [...musicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
-  const sourceParts = [...currentMusicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
-  if (candidateParts.length === 0 || candidateParts.length !== sourceParts.length) return musicXml
+  const candidatePartXmls = [...musicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
+    .map((match) => match[0])
+  const sourcePartXmls = [...currentMusicXml.matchAll(/<part\b[^>]*>[\s\S]*?<\/part>/gi)]
+    .map((match) => match[0])
+  const requiresTimingNormalization = timingNormalizationRequired(
+    candidatePartXmls,
+    sourcePartXmls,
+  )
+
+  if (!requiresTimingNormalization) {
+    return Object.freeze({ ok: true, musicXml })
+  }
+
+  if (
+    candidatePartXmls.length === 0
+    || candidatePartXmls.length !== sourcePartXmls.length
+    || !hasSmoosicTimingProof(candidatePartXmls)
+    || definitelyReorderedParts(candidatePartXmls, sourcePartXmls)
+    || candidatePartXmls.some(
+      (partXml, index) => !compatiblePartTopology(partXml, sourcePartXmls[index]),
+    )
+  ) {
+    return Object.freeze({ ok: false, musicXml })
+  }
+
   let partIndex = 0
   let failed = false
   const projected = musicXml.replace(/<part\b[^>]*>[\s\S]*?<\/part>/gi, (partXml) => {
-    const value = projectPartDivisions(partXml, sourceParts[partIndex]?.[0])
+    const value = projectPartDivisions(
+      partXml,
+      sourcePartXmls[partIndex],
+      { allowMissingInitialSmoosicGrid: partIndex > 0 },
+    )
     partIndex += 1
     if (value === null) {
       failed = true
@@ -432,7 +570,14 @@ function normalizeSmoosicDivisionsIdentity(musicXml, currentMusicXml) {
     }
     return value
   })
-  return failed || partIndex !== candidateParts.length ? musicXml : projected
+
+  if (failed || partIndex !== candidatePartXmls.length) {
+    return Object.freeze({ ok: false, musicXml })
+  }
+  return Object.freeze({
+    ok: true,
+    musicXml: projected,
+  })
 }
 
 function parseCandidate(musicXml, DOMParserCtor) {
@@ -879,12 +1024,18 @@ export function applySmoosicProductWriteback({
   }
 
   const partNormalizedMusicXml = normalizeSinglePartIdentity(paddingNormalizedMusicXml, currentRevision)
-  const divisionsNormalizedMusicXml = normalizeSmoosicDivisionsIdentity(
+  const divisionsNormalization = normalizeSmoosicDivisionsIdentity(
     partNormalizedMusicXml,
     currentRecord.musicXml,
   )
+  if (!divisionsNormalization.ok) {
+    return Object.freeze({
+      status: SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE,
+      authority,
+    })
+  }
   const normalizedMusicXml = normalizeSmoosicVoiceIdentity(
-    divisionsNormalizedMusicXml,
+    divisionsNormalization.musicXml,
     currentRevision,
   )
 
