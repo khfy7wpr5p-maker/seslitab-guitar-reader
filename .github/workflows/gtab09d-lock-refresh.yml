@@ -1,0 +1,41 @@
+name: GTAB-09D Lock Refresh
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gtab09d-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Regenerate package lock from declared overrides
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify patched dependency graph
+        run: |
+          npm ci --ignore-scripts
+          npm audit --omit=dev
+          npm audit
+
+      - name: Upload generated package lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtab09d-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
