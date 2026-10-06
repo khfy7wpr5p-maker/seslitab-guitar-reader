@@ -125,7 +125,10 @@ async function extractMxlMusicXml(file) {
         throw new Error('.mxl container.xml güvenli olmayan bir MusicXML yolu içeriyor.')
       }
       const rootEntry = zip.file(candidate)
-      if (rootEntry && !rootEntry.dir) rootFile = candidate
+      if (!rootEntry || rootEntry.dir) {
+        throw new Error('.mxl container.xml tarafından belirtilen MusicXML bulunamadı.')
+      }
+      rootFile = candidate
     }
   }
 
