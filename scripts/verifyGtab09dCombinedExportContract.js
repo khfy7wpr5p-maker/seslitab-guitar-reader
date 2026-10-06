@@ -63,7 +63,9 @@ for (const fixture of fixtureCases) {
   const sourceSession = editor.createSourceSession(sourceXml)
   assert.ok(sourceSession.events.length > 0)
   assert.deepEqual(
-    [...new Set(sourceSession.events.map((event) => String(event.voice)))].sort(),
+    [...new Set(sourceSession.events.map((event) => String(event.voice)))].sort(
+      (left, right) => Number(left) - Number(right),
+    ),
     fixture.expectedVoices,
   )
 
