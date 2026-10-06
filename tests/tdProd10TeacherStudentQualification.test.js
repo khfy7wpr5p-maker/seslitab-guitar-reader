@@ -72,7 +72,24 @@ test('SES-122 qualification proves fail-closed negative and retry invariants wit
       exactReplayIdempotent: true,
       durablePrepareRetainedAfterDeliveryFailure: true,
       retryReachedDelivered: true,
+      revokedDeliveryFailsClosed: true,
+      malformedMusicXmlRejectedBeforePrepare: true,
     },
+  )
+})
+
+
+test('SES-140 closes revoke + malformed MusicXML lifecycle evidence on the current qualification harness', async () => {
+  const fixture =
+    await buildTdProd10QualificationFixture()
+
+  assert.equal(
+    fixture.evidence.revokedDeliveryFailsClosed,
+    true,
+  )
+  assert.equal(
+    fixture.evidence.malformedMusicXmlRejectedBeforePrepare,
+    true,
   )
 })
 

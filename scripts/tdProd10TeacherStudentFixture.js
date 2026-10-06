@@ -133,6 +133,8 @@ const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </measure></part>
 </score-partwise>`
 
+const MALFORMED_XML = '<score-partwise version="4.0"><part-list>'
+
 function parsedNotes(xml = FINAL_XML) {
   const parsed = parseMusicXmlToNotes(xml)
   if (
@@ -423,6 +425,106 @@ function browserItem(view, studentId) {
   })
 }
 
+async function revokedDeliveryFailsClosed(score) {
+  const harness =
+    createDeliveryHarness()
+
+  await harness.prepared.prepareBatch({
+    providerSubject: TEACHER_SUBJECT,
+    items: [score],
+  })
+  await harness.teacher.deliverBatch({
+    providerSubject: TEACHER_SUBJECT,
+    assignmentIds: [
+      score.assignment.assignmentId,
+    ],
+  })
+
+  const before =
+    await harness.student.getAssignment({
+      providerSubject: STUDENT_A_SUBJECT,
+      deliveryId:
+        score.assignment.assignmentId,
+    })
+
+  await harness.teacher.applyAssignmentAction({
+    providerSubject: TEACHER_SUBJECT,
+    assignmentId:
+      score.assignment.assignmentId,
+    action: 'REVOKE',
+  })
+
+  const exactReadRejected =
+    await rejected(() =>
+      harness.student.getAssignment({
+        providerSubject: STUDENT_A_SUBJECT,
+        deliveryId:
+          score.assignment.assignmentId,
+      }),
+    )
+  const listed =
+    await harness.student.listAssignments({
+      providerSubject: STUDENT_A_SUBJECT,
+    })
+
+  return (
+    before?.assignmentId ===
+      score.assignment.assignmentId &&
+    exactReadRejected &&
+    listed.every(
+      (item) =>
+        item.assignmentId !==
+        score.assignment.assignmentId,
+    )
+  )
+}
+
+async function malformedMusicXmlRejectedBeforePrepare() {
+  const authority =
+    createSmoosicProductAuthority({
+      notes: parsedNotes(),
+      musicXml: MALFORMED_XML,
+      sourceId:
+        'td-prod-28-malformed-source',
+      automaticRevisionId:
+        'td-prod-28-malformed-root',
+      historyId:
+        'td-prod-28-malformed-history',
+      actorId: TEACHER_ID,
+      createdAt:
+        '2026-10-01T10:00:00Z',
+    })
+  const revision =
+    getTeacherWorkspaceCurrentRevision(
+      authority.workspace,
+    )
+
+  const rejectedAtIntake =
+    await rejected(() =>
+      createFinalMusicXmlIntake({
+        workspace: authority.workspace,
+        revision,
+      }),
+    )
+
+  const harness =
+    createDeliveryHarness()
+  const markerAssignmentId =
+    'td-prod-28-malformed-score'
+
+  return (
+    rejectedAtIntake &&
+    await harness.store
+      .getPreparedAssignment(
+        markerAssignmentId,
+      ) === null &&
+    await harness.store
+      .getDelivery(
+        markerAssignmentId,
+      ) === null
+  )
+}
+
 async function negativeEvidence({
   score,
   chord,
@@ -600,6 +702,11 @@ async function negativeEvidence({
       TEACHER_ASSIGNMENT_DELIVERY_PHASE
         .DELIVERED_TO_STUDENT
 
+  const revokedDeliveryFailsClosedResult =
+    await revokedDeliveryFailsClosed(score)
+  const malformedMusicXmlRejectedBeforePrepareResult =
+    await malformedMusicXmlRejectedBeforePrepare()
+
   return Object.freeze({
     wrongStudentRejected,
     missingGrantRejected,
@@ -609,6 +716,10 @@ async function negativeEvidence({
     exactReplayIdempotent,
     durablePrepareRetainedAfterDeliveryFailure,
     retryReachedDelivered,
+    revokedDeliveryFailsClosed:
+      revokedDeliveryFailsClosedResult,
+    malformedMusicXmlRejectedBeforePrepare:
+      malformedMusicXmlRejectedBeforePrepareResult,
   })
 }
 
