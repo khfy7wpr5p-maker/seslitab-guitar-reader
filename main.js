@@ -33,8 +33,10 @@ import { initSmoosicEditorTab } from './src/smoosicEditorTabUi.js'
 import { mountTeacherAssignmentProduction } from './src/teacherAssignmentProductionMount.js'
 import { createTeacherAuthSessionController } from './src/teacherAuthSessionController.js'
 import { mountTeacherAuthSessionUi } from './src/teacherAuthSessionUi.js'
+import { installMusicXmlMxlInputBridge } from './src/musicXmlMxlInputBridge.js'
 
 if (typeof document !== 'undefined') {
+  installMusicXmlMxlInputBridge(document)
   initStageJDiscoveryPresentation(document)
   initStageKTunerPresentation(document)
   initStageS04MiniTunerUi(document)
