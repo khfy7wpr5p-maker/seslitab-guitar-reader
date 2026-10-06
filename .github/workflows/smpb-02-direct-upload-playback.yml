@@ -1,0 +1,58 @@
+name: SMPB-02 Direct Upload Playback Qualification
+
+on:
+  pull_request:
+    paths:
+      - src/services/smoosicDirectUploadTimingNormalization.js
+      - src/services/teacherAssignmentComposerScoreUpload.js
+      - tests/smpb02SmoosicDirectUploadPlaybackCompatibility.test.js
+      - qualification/smpb-02/**
+      - .github/workflows/smpb-02-direct-upload-playback.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smpb-02-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  direct-upload-student-playback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STUDENT_APP_SHA: ef9b29bf5da0fafa01c93f08212b34609aff1651
+
+    steps:
+      - name: Checkout SesliTab exact PR head
+        uses: actions/checkout@v4
+        with:
+          path: teacher
+
+      - name: Checkout current Student App revision
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-student-app
+          ref: ${{ env.STUDENT_APP_SHA }}
+          path: student-app
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Student App dependencies
+        working-directory: student-app
+        run: npm ci --ignore-scripts
+
+      - name: Verify focused SesliTab direct-upload contract
+        working-directory: teacher
+        run: node --test tests/smpb02SmoosicDirectUploadPlaybackCompatibility.test.js
+
+      - name: Install SMPB-02 cross-repo qualification
+        run: cp teacher/qualification/smpb-02/student-playback-contract.test.mjs student-app/test/smpb02TeacherDirectUploadPlayback.test.mjs
+
+      - name: Verify raw failure and normalized Student playback plan
+        working-directory: student-app
+        run: node --test test/smpb02TeacherDirectUploadPlayback.test.mjs
