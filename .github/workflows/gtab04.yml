@@ -53,3 +53,10 @@ jobs:
           GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
           STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
         run: node scripts/verifyGtab04EditorStudentContract.js
+
+      - name: Verify GTAB-09D combined export fixtures through Student contract
+        working-directory: teacher
+        env:
+          GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
+          STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
+        run: node scripts/verifyGtab09dCombinedExportContract.js

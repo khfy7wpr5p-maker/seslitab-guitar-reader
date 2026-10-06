@@ -11,6 +11,7 @@ class Element {
   constructor(root, tagName) {
     this.root = root; this.tagName = tagName; this.children = []; this.listeners = new Map()
     this.attributes = new Map(); this.dataset = {}; this.className = ''; this.textContent = ''; this.parentElement = null; this._id = ''
+    this.disabled = false
   }
   set id(value) { this._id = value; if (value) this.root.nodes.set(value, this) }
   get id() { return this._id }
@@ -50,11 +51,13 @@ function sourceSession() {
 function runtime(session, observations) {
   const assignments = new Map()
   const document = {
+    sessionId: session.sessionId,
     getAssignment(id) { return assignments.get(id) ?? null },
     assignPosition(id, position) { assignments.set(id, { ...position }) },
     clearPosition(id) { return assignments.delete(id) },
     undo() { return false }, redo() { return false },
     listAssignments() { return [...assignments].map(([sourceEventId, position]) => ({ sourceEventId, ...position })) },
+    canExport() { return assignments.size === session.events.length },
   }
   let groupIndex = 0; let selectedString = 1; let fretBuffer = ''
   const controller = {
@@ -82,6 +85,10 @@ function runtime(session, observations) {
         const string = index + 1; const placement = placements.find((item) => item.string === string)
         return { string, label: ['e', 'B', 'G', 'D', 'A', 'E'][index], active: string === activeString, fret: placement?.fret ?? null, sourceEventId: placement?.sourceEventId ?? null }
       })
+    },
+    serializeGuitarTabMusicXml({ sourceSession: runtimeSession, document: runtimeDocument }) {
+      observations.serializeArgs = { sourceSession: runtimeSession, document: runtimeDocument }
+      return '<score-partwise version="4.0"><part-list/><part id="P1"/></score-partwise>'
     },
   }
 }
@@ -122,4 +129,58 @@ test('GTAB-09C delegates keyboard authoring and synchronizes only proven source-
   assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).assignmentCount, 1)
   assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).currentEventId, 'e2')
   assert.deepEqual(observations.highlight, { partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 1 })
+})
+
+test('GTAB-09D exports a new validated MusicXML only after all assignments are complete and preserves exact source bytes', async () => {
+  const workspaceModule = await import('../src/guitarTabTeacherWorkspaceUi.js')
+  assert.equal(typeof workspaceModule.exportGuitarTabTeacherWorkspaceMusicXml, 'function')
+
+  const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
+  const session = sourceSession(); const observations = {}; const editorRuntime = runtime(session, observations)
+  const exactSource = '  <?xml version="1.0"?>\n<score-partwise version="4.0"><part-list/></score-partwise>\n'
+  const adapters = {
+    loadEditorRuntime: async () => editorRuntime,
+    loadScoreRuntime: async () => null,
+    parseCanonicalNotes: () => [],
+    async prepareScoreUpload(input) {
+      observations.scoreUploadInput = input
+      return Object.freeze({ draftId: input.draftId, musicXml: input.musicXml, musicXmlFingerprint: 'a'.repeat(64) })
+    },
+    async prepareHandoff(input) {
+      observations.handoffInput = input
+      return Object.freeze({ guitarTabMusicXml: input.guitarTabMusicXml, guitarTabMusicXmlFingerprint: 'b'.repeat(64), pitchedEventCount: 2 })
+    },
+    async downloadText(input) { observations.download = input },
+  }
+
+  const loadResult = await loadGuitarTabTeacherSource(
+    documentRoot,
+    { name: 'audiveris-export.musicxml', text: async () => exactSource },
+    adapters,
+  )
+  assert.equal(loadResult.ok, true)
+  assert.ok(documentRoot.getElementById('guitar-tab-export'))
+
+  const blocked = await workspaceModule.exportGuitarTabTeacherWorkspaceMusicXml(documentRoot, adapters)
+  assert.deepEqual(blocked, { ok: false, reason: 'INCOMPLETE_ASSIGNMENTS' })
+
+  observations.document.assignPosition('e1', { string: 2, fret: 1 })
+  observations.document.assignPosition('e2', { string: 1, fret: 3 })
+  const exported = await workspaceModule.exportGuitarTabTeacherWorkspaceMusicXml(documentRoot, adapters)
+
+  assert.equal(exported.ok, true)
+  assert.equal(observations.scoreUploadInput.musicXml, exactSource)
+  assert.equal(observations.scoreUploadInput.draftId, session.sessionId)
+  assert.equal(observations.handoffInput.scoreUpload.musicXml, exactSource)
+  assert.equal(observations.handoffInput.guitarTabMusicXml, exported.musicXml)
+  assert.equal(observations.handoffInput.draftId, session.sessionId)
+  assert.equal(observations.serializeArgs.sourceSession, session)
+  assert.equal(observations.serializeArgs.document, observations.document)
+  assert.deepEqual(observations.download, {
+    filename: 'audiveris-export-guitar-tab.musicxml',
+    text: exported.musicXml,
+    mimeType: 'application/vnd.recordare.musicxml+xml',
+  })
+  assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).sourceName, 'audiveris-export.musicxml')
+  assert.equal(observations.scoreUploadInput.musicXml, exactSource)
 })
