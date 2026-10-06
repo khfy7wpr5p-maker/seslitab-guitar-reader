@@ -150,7 +150,8 @@ export function normalizeSmoosicDirectUploadTiming(
     return musicXml
   }
 
-  const replacements = new Map()
+  const normalizedParts = [...parts]
+  let changed = false
   for (
     let index = 1;
     index < parts.length;
@@ -172,25 +173,22 @@ export function normalizeSmoosicDirectUploadTiming(
     if (normalizedPart === null) {
       return musicXml
     }
-    replacements.set(
-      parts[index],
-      normalizedPart,
-    )
+    normalizedParts[index] = normalizedPart
+    changed = true
   }
 
-  if (replacements.size === 0) {
-    return musicXml
-  }
+  if (!changed) return musicXml
 
-  let normalized = musicXml
-  for (
-    const [sourcePart, normalizedPart]
-    of replacements
-  ) {
-    normalized = normalized.replace(
-      sourcePart,
-      normalizedPart,
-    )
-  }
-  return normalized
+  let partIndex = 0
+  const normalized = musicXml.replace(
+    /<part\b[^>]*>[\s\S]*?<\/part>/gi,
+    () => {
+      const part = normalizedParts[partIndex]
+      partIndex += 1
+      return part
+    },
+  )
+  return partIndex === normalizedParts.length
+    ? normalized
+    : musicXml
 }
