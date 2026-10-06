@@ -48,12 +48,19 @@ const SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML = SOURCE_XML
 
 const SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML =
   SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML.replace(
-    '<part id="P2"><measure number="1">\n    <attributes>',
-    '<part id="P2"><measure number="1">\n    <attributes>',
-  ).replace(
     '<note><pitch><step>G</step><octave>3</octave></pitch><duration>4096</duration>',
     '<note><pitch><step>G</step><octave>3</octave></pitch><duration>1234</duration>',
   )
+
+const MISSING_SECOND_PART_WITHOUT_SMOOSIC_PROOF_XML = SOURCE_XML
+  .replace(
+    '<part id="P2"><measure number="1">\n    <attributes><divisions>12</divisions>',
+    '<part id="P2"><measure number="1">\n    <attributes>',
+  )
+  .replace('<step>C</step><octave>4</octave>', '<step>B</step><octave>4</octave>')
+
+const MALFORMED_SMOOSIC_DIVISIONS_XML = SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML
+  .replace('<divisions>4096</divisions>', '<divisions>not-a-number</divisions>')
 
 function notes(xml) {
   const parsed = parseMusicXmlToNotes(xml)
@@ -83,22 +90,34 @@ function authority() {
   })
 }
 
+function writeback(root, musicXml, suffix) {
+  return applySmoosicProductWriteback({
+    authority: root,
+    musicXml,
+    paddingRestProvenance: emptyProof(musicXml),
+    sourceRevision: 7,
+    revisionId: `smpb-01-${suffix}`,
+    eventId: `smpb-01-${suffix}-event`,
+    operationIdPrefix: `smpb-01-${suffix}-op`,
+    createdAt: '2026-10-05T18:47:00Z',
+    DOMParserCtor: SmoosicTestDOMParser,
+    XMLSerializerCtor: SmoosicTestXMLSerializer,
+  })
+}
+
+function assertFailClosed(result, root, current) {
+  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE)
+  assert.equal(result.authority, root)
+  assert.equal(root.workspace.history.revisions.length, 1)
+  assert.equal(getTeacherWorkspaceCurrentRevision(root.workspace), current)
+  assert.equal(resolvePrDProductMusicXml(current)?.musicXml, SOURCE_XML)
+}
+
 test('SMPB-01 restores a missing later-part Smoosic timing basis before immutable writeback', () => {
   const root = authority()
   const current = getTeacherWorkspaceCurrentRevision(root.workspace)
 
-  const result = applySmoosicProductWriteback({
-    authority: root,
-    musicXml: SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML,
-    paddingRestProvenance: emptyProof(SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML),
-    sourceRevision: 7,
-    revisionId: 'smpb-01-edit',
-    eventId: 'smpb-01-event',
-    operationIdPrefix: 'smpb-01-op',
-    createdAt: '2026-10-05T18:46:00Z',
-    DOMParserCtor: SmoosicTestDOMParser,
-    XMLSerializerCtor: SmoosicTestXMLSerializer,
-  })
+  const result = writeback(root, SMOOSIC_MISSING_SECOND_PART_DIVISIONS_XML, 'edit')
 
   assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.APPLIED)
   assert.deepEqual(result.changedIndexes, [0])
@@ -115,26 +134,29 @@ test('SMPB-01 restores a missing later-part Smoosic timing basis before immutabl
   assert.doesNotMatch(result.musicXml, /<duration>4096<\/duration>/)
 })
 
-test('SMPB-01 fails closed when a later-part Smoosic timing basis cannot be proven', () => {
+test('SMPB-01 fails closed when a later-part Smoosic timing basis cannot be projected safely', () => {
   const root = authority()
   const current = getTeacherWorkspaceCurrentRevision(root.workspace)
 
-  const result = applySmoosicProductWriteback({
-    authority: root,
-    musicXml: SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML,
-    paddingRestProvenance: emptyProof(SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML),
-    sourceRevision: 7,
-    revisionId: 'smpb-01-unproven-edit',
-    eventId: 'smpb-01-unproven-event',
-    operationIdPrefix: 'smpb-01-unproven-op',
-    createdAt: '2026-10-05T18:47:00Z',
-    DOMParserCtor: SmoosicTestDOMParser,
-    XMLSerializerCtor: SmoosicTestXMLSerializer,
-  })
+  const result = writeback(root, SMOOSIC_UNPROVABLE_SECOND_PART_TIMING_XML, 'unproven-duration')
 
-  assert.equal(result.status, SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE)
-  assert.equal(result.authority, root)
-  assert.equal(root.workspace.history.revisions.length, 1)
-  assert.equal(getTeacherWorkspaceCurrentRevision(root.workspace), current)
-  assert.equal(resolvePrDProductMusicXml(current)?.musicXml, SOURCE_XML)
+  assertFailClosed(result, root, current)
+})
+
+test('SMPB-01 fails closed when a later part is missing divisions without first-part Smoosic 4096 proof', () => {
+  const root = authority()
+  const current = getTeacherWorkspaceCurrentRevision(root.workspace)
+
+  const result = writeback(root, MISSING_SECOND_PART_WITHOUT_SMOOSIC_PROOF_XML, 'missing-proof')
+
+  assertFailClosed(result, root, current)
+})
+
+test('SMPB-01 fails closed on malformed divisions instead of accepting a broken candidate', () => {
+  const root = authority()
+  const current = getTeacherWorkspaceCurrentRevision(root.workspace)
+
+  const result = writeback(root, MALFORMED_SMOOSIC_DIVISIONS_XML, 'malformed-divisions')
+
+  assertFailClosed(result, root, current)
 })
