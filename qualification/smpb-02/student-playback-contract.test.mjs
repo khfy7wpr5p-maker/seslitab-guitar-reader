@@ -103,7 +103,7 @@ function workspaceHtml(candidate) {
   })
 }
 
-test('SMPB-02 real Student compiler rejects raw Smoosic timing gap and accepts normalized direct upload', async () => {
+void test('SMPB-02 real Student compiler rejects raw Smoosic timing gap and accepts normalized direct upload', async () => {
   const rawPackage = pkg(RAW_SMOOSIC_XML)
   const rawPlan =
     compileApproximateMusicXmlPlayback(
