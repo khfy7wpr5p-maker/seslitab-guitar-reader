@@ -1,4 +1,5 @@
 import { parseMusicXml } from '../musicXmlParser.js'
+import { prepareEditorGuitarTabHandoff } from './services/editorGuitarTabHandoff.js'
 import { loadGuitarTabEditorRuntime } from './services/guitarTabEditorRuntimeLoader.js'
 import { createGuitarTabRendererTargetResolver } from './services/guitarTabSourceIdentity.js'
 import {
@@ -9,11 +10,13 @@ import {
   renderScoreView,
   resolveStScoreRuntime,
 } from './services/scoreRendererConsumer.js'
+import { prepareTeacherAssignmentScoreUpload } from './services/teacherAssignmentComposerScoreUpload.js'
 
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
 const STRING_LABELS = Object.freeze(['1 · E4', '2 · B3', '3 · G3', '4 · D3', '5 · A2', '6 · E2'])
 const EDITOR_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Enter', 'Delete', 'Backspace', 'Escape'])
+const GUITAR_TAB_MUSICXML_MIME = 'application/vnd.recordare.musicxml+xml'
 
 const workspaceStates = new WeakMap()
 const workspaceBindings = new WeakSet()
@@ -109,6 +112,27 @@ function parseCanonicalNotes(xml) {
   }
 }
 
+async function downloadTextFile({ filename, text, mimeType = GUITAR_TAB_MUSICXML_MIME } = {}) {
+  if (typeof filename !== 'string' || !filename || typeof text !== 'string') {
+    throw new TypeError('Dosya adı ve metin gereklidir.')
+  }
+  if (typeof Blob !== 'function' || typeof URL?.createObjectURL !== 'function' || typeof document?.createElement !== 'function') {
+    throw new Error('browser-download-unavailable')
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: mimeType }))
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.hidden = true
+    document.body?.appendChild?.(anchor)
+    anchor.click()
+    anchor.remove?.()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 const defaultAdapters = Object.freeze({
   loadEditorRuntime: loadGuitarTabEditorRuntime,
   loadScoreRuntime,
@@ -118,6 +142,9 @@ const defaultAdapters = Object.freeze({
   clearHighlights: clearScoreHighlights,
   moveCursor: moveScoreCursor,
   highlightNote: highlightScoreNote,
+  prepareScoreUpload: prepareTeacherAssignmentScoreUpload,
+  prepareHandoff: prepareEditorGuitarTabHandoff,
+  downloadText: downloadTextFile,
 })
 
 function normalizeAdapters(adapters = {}) {
@@ -130,6 +157,9 @@ function normalizeAdapters(adapters = {}) {
     clearHighlights: adapters.clearHighlights ?? defaultAdapters.clearHighlights,
     moveCursor: adapters.moveCursor ?? defaultAdapters.moveCursor,
     highlightNote: adapters.highlightNote ?? defaultAdapters.highlightNote,
+    prepareScoreUpload: adapters.prepareScoreUpload ?? defaultAdapters.prepareScoreUpload,
+    prepareHandoff: adapters.prepareHandoff ?? defaultAdapters.prepareHandoff,
+    downloadText: adapters.downloadText ?? defaultAdapters.downloadText,
   }
 }
 
@@ -146,6 +176,7 @@ function emptyState(generation = 0) {
   return {
     generation,
     sourceName: null,
+    sourceXml: null,
     sourceSession: null,
     rendererRuntime: null,
     editorRuntime: null,
@@ -166,6 +197,19 @@ function currentGroupEventIds(state, controllerState) {
   return new Set(group?.sourceEventIds ?? [])
 }
 
+function canExportState(state) {
+  if (!state?.sourceXml || !state?.sourceSession || !state?.tabDocument || typeof state?.editorRuntime?.serializeGuitarTabMusicXml !== 'function') return false
+  try { return state.tabDocument.canExport?.() === true } catch { return false }
+}
+
+function updateExportButton(root, state) {
+  const button = root?.getElementById?.('guitar-tab-export')
+  if (!button) return
+  const enabled = canExportState(state)
+  button.disabled = !enabled
+  button.setAttribute?.('aria-disabled', enabled ? 'false' : 'true')
+}
+
 function renderEmptySixStrings(root) {
   const surface = root?.getElementById?.('guitar-tab-editor-surface')
   if (!surface) return
@@ -176,6 +220,7 @@ function renderEmptySixStrings(root) {
     row.dataset.string = String(index + 1)
     surface.appendChild(row)
   }
+  updateExportButton(root, workspaceStates.get(root))
 }
 
 function renderAuthoringSurface(root, state) {
@@ -184,6 +229,7 @@ function renderAuthoringSurface(root, state) {
   if (!surface || !controllerState || !state?.tabDocument || !state?.editorRuntime?.createFixedSixStringRows) {
     renderEmptySixStrings(root)
     setEditorStatus(root, 'MusicXML yükleyerek tel/perde düzenlemeyi başlatın.', 'empty')
+    updateExportButton(root, state)
     return false
   }
 
@@ -197,6 +243,7 @@ function renderAuthoringSurface(root, state) {
   } catch {
     renderEmptySixStrings(root)
     setEditorStatus(root, 'Altı telli editör görünümü oluşturulamadı.', 'runtime-error')
+    updateExportButton(root, state)
     return false
   }
 
@@ -220,6 +267,7 @@ function renderAuthoringSurface(root, state) {
     `Aktif nota: ${controllerState.currentEventId} · Tel ${controllerState.selectedString} · Perde ${fretText}`,
     'ready',
   )
+  updateExportButton(root, state)
   return true
 }
 
@@ -316,6 +364,13 @@ async function clearPreviousRender(root, adapters) {
   removeScoreRuntimeFrame(root)
 }
 
+function exportFilename(sourceName) {
+  const fallback = 'guitar-tab'
+  const normalized = typeof sourceName === 'string' ? sourceName.trim() : ''
+  const base = normalized ? normalized.replace(/\.(?:musicxml|xml)$/iu, '') : fallback
+  return `${base || fallback}-guitar-tab.musicxml`
+}
+
 export function getGuitarTabTeacherWorkspaceState(root) {
   const state = workspaceStates.get(root)
   if (!state) return null
@@ -333,7 +388,55 @@ export function getGuitarTabTeacherWorkspaceState(root) {
     selectedString: controllerState?.selectedString ?? null,
     fretBuffer: controllerState?.fretBuffer ?? '',
     notationSynchronized: state.notationSynchronized === true,
+    exportReady: canExportState(state),
   })
+}
+
+export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {}) {
+  if (!root || typeof root.getElementById !== 'function') return Object.freeze({ ok: false, reason: 'INVALID_ROOT' })
+  const state = workspaceStates.get(root)
+  if (!state?.sourceXml || !state?.sourceSession || !state?.tabDocument) {
+    return Object.freeze({ ok: false, reason: 'NO_SOURCE' })
+  }
+  if (!canExportState(state)) {
+    return Object.freeze({ ok: false, reason: 'INCOMPLETE_ASSIGNMENTS' })
+  }
+
+  const normalized = state.adapters ?? normalizeAdapters(adapters)
+  let musicXml
+  let scoreUpload
+  let handoff
+  try {
+    musicXml = state.editorRuntime.serializeGuitarTabMusicXml({
+      sourceSession: state.sourceSession,
+      document: state.tabDocument,
+    })
+    scoreUpload = await normalized.prepareScoreUpload({
+      musicXml: state.sourceXml,
+      teacherId: 'guitar-tab-workspace-local',
+      draftId: state.sourceSession.sessionId,
+      now: () => new Date().toISOString(),
+    })
+    handoff = await normalized.prepareHandoff({
+      scoreUpload,
+      guitarTabMusicXml: musicXml,
+      draftId: state.sourceSession.sessionId,
+    })
+  } catch {
+    setEditorStatus(root, 'TAB MusicXML doğrulanamadı; dosya oluşturulmadı.', 'export-error')
+    return Object.freeze({ ok: false, reason: 'EXPORT_VALIDATION_FAILED' })
+  }
+
+  const filename = exportFilename(state.sourceName)
+  try {
+    await normalized.downloadText({ filename, text: musicXml, mimeType: GUITAR_TAB_MUSICXML_MIME })
+  } catch {
+    setEditorStatus(root, 'TAB MusicXML doğrulandı ancak dosya indirilemedi.', 'export-error')
+    return Object.freeze({ ok: false, reason: 'DOWNLOAD_FAILED' })
+  }
+
+  setEditorStatus(root, 'TAB MusicXML doğrulandı ve dışa aktarıldı.', 'export-ready')
+  return Object.freeze({ ok: true, musicXml, filename, handoff })
 }
 
 export async function resetGuitarTabTeacherWorkspace(root, adapters = {}) {
@@ -342,10 +445,12 @@ export async function resetGuitarTabTeacherWorkspace(root, adapters = {}) {
   const previous = workspaceStates.get(root)
   const generation = (previous?.generation ?? 0) + 1
   await clearPreviousRender(root, normalized)
-  workspaceStates.set(root, emptyState(generation))
+  const state = emptyState(generation)
+  workspaceStates.set(root, state)
   const input = root.getElementById('guitar-tab-source-input')
   if (input && 'value' in input) input.value = ''
   renderEmptySixStrings(root)
+  updateExportButton(root, state)
   setEditorStatus(root, 'MusicXML yükleyerek tel/perde düzenlemeyi başlatın.', 'empty')
   setStatus(root, 'MusicXML yüklenmedi.', 'empty')
   return true
@@ -388,6 +493,7 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   const state = {
     ...emptyState(generation),
     sourceName: payload.name,
+    sourceXml: payload.xml,
     sourceSession,
     editorRuntime,
     tabDocument: authoring?.tabDocument ?? null,
@@ -432,6 +538,7 @@ function bindWorkspaceControls(root) {
   const editorSurface = root.getElementById('guitar-tab-editor-surface')
   const undoButton = root.getElementById('guitar-tab-undo')
   const redoButton = root.getElementById('guitar-tab-redo')
+  const exportButton = root.getElementById('guitar-tab-export')
   sourceInput?.addEventListener?.('change', async () => {
     const file = sourceInput.files?.[0]
     if (file) await loadGuitarTabTeacherSource(root, file)
@@ -440,6 +547,7 @@ function bindWorkspaceControls(root) {
   editorSurface?.addEventListener?.('keydown', async (event) => { await handleAuthoringKey(root, event) })
   undoButton?.addEventListener?.('click', async () => { await handleHistoryAction(root, 'undo') })
   redoButton?.addEventListener?.('click', async () => { await handleHistoryAction(root, 'redo') })
+  exportButton?.addEventListener?.('click', async () => { await exportGuitarTabTeacherWorkspaceMusicXml(root) })
   workspaceBindings.add(root)
 }
 
@@ -482,7 +590,11 @@ export function ensureGuitarTabTeacherWorkspace(root, panel) {
   undoButton.type = 'button'
   const redoButton = createElement(root, 'button', { id: 'guitar-tab-redo', className: 'guitar-tab-history-btn', textContent: 'Yinele' })
   redoButton.type = 'button'
-  toolbar.appendChild(undoButton); toolbar.appendChild(redoButton); editorRegion.appendChild(toolbar)
+  const exportButton = createElement(root, 'button', { id: 'guitar-tab-export', className: 'guitar-tab-export-btn', textContent: 'TAB MusicXML dışa aktar' })
+  exportButton.type = 'button'
+  exportButton.disabled = true
+  exportButton.setAttribute('aria-disabled', 'true')
+  toolbar.appendChild(undoButton); toolbar.appendChild(redoButton); toolbar.appendChild(exportButton); editorRegion.appendChild(toolbar)
   const editorStatus = createElement(root, 'div', { id: 'guitar-tab-editor-status', className: 'guitar-tab-editor-status', textContent: 'MusicXML yükleyerek tel/perde düzenlemeyi başlatın.' })
   editorStatus.setAttribute('role', 'status'); editorStatus.setAttribute('aria-live', 'polite'); editorStatus.dataset.state = 'empty'
   editorRegion.appendChild(editorStatus)
