@@ -1,7 +1,7 @@
 # GTAB-10B — Part / Staff / Voice Target Selection for Guitar TAB
 
 Date: 2026-10-06
-Status: Design approved; implementation not started
+Status: Written spec ready for user review; implementation not started
 Parent: GTAB-10 — MusicXML Compatibility Expansion + Semantic Engine Qualification
 Depends on: GTAB-10A secure MusicXML/MXL intake
 
