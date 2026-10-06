@@ -196,11 +196,11 @@ export function ensureGuitarTabPanel(root) {
   output.setAttribute('tabindex', '0')
 
   panel.appendChild(heading)
-  ensureGuitarTabTeacherWorkspace(root, panel)
   panel.appendChild(status)
   panel.appendChild(output)
   if (notesSummary && notesSummary.parentElement === host) host.insertBefore(panel, notesSummary)
   else host.appendChild(panel)
+  ensureGuitarTabTeacherWorkspace(root, panel)
 
   if (!existingTabBindings.has(root)) {
     const buttons = root.querySelectorAll?.('.tab-btn') ?? []
