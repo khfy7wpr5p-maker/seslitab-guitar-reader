@@ -87,6 +87,7 @@ function readZipEntryTextBounded(entry, maxBytes = MAX_MUSIC_XML_FILE_SIZE) {
       text += decoder.decode()
       resolve(text)
     })
+    stream.resume()
   })
 }
 
