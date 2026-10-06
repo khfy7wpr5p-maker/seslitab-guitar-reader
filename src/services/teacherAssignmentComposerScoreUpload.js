@@ -1,4 +1,7 @@
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
+import {
+  normalizeSmoosicDirectUploadTiming,
+} from './smoosicDirectUploadTimingNormalization.js'
 
 export const TEACHER_ASSIGNMENT_SCORE_DELIVERY_MAX_BYTES =
   900 * 1024
@@ -44,6 +47,22 @@ async function sha256Utf8(value) {
   return hexFromBuffer(digest)
 }
 
+function inspectScoreXml(musicXml) {
+  const inspection = inspectMusicXml(
+    musicXml,
+    {
+      maxBytes:
+        TEACHER_ASSIGNMENT_SCORE_DELIVERY_MAX_BYTES,
+    },
+  )
+  if (!inspection.ok) {
+    fail(
+      `invalid-${inspection.code ?? 'structure'}`,
+    )
+  }
+  return inspection
+}
+
 export async function prepareTeacherAssignmentScoreUpload({
   musicXml,
   teacherId,
@@ -63,25 +82,22 @@ export async function prepareTeacherAssignmentScoreUpload({
     fail('invalid-empty')
   }
 
-  const inspection = inspectMusicXml(
-    musicXml,
-    {
-      maxBytes:
-        TEACHER_ASSIGNMENT_SCORE_DELIVERY_MAX_BYTES,
-    },
-  )
-  if (!inspection.ok) {
-    fail(
-      `invalid-${inspection.code ?? 'structure'}`,
+  inspectScoreXml(musicXml)
+
+  const acceptedMusicXml =
+    normalizeSmoosicDirectUploadTiming(
+      musicXml,
     )
+  if (acceptedMusicXml !== musicXml) {
+    inspectScoreXml(acceptedMusicXml)
   }
 
   const musicXmlFingerprint =
-    await sha256Utf8(musicXml)
+    await sha256Utf8(acceptedMusicXml)
 
   return Object.freeze({
     draftId: workDraftId,
-    musicXml,
+    musicXml: acceptedMusicXml,
     musicXmlFingerprint,
     createdAt,
     canonicalEvents: Object.freeze([]),
