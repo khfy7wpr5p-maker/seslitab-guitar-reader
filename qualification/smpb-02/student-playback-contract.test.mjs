@@ -8,6 +8,12 @@ import {
 import {
   compileApproximateMusicXmlPlayback,
 } from '../src/playback/musicXmlApproximatePlayback.js'
+import {
+  derivePracticeCapabilities,
+} from '../src/practice/practiceCapabilities.js'
+import {
+  renderPracticeWorkspace,
+} from '../src/ui/renderPracticeWorkspace.js'
 
 const RAW_SMOOSIC_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
@@ -55,6 +61,7 @@ function pkg(musicXml) {
   return Object.freeze({
     schemaVersion: '1.0.0',
     packageId: 'smpb-02-package',
+    title: 'SMPB-02 test',
     content: Object.freeze({
       score: Object.freeze({
         format: 'musicxml',
@@ -68,13 +75,52 @@ function pkg(musicXml) {
   })
 }
 
+function playbackPort() {
+  return Object.freeze({
+    canPlayPackage(candidate) {
+      return compileApproximateMusicXmlPlayback(
+        candidate,
+        { parser },
+      ) !== null
+    },
+    playPackage() {},
+    pausePackage() {},
+    restartPackage() {},
+  })
+}
+
+function workspaceHtml(candidate) {
+  const capabilities =
+    derivePracticeCapabilities({
+      pkg: candidate,
+      notationRuntimeAvailable: true,
+      playbackPort: playbackPort(),
+    })
+  return renderPracticeWorkspace({
+    ...candidate,
+    capabilities,
+    playbackQuality: 'APPROXIMATE',
+  })
+}
+
 test('SMPB-02 real Student compiler rejects raw Smoosic timing gap and accepts normalized direct upload', async () => {
+  const rawPackage = pkg(RAW_SMOOSIC_XML)
   const rawPlan =
     compileApproximateMusicXmlPlayback(
-      pkg(RAW_SMOOSIC_XML),
+      rawPackage,
       { parser },
     )
   assert.equal(rawPlan, null)
+
+  const rawHtml = workspaceHtml(rawPackage)
+  assert.match(
+    rawHtml,
+    /Dinleme bu çalışma için kullanılamıyor/,
+  )
+  assert.doesNotMatch(
+    rawHtml,
+    /data-action="play-practice"/,
+  )
 
   const upload =
     await prepareTeacherAssignmentScoreUpload({
@@ -96,9 +142,10 @@ test('SMPB-02 real Student compiler rejects raw Smoosic timing gap and accepts n
     2,
   )
 
+  const normalizedPackage = pkg(upload.musicXml)
   const normalizedPlan =
     compileApproximateMusicXmlPlayback(
-      pkg(upload.musicXml),
+      normalizedPackage,
       { parser },
     )
 
@@ -131,5 +178,20 @@ test('SMPB-02 real Student compiler rejects raw Smoosic timing gap and accepts n
         durationBeats: 4,
       },
     ],
+  )
+
+  const normalizedHtml =
+    workspaceHtml(normalizedPackage)
+  assert.doesNotMatch(
+    normalizedHtml,
+    /Dinleme bu çalışma için kullanılamıyor/,
+  )
+  assert.match(
+    normalizedHtml,
+    /data-action="play-practice"/,
+  )
+  assert.match(
+    normalizedHtml,
+    /Yaklaşık çalma/,
   )
 })
