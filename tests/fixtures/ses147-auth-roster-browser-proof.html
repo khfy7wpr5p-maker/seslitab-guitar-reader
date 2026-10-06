@@ -6,6 +6,7 @@
   <script type="importmap">
   {
     "imports": {
+      "jszip": "./jszip-browser-stub.js",
       "firebase/app": "./firebase-app-browser-stub.js",
       "firebase/auth": "./firebase-auth-browser-stub.js"
     }
@@ -13,6 +14,7 @@
   </script>
 </head>
 <body>
+  <pre id="proof">RUNNING</pre>
   <div id="results-section" hidden></div>
   <div id="teacher-assignment-composer-host">
     <p id="fallback">Güvenli gönderim bağlantısı bekleniyor.</p>
@@ -254,16 +256,27 @@
         'input[name="studentId"]',
       )
 
-    mark(
-      'success-mount-pass',
+    const successPass =
       successResult.state ===
         TEACHER_AUTH_STATE.READY &&
-        assignmentHandle?.mounted === true &&
-        Boolean(student) &&
-        submit?.disabled === false &&
-        successCounter.count === 1 &&
-        !document.getElementById('fallback'),
+      assignmentHandle?.mounted === true &&
+      Boolean(student) &&
+      submit?.disabled === false &&
+      successCounter.count === 1 &&
+      !document.getElementById('fallback')
+    mark('success-mount-pass', successPass)
+
+    const allPass = [
+      'config-unavailable-pass',
+      'signed-out-pass',
+      'roster-failure-pass',
+      'session-expired-pass',
+      'success-mount-pass',
+    ].every((name) =>
+      document.body.getAttribute(`data-${name}`) === 'true',
     )
+    document.getElementById('proof').textContent =
+      allPass ? 'PASS' : 'FAIL'
   </script>
 </body>
 </html>

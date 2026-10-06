@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { runBrowserFixture } from '../tests/support/browserFixture.js'
 
 const repoRoot = path.resolve(
   fileURLToPath(new URL('..', import.meta.url)),
@@ -40,36 +41,26 @@ if (!chrome) {
   process.exit(1)
 }
 
-const result = spawnSync(
-  chrome,
-  [
-    '--headless=new',
-    '--no-sandbox',
-    '--disable-gpu',
-    '--disable-dev-shm-usage',
-    '--allow-file-access-from-files',
-    '--virtual-time-budget=12000',
-    '--dump-dom',
-    pathToFileURL(fixturePath).href,
-  ],
-  {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 45000,
-    maxBuffer: 16 * 1024 * 1024,
-  },
-)
-
-if (result.error || result.status !== 0) {
+let dom
+try {
+  dom = await runBrowserFixture(
+    chrome,
+    fixturePath,
+    '1280,800',
+  )
+} catch (error) {
   console.error(
-    result.error?.message ||
-      result.stderr?.slice(-4000) ||
-      `Chrome exit ${result.status}`,
+    error instanceof Error ? error.message : String(error),
   )
   process.exit(1)
 }
 
-const dom = result.stdout || ''
+if (!/id="proof"[^>]*>PASS/.test(dom)) {
+  console.error('SES-147 browser proof did not complete successfully.')
+  console.error(dom.slice(-8000))
+  process.exit(1)
+}
+
 for (const marker of [
   'data-config-unavailable-pass="true"',
   'data-signed-out-pass="true"',
