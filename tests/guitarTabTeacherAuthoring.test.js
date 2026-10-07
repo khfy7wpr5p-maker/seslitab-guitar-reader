@@ -36,8 +36,8 @@ function root() {
 
 function sourceSession() {
   const events = [
-    { sourceEventId: 'e1', groupId: 'g1', partId: 'P1', measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 0, divisions: 1, sourceOrder: 0 },
-    { sourceEventId: 'e2', groupId: 'g2', partId: 'P1', measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 1, divisions: 1, sourceOrder: 1 },
+    { sourceEventId: 'e1', groupId: 'g1', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 0, divisions: 1, sourceOrder: 0 },
+    { sourceEventId: 'e2', groupId: 'g2', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 1, divisions: 1, sourceOrder: 1 },
   ]
   return Object.freeze({
     sessionId: 'source:test', sourceFingerprint: 'fp', events: Object.freeze(events),
@@ -103,8 +103,8 @@ test('GTAB-09C delegates keyboard authoring and synchronizes only proven source-
   const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
   const session = sourceSession(); const observations = {}; const editorRuntime = runtime(session, observations)
   const canonicalNotes = [
-    { partId: 'P1', measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 0, isRest: false },
-    { partId: 'P1', measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 1, isRest: false },
+    { partId: 'P1', partIndex: 0, measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 0, isRest: false },
+    { partId: 'P1', partIndex: 0, measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 1, isRest: false },
   ]
   const adapters = {
     loadEditorRuntime: async () => editorRuntime,
