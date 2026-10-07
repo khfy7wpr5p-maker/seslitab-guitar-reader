@@ -22,6 +22,7 @@ const EDITOR_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 
 const GUITAR_TAB_MUSICXML_MIME = 'application/vnd.recordare.musicxml+xml'
 
 const workspaceStates = new WeakMap()
+const targetSynchronizationQueues = new WeakMap()
 const workspaceBindings = new WeakSet()
 let renderTicketCounter = 0
 
@@ -397,25 +398,43 @@ function createAuthoringState(editorRuntime, sourceSession, canonicalNotes, rend
   }
 }
 
-async function synchronizeAuthoringSelection(root, state) {
+async function synchronizeAuthoringSelectionNow(root, state) {
   if (!state?.rendererRuntime || !state?.keyboardController || !state?.targetResolver || !state?.adapters) return false
+  const isCurrent = () => workspaceStates.get(root) === state
+  if (!isCurrent()) return false
   const controllerState = currentControllerState(state)
   const target = controllerState ? state.targetResolver.resolve(controllerState.currentEventId) : null
   try { await state.adapters.clearHighlights(state.rendererRuntime) } catch {}
+  if (!isCurrent()) return false
   if (!target) {
     state.notationSynchronized = false
     return false
   }
   try {
     await state.adapters.moveCursor(state.rendererRuntime, { partId: target.partId, measureIndex: target.measureIndex })
+    if (!isCurrent()) return false
     await state.adapters.highlightNote(state.rendererRuntime, target)
+    if (!isCurrent()) return false
     state.notationSynchronized = true
     return true
   } catch {
+    if (!isCurrent()) return false
     state.notationSynchronized = false
     try { await state.adapters.clearHighlights(state.rendererRuntime) } catch {}
     return false
   }
+}
+
+function synchronizeAuthoringSelection(root, state) {
+  const previous = targetSynchronizationQueues.get(root) ?? Promise.resolve()
+  const current = previous.catch(() => false)
+    .then(() => synchronizeAuthoringSelectionNow(root, state))
+  targetSynchronizationQueues.set(root, current)
+  return current.finally(() => {
+    if (targetSynchronizationQueues.get(root) === current) {
+      targetSynchronizationQueues.delete(root)
+    }
+  })
 }
 
 function isAuthoringKey(event) {
@@ -608,10 +627,20 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     inventory = normalized.extractScoreInventory(payload.xml)
     canonicalNotes = normalized.parseCanonicalNotes(payload.xml)
   } catch {
-    inventory = null
-    canonicalNotes = null
+    if (workspaceStates.get(root)?.generation === generation) {
+      renderEmptySixStrings(root)
+      setStatus(root, 'MusicXML hedefleri güvenli biçimde çıkarılamadı.', 'unsupported')
+    }
+    return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
   }
-  const canonicalTabRegions = Object.freeze((inventory?.parts ?? []).flatMap((part) =>
+  if (!inventory || !Array.isArray(inventory.parts) || !Array.isArray(canonicalNotes)) {
+    if (workspaceStates.get(root)?.generation === generation) {
+      renderEmptySixStrings(root)
+      setStatus(root, 'MusicXML hedefleri güvenli biçimde çıkarılamadı.', 'unsupported')
+    }
+    return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
+  }
+  const canonicalTabRegions = Object.freeze(inventory.parts.flatMap((part) =>
     (part.staves ?? []).flatMap((staff) => (staff.voices ?? []).filter((voice) => voice.pitchedEventCount > 0).map((voice) => Object.freeze({
       partId: part.partId,
       partIndex: part.partIndex,

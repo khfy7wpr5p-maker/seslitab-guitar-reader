@@ -351,6 +351,77 @@ test('GTAB-10B renderer highlight keeps the full canonical note traversal for a 
   assert.equal(getGuitarTabTeacherWorkspaceState(root).notationSynchronized, true)
 })
 
+test('GTAB-10B superseded target synchronization cannot restore the previous staff highlight', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters({})
+  adapters.extractScoreInventory = () => ({ parts: [
+    { partId: 'P1', partIndex: 0, name: 'First', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+    { partId: 'P2', partIndex: 1, name: 'Second', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+  ] })
+  adapters.parseCanonicalNotes = () => [
+    { partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0, measureKey: 'P1-1' },
+    { partId: 'P2', partIndex: 1, staff: 1, voice: 1, measureIndex: 0, startBeat: 0, measureKey: 'P2-1' },
+  ]
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession(_xml, { targetSelection }) {
+      const eventId = `${targetSelection.partId}-note`
+      return {
+        events: [{
+          sourceEventId: eventId, partId: targetSelection.partId, partIndex: targetSelection.partIndex,
+          measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0,
+        }],
+        groups: [{ groupId: `${eventId}-group`, sourceEventIds: [eventId] }],
+      }
+    },
+    createTabAssignmentDocument: () => ({ listAssignments: () => [] }),
+    createKeyboardController: ({ sourceSession }) => ({
+      getState: () => ({
+        currentEventId: sourceSession.events[0].sourceEventId,
+        currentGroupId: sourceSession.groups[0].groupId,
+        selectedString: 1,
+        fretBuffer: '',
+      }),
+      handleKey() {},
+    }),
+    createFixedSixStringRows: () => [],
+  })
+  let finishFirstClear
+  let firstClearStarted
+  const firstClearStartedPromise = new Promise((resolve) => { firstClearStarted = resolve })
+  const firstClearGate = new Promise((resolve) => { finishFirstClear = resolve })
+  let clearCalls = 0
+  const movedParts = []
+  const highlightedParts = []
+  adapters.clearHighlights = async () => {
+    clearCalls += 1
+    if (clearCalls === 1) {
+      firstClearStarted()
+      await firstClearGate
+    }
+    return true
+  }
+  adapters.moveCursor = async (_runtime, target) => movedParts.push(target.partId)
+  adapters.highlightNote = async (_runtime, target) => highlightedParts.push(target.partId)
+
+  await loadGuitarTabTeacherSource(root, {
+    name: 'multipart.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  const firstActivation = select.listeners.get('change')[0]()
+  await firstClearStartedPromise
+  select.value = select.children[2].value
+  const secondActivation = select.listeners.get('change')[0]()
+  finishFirstClear()
+  await Promise.all([firstActivation, secondActivation])
+
+  assert.deepEqual(movedParts, ['P2'])
+  assert.deepEqual(highlightedParts, ['P2'])
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion.partId, 'P2')
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).notationSynchronized, true)
+})
+
 test('GTAB-10B clears the previous authoring session when a newly selected target is unsupported', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
@@ -422,6 +493,31 @@ test('GTAB-10B accepts validated FileReader-only sources without requiring File.
   const result = await loadGuitarTabTeacherSource(root, { name: 'legacy.musicxml', size: 20, arrayBuffer: async () => new ArrayBuffer(20) }, adapters)
   assert.equal(result.ok, true)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'legacy.musicxml')
+})
+
+test('GTAB-10B rejects inventory extraction failures before source-session or renderer access', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const observations = { sourceSessionCalls: 0, renderCalls: 0 }
+  const adapters = successfulAdapters(observations)
+  adapters.extractScoreInventory = () => { throw new Error('contradictory source identity') }
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      observations.sourceSessionCalls += 1
+      return sourceSession('should-not-start')
+    },
+  })
+  adapters.renderScore = async () => { observations.renderCalls += 1; return { renderEpoch: 'unexpected' } }
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'unsafe.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.deepEqual(result, { ok: false, reason: 'SOURCE_UNSUPPORTED' })
+  assert.equal(observations.sourceSessionCalls, 0)
+  assert.equal(observations.renderCalls, 0)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).rendererAvailable, false)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
 })
 
 test('GTAB-10B leaves the target unset and disables TAB export when inventory has no eligible regions', async () => {
