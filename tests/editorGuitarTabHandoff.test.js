@@ -181,10 +181,12 @@ test('GTAB-10B targeted handoff rejects duplicate or mismatched part identities'
   const multipart = base
     .replace('</part-list>', '<score-part id="P2"><part-name>Second</part-name></score-part></part-list>')
     .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondBody}</part>\n</score-partwise>`)
+  const withDuplicatePartList = multipart.replace('</score-partwise>', '<part-list><score-part id="P1"><part-name>First</part-name></score-part><score-part id="P2"><part-name>Second</part-name></score-part></part-list></score-partwise>')
   const invalidScores = [
     multipart.replace('<score-part id="P2">', '<score-part id="P1">'),
     multipart.replace('<part id="P2">', '<part id="P1">'),
     multipart.replace('<score-part id="P2">', '<score-part id="P1">').replace('<part id="P2">', '<part id="P1">'),
+    withDuplicatePartList,
   ]
   for (let index = 0; index < invalidScores.length; index += 1) {
     const scoreUpload = await prepareTeacherAssignmentScoreUpload({

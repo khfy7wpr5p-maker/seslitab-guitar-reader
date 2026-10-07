@@ -193,7 +193,8 @@ function canonicalVoiceIntegerText(node, code) {
 }
 
 function assertTargetPartIdentityMapping(root, label, parts) {
-  const partList = directChild(root, 'part-list')
+  const partLists = directChildren(root, 'part-list')
+  const partList = partLists.length === 1 ? partLists[0] : null
   const listedParts = partList ? directChildren(partList, 'score-part') : []
   const listedIds = listedParts.map((part) => part.getAttribute?.('id'))
   const bodyIds = parts.map((part) => part.getAttribute?.('id'))

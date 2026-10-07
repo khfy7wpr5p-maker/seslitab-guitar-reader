@@ -36,7 +36,7 @@ function requiredTrimmedText(value, code) {
 
 function positiveIntegerText(node) {
   const text = String(node?.textContent ?? '').trim()
-  if (!/^\d+$/u.test(text)) return null
+  if (!/^[1-9]\d*$/u.test(text)) return null
   const value = Number(text)
   return Number.isSafeInteger(value) && value >= 1
     ? value
@@ -45,7 +45,7 @@ function positiveIntegerText(node) {
 
 function nonNegativeIntegerText(node) {
   const text = String(node?.textContent ?? '').trim()
-  if (!/^\d+$/u.test(text)) return null
+  if (!/^(0|[1-9]\d*)$/u.test(text)) return null
   const value = Number(text)
   return Number.isSafeInteger(value) && value >= 0
     ? value

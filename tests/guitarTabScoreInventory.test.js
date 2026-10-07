@@ -148,3 +148,16 @@ test('part display name whitespace falls back to stable partId without rejecting
   const empty = SINGLE_XML.replace('<part-name>Violin</part-name>', '<part-name>   </part-name>')
   assert.equal(extractGuitarTabScoreInventory(empty, parserOptions).parts[0].name, 'P1')
 })
+
+test('does not advertise leading-zero staff or voice identities as canonical targets', () => {
+  const leadingZeroStaff = SINGLE_XML.replace('<staff>1</staff>', '<staff>01</staff>')
+  const leadingZeroVoice = SINGLE_XML.replace('<voice>1</voice>', '<voice>01</voice>')
+  assert.deepEqual(
+    extractGuitarTabScoreInventory(leadingZeroStaff, parserOptions).parts[0].staves,
+    [],
+  )
+  assert.deepEqual(
+    extractGuitarTabScoreInventory(leadingZeroVoice, parserOptions).parts[0].staves,
+    [],
+  )
+})
