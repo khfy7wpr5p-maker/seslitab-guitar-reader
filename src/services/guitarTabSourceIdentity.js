@@ -28,34 +28,52 @@ function sourceBeat(event) {
   return normalizeBeat(onset / divisions)
 }
 
-function bucketKey({ partId, measureIndex, voice, staff, beat }) {
-  return `${partId}\u0000${measureIndex}\u0000${voice}\u0000${staff}\u0000${String(beat)}`
+function bucketKey({ partId, partIndex, measureIndex, voice, staff, beat }) {
+  return `${partId}\u0000${partIndex}\u0000${measureIndex}\u0000${voice}\u0000${staff}\u0000${String(beat)}`
 }
 
 function sourceRecord(event) {
   if (!event || typeof event !== 'object') return null
   const sourceEventId = typeof event.sourceEventId === 'string' && event.sourceEventId ? event.sourceEventId : null
   const partId = normalizePartId(event.partId)
+  const partIndex = normalizeNonNegativeInteger(event.partIndex)
   const measureIndex = normalizeNonNegativeInteger(event.measureIndex)
   const voice = normalizeNonNegativeInteger(event.voice)
   const staff = normalizePositiveInteger(event.staff)
   const beat = sourceBeat(event)
   const sourceOrder = normalizeNonNegativeInteger(event.sourceOrder)
-  if (!sourceEventId || !partId || measureIndex === null || voice === null || staff === null || beat === null || sourceOrder === null) {
+  if (
+    !sourceEventId ||
+    !partId ||
+    partIndex === null ||
+    measureIndex === null ||
+    voice === null ||
+    staff === null ||
+    beat === null ||
+    sourceOrder === null
+  ) {
     return null
   }
-  return { event, sourceEventId, partId, measureIndex, voice, staff, beat, sourceOrder }
+  return { event, sourceEventId, partId, partIndex, measureIndex, voice, staff, beat, sourceOrder }
 }
 
 function canonicalRecord(note, globalIndex) {
   if (!note || typeof note !== 'object' || note.isRest === true) return null
   const partId = normalizePartId(note.partId)
+  const partIndex = normalizeNonNegativeInteger(note.partIndex)
   const measureIndex = normalizeNonNegativeInteger(note.measureIndex)
   const voice = normalizeNonNegativeInteger(note.voice)
   const staff = normalizePositiveInteger(note.staff)
   const beat = normalizeBeat(note.startBeat)
-  if (!partId || measureIndex === null || voice === null || staff === null || beat === null) return null
-  return { note, globalIndex, partId, measureIndex, voice, staff, beat }
+  if (
+    !partId ||
+    partIndex === null ||
+    measureIndex === null ||
+    voice === null ||
+    staff === null ||
+    beat === null
+  ) return null
+  return { note, globalIndex, partId, partIndex, measureIndex, voice, staff, beat }
 }
 
 function addBucket(map, key, record) {
