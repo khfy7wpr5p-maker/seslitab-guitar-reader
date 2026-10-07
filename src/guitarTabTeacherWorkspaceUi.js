@@ -280,7 +280,7 @@ async function activateTarget(root, state, selectedRegion) {
     return false
   }
   if (workspaceStates.get(root)?.generation !== state.generation) return false
-  const authoring = createAuthoringState(state.editorRuntime, sourceSession, selectedCanonicalNotes)
+  const authoring = createAuthoringState(state.editorRuntime, sourceSession, selectedCanonicalNotes, canonicalNotes)
   const nextState = {
     ...state,
     sourceSession,
@@ -380,7 +380,7 @@ function renderAuthoringSurface(root, state) {
   return true
 }
 
-function createAuthoringState(editorRuntime, sourceSession, canonicalNotes) {
+function createAuthoringState(editorRuntime, sourceSession, canonicalNotes, rendererCanonicalNotes = canonicalNotes) {
   if (
     typeof editorRuntime?.createTabAssignmentDocument !== 'function'
     || typeof editorRuntime?.createKeyboardController !== 'function'
@@ -390,7 +390,7 @@ function createAuthoringState(editorRuntime, sourceSession, canonicalNotes) {
   try {
     const tabDocument = editorRuntime.createTabAssignmentDocument(sourceSession)
     const keyboardController = editorRuntime.createKeyboardController({ sourceSession, document: tabDocument })
-    const targetResolver = createGuitarTabRendererTargetResolver(sourceSession, canonicalNotes)
+    const targetResolver = createGuitarTabRendererTargetResolver(sourceSession, rendererCanonicalNotes)
     return { tabDocument, keyboardController, targetResolver }
   } catch {
     return null

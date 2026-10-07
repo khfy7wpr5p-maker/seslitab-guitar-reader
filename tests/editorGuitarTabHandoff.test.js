@@ -174,6 +174,32 @@ test('GTAB-10B validates selected part/staff/voice in a full multipart score', a
   }), /target-part-mismatch/u)
 })
 
+test('GTAB-10B targeted handoff rejects duplicate or mismatched part identities', async () => {
+  const events = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const base = sourceScore(events, 1)
+  const secondBody = base.match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
+  const multipart = base
+    .replace('</part-list>', '<score-part id="P2"><part-name>Second</part-name></score-part></part-list>')
+    .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondBody}</part>\n</score-partwise`)
+  const invalidScores = [
+    multipart.replace('<score-part id="P2">', '<score-part id="P1">'),
+    multipart.replace('<part id="P2">', '<part id="P1">'),
+    multipart.replace('<score-part id="P2">', '<score-part id="P1">').replace('<part id="P2">', '<part id="P1">'),
+  ]
+  for (let index = 0; index < invalidScores.length; index += 1) {
+    const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+      musicXml: invalidScores[index], teacherId: 'teacher-a', draftId: `duplicate-${index}`,
+      now: () => '2026-10-04T10:00:00Z',
+    })
+    await assert.rejects(prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+      draftId: `duplicate-${index}`,
+      targetSelection: { partId: 'P1', partIndex: 1, staff: 1, voice: 1 },
+    }), /score-part-identity-mismatch/u)
+  }
+})
+
 test('GTAB-10B accepts canonical voice zero in a targeted handoff', async () => {
   const events = [{ id: 'voice-zero', pitch: PITCHES.C4, voice: '0', onset: 0, duration: 1 }]
   const sourceXml = sourceScore(events, 1)

@@ -192,6 +192,22 @@ function canonicalVoiceIntegerText(node, code) {
   return number
 }
 
+function assertTargetPartIdentityMapping(root, label, parts) {
+  const partList = directChild(root, 'part-list')
+  const listedParts = partList ? directChildren(partList, 'score-part') : []
+  const listedIds = listedParts.map((part) => part.getAttribute?.('id'))
+  const bodyIds = parts.map((part) => part.getAttribute?.('id'))
+  const allIds = [...listedIds, ...bodyIds]
+  if (
+    !partList || listedParts.length !== parts.length ||
+    allIds.some((id) => typeof id !== 'string' || id.trim() === '') ||
+    new Set(listedIds).size !== listedIds.length ||
+    new Set(bodyIds).size !== bodyIds.length
+  ) fail(`${label}-part-identity-mismatch`)
+  for (let index = 0; index < parts.length; index += 1) {
+    if (listedIds[index] !== bodyIds[index]) fail(`${label}-part-identity-mismatch`)
+  }
+}
 function parseTimeline(root, label, targetSelection = null) {
   const parts = directChildren(root, 'part')
   let part
@@ -199,6 +215,7 @@ function parseTimeline(root, label, targetSelection = null) {
     if (parts.length !== 1) fail(`${label}-one-part-required`)
     part = parts[0]
   } else {
+    assertTargetPartIdentityMapping(root, label, parts)
     const { partId, partIndex } = targetSelection
     if (partIndex >= parts.length || parts[partIndex].getAttribute?.('id') !== partId) fail(`${label}-target-part-mismatch`)
     part = parts[partIndex]

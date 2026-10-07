@@ -305,6 +305,47 @@ test('GTAB-10B offers canonical multipart targets and rebuilds the target-bound 
   })
 })
 
+test('GTAB-10B renderer highlight keeps the full canonical note traversal for a selected staff', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const observations = { highlights: [] }
+  const adapters = successfulAdapters(observations)
+  adapters.extractScoreInventory = () => ({ parts: [{
+    partId: 'P1', partIndex: 0, name: 'Guitar',
+    staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }, { staff: 2, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
+  }] })
+  adapters.parseCanonicalNotes = () => [
+    { partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0, pitch: { step: 'C', octave: 4 } },
+    { partId: 'P1', partIndex: 0, staff: 2, voice: 1, measureIndex: 0, startBeat: 0, pitch: { step: 'D', octave: 4 } },
+  ]
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      return {
+        events: [{
+          sourceEventId: 'staff-two-note', partId: 'P1', partIndex: 0, measureIndex: 0,
+          voice: '1', staff: 2, onsetDivisions: 0, divisions: 1, sourceOrder: 0,
+        }],
+        groups: [{ groupId: 'group-two', sourceEventIds: ['staff-two-note'] }],
+      }
+    },
+    createTabAssignmentDocument: () => ({ listAssignments: () => [] }),
+    createKeyboardController: () => ({
+      getState: () => ({ currentEventId: 'staff-two-note', currentGroupId: 'group-two', selectedString: 1, fretBuffer: '' }),
+      handleKey() {},
+    }),
+    createFixedSixStringRows: () => [],
+  })
+  adapters.highlightNote = async (_runtime, noteRef) => observations.highlights.push(noteRef)
+
+  await loadGuitarTabTeacherSource(root, {
+    name: 'two-staff.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.equal(observations.highlights.length, 1)
+  assert.equal(observations.highlights[0].noteIndex, 1)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).notationSynchronized, true)
+})
+
 test('GTAB-10B clears the previous authoring session when a newly selected target is unsupported', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
