@@ -283,6 +283,28 @@ test('GTAB-10B targeted handoff ignores unsupported notes outside the selected v
   }), /grace-unsupported/u)
 })
 
+test('GTAB-10B targeted handoff rejects repeated staff or voice identities', async () => {
+  const events = [{ id: 'selected', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const validSource = sourceScore(events, 1)
+  const ambiguousSources = [
+    validSource.replace('<voice>1</voice>', '<voice>1</voice><voice>2</voice>'),
+    validSource.replace('<staff>1</staff>', '<staff>1</staff><staff>2</staff>'),
+  ]
+
+  for (let index = 0; index < ambiguousSources.length; index += 1) {
+    const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+      musicXml: ambiguousSources[index], teacherId: 'teacher-a', draftId: `repeated-target-identity-${index}`,
+      now: () => '2026-10-04T10:00:00Z',
+    })
+    await assert.rejects(prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml: editorTab(events, { selected: { string: 2, fret: 1 } }),
+      draftId: `repeated-target-identity-${index}`,
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }), /target-identity-ambiguous/u)
+  }
+})
+
 test('GTAB-04 rejects malformed TAB shape and missing technical data', async () => {
   const scoreUpload = await preparedScore(SINGLE)
   const noTechnical = editorTab(SINGLE, { n1: null })

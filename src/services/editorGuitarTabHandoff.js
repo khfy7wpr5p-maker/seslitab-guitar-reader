@@ -262,8 +262,13 @@ function parseTimeline(root, label, targetSelection = null) {
       const isGrace = directChild(child, 'grace') !== null
       const isUnpitched = directChild(child, 'unpitched') !== null
       const isRest = directChild(child, 'rest') !== null
-      const voiceNode = directChild(child, 'voice')
-      const staffNode = directChild(child, 'staff')
+      const voiceNodes = directChildren(child, 'voice')
+      const staffNodes = directChildren(child, 'staff')
+      if (targetSelection !== null && (voiceNodes.length > 1 || staffNodes.length > 1)) {
+        fail(`${label}-target-identity-ambiguous`)
+      }
+      const voiceNode = voiceNodes[0] ?? null
+      const staffNode = staffNodes[0] ?? null
       let voice = textOf(voiceNode) || '1'
       let staff = staffNode
         ? integerText(staffNode, `${label}-staff-invalid`, { min: 1 })
