@@ -247,7 +247,8 @@ function assertFirestore(firestore) {
     !firestore ||
     typeof firestore.collection !== 'function' ||
     typeof firestore.runTransaction !== 'function' ||
-    typeof firestore.batch !== 'function'
+    typeof firestore.batch !== 'function' ||
+    typeof firestore.getAll !== 'function'
   ) {
     throw new TypeError(
       'firestore must provide Admin Firestore methods.',
@@ -1446,6 +1447,289 @@ export function createFirestoreSecureDeliveryStore({
     )
   }
 
+  async function listActiveAssignmentContextsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+    const querySnap =
+      await collections.deliveries
+        .where('studentId', '==', id)
+        .where('revokedAt', '==', null)
+        .get()
+    const candidates = []
+    const seen = new Set()
+
+    for (const item of querySnap.docs) {
+      const delivery = restoreDelivery(
+        item.data(),
+      )
+      if (
+        delivery.studentId !== id ||
+        delivery.revokedAt !== null
+      ) {
+        throw new Error(
+          'student delivery list authority mismatch.',
+        )
+      }
+      if (seen.has(delivery.assignmentId)) {
+        throw new Error(
+          'duplicate student delivery authority.',
+        )
+      }
+      seen.add(delivery.assignmentId)
+      candidates.push(delivery)
+    }
+
+    if (candidates.length === 0) {
+      return Object.freeze([])
+    }
+
+    const refsByPath = new Map()
+    const addRef = (ref) => {
+      refsByPath.set(ref.path, ref)
+      return ref
+    }
+    const descriptors = candidates.map(
+      (delivery) => Object.freeze({
+        delivery,
+        deliveryRef: addRef(
+          collections.deliveries.doc(
+            documentId(delivery.assignmentId),
+          ),
+        ),
+        preparedRef: addRef(
+          collections.prepared.doc(
+            documentId(delivery.assignmentId),
+          ),
+        ),
+        lifecycleRef: addRef(
+          collections.lifecycle.doc(
+            documentId(delivery.assignmentId),
+          ),
+        ),
+        packageRef: addRef(
+          collections.packages.doc(
+            documentId(delivery.packageId),
+          ),
+        ),
+      }),
+    )
+    const refs = [...refsByPath.values()]
+    const snapshots = await db.getAll(...refs)
+    if (snapshots.length !== refs.length) {
+      throw new Error(
+        'student delivery batch read incomplete.',
+      )
+    }
+    const snapshotsByPath = new Map(
+      refs.map((ref, index) => [
+        ref.path,
+        snapshots[index],
+      ]),
+    )
+    const snapshotFor = (ref) =>
+      snapshotsByPath.get(ref.path)
+
+    const contexts = []
+    for (const descriptor of descriptors) {
+      const deliverySnap = snapshotFor(
+        descriptor.deliveryRef,
+      )
+      if (!deliverySnap?.exists) {
+        continue
+      }
+      const delivery = restoreDelivery(
+        deliverySnap.data(),
+      )
+      if (
+        delivery.assignmentId !==
+          descriptor.delivery.assignmentId ||
+        delivery.studentId !== id
+      ) {
+        throw new Error(
+          'student delivery batch authority mismatch.',
+        )
+      }
+      if (delivery.revokedAt !== null) {
+        continue
+      }
+      if (
+        delivery.packageId !==
+        descriptor.delivery.packageId
+      ) {
+        throw new Error(
+          'student delivery package authority mismatch.',
+        )
+      }
+
+      const preparedSnap = snapshotFor(
+        descriptor.preparedRef,
+      )
+      const prepared = preparedSnap?.exists
+        ? restorePrepared(preparedSnap.data())
+        : null
+      const lifecycleSnap = snapshotFor(
+        descriptor.lifecycleRef,
+      )
+      let lifecycle = null
+      if (lifecycleSnap?.exists) {
+        if (prepared === null) {
+          throw new Error(
+            'lifecycle prepared assignment missing.',
+          )
+        }
+        lifecycle =
+          restoreAssignmentLifecycleRecordV1(
+            lifecycleSnap.data(),
+            prepared.assignment,
+          )
+      }
+      const packageSnap = snapshotFor(
+        descriptor.packageRef,
+      )
+      const pkg = packageSnap?.exists
+        ? restoreSecureDeliveryPackage(
+            packageSnap.data(),
+          )
+        : null
+
+      contexts.push(Object.freeze({
+        delivery,
+        prepared,
+        lifecycle,
+        package: pkg,
+      }))
+    }
+
+    return Object.freeze(contexts)
+  }
+
+  async function listActivePieceContextsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+    const querySnap =
+      await collections.pieces
+        .where('studentId', '==', id)
+        .get()
+    const candidates = []
+    const seen = new Set()
+
+    for (const item of querySnap.docs) {
+      const piece = restorePieceAssignment(
+        item.data(),
+      )
+      if (piece.studentId !== id) {
+        throw new Error(
+          'Piece student scope conflict.',
+        )
+      }
+      if (seen.has(piece.pieceAssignmentId)) {
+        throw new Error(
+          'duplicate student Piece authority.',
+        )
+      }
+      seen.add(piece.pieceAssignmentId)
+      candidates.push(piece)
+    }
+
+    if (candidates.length === 0) {
+      return Object.freeze([])
+    }
+
+    const refsByPath = new Map()
+    const addRef = (ref) => {
+      refsByPath.set(ref.path, ref)
+      return ref
+    }
+    const descriptors = candidates.map(
+      (piece) => Object.freeze({
+        piece,
+        pieceRef: addRef(
+          collections.pieces.doc(
+            documentId(
+              piece.pieceAssignmentId,
+            ),
+          ),
+        ),
+        lifecycleRef: addRef(
+          collections.pieceLifecycle.doc(
+            documentId(
+              piece.pieceAssignmentId,
+            ),
+          ),
+        ),
+      }),
+    )
+    const refs = [...refsByPath.values()]
+    const snapshots = await db.getAll(...refs)
+    if (snapshots.length !== refs.length) {
+      throw new Error(
+        'student Piece batch read incomplete.',
+      )
+    }
+    const snapshotsByPath = new Map(
+      refs.map((ref, index) => [
+        ref.path,
+        snapshots[index],
+      ]),
+    )
+    const snapshotFor = (ref) =>
+      snapshotsByPath.get(ref.path)
+
+    const contexts = []
+    for (const descriptor of descriptors) {
+      const pieceSnap = snapshotFor(
+        descriptor.pieceRef,
+      )
+      if (!pieceSnap?.exists) {
+        continue
+      }
+      const piece = restorePieceAssignment(
+        pieceSnap.data(),
+      )
+      if (
+        piece.studentId !== id ||
+        piece.pieceAssignmentId !==
+          descriptor.piece.pieceAssignmentId ||
+        !same(piece, descriptor.piece)
+      ) {
+        throw new Error(
+          'student Piece batch authority mismatch.',
+        )
+      }
+
+      const lifecycleSnap = snapshotFor(
+        descriptor.lifecycleRef,
+      )
+      const lifecycle = lifecycleSnap?.exists
+        ? restorePieceLifecycle(
+            lifecycleSnap.data(),
+            piece,
+          )
+        : null
+      if (
+        lifecycle !== null &&
+        lifecycle.revokedAt !== null
+      ) {
+        continue
+      }
+
+      contexts.push(Object.freeze({
+        piece,
+        lifecycle,
+      }))
+    }
+
+    return Object.freeze(contexts)
+  }
+
   async function putRosterEntriesForProvisioning(
     entries,
   ) {
@@ -1692,6 +1976,9 @@ export function createFirestoreSecureDeliveryStore({
         ),
       )
     },
+
+    listActiveAssignmentContextsForStudent,
+    listActivePieceContextsForStudent,
 
     listPoolPublicationsForStudent,
 
