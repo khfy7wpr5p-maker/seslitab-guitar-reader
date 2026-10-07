@@ -32,6 +32,10 @@ async function loadService() {
   }
 }
 
+function nextTurn() {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
 function prepared(assignmentId, studentId, revisionId, packageId) {
   const assignment = restorePrivateAssignmentV1({
     schemaVersion: 1,
@@ -188,6 +192,126 @@ test('student list returns only the authenticated student private work', async (
   assert.equal(rows[0].teacherNote, 'Ölçü 8 tekrar')
 })
 
+test('SES-193 starts independent assignment authority reads without waiting for the previous assignment', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  const c = prepared(
+    'assignment-c',
+    'student-a',
+    'revision-c',
+    'package-c',
+  )
+  const deliveryC = createDeliveryRecord({
+    assignmentId: 'assignment-c',
+    packageId: 'package-c',
+    teacherId: 'teacher-a',
+    studentId: 'student-a',
+    deliveredAt: '2026-09-23T08:04:00Z',
+  })
+
+  await h.store.commitPreparedBatch([{
+    prepared: c.record,
+    package: c.package,
+  }])
+  await h.store.commitDeliveryBatch([deliveryC])
+
+  const deliveryA = await h.store.getDelivery('assignment-a')
+  let releaseFirstRead
+  const firstRead = new Promise((resolve) => {
+    releaseFirstRead = resolve
+  })
+  const calls = []
+  const racedStore = {
+    ...h.store,
+    async getDelivery(assignmentId) {
+      calls.push(assignmentId)
+      if (assignmentId === 'assignment-a') {
+        return firstRead
+      }
+      return h.store.getDelivery(assignmentId)
+    },
+  }
+  const service = createStudentDeliveryReadService({
+    authorization: createSecureDeliveryAuthorization({
+      store: racedStore,
+    }),
+    store: racedStore,
+  })
+
+  const pending = service.listAssignments({
+    providerSubject: 'uid-student-a',
+  })
+  await nextTurn()
+  const callsBeforeRelease = [...calls]
+  releaseFirstRead(deliveryA)
+  const rows = await pending
+
+  assert.deepEqual(
+    [...new Set(callsBeforeRelease)],
+    ['assignment-a', 'assignment-c'],
+  )
+  assert.deepEqual(
+    rows.map((row) => row.assignmentId),
+    ['assignment-a', 'assignment-c'],
+  )
+})
+
+test('SES-193 uses a batched current authority context without per-assignment fallback reads', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  const delivery = await h.store.getDelivery('assignment-a')
+  const preparedRecord = await h.store.getPreparedAssignment('assignment-a')
+  const lifecycle = await h.store.getLifecycle('assignment-a')
+  const practicePackage = await h.store.getPracticePackage('package-a')
+  let batchReads = 0
+  const batchStore = {
+    ...h.store,
+    async listActiveAssignmentContextsForStudent(studentId) {
+      batchReads += 1
+      assert.equal(studentId, 'student-a')
+      return Object.freeze([
+        Object.freeze({
+          delivery,
+          prepared: preparedRecord,
+          lifecycle,
+          package: practicePackage,
+        }),
+      ])
+    },
+    async listActiveDeliveriesForStudent() {
+      throw new Error('per-assignment fallback must not run')
+    },
+    async getDelivery() {
+      throw new Error('per-assignment delivery read must not run')
+    },
+    async getPreparedAssignment() {
+      throw new Error('per-assignment prepared read must not run')
+    },
+    async getLifecycle() {
+      throw new Error('per-assignment lifecycle read must not run')
+    },
+    async getPracticePackage() {
+      throw new Error('per-assignment package read must not run')
+    },
+  }
+  const service = createStudentDeliveryReadService({
+    authorization: createSecureDeliveryAuthorization({
+      store: batchStore,
+    }),
+    store: batchStore,
+  })
+
+  const rows = await service.listAssignments({
+    providerSubject: 'uid-student-a',
+  })
+
+  assert.equal(batchReads, 1)
+  assert.deepEqual(
+    rows.map((row) => row.assignmentId),
+    ['assignment-a'],
+  )
+})
+
 test('student read model carries current lifecycle state', async () => {
   const { createStudentDeliveryReadService } = await loadService()
 
@@ -242,6 +366,42 @@ test('Student A cannot read Student B even with exact deliveryId and error does 
       return true
     },
   )
+})
+
+test('foreign delivery ownership fails before prepared, lifecycle or package authority reads', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  const forbiddenReads = []
+  const guardedStore = {
+    ...h.store,
+    async getPreparedAssignment() {
+      forbiddenReads.push('prepared')
+      throw new Error('foreign prepared read must not run')
+    },
+    async getLifecycle() {
+      forbiddenReads.push('lifecycle')
+      throw new Error('foreign lifecycle read must not run')
+    },
+    async getPracticePackage() {
+      forbiddenReads.push('package')
+      throw new Error('foreign package read must not run')
+    },
+  }
+  const service = createStudentDeliveryReadService({
+    authorization: createSecureDeliveryAuthorization({
+      store: guardedStore,
+    }),
+    store: guardedStore,
+  })
+
+  await assert.rejects(
+    () => service.getAssignment({
+      providerSubject: 'uid-student-a',
+      deliveryId: 'assignment-b',
+    }),
+    /student-assignment-not-found/,
+  )
+  assert.deepEqual(forbiddenReads, [])
 })
 
 test('student read model strips teacher/provider/evidence diagnostics', async () => {
@@ -400,6 +560,61 @@ test('student Piece list uses Piece lifecycle and exposes bounded manifest metad
   assert.equal(serialized.includes('studentId'), false)
   assert.equal(serialized.includes('teacherId'), false)
   assert.equal(serialized.includes('package'), false)
+})
+
+test('SES-193 uses a batched current Piece authority context without per-Piece fallback reads', async () => {
+  const { createStudentDeliveryReadService } = await loadService()
+  const h = makeHarness()
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-batch-a',
+    pieceId: 'work-batch-a',
+    arrangementId: 'arrangement-batch-a',
+    studentId: 'student-a',
+    title: 'Toplu Okuma Etüdü',
+    teacherNote: '',
+    assignedAt: '2026-10-07T07:40:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'assignment-a',
+      chordAssignmentIds: [],
+    },
+  })
+  await h.store.putPieceAssignment(piece)
+  const batchStore = {
+    ...h.store,
+    async listActivePieceContextsForStudent(studentId) {
+      assert.equal(studentId, 'student-a')
+      return Object.freeze([
+        Object.freeze({
+          piece,
+          lifecycle: null,
+        }),
+      ])
+    },
+    async listPieceAssignmentsForStudent() {
+      throw new Error('per-Piece fallback must not run')
+    },
+    async getPieceAssignment() {
+      throw new Error('per-Piece assignment read must not run')
+    },
+    async getPieceLifecycle() {
+      throw new Error('per-Piece lifecycle read must not run')
+    },
+  }
+  const service = createStudentDeliveryReadService({
+    authorization: createSecureDeliveryAuthorization({
+      store: batchStore,
+    }),
+    store: batchStore,
+  })
+
+  const rows = await service.listPieces({
+    providerSubject: 'uid-student-a',
+  })
+
+  assert.deepEqual(
+    rows.map((row) => row.pieceAssignmentId),
+    ['piece-batch-a'],
+  )
 })
 
 test('student cannot read another student Piece by exact Piece ID and error hides ownership', async () => {

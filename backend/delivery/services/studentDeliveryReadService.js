@@ -273,6 +273,60 @@ export function createStudentDeliveryReadService({
     ) {
       throw notFound()
     }
+    if (delivery.revokedAt !== null) {
+      throw revokedNotFound()
+    }
+
+    const prepared =
+      await trustedStore.getPreparedAssignment(
+        id,
+      )
+    const lifecycle =
+      await trustedStore.getLifecycle(id)
+    const pkg =
+      await trustedStore.getPracticePackage(
+        delivery.packageId,
+      )
+
+    return visibleContext(
+      studentId,
+      {
+        delivery,
+        prepared,
+        lifecycle,
+        package: pkg,
+      },
+      id,
+    )
+  }
+
+  function visibleContext(
+    studentId,
+    context,
+    expectedDeliveryId = null,
+  ) {
+    if (
+      context === null ||
+      typeof context !== 'object' ||
+      Array.isArray(context)
+    ) {
+      throw new Error(
+        'student delivery authority context mismatch.',
+      )
+    }
+
+    const delivery = context.delivery
+    const id = expectedDeliveryId ??
+      delivery?.deliveryId ?? null
+
+    if (
+      delivery === null ||
+      !isDeliveryRecord(delivery) ||
+      delivery.deliveryId !== id ||
+      delivery.studentId !== studentId
+    ) {
+      throw notFound()
+    }
 
     if (delivery.revokedAt !== null) {
       throw revokedNotFound()
@@ -280,15 +334,12 @@ export function createStudentDeliveryReadService({
 
     const prepared =
       assertPreparedForDelivery(
-        await trustedStore.getPreparedAssignment(
-          id,
-        ),
+        context.prepared,
         delivery,
         studentId,
       )
 
-    const lifecycle =
-      await trustedStore.getLifecycle(id)
+    const lifecycle = context.lifecycle
     if (lifecycle !== null) {
       if (
         !isAssignmentLifecycleRecord(
@@ -310,9 +361,7 @@ export function createStudentDeliveryReadService({
 
     const pkg =
       assertPackageForStudent(
-        await trustedStore.getPracticePackage(
-          delivery.packageId,
-        ),
+        context.package,
         prepared,
         studentId,
       )
@@ -330,6 +379,59 @@ export function createStudentDeliveryReadService({
   } = {}) {
     const { studentId } =
       await studentPrincipal(providerSubject)
+
+    if (
+      typeof trustedStore
+        .listActiveAssignmentContextsForStudent ===
+      'function'
+    ) {
+      const contexts =
+        await trustedStore
+          .listActiveAssignmentContextsForStudent(
+            studentId,
+          )
+
+      if (!Array.isArray(contexts)) {
+        throw new TypeError(
+          'student assignment context list must be an array.',
+        )
+      }
+
+      const output = []
+      const seen = new Set()
+      for (const context of contexts) {
+        const assignmentId =
+          context?.delivery?.assignmentId
+
+        if (
+          typeof assignmentId !== 'string' ||
+          seen.has(assignmentId)
+        ) {
+          throw new Error(
+            'duplicate student delivery authority.',
+          )
+        }
+        seen.add(assignmentId)
+
+        try {
+          output.push(
+            visibleContext(
+              studentId,
+              context,
+              assignmentId,
+            ),
+          )
+        } catch (error) {
+          if (isAssignmentNotFound(error)) {
+            continue
+          }
+          throw error
+        }
+      }
+
+      return Object.freeze(output)
+    }
+
     const candidates =
       await trustedStore
         .listActiveDeliveriesForStudent(
@@ -342,8 +444,8 @@ export function createStudentDeliveryReadService({
       )
     }
 
-    const output = []
     const seen = new Set()
+    const validatedCandidates = []
     for (const candidate of candidates) {
       if (
         !isDeliveryRecord(candidate) ||
@@ -360,37 +462,43 @@ export function createStudentDeliveryReadService({
       }
       seen.add(candidate.assignmentId)
 
-      const current =
-        await trustedStore.getDelivery(
-          candidate.assignmentId,
-        )
-      if (
-        current === null ||
-        !isDeliveryRecord(current) ||
-        current.studentId !== studentId ||
-        current.revokedAt !== null
-      ) {
-        continue
-      }
-
-      try {
-        output.push(
-          await visibleById(
-            studentId,
-            current.deliveryId,
-          ),
-        )
-      } catch (error) {
-        if (
-          isAssignmentNotFound(error)
-        ) {
-          continue
-        }
-        throw error
-      }
+      validatedCandidates.push(candidate)
     }
 
-    return Object.freeze(output)
+    const rows = await Promise.all(
+      validatedCandidates.map(async (candidate) => {
+        const current =
+          await trustedStore.getDelivery(
+            candidate.assignmentId,
+          )
+        if (
+          current === null ||
+          !isDeliveryRecord(current) ||
+          current.studentId !== studentId ||
+          current.revokedAt !== null
+        ) {
+          return null
+        }
+
+        try {
+          return await visibleById(
+            studentId,
+            current.deliveryId,
+          )
+        } catch (error) {
+          if (
+            isAssignmentNotFound(error)
+          ) {
+            return null
+          }
+          throw error
+        }
+      }),
+    )
+
+    return Object.freeze(
+      rows.filter((row) => row !== null),
+    )
   }
 
   async function getAssignment({
@@ -431,6 +539,43 @@ export function createStudentDeliveryReadService({
       await trustedStore
         .getPieceLifecycle(id)
 
+    return visiblePieceContext(
+      studentId,
+      { piece, lifecycle },
+      id,
+    )
+  }
+
+  function visiblePieceContext(
+    studentId,
+    context,
+    expectedPieceAssignmentId = null,
+  ) {
+    if (
+      context === null ||
+      typeof context !== 'object' ||
+      Array.isArray(context)
+    ) {
+      throw new Error(
+        'student Piece authority context mismatch.',
+      )
+    }
+
+    const piece = context.piece
+    const id = expectedPieceAssignmentId ??
+      piece?.pieceAssignmentId ?? null
+
+    if (
+      piece === null ||
+      !isPieceAssignment(piece) ||
+      piece.pieceAssignmentId !== id ||
+      piece.studentId !== studentId
+    ) {
+      throw pieceNotFound()
+    }
+
+    const lifecycle = context.lifecycle
+
     if (lifecycle !== null) {
       if (
         !isPieceAssignmentLifecycleRecord(
@@ -468,6 +613,56 @@ export function createStudentDeliveryReadService({
       await studentPrincipal(
         providerSubject,
       )
+
+    if (
+      typeof trustedStore
+        .listActivePieceContextsForStudent ===
+      'function'
+    ) {
+      const contexts =
+        await trustedStore
+          .listActivePieceContextsForStudent(
+            studentId,
+          )
+      if (!Array.isArray(contexts)) {
+        throw new TypeError(
+          'student Piece context list must be an array.',
+        )
+      }
+
+      const output = []
+      const seen = new Set()
+      for (const context of contexts) {
+        const id =
+          context?.piece?.pieceAssignmentId
+        if (
+          typeof id !== 'string' ||
+          seen.has(id)
+        ) {
+          throw new Error(
+            'duplicate student Piece authority.',
+          )
+        }
+        seen.add(id)
+
+        try {
+          output.push(
+            visiblePieceContext(
+              studentId,
+              context,
+              id,
+            ),
+          )
+        } catch (error) {
+          if (isPieceNotFound(error)) {
+            continue
+          }
+          throw error
+        }
+      }
+
+      return Object.freeze(output)
+    }
 
     const candidates =
       await trustedStore
