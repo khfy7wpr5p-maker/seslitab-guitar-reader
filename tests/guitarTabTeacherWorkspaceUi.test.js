@@ -422,6 +422,60 @@ test('GTAB-10B superseded target synchronization cannot restore the previous sta
   assert.equal(getGuitarTabTeacherWorkspaceState(root).notationSynchronized, true)
 })
 
+test('GTAB-10B stale target synchronization cannot overwrite a newer unsupported target state', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  let sessionCount = 0
+  const adapters = successfulAdapters()
+  adapters.extractScoreInventory = () => ({ parts: [
+    { partId: 'P1', partIndex: 0, name: 'First', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+    { partId: 'P2', partIndex: 1, name: 'Second', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+  ] })
+  adapters.loadEditorRuntime = async () => ({ createSourceSession() {
+    sessionCount += 1
+    if (sessionCount === 2) throw new Error('unsupported selected target')
+    return {
+      events: [{ sourceEventId: 'first-note', partId: 'P1', partIndex: 0, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }],
+      groups: [{ groupId: 'first-group', sourceEventIds: ['first-note'] }],
+    }
+  },
+  createTabAssignmentDocument: () => ({ listAssignments: () => [] }),
+  createKeyboardController: () => ({ getState: () => ({ currentEventId: 'first-note', currentGroupId: 'first-group', selectedString: 1, fretBuffer: '' }), handleKey() {} }),
+  createFixedSixStringRows: () => [],
+  })
+  let releaseFirstClear
+  let signalFirstClearStarted
+  let firstClear = true
+  const started = new Promise((resolve) => { signalFirstClearStarted = resolve })
+  const firstClearGate = new Promise((resolve) => { releaseFirstClear = resolve })
+  adapters.clearHighlights = async () => {
+    if (firstClear) {
+      firstClear = false
+      signalFirstClearStarted()
+      await firstClearGate
+    }
+    return true
+  }
+  await loadGuitarTabTeacherSource(root, {
+    name: 'multipart.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  const firstActivation = select.listeners.get('change')[0]()
+  await started
+  select.value = select.children[2].value
+  select.listeners.get('change')[0]()
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
+  releaseFirstClear()
+  await firstActivation
+
+  const state = getGuitarTabTeacherWorkspaceState(root)
+  assert.equal(state.selectedRegion, null)
+  assert.equal(state.sourceSession, null)
+  assert.equal(state.authoringAvailable, false)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
+})
+
 test('GTAB-10B clears the previous authoring session when a newly selected target is unsupported', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

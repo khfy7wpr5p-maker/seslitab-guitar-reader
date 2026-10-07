@@ -239,6 +239,12 @@ jobs:
         working-directory: teacher
         run: node scripts/writeTdProd10StudentFixture.js ../student-app/browser-tests/support/td-prod-10-generated-fixture.mjs
 
+      - name: Route Ubuntu package indexes through the reachable HTTPS mirror
+        run: |
+          sudo find /etc/apt -type f \
+            \( -name '*.list' -o -name '*.sources' \) \
+            -exec sed -i 's#http://azure.archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' {} +
+
       - name: Install qualification browser
         working-directory: student-app
         run: npx playwright install --with-deps ${{ matrix.browser }}

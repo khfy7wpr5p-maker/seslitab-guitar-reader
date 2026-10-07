@@ -260,14 +260,7 @@ function parseTimeline(root, label, targetSelection = null) {
 
       const isChord = directChild(child, 'chord') !== null
       const isGrace = directChild(child, 'grace') !== null
-      if (isGrace) fail('grace-unsupported')
-      const duration = integerText(
-        directChild(child, 'duration'),
-        `${label}-note-duration-invalid`,
-        { min: 1 },
-      )
-      const onset = isChord ? lastNonChordOnset : cursor
-      const pitch = parsePitch(child)
+      const isUnpitched = directChild(child, 'unpitched') !== null
       const isRest = directChild(child, 'rest') !== null
       const voiceNode = directChild(child, 'voice')
       const staffNode = directChild(child, 'staff')
@@ -275,13 +268,35 @@ function parseTimeline(root, label, targetSelection = null) {
       let staff = staffNode
         ? integerText(staffNode, `${label}-staff-invalid`, { min: 1 })
         : 1
-      if (targetSelection !== null && pitch && !isRest) {
+      if (targetSelection !== null && (isGrace || isUnpitched || (!isRest && directChild(child, 'pitch')))) {
         if (!voiceNode || !staffNode) fail(`${label}-target-identity-required`)
         voice = String(canonicalVoiceIntegerText(voiceNode, `${label}-voice-invalid`))
         staff = canonicalPositiveIntegerText(staffNode, `${label}-staff-invalid`)
       }
+      const matchesTarget = targetSelection === null
+        || (staff === targetSelection.staff && voice === String(targetSelection.voice))
+      if (isGrace) {
+        if (matchesTarget) fail('grace-unsupported')
+        continue
+      }
 
-      if (pitch && !isRest && (targetSelection === null || (staff === targetSelection.staff && voice === String(targetSelection.voice)))) {
+      const duration = integerText(
+        directChild(child, 'duration'),
+        `${label}-note-duration-invalid`,
+        { min: 1 },
+      )
+      const onset = isChord ? lastNonChordOnset : cursor
+      if (targetSelection !== null && !matchesTarget) {
+        if (!isChord) {
+          lastNonChordOnset = onset
+          cursor += duration
+        }
+        continue
+      }
+      if (isUnpitched) fail('unpitched-unsupported')
+      const pitch = parsePitch(child)
+
+      if (pitch && !isRest) {
         const ties = tieFlags(child)
         events.push(Object.freeze({
           measureIndex,

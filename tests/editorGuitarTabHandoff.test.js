@@ -249,6 +249,40 @@ test('GTAB-10B requires explicit canonical staff and voice for targeted source n
   )
 })
 
+test('GTAB-10B targeted handoff ignores unsupported notes outside the selected voice', async () => {
+  const selected = [{ id: 'selected', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const sourceXml = sourceScore(selected, 1).replace(
+    '</measure>',
+    '<backup><duration>1</duration></backup>' +
+      '<note><unpitched><display-step>C</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><voice>2</voice><staff>1</staff></note>' +
+      '<note><grace/><pitch><step>D</step><octave>4</octave></pitch><voice>3</voice><staff>1</staff></note></measure>',
+  )
+  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+    musicXml: sourceXml, teacherId: 'teacher-a', draftId: 'draft-target-filter',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  const handoff = await prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
+    draftId: 'draft-target-filter',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+  })
+  assert.equal(handoff.pitchedEventCount, 1)
+
+  await assert.rejects(prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
+    draftId: 'draft-target-filter',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 2 },
+  }), /unpitched-unsupported/u)
+  await assert.rejects(prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
+    draftId: 'draft-target-filter',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3 },
+  }), /grace-unsupported/u)
+})
+
 test('GTAB-04 rejects malformed TAB shape and missing technical data', async () => {
   const scoreUpload = await preparedScore(SINGLE)
   const noTechnical = editorTab(SINGLE, { n1: null })

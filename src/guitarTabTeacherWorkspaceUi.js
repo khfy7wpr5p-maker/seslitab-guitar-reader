@@ -300,6 +300,7 @@ async function activateTarget(root, state, selectedRegion) {
   renderTargetOptions(root, nextState)
   renderAuthoringSurface(root, nextState)
   if (nextState.rendererRuntime) await synchronizeAuthoringSelection(root, nextState)
+  if (workspaceStates.get(root) !== nextState) return false
   setStatus(root, `${nextState.sourceName} yüklendi. Nota ve seçili TAB çalışma alanı hazır.`, 'ready')
   return true
 }
