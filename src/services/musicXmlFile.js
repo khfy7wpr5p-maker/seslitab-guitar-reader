@@ -1,5 +1,3 @@
-import JSZip from 'jszip'
-
 // Browser-side MusicXML file validation and secure intake helpers.
 
 export const MAX_MUSIC_XML_FILE_SIZE = 10 * 1024 * 1024
@@ -97,6 +95,13 @@ function resolveMxlRootPath(containerXml) {
 }
 
 async function extractMxlMusicXml(file) {
+  let JSZip
+  try {
+    ({ default: JSZip } = await import('jszip'))
+  } catch {
+    throw new Error('.mxl arşivi için güvenli ZIP okuyucusu kullanılamıyor.')
+  }
+
   let zip
   try {
     zip = await JSZip.loadAsync(await readFileArrayBuffer(file), { checkCRC32: true })
