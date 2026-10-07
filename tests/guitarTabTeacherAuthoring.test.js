@@ -109,6 +109,7 @@ test('GTAB-09C delegates keyboard authoring and synchronizes only proven source-
   const adapters = {
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => ({ id: 'renderer' }), renderScore: async () => ({ renderEpoch: 'r1' }), clearScore: async () => true,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
     parseCanonicalNotes: () => canonicalNotes,
     clearHighlights: async () => { observations.clears = (observations.clears ?? 0) + 1 },
     moveCursor: async (_host, target) => { observations.cursor = target },
@@ -141,6 +142,7 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
   const adapters = {
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => null,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
     parseCanonicalNotes: () => [],
     async prepareScoreUpload(input) {
       observations.scoreUploadInput = input
@@ -155,7 +157,7 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
 
   const loadResult = await loadGuitarTabTeacherSource(
     documentRoot,
-    { name: 'audiveris-export.musicxml', text: async () => exactSource },
+    { name: 'audiveris-export.musicxml', size: Buffer.byteLength(exactSource), text: async () => exactSource },
     adapters,
   )
   assert.equal(loadResult.ok, true)

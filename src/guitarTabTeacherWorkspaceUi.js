@@ -11,6 +11,9 @@ import {
   resolveStScoreRuntime,
 } from './services/scoreRendererConsumer.js'
 import { prepareTeacherAssignmentScoreUpload } from './services/teacherAssignmentComposerScoreUpload.js'
+import { readMusicXmlSourceFile, validateMusicXmlFile } from './services/musicXmlFile.js'
+import { extractGuitarTabScoreInventory } from './services/guitarTabScoreInventory.js'
+import { resolveGuitarTabTargetSelection, selectCanonicalNotesForGuitarTabTarget } from './services/guitarTabTargetSelection.js'
 
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
@@ -145,6 +148,9 @@ const defaultAdapters = Object.freeze({
   prepareScoreUpload: prepareTeacherAssignmentScoreUpload,
   prepareHandoff: prepareEditorGuitarTabHandoff,
   downloadText: downloadTextFile,
+  validateMusicXmlFile,
+  readMusicXmlSourceFile,
+  extractScoreInventory: extractGuitarTabScoreInventory,
 })
 
 function normalizeAdapters(adapters = {}) {
@@ -160,15 +166,21 @@ function normalizeAdapters(adapters = {}) {
     prepareScoreUpload: adapters.prepareScoreUpload ?? defaultAdapters.prepareScoreUpload,
     prepareHandoff: adapters.prepareHandoff ?? defaultAdapters.prepareHandoff,
     downloadText: adapters.downloadText ?? defaultAdapters.downloadText,
+    validateMusicXmlFile: adapters.validateMusicXmlFile ?? defaultAdapters.validateMusicXmlFile,
+    readMusicXmlSourceFile: adapters.readMusicXmlSourceFile ?? defaultAdapters.readMusicXmlSourceFile,
+    extractScoreInventory: adapters.extractScoreInventory ?? defaultAdapters.extractScoreInventory,
   }
 }
 
-async function readSource(source, options = {}) {
+async function readSource(source, options = {}, adapters = normalizeAdapters()) {
   if (typeof source === 'string') return Object.freeze({ xml: source, name: options.filename ?? 'MusicXML' })
   if (!source || typeof source.text !== 'function') throw new TypeError('MusicXML dosyası veya XML metni gereklidir.')
+  const validationError = adapters.validateMusicXmlFile(source)
+  if (validationError) throw new Error(validationError)
+  const readResult = await adapters.readMusicXmlSourceFile(source)
   return Object.freeze({
-    xml: await source.text(),
-    name: typeof source.name === 'string' && source.name ? source.name : 'MusicXML',
+    xml: readResult.xmlText,
+    name: readResult.sourceName,
   })
 }
 
@@ -178,6 +190,9 @@ function emptyState(generation = 0) {
     sourceName: null,
     sourceXml: null,
     sourceSession: null,
+    parsedScoreSummary: null,
+    canonicalTabRegions: Object.freeze([]),
+    selectedRegion: null,
     rendererRuntime: null,
     editorRuntime: null,
     tabDocument: null,
@@ -381,6 +396,9 @@ export function getGuitarTabTeacherWorkspaceState(root) {
     generation: state.generation,
     sourceName: state.sourceName,
     sourceSession: state.sourceSession,
+    parsedScoreSummary: state.parsedScoreSummary,
+    canonicalTabRegions: state.canonicalTabRegions,
+    selectedRegion: state.selectedRegion,
     rendererAvailable: Boolean(state.rendererRuntime),
     authoringAvailable: Boolean(state.tabDocument && state.keyboardController),
     assignmentCount,
@@ -469,7 +487,7 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   setStatus(root, 'MusicXML yükleniyor…', 'loading')
 
   let payload
-  try { payload = await readSource(source, options) } catch {
+  try { payload = await readSource(source, options, normalized) } catch {
     if (workspaceStates.get(root)?.generation === generation) setStatus(root, 'MusicXML dosyası okunamadı.', 'invalid')
     return Object.freeze({ ok: false, reason: 'SOURCE_READ_FAILED' })
   }
@@ -481,20 +499,71 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     return Object.freeze({ ok: false, reason: 'EDITOR_RUNTIME_UNAVAILABLE' })
   }
 
+  let inventory
+  let canonicalNotes
+  try {
+    inventory = normalized.extractScoreInventory(payload.xml)
+    canonicalNotes = normalized.parseCanonicalNotes(payload.xml)
+  } catch {
+    inventory = null
+    canonicalNotes = null
+  }
+  const canonicalTabRegions = Object.freeze((inventory?.parts ?? []).flatMap((part) =>
+    (part.staves ?? []).flatMap((staff) => (staff.voices ?? []).map((voice) => Object.freeze({
+      partId: part.partId,
+      partIndex: part.partIndex,
+      staff: staff.staff,
+      voice: voice.voice,
+      partName: part.name,
+      pitchedEventCount: voice.pitchedEventCount,
+    }))),
+  ))
+  const targetResolution = resolveGuitarTabTargetSelection(inventory)
+  const selectedRegion = targetResolution.state === 'resolved' ? targetResolution.targetSelection : null
+  const parsedScoreSummary = inventory ? Object.freeze({
+    partCount: inventory.parts.length,
+    regionCount: canonicalTabRegions.length,
+    pitchedEventCount: canonicalTabRegions.reduce((sum, region) => sum + region.pitchedEventCount, 0),
+  }) : null
+  const pendingState = {
+    ...emptyState(generation),
+    sourceName: payload.name,
+    sourceXml: payload.xml,
+    parsedScoreSummary,
+    canonicalTabRegions,
+    selectedRegion,
+    editorRuntime,
+    adapters: normalized,
+  }
+  workspaceStates.set(root, pendingState)
+  if (!selectedRegion) {
+    if (workspaceStates.get(root)?.generation === generation) {
+      setStatus(root, 'MusicXML yüklendi; TAB hedefi belirsiz olduğu için seçim yapılmadı.', 'target-required')
+    }
+    return Object.freeze({ ok: false, reason: canonicalTabRegions.length ? 'TARGET_SELECTION_REQUIRED' : 'NO_TAB_REGIONS' })
+  }
+
+  let selectedCanonicalNotes = canonicalNotes
+  if (Array.isArray(canonicalNotes)) {
+    try { selectedCanonicalNotes = selectCanonicalNotesForGuitarTabTarget(canonicalNotes, selectedRegion) }
+    catch { selectedCanonicalNotes = Object.freeze([]) }
+  }
   let sourceSession
-  try { sourceSession = editorRuntime.createSourceSession(payload.xml) } catch {
+  try { sourceSession = editorRuntime.createSourceSession(payload.xml, { targetSelection: selectedRegion }) } catch {
     if (workspaceStates.get(root)?.generation === generation) setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
     return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
   }
   if (workspaceStates.get(root)?.generation !== generation) return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
 
-  const canonicalNotes = normalized.parseCanonicalNotes(payload.xml)
-  const authoring = createAuthoringState(editorRuntime, sourceSession, canonicalNotes)
+  const authoring = createAuthoringState(editorRuntime, sourceSession, selectedCanonicalNotes)
   const state = {
     ...emptyState(generation),
     sourceName: payload.name,
     sourceXml: payload.xml,
     sourceSession,
+    parsedScoreSummary,
+    canonicalTabRegions,
+    selectedRegion,
     editorRuntime,
     tabDocument: authoring?.tabDocument ?? null,
     keyboardController: authoring?.keyboardController ?? null,
