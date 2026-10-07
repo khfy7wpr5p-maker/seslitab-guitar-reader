@@ -556,6 +556,7 @@ export async function resetGuitarTabTeacherWorkspace(root, adapters = {}) {
   await clearPreviousRender(root, normalized)
   const state = emptyState(generation)
   workspaceStates.set(root, state)
+  renderTargetOptions(root, state)
   const input = root.getElementById('guitar-tab-source-input')
   if (input && 'value' in input) input.value = ''
   renderEmptySixStrings(root)
@@ -572,7 +573,9 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   const previous = workspaceStates.get(root)
   const generation = (previous?.generation ?? 0) + 1
   await clearPreviousRender(root, normalized)
-  workspaceStates.set(root, emptyState(generation))
+  const loadingState = emptyState(generation)
+  workspaceStates.set(root, loadingState)
+  renderTargetOptions(root, loadingState)
   renderEmptySixStrings(root)
   setEditorStatus(root, 'MusicXML tel/perde düzenlemesi hazırlanıyor…', 'loading')
   setStatus(root, 'MusicXML yükleniyor…', 'loading')

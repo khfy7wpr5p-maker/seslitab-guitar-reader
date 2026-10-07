@@ -403,5 +403,8 @@ test('GTAB-09B source replacement and reset clear prior renderer state determini
   assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, null)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession, null)
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'empty')
+  assert.equal(root.getElementById('guitar-tab-target-region').hidden, true)
+  assert.equal(root.getElementById('guitar-tab-target-region').disabled, true)
+  assert.equal(root.getElementById('guitar-tab-target-region').children.length, 1)
   assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
 })
