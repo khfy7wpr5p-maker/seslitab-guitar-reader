@@ -257,6 +257,71 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'ready')
 })
 
+test('GTAB-10B offers canonical multipart targets and rebuilds the target-bound source session on change', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const observedTargets = []
+  const adapters = successfulAdapters({})
+  adapters.extractScoreInventory = () => ({ parts: [
+    { partId: 'P1', partIndex: 0, name: 'Piyano', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] },
+    { partId: 'P2', partIndex: 1, name: 'Gitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+  ] })
+  adapters.parseCanonicalNotes = () => [
+    { partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 },
+    { partId: 'P2', partIndex: 1, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 },
+  ]
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession(xml, options) {
+      observedTargets.push(options.targetSelection)
+      return sourceSession(`session-${observedTargets.length}`)
+    },
+  })
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'multipart.musicxml',
+    text: async () => '<score-partwise/>',
+  }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  assert.equal(result.ok, true)
+  assert.equal(select.hidden, false)
+  assert.equal(select.children.length, 3)
+  assert.equal(observedTargets.length, 0)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
+  assert.equal(root.getElementById('guitar-tab-export').disabled, true)
+
+  select.value = select.children[1].value
+  await select.listeners.get('change')[0]()
+  assert.deepEqual(JSON.parse(select.value), { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+  assert.deepEqual(observedTargets[0], { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+  const firstSession = getGuitarTabTeacherWorkspaceState(root).sourceSession
+
+  select.value = select.children[2].value
+  await select.listeners.get('change')[0]()
+  assert.deepEqual(observedTargets[1], { partId: 'P2', partIndex: 1, staff: 1, voice: 1 })
+  assert.notEqual(getGuitarTabTeacherWorkspaceState(root).sourceSession, firstSession)
+  assert.deepEqual(getGuitarTabTeacherWorkspaceState(root).selectedRegion, observedTargets[1])
+  assert.deepEqual(getGuitarTabTeacherWorkspaceState(root).selectedRegionSummary, {
+    ...observedTargets[1], partName: 'Gitar', pitchedEventCount: 1,
+  })
+})
+
+test('GTAB-10B leaves the target unset and disables TAB export when inventory has no eligible regions', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.extractScoreInventory = () => ({ parts: [] })
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'empty.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.equal(result.ok, true)
+  assert.equal(root.getElementById('guitar-tab-target-region').disabled, true)
+  assert.equal(root.getElementById('guitar-tab-export').disabled, true)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
+  assert.match(root.getElementById('guitar-tab-source-status').textContent, /kullanılabilir TAB bölgesi yok/u)
+})
+
 test('GTAB-10B rejects an invalid file before the reader can access its contents', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

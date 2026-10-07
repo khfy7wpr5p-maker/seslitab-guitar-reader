@@ -191,6 +191,7 @@ function emptyState(generation = 0) {
     sourceXml: null,
     sourceSession: null,
     parsedScoreSummary: null,
+    selectedRegionSummary: null,
     canonicalTabRegions: Object.freeze([]),
     selectedRegion: null,
     rendererRuntime: null,
@@ -223,6 +224,95 @@ function updateExportButton(root, state) {
   const enabled = canExportState(state)
   button.disabled = !enabled
   button.setAttribute?.('aria-disabled', enabled ? 'false' : 'true')
+}
+
+function regionKey(region) {
+  return JSON.stringify({
+    partId: region.partId,
+    partIndex: region.partIndex,
+    staff: region.staff,
+    voice: region.voice,
+  })
+}
+
+function renderTargetOptions(root, state) {
+  const select = root?.getElementById?.('guitar-tab-target-region')
+  if (!select) return
+  const regions = state?.canonicalTabRegions ?? []
+  select.replaceChildren?.()
+  const placeholder = createElement(root, 'option', { textContent: regions.length ? 'TAB hedefi seçin' : 'Uygun TAB bölgesi yok' })
+  placeholder.value = ''
+  select.appendChild(placeholder)
+  for (const region of regions) {
+    const option = createElement(root, 'option', {
+      textContent: `${region.partName || region.partId} · Part ${region.partIndex + 1} · Staff ${region.staff} · Voice ${region.voice}`,
+    })
+    option.value = regionKey(region)
+    select.appendChild(option)
+  }
+  select.hidden = regions.length <= 1
+  select.value = state?.selectedRegion ? regionKey(state.selectedRegion) : ''
+  select.disabled = regions.length === 0
+}
+
+function resolveCanonicalRegion(state, encodedRegion) {
+  if (typeof encodedRegion !== 'string' || !encodedRegion) return null
+  const region = state?.canonicalTabRegions?.find((candidate) => regionKey(candidate) === encodedRegion)
+  return region ? Object.freeze({ partId: region.partId, partIndex: region.partIndex, staff: region.staff, voice: region.voice }) : null
+}
+
+async function activateTarget(root, state, selectedRegion) {
+  if (!state || workspaceStates.get(root)?.generation !== state.generation) return false
+  const canonicalNotes = state.canonicalNotes
+  let selectedCanonicalNotes = canonicalNotes
+  if (Array.isArray(canonicalNotes)) {
+    try { selectedCanonicalNotes = selectCanonicalNotesForGuitarTabTarget(canonicalNotes, selectedRegion) }
+    catch { selectedCanonicalNotes = Object.freeze([]) }
+  }
+  let sourceSession
+  try { sourceSession = state.editorRuntime.createSourceSession(state.sourceXml, { targetSelection: selectedRegion }) }
+  catch {
+    setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
+    return false
+  }
+  if (workspaceStates.get(root)?.generation !== state.generation) return false
+  const authoring = createAuthoringState(state.editorRuntime, sourceSession, selectedCanonicalNotes)
+  const nextState = {
+    ...state,
+    sourceSession,
+    selectedRegion,
+    selectedRegionSummary: Object.freeze({
+      ...selectedRegion,
+      partName: state.canonicalTabRegions.find((region) => regionKey(region) === regionKey(selectedRegion))?.partName ?? selectedRegion.partId,
+      pitchedEventCount: state.canonicalTabRegions.find((region) => regionKey(region) === regionKey(selectedRegion))?.pitchedEventCount ?? 0,
+    }),
+    tabDocument: authoring?.tabDocument ?? null,
+    keyboardController: authoring?.keyboardController ?? null,
+    targetResolver: authoring?.targetResolver ?? null,
+    notationSynchronized: false,
+  }
+  workspaceStates.set(root, nextState)
+  renderTargetOptions(root, nextState)
+  renderAuthoringSurface(root, nextState)
+  if (nextState.rendererRuntime) await synchronizeAuthoringSelection(root, nextState)
+  setStatus(root, `${nextState.sourceName} yüklendi. Nota ve seçili TAB çalışma alanı hazır.`, 'ready')
+  return true
+}
+
+async function handleTargetChange(root, encodedRegion) {
+  const state = workspaceStates.get(root)
+  const selectedRegion = resolveCanonicalRegion(state, encodedRegion)
+  if (!selectedRegion) {
+    if (state) {
+      const nextState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null }
+      workspaceStates.set(root, nextState)
+      renderAuthoringSurface(root, nextState)
+      renderTargetOptions(root, nextState)
+      setStatus(root, state.canonicalTabRegions.length ? 'TAB hedefi seçilmedi; dışa aktarma devre dışı.' : 'Bu MusicXML içinde kullanılabilir TAB bölgesi yok.', 'target-required')
+    }
+    return false
+  }
+  return activateTarget(root, state, selectedRegion)
 }
 
 function renderEmptySixStrings(root) {
@@ -397,6 +487,7 @@ export function getGuitarTabTeacherWorkspaceState(root) {
     sourceName: state.sourceName,
     sourceSession: state.sourceSession,
     parsedScoreSummary: state.parsedScoreSummary,
+    selectedRegionSummary: state.selectedRegionSummary,
     canonicalTabRegions: state.canonicalTabRegions,
     selectedRegion: state.selectedRegion,
     rendererAvailable: Boolean(state.rendererRuntime),
@@ -509,7 +600,7 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     canonicalNotes = null
   }
   const canonicalTabRegions = Object.freeze((inventory?.parts ?? []).flatMap((part) =>
-    (part.staves ?? []).flatMap((staff) => (staff.voices ?? []).map((voice) => Object.freeze({
+    (part.staves ?? []).flatMap((staff) => (staff.voices ?? []).filter((voice) => voice.pitchedEventCount > 0).map((voice) => Object.freeze({
       partId: part.partId,
       partIndex: part.partIndex,
       staff: staff.staff,
@@ -532,48 +623,29 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     parsedScoreSummary,
     canonicalTabRegions,
     selectedRegion,
+    inventory,
+    canonicalNotes,
     editorRuntime,
     adapters: normalized,
   }
   workspaceStates.set(root, pendingState)
-  if (!selectedRegion) {
-    if (workspaceStates.get(root)?.generation === generation) {
-      setStatus(root, 'MusicXML yüklendi; TAB hedefi belirsiz olduğu için seçim yapılmadı.', 'target-required')
+  renderTargetOptions(root, pendingState)
+  if (selectedRegion) {
+    const activated = await activateTarget(root, pendingState, selectedRegion)
+    if (!activated) {
+      if (workspaceStates.get(root)?.generation === generation && !workspaceStates.get(root)?.sourceSession) {
+        return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
+      }
+      return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
     }
-    return Object.freeze({ ok: false, reason: canonicalTabRegions.length ? 'TARGET_SELECTION_REQUIRED' : 'NO_TAB_REGIONS' })
   }
-
-  let selectedCanonicalNotes = canonicalNotes
-  if (Array.isArray(canonicalNotes)) {
-    try { selectedCanonicalNotes = selectCanonicalNotesForGuitarTabTarget(canonicalNotes, selectedRegion) }
-    catch { selectedCanonicalNotes = Object.freeze([]) }
-  }
-  let sourceSession
-  try { sourceSession = editorRuntime.createSourceSession(payload.xml, { targetSelection: selectedRegion }) } catch {
-    if (workspaceStates.get(root)?.generation === generation) setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
-    return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
+  else {
+    renderEmptySixStrings(root)
+    setStatus(root, canonicalTabRegions.length
+      ? 'MusicXML yüklendi; TAB hedefini seçin. Belirsiz hedef otomatik seçilmedi.'
+      : 'Bu MusicXML içinde kullanılabilir TAB bölgesi yok.', 'target-required')
   }
   if (workspaceStates.get(root)?.generation !== generation) return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
-
-  const authoring = createAuthoringState(editorRuntime, sourceSession, selectedCanonicalNotes)
-  const state = {
-    ...emptyState(generation),
-    sourceName: payload.name,
-    sourceXml: payload.xml,
-    sourceSession,
-    parsedScoreSummary,
-    canonicalTabRegions,
-    selectedRegion,
-    editorRuntime,
-    tabDocument: authoring?.tabDocument ?? null,
-    keyboardController: authoring?.keyboardController ?? null,
-    targetResolver: authoring?.targetResolver ?? null,
-    adapters: normalized,
-  }
-  workspaceStates.set(root, state)
-  renderAuthoringSurface(root, state)
-  setStatus(root, `${payload.name} yüklendi. Nota görünümü hazırlanıyor…`, 'source-ready')
-
   let rendererRuntime = null
   try {
     rendererRuntime = await normalized.loadScoreRuntime(root)
@@ -586,7 +658,8 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
       removeScoreRuntimeFrame(root)
       setStatus(root, `${payload.name} yüklendi. Nota görünümü kullanılamadı; TAB çalışma alanı kullanılabilir.`, 'renderer-unavailable')
     }
-    return Object.freeze({ ok: true, sourceSession, rendererAvailable: false })
+    const currentState = workspaceStates.get(root)
+    return Object.freeze({ ok: true, sourceSession: currentState?.sourceSession ?? null, rendererAvailable: false })
   }
 
   if (workspaceStates.get(root)?.generation !== generation) {
@@ -594,15 +667,19 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
   }
 
-  state.rendererRuntime = rendererRuntime
-  await synchronizeAuthoringSelection(root, state)
-  setStatus(root, `${payload.name} yüklendi. Nota ve TAB çalışma alanı hazır.`, 'ready')
-  return Object.freeze({ ok: true, sourceSession, rendererAvailable: true })
+  const currentState = workspaceStates.get(root)
+  currentState.rendererRuntime = rendererRuntime
+  if (currentState.selectedRegion) await synchronizeAuthoringSelection(root, currentState)
+  else setStatus(root, canonicalTabRegions.length
+    ? 'Nota görünümü hazır. TAB için hedef bölge seçin.'
+    : 'Nota görünümü hazır; kullanılabilir TAB bölgesi yok.', 'target-required')
+  return Object.freeze({ ok: true, sourceSession: currentState.sourceSession, rendererAvailable: true })
 }
 
 function bindWorkspaceControls(root) {
   if (workspaceBindings.has(root)) return
   const sourceInput = root.getElementById('guitar-tab-source-input')
+  const targetSelect = root.getElementById('guitar-tab-target-region')
   const resetButton = root.getElementById('guitar-tab-source-reset')
   const editorSurface = root.getElementById('guitar-tab-editor-surface')
   const undoButton = root.getElementById('guitar-tab-undo')
@@ -612,6 +689,7 @@ function bindWorkspaceControls(root) {
     const file = sourceInput.files?.[0]
     if (file) await loadGuitarTabTeacherSource(root, file)
   })
+  targetSelect?.addEventListener?.('change', async () => { await handleTargetChange(root, targetSelect.value) })
   resetButton?.addEventListener?.('click', async () => { await resetGuitarTabTeacherWorkspace(root) })
   editorSurface?.addEventListener?.('keydown', async (event) => { await handleAuthoringKey(root, event) })
   undoButton?.addEventListener?.('click', async () => { await handleHistoryAction(root, 'undo') })
@@ -637,6 +715,12 @@ export function ensureGuitarTabTeacherWorkspace(root, panel) {
   sourceInput.type = 'file'
   sourceInput.setAttribute('accept', '.xml,.musicxml,text/xml,application/xml,application/vnd.recordare.musicxml+xml')
   sourceControls.appendChild(sourceInput)
+  const targetLabel = createElement(root, 'label', { textContent: 'TAB hedef bölgesi' })
+  targetLabel.setAttribute('for', 'guitar-tab-target-region')
+  sourceControls.appendChild(targetLabel)
+  const targetSelect = createElement(root, 'select', { id: 'guitar-tab-target-region', className: 'guitar-tab-target-region' })
+  targetSelect.setAttribute('aria-describedby', 'guitar-tab-source-status')
+  sourceControls.appendChild(targetSelect)
   const resetButton = createElement(root, 'button', { id: 'guitar-tab-source-reset', className: 'guitar-tab-source-reset', textContent: 'Sıfırla' })
   resetButton.type = 'button'
   sourceControls.appendChild(resetButton)
