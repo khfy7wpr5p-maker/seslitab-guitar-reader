@@ -335,6 +335,8 @@ test('GTAB-10B renderer highlight keeps the full canonical note traversal for a 
     }),
     createFixedSixStringRows: () => [],
   })
+  adapters.clearHighlights = async () => true
+  adapters.moveCursor = async () => true
   adapters.highlightNote = async (_runtime, noteRef) => observations.highlights.push(noteRef)
 
   await loadGuitarTabTeacherSource(root, {
