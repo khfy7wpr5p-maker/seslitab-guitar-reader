@@ -41,7 +41,7 @@ jobs:
         run: npm run test:td06:emulator
 
       - name: Run tests
-        run: npm test
+        run: node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js
 
       - name: Verify S16 read-only request guard in serialized real browser
         run: npm run test:s16:browser
