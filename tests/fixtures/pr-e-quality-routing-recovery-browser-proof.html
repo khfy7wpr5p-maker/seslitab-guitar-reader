@@ -31,6 +31,16 @@
     </section>
   </div>
 
+<script>
+const proofDiagnostics = document.getElementById('proof')
+window.addEventListener('error', (event) => {
+  proofDiagnostics.dataset.renderError = `browser-error: ${event.message || 'script or module failed to load'}`
+})
+window.addEventListener('unhandledrejection', (event) => {
+  proofDiagnostics.dataset.renderError = `browser-rejection: ${String(event.reason?.message ?? event.reason ?? 'unknown')}`
+})
+</script>
+
 <script type="module">
 import {
   CANONICAL_NOTE_SCHEMA_VERSION,
