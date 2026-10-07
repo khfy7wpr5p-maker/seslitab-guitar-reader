@@ -96,7 +96,11 @@ function assignmentFixture() {
   return { delivery, prepared, lifecycle, practicePackage }
 }
 
-function fakeFirestore({ queryCollections, documents }) {
+function fakeFirestore({
+  queryCollections,
+  documents,
+  transformGetAll = (snapshots) => snapshots,
+}) {
   const getAllCalls = []
 
   function snapshot(ref, value) {
@@ -152,8 +156,10 @@ function fakeFirestore({ queryCollections, documents }) {
     },
     async getAll(...refs) {
       getAllCalls.push(refs.map((ref) => ref.path))
-      return refs.map((ref) =>
-        snapshot(ref, documents.get(ref.path)),
+      return transformGetAll(
+        refs.map((ref) =>
+          snapshot(ref, documents.get(ref.path)),
+        ),
       )
     },
     async runTransaction() {
@@ -277,5 +283,98 @@ test('SES-193 Firestore Piece batch keeps a valid manifest when no lifecycle doc
     Object.freeze([
       Object.freeze({ piece, lifecycle: null }),
     ]),
+  )
+})
+
+test('SES-193 Firestore batch fails closed when getAll omits a requested snapshot', async () => {
+  const fixture = assignmentFixture()
+  const assignmentKey = documentId('assignment-a')
+  const packageKey = documentId('package-a')
+  const documents = new Map([
+    [`deliveries/${assignmentKey}`, plain(fixture.delivery)],
+    [`privateAssignments/${assignmentKey}`, plain(fixture.prepared)],
+    [`assignmentLifecycle/${assignmentKey}`, plain(fixture.lifecycle)],
+    [`practicePackages/${packageKey}`, plain(fixture.practicePackage)],
+  ])
+  const { firestore } = fakeFirestore({
+    queryCollections: {
+      deliveries: [plain(fixture.delivery)],
+    },
+    documents,
+    transformGetAll: (snapshots) => snapshots.slice(0, -1),
+  })
+  const store = createFirestoreSecureDeliveryStore({ firestore })
+
+  await assert.rejects(
+    () => store.listActiveAssignmentContextsForStudent('student-a'),
+    /student delivery batch read incomplete/,
+  )
+})
+
+test('SES-193 Firestore batch rejects package authority drift between query and current read', async () => {
+  const fixture = assignmentFixture()
+  const assignmentKey = documentId('assignment-a')
+  const currentDelivery = createDeliveryRecord({
+    assignmentId: fixture.delivery.assignmentId,
+    packageId: 'package-drifted',
+    teacherId: fixture.delivery.teacherId,
+    studentId: fixture.delivery.studentId,
+    deliveredAt: fixture.delivery.deliveredAt,
+  })
+  const documents = new Map([
+    [`deliveries/${assignmentKey}`, plain(currentDelivery)],
+  ])
+  const { firestore } = fakeFirestore({
+    queryCollections: {
+      deliveries: [plain(fixture.delivery)],
+    },
+    documents,
+  })
+  const store = createFirestoreSecureDeliveryStore({ firestore })
+
+  await assert.rejects(
+    () => store.listActiveAssignmentContextsForStudent('student-a'),
+    /student delivery package authority mismatch/,
+  )
+})
+
+test('SES-193 Firestore Piece batch rejects a changed current manifest', async () => {
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'piece-drifted',
+    pieceId: 'work-a',
+    arrangementId: 'arrangement-a',
+    studentId: 'student-a',
+    title: 'Original Etüt',
+    teacherNote: '',
+    assignedAt: '2026-10-07T07:42:00Z',
+    contentRefs: {
+      scoreAssignmentId: 'assignment-a',
+      chordAssignmentIds: [],
+    },
+  })
+  const changedPiece = createPieceAssignment({
+    pieceAssignmentId: piece.pieceAssignmentId,
+    pieceId: piece.pieceId,
+    arrangementId: piece.arrangementId,
+    studentId: piece.studentId,
+    title: 'Changed Etüt',
+    teacherNote: piece.teacherNote,
+    assignedAt: piece.assignedAt,
+    contentRefs: piece.contentRefs,
+  })
+  const pieceKey = documentId(piece.pieceAssignmentId)
+  const { firestore } = fakeFirestore({
+    queryCollections: {
+      pieceAssignments: [plain(piece)],
+    },
+    documents: new Map([
+      [`pieceAssignments/${pieceKey}`, plain(changedPiece)],
+    ]),
+  })
+  const store = createFirestoreSecureDeliveryStore({ firestore })
+
+  await assert.rejects(
+    () => store.listActivePieceContextsForStudent('student-a'),
+    /student Piece batch authority mismatch/,
   )
 })

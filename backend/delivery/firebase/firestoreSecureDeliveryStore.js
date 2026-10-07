@@ -335,6 +335,28 @@ export function createFirestoreSecureDeliveryStore({
     ),
   })
 
+  async function getAllSnapshotsByPath(
+    refs,
+    incompleteMessage,
+  ) {
+    const refsByPath = new Map()
+    for (const ref of refs) {
+      refsByPath.set(ref.path, ref)
+    }
+    const uniqueRefs = [...refsByPath.values()]
+    const snapshots =
+      await db.getAll(...uniqueRefs)
+    if (snapshots.length !== uniqueRefs.length) {
+      throw new Error(incompleteMessage)
+    }
+    return new Map(
+      uniqueRefs.map((ref, index) => [
+        ref.path,
+        snapshots[index],
+      ]),
+    )
+  }
+
   async function getPreparedAssignment(
     assignmentId,
   ) {
@@ -1487,49 +1509,33 @@ export function createFirestoreSecureDeliveryStore({
       return Object.freeze([])
     }
 
-    const refsByPath = new Map()
-    const addRef = (ref) => {
-      refsByPath.set(ref.path, ref)
-      return ref
-    }
     const descriptors = candidates.map(
       (delivery) => Object.freeze({
         delivery,
-        deliveryRef: addRef(
-          collections.deliveries.doc(
-            documentId(delivery.assignmentId),
-          ),
+        deliveryRef: collections.deliveries.doc(
+          documentId(delivery.assignmentId),
         ),
-        preparedRef: addRef(
-          collections.prepared.doc(
-            documentId(delivery.assignmentId),
-          ),
+        preparedRef: collections.prepared.doc(
+          documentId(delivery.assignmentId),
         ),
-        lifecycleRef: addRef(
-          collections.lifecycle.doc(
-            documentId(delivery.assignmentId),
-          ),
+        lifecycleRef: collections.lifecycle.doc(
+          documentId(delivery.assignmentId),
         ),
-        packageRef: addRef(
-          collections.packages.doc(
-            documentId(delivery.packageId),
-          ),
+        packageRef: collections.packages.doc(
+          documentId(delivery.packageId),
         ),
       }),
     )
-    const refs = [...refsByPath.values()]
-    const snapshots = await db.getAll(...refs)
-    if (snapshots.length !== refs.length) {
-      throw new Error(
+    const snapshotsByPath =
+      await getAllSnapshotsByPath(
+        descriptors.flatMap((descriptor) => [
+          descriptor.deliveryRef,
+          descriptor.preparedRef,
+          descriptor.lifecycleRef,
+          descriptor.packageRef,
+        ]),
         'student delivery batch read incomplete.',
       )
-    }
-    const snapshotsByPath = new Map(
-      refs.map((ref, index) => [
-        ref.path,
-        snapshots[index],
-      ]),
-    )
     const snapshotFor = (ref) =>
       snapshotsByPath.get(ref.path)
 
@@ -1643,43 +1649,30 @@ export function createFirestoreSecureDeliveryStore({
       return Object.freeze([])
     }
 
-    const refsByPath = new Map()
-    const addRef = (ref) => {
-      refsByPath.set(ref.path, ref)
-      return ref
-    }
     const descriptors = candidates.map(
       (piece) => Object.freeze({
         piece,
-        pieceRef: addRef(
-          collections.pieces.doc(
-            documentId(
-              piece.pieceAssignmentId,
-            ),
+        pieceRef: collections.pieces.doc(
+          documentId(
+            piece.pieceAssignmentId,
           ),
         ),
-        lifecycleRef: addRef(
+        lifecycleRef:
           collections.pieceLifecycle.doc(
             documentId(
               piece.pieceAssignmentId,
             ),
           ),
-        ),
       }),
     )
-    const refs = [...refsByPath.values()]
-    const snapshots = await db.getAll(...refs)
-    if (snapshots.length !== refs.length) {
-      throw new Error(
+    const snapshotsByPath =
+      await getAllSnapshotsByPath(
+        descriptors.flatMap((descriptor) => [
+          descriptor.pieceRef,
+          descriptor.lifecycleRef,
+        ]),
         'student Piece batch read incomplete.',
       )
-    }
-    const snapshotsByPath = new Map(
-      refs.map((ref, index) => [
-        ref.path,
-        snapshots[index],
-      ]),
-    )
     const snapshotFor = (ref) =>
       snapshotsByPath.get(ref.path)
 
