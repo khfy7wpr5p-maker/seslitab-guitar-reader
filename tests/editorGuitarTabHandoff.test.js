@@ -180,7 +180,7 @@ test('GTAB-10B targeted handoff rejects duplicate or mismatched part identities'
   const secondBody = base.match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
   const multipart = base
     .replace('</part-list>', '<score-part id="P2"><part-name>Second</part-name></score-part></part-list>')
-    .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondBody}</part>\n</score-partwise`)
+    .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondBody}</part>\n</score-partwise>`)
   const invalidScores = [
     multipart.replace('<score-part id="P2">', '<score-part id="P1">'),
     multipart.replace('<part id="P2">', '<part id="P1">'),

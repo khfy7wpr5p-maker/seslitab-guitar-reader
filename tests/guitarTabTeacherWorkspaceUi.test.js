@@ -340,6 +340,9 @@ test('GTAB-10B renderer highlight keeps the full canonical note traversal for a 
   await loadGuitarTabTeacherSource(root, {
     name: 'two-staff.musicxml', text: async () => '<score-partwise/>',
   }, adapters)
+  const targetSelect = root.getElementById('guitar-tab-target-region')
+  targetSelect.value = targetSelect.children[2].value
+  await targetSelect.listeners.get('change')[0]()
 
   assert.equal(observations.highlights.length, 1)
   assert.equal(observations.highlights[0].noteIndex, 1)
