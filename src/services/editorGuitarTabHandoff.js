@@ -171,7 +171,7 @@ function normalizeTargetSelection(targetSelection) {
     !hasText(partId) || partId !== partId.trim()
     || !Number.isSafeInteger(partIndex) || partIndex < 0
     || !Number.isSafeInteger(staff) || staff < 1
-    || !Number.isSafeInteger(voice) || voice < 1
+    || !Number.isSafeInteger(voice) || voice < 0
   ) fail('target-selection-invalid')
   return Object.freeze({ partId, partIndex, staff, voice })
 }
@@ -179,6 +179,14 @@ function normalizeTargetSelection(targetSelection) {
 function canonicalPositiveIntegerText(node, code) {
   const value = textOf(node)
   if (!/^[1-9][0-9]*$/u.test(value)) fail(code)
+  const number = Number(value)
+  if (!Number.isSafeInteger(number)) fail(code)
+  return number
+}
+
+function canonicalVoiceIntegerText(node, code) {
+  const value = textOf(node)
+  if (!/^(0|[1-9][0-9]*)$/u.test(value)) fail(code)
   const number = Number(value)
   if (!Number.isSafeInteger(number)) fail(code)
   return number
@@ -251,7 +259,7 @@ function parseTimeline(root, label, targetSelection = null) {
         : 1
       if (targetSelection !== null && pitch && !isRest) {
         if (!voiceNode || !staffNode) fail(`${label}-target-identity-required`)
-        voice = String(canonicalPositiveIntegerText(voiceNode, `${label}-voice-invalid`))
+        voice = String(canonicalVoiceIntegerText(voiceNode, `${label}-voice-invalid`))
         staff = canonicalPositiveIntegerText(staffNode, `${label}-staff-invalid`)
       }
 
@@ -460,6 +468,16 @@ export async function prepareEditorGuitarTabHandoff({
   assertPhysicalTab(tabEvents)
 
   const guitarTabMusicXmlFingerprint = await sha256Utf8(guitarTabMusicXml)
+  const targetSelectionFingerprint =
+    normalizedTargetSelection === null
+      ? null
+      : await sha256Utf8(JSON.stringify({
+          schemaVersion: EDITOR_GUITAR_TAB_HANDOFF_SCHEMA_VERSION,
+          draftId,
+          scoreMusicXmlFingerprint: scoreUpload.musicXmlFingerprint,
+          guitarTabMusicXmlFingerprint,
+          targetSelection: normalizedTargetSelection,
+        }))
 
   return Object.freeze({
     schemaVersion: EDITOR_GUITAR_TAB_HANDOFF_SCHEMA_VERSION,
@@ -470,6 +488,9 @@ export async function prepareEditorGuitarTabHandoff({
     pitchedEventCount: scoreEvents.length,
     ...(normalizedTargetSelection === null
       ? {}
-      : { targetSelection: normalizedTargetSelection }),
+      : {
+          targetSelection: normalizedTargetSelection,
+          targetSelectionFingerprint,
+        }),
   })
 }

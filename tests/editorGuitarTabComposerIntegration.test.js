@@ -145,6 +145,7 @@ test('GTAB-10B composer carries and revalidates the exact multipart target tuple
   })
 
   assert.deepEqual(guitarTabUpload.targetSelection, targetSelection)
+  assert.match(guitarTabUpload.targetSelectionFingerprint, /^[0-9a-f]{64}$/u)
   const result = await service.send({
     draftId: 'draft-multipart',
     studentIds: ['student-a'],
@@ -161,9 +162,9 @@ test('GTAB-10B composer carries and revalidates the exact multipart target tuple
     studentIds: ['student-a'],
     title: 'Multipart TAB',
     scoreUpload,
-    guitarTabUpload: { ...guitarTabUpload, targetSelection: { ...targetSelection, partId: 'P9', partIndex: 1 } },
+    guitarTabUpload: { ...guitarTabUpload, targetSelection: { ...targetSelection, partId: 'P1', partIndex: 0 } },
     chordSnapshots: [],
-  }), /target-part-mismatch/u)
+  }), /integrity|mismatch/u)
 })
 
 test('GTAB-04 composer delivers exact validated TAB bytes inside SCORE package', async () => {

@@ -174,6 +174,23 @@ test('GTAB-10B validates selected part/staff/voice in a full multipart score', a
   }), /target-part-mismatch/u)
 })
 
+test('GTAB-10B accepts canonical voice zero in a targeted handoff', async () => {
+  const events = [{ id: 'voice-zero', pitch: PITCHES.C4, voice: '0', onset: 0, duration: 1 }]
+  const sourceXml = sourceScore(events, 1)
+  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+    musicXml: sourceXml, teacherId: 'teacher-a', draftId: 'draft-voice-zero',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  const result = await prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(events, { 'voice-zero': { string: 2, fret: 1 } }),
+    draftId: 'draft-voice-zero',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 0 },
+  })
+  assert.equal(result.pitchedEventCount, 1)
+  assert.equal(result.targetSelection.voice, 0)
+})
+
 test('GTAB-10B requires explicit canonical staff and voice for targeted source notes', async () => {
   const events = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
   const scoreUpload = await preparedScore(events, 'draft-identity')

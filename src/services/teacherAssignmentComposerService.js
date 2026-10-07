@@ -173,7 +173,11 @@ function assertPreparedGuitarTabUpload(
       guitarTabUpload.guitarTabMusicXmlFingerprint,
     ) ||
     !Number.isInteger(guitarTabUpload.pitchedEventCount) ||
-    guitarTabUpload.pitchedEventCount <= 0
+    guitarTabUpload.pitchedEventCount <= 0 ||
+    (guitarTabUpload.targetSelection !== undefined &&
+      guitarTabUpload.targetSelection !== null &&
+      (typeof guitarTabUpload.targetSelectionFingerprint !== 'string' ||
+        !/^[0-9a-f]{64}$/u.test(guitarTabUpload.targetSelectionFingerprint)))
   ) {
     throw new Error(
       'assignment-composer-guitar-tab-authority-mismatch',
@@ -428,7 +432,9 @@ export function createTeacherAssignmentComposerService({
             guitarTabUpload.pitchedEventCount ||
           JSON.stringify(
             revalidatedGuitarTabUpload.targetSelection ?? null,
-          ) !== JSON.stringify(guitarTabUpload.targetSelection ?? null)
+          ) !== JSON.stringify(guitarTabUpload.targetSelection ?? null) ||
+          (revalidatedGuitarTabUpload.targetSelectionFingerprint ?? null) !==
+            (guitarTabUpload.targetSelectionFingerprint ?? null)
         ) {
           throw new Error(
             'assignment-composer-guitar-tab-integrity-mismatch',
