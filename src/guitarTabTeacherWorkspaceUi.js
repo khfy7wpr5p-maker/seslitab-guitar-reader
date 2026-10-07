@@ -598,6 +598,10 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     return Object.freeze({ ok: false, reason: 'EDITOR_RUNTIME_UNAVAILABLE' })
   }
 
+  if (workspaceStates.get(root)?.generation !== generation) {
+    return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
+  }
+
   let inventory
   let canonicalNotes
   try {

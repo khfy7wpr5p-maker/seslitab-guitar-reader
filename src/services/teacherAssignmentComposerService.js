@@ -264,11 +264,13 @@ export function createTeacherAssignmentComposerService({
     scoreUpload,
     guitarTabMusicXml,
     draftId,
+    targetSelection = null,
   } = {}) {
     return prepareEditorGuitarTabHandoff({
       scoreUpload,
       guitarTabMusicXml,
       draftId,
+      targetSelection,
     })
   }
 
@@ -411,6 +413,8 @@ export function createTeacherAssignmentComposerService({
             guitarTabMusicXml:
               guitarTabUpload.guitarTabMusicXml,
             draftId: normalizedDraftId,
+            targetSelection:
+              guitarTabUpload.targetSelection ?? null,
           })
         if (
           revalidatedGuitarTabUpload
@@ -421,7 +425,10 @@ export function createTeacherAssignmentComposerService({
             guitarTabUpload.guitarTabMusicXmlFingerprint ||
           revalidatedGuitarTabUpload
             .pitchedEventCount !==
-            guitarTabUpload.pitchedEventCount
+            guitarTabUpload.pitchedEventCount ||
+          JSON.stringify(
+            revalidatedGuitarTabUpload.targetSelection ?? null,
+          ) !== JSON.stringify(guitarTabUpload.targetSelection ?? null)
         ) {
           throw new Error(
             'assignment-composer-guitar-tab-integrity-mismatch',

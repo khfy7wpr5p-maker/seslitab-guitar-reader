@@ -333,6 +333,41 @@ test('GTAB-10B clears the previous authoring session when a newly selected targe
   assert.equal(root.getElementById('guitar-tab-export').disabled, true)
 })
 
+test('GTAB-10B stale source load cannot replace a newer source after runtime loading', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  let firstStarted
+  let releaseFirst
+  const firstLoadStarted = new Promise((resolve) => { firstStarted = resolve })
+  adapters.loadEditorRuntime = () => {
+    if (releaseFirst) return Promise.resolve({
+      createSourceSession() { return sourceSession('second') },
+    })
+    return new Promise((resolve) => {
+      releaseFirst = () => resolve({
+        createSourceSession() { return sourceSession('first') },
+      })
+      firstStarted()
+    })
+  }
+
+  const first = loadGuitarTabTeacherSource(root, {
+    name: 'first.musicxml', text: async () => '<score-partwise id="first"/>',
+  }, adapters)
+  await firstLoadStarted
+  const second = await loadGuitarTabTeacherSource(root, {
+    name: 'second.musicxml', text: async () => '<score-partwise id="second"/>',
+  }, adapters)
+  assert.equal(second.ok, true)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'second.musicxml')
+
+  releaseFirst()
+  assert.deepEqual(await first, { ok: false, reason: 'STALE_SOURCE' })
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'second.musicxml')
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession.sessionId, 'second')
+})
+
 test('GTAB-10B accepts validated FileReader-only sources without requiring File.text', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

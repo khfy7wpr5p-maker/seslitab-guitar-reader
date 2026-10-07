@@ -67,8 +67,8 @@ function voiceTracks(events, staff, technicalById = null) {
   return { xml, extent }
 }
 
-function sourceScore(events) {
-  const { xml } = voiceTracks(events, null)
+function sourceScore(events, staff = null) {
+  const { xml } = voiceTracks(events, staff)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list>
@@ -152,8 +152,8 @@ test('GTAB-04 accepts Editor direct-pitch C4 as string 2 fret 1 and preserves ex
 test('GTAB-10B validates selected part/staff/voice in a full multipart score', async () => {
   const selected = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
   const other = [{ id: 'other', pitch: PITCHES.G4, voice: '1', onset: 0, duration: 1 }]
-  const first = sourceScore(other)
-  const secondPart = sourceScore(selected).match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
+  const first = sourceScore(other, 1)
+  const secondPart = sourceScore(selected, 1).match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
     .replace(/^\s*<measure number="1">/u, '<measure number="1">')
   const fullScore = first
     .replace('</part-list>', '<score-part id="P2"><part-name>Guitar</part-name></score-part></part-list>')
@@ -172,6 +172,36 @@ test('GTAB-10B validates selected part/staff/voice in a full multipart score', a
     scoreUpload, guitarTabMusicXml: tabXml, draftId: 'multipart-draft',
     targetSelection: { partId: 'P1', partIndex: 1, staff: 1, voice: 1 },
   }), /target-part-mismatch/u)
+})
+
+test('GTAB-10B requires explicit canonical staff and voice for targeted source notes', async () => {
+  const events = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const scoreUpload = await preparedScore(events, 'draft-identity')
+  const missingStaff = sourceScore(events, 1).replace(/<staff>1<\/staff>/gu, '')
+  await assert.rejects(
+    prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+      draftId: 'draft-identity',
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }),
+    /target-identity-required/u,
+  )
+
+  const missingVoiceScore = sourceScore(events, 1).replace(/<voice>1<\/voice>/gu, '')
+  const uploadWithoutVoice = await prepareTeacherAssignmentScoreUpload({
+    musicXml: missingVoiceScore, teacherId: 'teacher-a', draftId: 'draft-no-voice',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  await assert.rejects(
+    prepareEditorGuitarTabHandoff({
+      scoreUpload: uploadWithoutVoice,
+      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+      draftId: 'draft-no-voice',
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }),
+    /target-identity-required/u,
+  )
 })
 
 test('GTAB-04 rejects malformed TAB shape and missing technical data', async () => {
