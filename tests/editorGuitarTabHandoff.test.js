@@ -153,11 +153,11 @@ test('GTAB-10B validates selected part/staff/voice in a full multipart score', a
   const selected = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
   const other = [{ id: 'other', pitch: PITCHES.G4, voice: '1', onset: 0, duration: 1 }]
   const first = sourceScore(other)
-  const secondPart = sourceScore(selected).match(/<part id="P1">([\\s\\S]*?)<\\/part>/u)[1]
-    .replace(/^\\s*<measure number="1">/u, '<measure number="1">')
+  const secondPart = sourceScore(selected).match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
+    .replace(/^\s*<measure number="1">/u, '<measure number="1">')
   const fullScore = first
     .replace('</part-list>', '<score-part id="P2"><part-name>Guitar</part-name></score-part></part-list>')
-    .replace('  </part>\\n</score-partwise>', `  </part>\\n  <part id="P2">${secondPart}</part>\\n</score-partwise>`)
+    .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondPart}</part>\n</score-partwise>`)
   const scoreUpload = await prepareTeacherAssignmentScoreUpload({
     musicXml: fullScore, teacherId: 'teacher-a', draftId: 'multipart-draft', now: () => '2026-10-04T10:00:00Z',
   })
