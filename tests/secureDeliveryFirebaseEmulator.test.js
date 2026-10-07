@@ -378,10 +378,14 @@ test('SES-193 batched student authority read preserves ACTIVE, COMPLETED, REPERT
   const active = createInitialAssignmentLifecycleRecord(
     row.prepared.assignment,
   )
-  assert.equal(
-    (await store.listActiveAssignmentContextsForStudent(
+  const activeContexts =
+    await store.listActiveAssignmentContextsForStudent(
       row.prepared.assignment.studentId,
-    ))[0].lifecycle.state,
+    )
+  assert.equal(activeContexts.length, 1)
+  assert.equal(activeContexts[0].lifecycle, null)
+  assert.equal(
+    activeContexts[0].prepared.assignment.state,
     'ACTIVE',
   )
 
