@@ -174,7 +174,7 @@ function normalizeAdapters(adapters = {}) {
 
 async function readSource(source, options = {}, adapters = normalizeAdapters()) {
   if (typeof source === 'string') return Object.freeze({ xml: source, name: options.filename ?? 'MusicXML' })
-  if (!source || typeof source.text !== 'function') throw new TypeError('MusicXML dosyası veya XML metni gereklidir.')
+  if (!source || typeof source !== 'object') throw new TypeError('MusicXML dosyası veya XML metni gereklidir.')
   const validationError = adapters.validateMusicXmlFile(source)
   if (validationError) throw new Error(validationError)
   const readResult = await adapters.readMusicXmlSourceFile(source)
@@ -263,6 +263,10 @@ function resolveCanonicalRegion(state, encodedRegion) {
 
 async function activateTarget(root, state, selectedRegion) {
   if (!state || workspaceStates.get(root)?.generation !== state.generation) return false
+  const invalidatedState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false }
+  workspaceStates.set(root, invalidatedState)
+  renderTargetOptions(root, invalidatedState)
+  renderAuthoringSurface(root, invalidatedState)
   const canonicalNotes = state.canonicalNotes
   let selectedCanonicalNotes = canonicalNotes
   if (Array.isArray(canonicalNotes)) {
@@ -530,6 +534,7 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
       scoreUpload,
       guitarTabMusicXml: musicXml,
       draftId: state.sourceSession.sessionId,
+      targetSelection: state.selectedRegion,
     })
   } catch {
     setEditorStatus(root, 'TAB MusicXML doğrulanamadı; dosya oluşturulmadı.', 'export-error')
@@ -716,7 +721,7 @@ export function ensureGuitarTabTeacherWorkspace(root, panel) {
   sourceControls.appendChild(sourceLabel)
   const sourceInput = createElement(root, 'input', { id: 'guitar-tab-source-input', className: 'guitar-tab-source-input' })
   sourceInput.type = 'file'
-  sourceInput.setAttribute('accept', '.xml,.musicxml,text/xml,application/xml,application/vnd.recordare.musicxml+xml')
+  sourceInput.setAttribute('accept', '.xml,.musicxml,.mxl,text/xml,application/xml,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,application/zip')
   sourceControls.appendChild(sourceInput)
   const targetLabel = createElement(root, 'label', { textContent: 'TAB hedef bölgesi' })
   targetLabel.setAttribute('for', 'guitar-tab-target-region')

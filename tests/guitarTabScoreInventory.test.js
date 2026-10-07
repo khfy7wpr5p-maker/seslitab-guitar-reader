@@ -143,3 +143,8 @@ test('does not coerce malformed or non-numeric staff and voice identities', () =
     [],
   )
 })
+
+test('part display name whitespace falls back to stable partId without rejecting the score', () => {
+  const empty = SINGLE_XML.replace('<part-name>Violin</part-name>', '<part-name>   </part-name>')
+  assert.equal(extractGuitarTabScoreInventory(empty, parserOptions).parts[0].name, 'P1')
+})

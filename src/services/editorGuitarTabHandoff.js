@@ -163,10 +163,18 @@ function technicalPosition(note) {
   })
 }
 
-function parseTimeline(root, label) {
+function parseTimeline(root, label, targetSelection = null) {
   const parts = directChildren(root, 'part')
-  if (parts.length !== 1) fail(`${label}-one-part-required`)
-  const part = parts[0]
+  let part
+  if (targetSelection === null) {
+    if (parts.length !== 1) fail(`${label}-one-part-required`)
+    part = parts[0]
+  } else {
+    const { partId, partIndex, staff, voice } = targetSelection
+    if (!hasText(partId) || !Number.isSafeInteger(partIndex) || partIndex < 0 || !Number.isSafeInteger(staff) || staff < 1 || !Number.isSafeInteger(voice) || voice < 0) fail(`${label}-target-selection-invalid`)
+    if (partIndex >= parts.length || parts[partIndex].getAttribute?.('id') !== partId) fail(`${label}-target-part-mismatch`)
+    part = parts[partIndex]
+  }
   const measures = directChildren(part, 'measure')
   if (measures.length === 0) fail(`${label}-measure-required`)
 
@@ -221,7 +229,7 @@ function parseTimeline(root, label) {
         ? integerText(staffNode, `${label}-staff-invalid`, { min: 1 })
         : 1
 
-      if (pitch && !isRest) {
+      if (pitch && !isRest && (targetSelection === null || (staff === targetSelection.staff && voice === String(targetSelection.voice)))) {
         const ties = tieFlags(child)
         events.push(Object.freeze({
           measureIndex,
@@ -399,6 +407,7 @@ export async function prepareEditorGuitarTabHandoff({
   scoreUpload,
   guitarTabMusicXml,
   draftId,
+  targetSelection = null,
 } = {}) {
   if (!isRecord(scoreUpload)) fail('score-upload-required')
   if (!hasText(draftId)) fail('draft-id-required')
@@ -416,7 +425,7 @@ export async function prepareEditorGuitarTabHandoff({
   const tabRoot = parseSafeDocument(guitarTabMusicXml, 'tab')
   assertTabShape(tabRoot)
 
-  const scoreEvents = parseTimeline(scoreRoot, 'score')
+  const scoreEvents = parseTimeline(scoreRoot, 'score', targetSelection)
   const tabEvents = parseTimeline(tabRoot, 'tab')
   if (scoreEvents.length === 0) fail('score-pitched-note-required')
 

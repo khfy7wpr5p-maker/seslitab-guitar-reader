@@ -149,6 +149,31 @@ test('GTAB-04 accepts Editor direct-pitch C4 as string 2 fret 1 and preserves ex
   assert.equal(result.pitchedEventCount, 1)
 })
 
+test('GTAB-10B validates selected part/staff/voice in a full multipart score', async () => {
+  const selected = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const other = [{ id: 'other', pitch: PITCHES.G4, voice: '1', onset: 0, duration: 1 }]
+  const first = sourceScore(other)
+  const secondPart = sourceScore(selected).match(/<part id="P1">([\\s\\S]*?)<\\/part>/u)[1]
+    .replace(/^\\s*<measure number="1">/u, '<measure number="1">')
+  const fullScore = first
+    .replace('</part-list>', '<score-part id="P2"><part-name>Guitar</part-name></score-part></part-list>')
+    .replace('  </part>\\n</score-partwise>', `  </part>\\n  <part id="P2">${secondPart}</part>\\n</score-partwise>`)
+  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+    musicXml: fullScore, teacherId: 'teacher-a', draftId: 'multipart-draft', now: () => '2026-10-04T10:00:00Z',
+  })
+  const tabXml = editorTab(selected, { n1: { string: 2, fret: 1 } })
+  const result = await prepareEditorGuitarTabHandoff({
+    scoreUpload, guitarTabMusicXml: tabXml, draftId: 'multipart-draft',
+    targetSelection: { partId: 'P2', partIndex: 1, staff: 1, voice: 1 },
+  })
+  assert.equal(result.scoreMusicXmlFingerprint, scoreUpload.musicXmlFingerprint)
+  assert.equal(result.pitchedEventCount, 1)
+  await assert.rejects(prepareEditorGuitarTabHandoff({
+    scoreUpload, guitarTabMusicXml: tabXml, draftId: 'multipart-draft',
+    targetSelection: { partId: 'P1', partIndex: 1, staff: 1, voice: 1 },
+  }), /target-part-mismatch/u)
+})
+
 test('GTAB-04 rejects malformed TAB shape and missing technical data', async () => {
   const scoreUpload = await preparedScore(SINGLE)
   const noTechnical = editorTab(SINGLE, { n1: null })

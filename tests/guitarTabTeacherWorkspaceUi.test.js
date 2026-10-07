@@ -305,6 +305,44 @@ test('GTAB-10B offers canonical multipart targets and rebuilds the target-bound 
   })
 })
 
+test('GTAB-10B clears the previous authoring session when a newly selected target is unsupported', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  let sessionCount = 0
+  const adapters = successfulAdapters()
+  adapters.extractScoreInventory = () => ({ parts: [
+    { partId: 'P1', partIndex: 0, name: 'Piano', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+    { partId: 'P2', partIndex: 1, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+  ] })
+  adapters.loadEditorRuntime = async () => ({ createSourceSession() {
+    sessionCount += 1
+    if (sessionCount === 2) throw new Error('unsupported selected target')
+    return sourceSession(`session-${sessionCount}`)
+  } })
+  await loadGuitarTabTeacherSource(root, { name: 'two.musicxml', text: async () => '<score-partwise/>', size: 24 }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  await select.listeners.get('change')[0]()
+  assert.ok(getGuitarTabTeacherWorkspaceState(root).sourceSession)
+  select.value = select.children[2].value
+  await select.listeners.get('change')[0]()
+  const state = getGuitarTabTeacherWorkspaceState(root)
+  assert.equal(state.sourceSession, null)
+  assert.equal(state.selectedRegion, null)
+  assert.equal(state.authoringAvailable, false)
+  assert.equal(root.getElementById('guitar-tab-export').disabled, true)
+})
+
+test('GTAB-10B accepts validated FileReader-only sources without requiring File.text', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.readMusicXmlSourceFile = async (file) => ({ xmlText: '<score-partwise/>', sourceName: file.name })
+  const result = await loadGuitarTabTeacherSource(root, { name: 'legacy.musicxml', size: 20, arrayBuffer: async () => new ArrayBuffer(20) }, adapters)
+  assert.equal(result.ok, true)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'legacy.musicxml')
+})
+
 test('GTAB-10B leaves the target unset and disables TAB export when inventory has no eligible regions', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

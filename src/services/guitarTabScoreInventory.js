@@ -107,14 +107,7 @@ function exactPartEvidence(root) {
     }
     seen.add(partId)
 
-    const names = directChildren(scorePart, 'part-name')
-    if (names.length !== 1) {
-      fail(`part-name-count-${partId}`)
-    }
-    const name = requiredTrimmedText(
-      String(names[0]?.textContent ?? ''),
-      `part-name-invalid-${partId}`,
-    )
+    const name = String(directChildren(scorePart, 'part-name')[0]?.textContent ?? '').trim() || partId
     return Object.freeze({ partId, partIndex, name })
   })
 
