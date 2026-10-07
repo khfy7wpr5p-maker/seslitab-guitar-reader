@@ -329,6 +329,8 @@ test('GTAB-10B rejects an invalid file before the reader can access its contents
   const adapters = successfulAdapters()
   adapters.validateMusicXmlFile = () => { order.push('validate'); return 'invalid extension' }
   adapters.readMusicXmlSourceFile = async () => { order.push('read'); throw new Error('must not read') }
+  adapters.extractScoreInventory = () => { order.push('inventory'); throw new Error('must not parse') }
+  adapters.parseCanonicalNotes = () => { order.push('parse'); throw new Error('must not parse') }
 
   const result = await loadGuitarTabTeacherSource(root, {
     name: 'invalid.exe',
