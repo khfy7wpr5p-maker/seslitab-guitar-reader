@@ -36,8 +36,8 @@ function root() {
 
 function sourceSession() {
   const events = [
-    { sourceEventId: 'e1', groupId: 'g1', partId: 'P1', measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 0, divisions: 1, sourceOrder: 0 },
-    { sourceEventId: 'e2', groupId: 'g2', partId: 'P1', measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 1, divisions: 1, sourceOrder: 1 },
+    { sourceEventId: 'e1', groupId: 'g1', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 0, divisions: 1, sourceOrder: 0 },
+    { sourceEventId: 'e2', groupId: 'g2', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 1, divisions: 1, sourceOrder: 1 },
   ]
   return Object.freeze({
     sessionId: 'source:test', sourceFingerprint: 'fp', events: Object.freeze(events),
@@ -103,12 +103,13 @@ test('GTAB-09C delegates keyboard authoring and synchronizes only proven source-
   const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
   const session = sourceSession(); const observations = {}; const editorRuntime = runtime(session, observations)
   const canonicalNotes = [
-    { partId: 'P1', measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 0, isRest: false },
-    { partId: 'P1', measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 1, isRest: false },
+    { partId: 'P1', partIndex: 0, measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 0, isRest: false },
+    { partId: 'P1', partIndex: 0, measureIndex: 0, measureKey: 'P1:0', voice: 1, staff: 1, startBeat: 1, isRest: false },
   ]
   const adapters = {
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => ({ id: 'renderer' }), renderScore: async () => ({ renderEpoch: 'r1' }), clearScore: async () => true,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
     parseCanonicalNotes: () => canonicalNotes,
     clearHighlights: async () => { observations.clears = (observations.clears ?? 0) + 1 },
     moveCursor: async (_host, target) => { observations.cursor = target },
@@ -141,6 +142,7 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
   const adapters = {
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => null,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
     parseCanonicalNotes: () => [],
     async prepareScoreUpload(input) {
       observations.scoreUploadInput = input
@@ -155,7 +157,7 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
 
   const loadResult = await loadGuitarTabTeacherSource(
     documentRoot,
-    { name: 'audiveris-export.musicxml', text: async () => exactSource },
+    { name: 'audiveris-export.musicxml', size: Buffer.byteLength(exactSource), text: async () => exactSource },
     adapters,
   )
   assert.equal(loadResult.ok, true)

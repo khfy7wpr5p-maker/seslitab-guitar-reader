@@ -41,7 +41,7 @@ jobs:
         run: npm run test:td06:emulator
 
       - name: Run tests
-        run: npm test
+        run: node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js
 
       - name: Verify S16 read-only request guard in serialized real browser
         run: npm run test:s16:browser
@@ -53,6 +53,9 @@ jobs:
         run: |
           node --test --test-concurrency=1 browser-tests/ses153BrowserQualification.browser.test.mjs
           node scripts/verifySes153TeacherAuthorityBrowser.js
+
+      - name: Verify GTAB-10B multipart target selection in real browser
+        run: npm run test:gtab10b-browser
 
       - name: Upload SES-153 browser qualification evidence
         if: always()

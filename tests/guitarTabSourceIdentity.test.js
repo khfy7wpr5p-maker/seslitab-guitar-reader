@@ -16,6 +16,7 @@ function event(sourceEventId, overrides = {}) {
   return {
     sourceEventId,
     partId: 'P1',
+    partIndex: 0,
     measureIndex: 0,
     voice: '1',
     staff: '1',
@@ -29,6 +30,7 @@ function event(sourceEventId, overrides = {}) {
 function canonical(overrides = {}) {
   return {
     partId: 'P1',
+    partIndex: 0,
     measureIndex: 0,
     measureKey: 'P1:0',
     voice: 1,
@@ -105,4 +107,24 @@ test('GTAB-09C abstains for an entire structural bucket when canonical evidence 
   assert.equal(resolver.resolve('first'), null)
   assert.equal(resolver.resolve('second'), null)
   assert.equal(resolver.matchedCount, 0)
+})
+
+test('GTAB-10B partIndex is required for exact source-to-canonical identity', () => {
+  const mismatch = createGuitarTabRendererTargetResolver(
+    sourceSession([
+      event('wrong-part-index', { partId: 'P1', partIndex: 1 }),
+    ]),
+    [canonical({ partId: 'P1', partIndex: 0 })],
+  )
+  assert.equal(mismatch.resolve('wrong-part-index'), null)
+  assert.equal(mismatch.matchedCount, 0)
+
+  const exact = createGuitarTabRendererTargetResolver(
+    sourceSession([
+      event('exact-part-index', { partId: 'P1', partIndex: 0 }),
+    ]),
+    [canonical({ partId: 'P1', partIndex: 0 })],
+  )
+  assert.notEqual(exact.resolve('exact-part-index'), null)
+  assert.equal(exact.matchedCount, 1)
 })
