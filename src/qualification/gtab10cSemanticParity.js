@@ -33,7 +33,7 @@ function freezeReport(status, diagnostics, provenance, unverifiedContexts = []) 
     status,
     diagnostics: Object.freeze(diagnostics.map((item) => Object.freeze({ ...item }))),
     provenance: Object.freeze(provenance),
-    unverifiedContexts: Object.freeze([...new Set(unverifiedContexts)].sort()),
+    unverifiedContexts: Object.freeze([...new Set(unverifiedContexts)].sort((left, right) => left.localeCompare(right, 'en'))),
   })
 }
 
@@ -112,11 +112,43 @@ function fieldMismatch(source, derived, field) {
     const derivedValues = derivedGroups.get(key)
     if (!derivedValues || derivedValues.length !== sourceValues.length) continue
     const normalize = (value) => field === 'tie_prev' || field === 'tie_next' ? value !== null : value
-    const left = sourceValues.map(normalize).sort()
-    const right = derivedValues.map(normalize).sort()
+    const left = sourceValues.map(normalize).sort((left, right) => Number(left) - Number(right))
+    const right = derivedValues.map(normalize).sort((left, right) => Number(left) - Number(right))
     if (left.some((value, index) => value !== right[index])) return true
   }
   return false
+}
+
+function validTieGraph(notes) {
+  const byId = new Map()
+  for (const note of notes) {
+    if (note.source_id == null) {
+      if (note.tie_prev !== null || note.tie_next !== null) return false
+      continue
+    }
+    if (typeof note.source_id !== 'string' || !note.source_id || byId.has(note.source_id)) return false
+    byId.set(note.source_id, note)
+  }
+  for (const note of notes) {
+    for (const [field, reverse] of [['tie_next', 'tie_prev'], ['tie_prev', 'tie_next']]) {
+      if (note[field] === null) continue
+      const linked = byId.get(note[field])
+      if (!linked || linked === note || linked[reverse] !== note.source_id ||
+          linked.part_id !== note.part_id || linked.staff !== note.staff || linked.voice !== note.voice ||
+          linked.pitch_midi !== note.pitch_midi) return false
+      const first = field === 'tie_next' ? note : linked
+      const second = field === 'tie_next' ? linked : note
+      if (first.onset_div + first.duration_div !== second.onset_div) return false
+    }
+  }
+  return true
+}
+
+function tieEdges(notes) {
+  const byId = new Map(notes.map((note) => [note.source_id, note]))
+  return notes.filter((note) => note.tie_next !== null).map((note) =>
+    `${eventKey(note)}>${byId.has(note.tie_next) ? eventKey(byId.get(note.tie_next)) : 'UNRESOLVED'}`
+  ).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
 function contextRows(snapshot, field, partId, normalizeStaff = false, staffFilter = null) {
@@ -127,7 +159,6 @@ function contextRows(snapshot, field, partId, normalizeStaff = false, staffFilte
     if (!isRecord(value) || typeof value.part_id !== 'string'
       || !Number.isSafeInteger(value.onset_div) || value.onset_div < 0) return null
     if (value.part_id !== partId) continue
-    if (staffFilter !== null && value.staff !== staffFilter) continue
     if (field === 'time_signatures') {
       if (!Number.isSafeInteger(value.beats) || value.beats <= 0
         || !Number.isSafeInteger(value.beat_type) || value.beat_type <= 0) return null
@@ -141,10 +172,11 @@ function contextRows(snapshot, field, partId, normalizeStaff = false, staffFilte
         || typeof value.sign !== 'string' || value.sign.trim() === ''
         || (value.line !== null && !Number.isSafeInteger(value.line))
         || !Number.isSafeInteger(value.octave_change)) return null
+      if (staffFilter !== null && value.staff !== staffFilter) continue
       result.push([value.onset_div, normalizeStaff ? 1 : value.staff, value.sign, value.line, value.octave_change])
     }
   }
-  return result.map((row) => JSON.stringify(row)).sort()
+  return result.map((row) => JSON.stringify(row)).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
 function sameRows(left, right) {
@@ -184,6 +216,23 @@ export function qualifyGtab10cSemanticParity(input = {}) {
   }
   if (input.provenance.sourceSha256 !== sourceHash || input.provenance.derivedSha256 !== derivedHash) {
     return rejected('UNSUPPORTED', 'SOURCE_PROVENANCE_MISMATCH', {}, provenance)
+  }
+  if (!/^[0-9a-f]{40}$/u.test(input.expectedSesliTabCommit ?? '') ||
+      input.expectedSesliTabCommit !== input.provenance.sesliTabCommit) {
+    return rejected('UNSUPPORTED', 'SOURCE_PROVENANCE_MISMATCH', { cause: 'CHECKOUT_COMMIT' }, provenance)
+  }
+  const evidence = input.oracleEvidence
+  if (!isRecord(evidence) || evidence.schema !== 'gtab-10c-semantic-oracle-output-v1' ||
+      evidence.sourceSha256 !== sourceHash || evidence.derivedSha256 !== derivedHash ||
+      !Array.isArray(evidence.sourceParts) || !Array.isArray(evidence.derivedParts)) {
+    return rejected('UNSUPPORTED', 'SOURCE_PROVENANCE_MISMATCH', { cause: 'ORACLE_BUNDLE' }, provenance)
+  }
+  const validParts = (parts) => parts.length > 0 && new Set(parts.map((part) => part?.partId)).size === parts.length &&
+    parts.every((part) => isRecord(part) && typeof part.partId === 'string' && part.partId.trim() &&
+      Number.isSafeInteger(part.measureCount) && part.measureCount > 0)
+  if (!validParts(evidence.sourceParts) || !validParts(evidence.derivedParts) ||
+      evidence.sourceParts[target.partIndex]?.partId !== target.partId || evidence.derivedParts.length !== 1) {
+    return rejected('UNSUPPORTED', 'TARGET_SELECTION_MISMATCH', { cause: 'PART_INVENTORY' }, provenance)
   }
   if (!/^[0-9a-f]{40}$/u.test(input.provenance.sesliTabCommit ?? '')
     || input.provenance.editorCommit !== GTAB10C_PINNED_EDITOR_COMMIT
@@ -228,12 +277,12 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     return rejected('UNSUPPORTED', 'AMBIGUOUS_STRUCTURAL_MATCH', { cause: 'DERIVED_PART_IDENTITY' }, provenance)
   }
   const derivedPartId = derivedPartIds[0]
+  const unverifiedContexts = []
   if (derivedAll.some((note) => note.staff !== 1 && note.staff !== 2)) {
     return rejected('DIAGNOSTIC', 'NOTE_EXTRA', { side: 'DERIVED_UNEXPECTED_STAFF' }, provenance, unverifiedContexts)
   }
   const notationNotes = derivedAll.filter((note) => note.part_id === derivedPartId && note.staff === 1)
   const tabNotes = derivedAll.filter((note) => note.part_id === derivedPartId && note.staff === 2)
-  const unverifiedContexts = []
   if (!Array.isArray(source.key_signatures) || !Array.isArray(derived.key_signatures)) unverifiedContexts.push('keySignatures')
   if (!Array.isArray(source.clefs) || !Array.isArray(derived.clefs)) unverifiedContexts.push('clefs')
   if (sourceNotes.length === 0) {
@@ -243,9 +292,11 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     || tabNotes.some((note) => note.is_grace)) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'GRACE_NOTE' }, provenance, unverifiedContexts)
   }
-  if (source.measure_count !== derived.measure_count) {
+  const selectedMeasureCount = evidence.sourceParts[target.partIndex].measureCount
+  if (evidence.sourceParts.length !== source.part_count || evidence.derivedParts[0].partId !== derivedPartId) return rejected('UNSUPPORTED', 'TARGET_SELECTION_MISMATCH', { cause: 'SNAPSHOT_INVENTORY' }, provenance)
+  if (selectedMeasureCount !== derived.measure_count || evidence.derivedParts[0].measureCount !== derived.measure_count) {
     return rejected('DIAGNOSTIC', 'MEASURE_COUNT_MISMATCH', {
-      source: source.measure_count, derived: derived.measure_count,
+      source: selectedMeasureCount, derived: derived.measure_count,
     }, provenance, unverifiedContexts)
   }
 
@@ -320,5 +371,8 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     }
   }
 
+  if (unverifiedContexts.length) return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'UNVERIFIED_CONTEXT' }, provenance, unverifiedContexts)
+  if (!validTieGraph(sourceNotes) || !validTieGraph(notationNotes) || !validTieGraph(tabNotes) ||
+      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes)) || !sameRows(tieEdges(notationNotes), tieEdges(tabNotes))) output.push({ code: 'TIE_MISMATCH' })
   return freezeReport(output.length === 0 ? 'PASS' : 'DIAGNOSTIC', output, provenance, unverifiedContexts)
 }

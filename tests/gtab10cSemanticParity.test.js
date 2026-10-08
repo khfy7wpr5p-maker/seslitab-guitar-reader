@@ -81,6 +81,8 @@ function input(overrides = {}) {
     fixtureId: 'f-sharp-natural-meter-change',
     sourceBytes,
     derivedBytes,
+    expectedSesliTabCommit: '55512de2d9db5bbf97949b32a3be3438d9c51d5f',
+    oracleEvidence: { schema: 'gtab-10c-semantic-oracle-output-v1', sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
     sourceSnapshot: snapshot(sourceNotes),
     derivedSnapshot: derivedSnapshot(postNotes),
     targetSelection,
@@ -238,4 +240,88 @@ test('GTAB-10C rejects malformed snapshots and provenance pins', () => {
 
 test('GTAB-10C oracle pin matches the exact editor runtime revision used by SesliTab', () => {
   assert.equal(GTAB10C_PINNED_EDITOR_COMMIT, GUITAR_TAB_EDITOR_REVISION)
+})
+
+test('GTAB-10C unexpected derived staff returns controlled rejection, never TDZ throw', () => {
+  const value = input()
+  value.derivedSnapshot.notes[0].staff = 3
+  assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+})
+
+test('GTAB-10C missing or invalid context cannot claim complete oracle PASS', () => {
+  for (const field of ['key_signatures', 'clefs']) {
+    for (const invalid of [undefined, null, [{ part_id: 'P-GUITAR', onset_div: 0 }]]) {
+      const value = input()
+      value.sourceSnapshot[field] = invalid
+      assert.equal(qualifyGtab10cSemanticParity(value).status, 'UNSUPPORTED')
+    }
+  }
+})
+
+test('GTAB-10C rejects a dangling tie even when its presence bits match on every staff', () => {
+  const value = input()
+  value.sourceSnapshot.notes[0].tie_next = 'dangling-source'
+  value.derivedSnapshot.notes[0].tie_next = 'dangling-output'
+  value.derivedSnapshot.notes[2].tie_next = 'dangling-tab'
+  value.tabPositions[0].tie_next = 'dangling-tab'
+  assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+})
+
+test('GTAB-10C distinguishes valid absent keys from missing schema coverage', () => {
+  const value = input()
+  value.sourceSnapshot.key_signatures = []
+  value.derivedSnapshot.key_signatures = []
+  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+})
+
+test('GTAB-10C rejects stale checkout, foreign oracle bytes, and wrong selected part ordinal', () => {
+  for (const mutate of [
+    value => { value.expectedSesliTabCommit = 'a'.repeat(40) },
+    value => { value.oracleEvidence.sourceSha256 = 'b'.repeat(64) },
+    value => { value.oracleEvidence.derivedSha256 = 'b'.repeat(64) },
+    value => { value.oracleEvidence.sourceParts.reverse() },
+  ]) {
+    const value = input()
+    mutate(value)
+    assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  }
+})
+
+test('GTAB-10C compares selected part measure count rather than another part maximum', () => {
+  const value = input()
+  value.sourceSnapshot.measure_count = 5
+  value.oracleEvidence.sourceParts[0].measureCount = 5
+  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+})
+
+test('GTAB-10C renamed tie endpoints preserve topology; corrupted edges fail closed', () => {
+  const make = () => {
+    const value = input()
+    value.sourceSnapshot.notes[1].pitch_midi = 66
+    value.sourceSnapshot.notes[0].tie_next = 'n2'
+    value.sourceSnapshot.notes[1].tie_prev = 'n1'
+    for (const [first, second] of [[0, 1], [2, 3]]) {
+      const a = value.derivedSnapshot.notes[first]
+      const b = value.derivedSnapshot.notes[second]
+      b.pitch_midi = 66
+      a.tie_next = b.source_id
+      b.tie_prev = a.source_id
+    }
+    value.tabPositions[0].tie_next = 'tab-b'
+    value.tabPositions[1].tie_prev = 'tab-a'
+    value.tabPositions[1].pitch_midi = 66
+    value.tabPositions[1].fret = 2
+    return value
+  }
+  assert.equal(qualifyGtab10cSemanticParity(make()).status, 'PASS')
+  for (const mutate of [
+    value => { value.derivedSnapshot.notes[1].tie_prev = null },
+    value => { value.derivedSnapshot.notes[0].tie_next = 'tab-b' },
+    value => { value.derivedSnapshot.notes[0].tie_next = 'renamed-a' },
+    value => { value.derivedSnapshot.notes[0].tie_next = null; value.derivedSnapshot.notes[1].tie_prev = null },
+  ]) {
+    const value = make()
+    mutate(value)
+    assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  }
 })

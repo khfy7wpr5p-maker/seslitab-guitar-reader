@@ -53,7 +53,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install pinned Semantic Engine and Partitura dependencies
-        run: python -m pip install --disable-pip-version-check ./semantic-engine
+        run: python -m pip install --disable-pip-version-check ./semantic-engine defusedxml==0.7.1
 
       - name: Run GTAB-10C bundle and comparator tests
         working-directory: teacher

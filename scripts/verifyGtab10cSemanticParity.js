@@ -32,9 +32,10 @@ if (!editorRoot || !semanticEngineRoot || !/^[0-9a-f]{40}$/u.test(sesliTabCommit
 }
 
 function gitHead(root) {
-  return execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+  return execFileSync('/usr/bin/git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 }
 
+assert.equal(gitHead(projectRoot), sesliTabCommit, 'SesliTab provenance must match actual checkout HEAD (including workflow merge SHA).')
 const editorCommit = gitHead(editorRoot)
 const semanticEngineCommit = gitHead(semanticEngineRoot)
 assert.equal(editorCommit, GTAB10C_PINNED_EDITOR_COMMIT, 'Editor runtime pin must match the checked-out exact SHA.')
@@ -53,7 +54,7 @@ const fixtures = [
     id: 'smoosic-like-multivoice-target',
     path: 'tests/fixtures/gtab10c/smoosic-like-source.musicxml',
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3 },
-    positionByMidi: new Map([[55, { string: 3, fret: 5 }]]),
+    positionByMidi: new Map([[55, { string: 3, fret: 0 }]]),
     expectedEventCount: 1,
   },
   {
@@ -102,17 +103,20 @@ for (const fixture of fixtures) {
   })
   assert.equal(handoff.guitarTabMusicXml, derivedXml)
   assert.equal(handoff.pitchedEventCount, sourceSession.events.length)
-  assert.equal(createHash('sha256').update(sourceBytes).digest('hex'), sourceFingerprint)
+  assert.equal(createHash('sha256').update(await readFile(sourcePath)).digest('hex'), sourceFingerprint)
 
   const derivedName = `${fixture.id}.musicxml`
   const derivedPath = path.join(artifactsRoot, 'derived', derivedName)
   const snapshotPath = path.join(artifactsRoot, `${fixture.id}.snapshots.json`)
   await writeFile(derivedPath, derivedXml, 'utf8')
-  execFileSync('python3', [oracleScript, sourcePath, derivedPath, snapshotPath], {
+  const python = process.env.GTAB10C_PYTHON ?? '/usr/bin/python3'
+  assert.ok(path.isAbsolute(python), 'CI Python executable must be an absolute configured path.')
+  const coverageArgs = process.env.GTAB10C_COVERAGE === '1' ? ['-m', 'coverage', 'run', '--parallel-mode'] : []
+  execFileSync(python, [...coverageArgs, oracleScript, sourcePath, derivedPath, snapshotPath], {
     cwd: projectRoot,
     env: {
       ...process.env,
-      PYTHONPATH: [path.join(semanticEngineRoot, 'src'), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
+      PYTHONPATH: path.join(semanticEngineRoot, 'src'),
     },
     stdio: 'inherit',
   })
@@ -122,6 +126,8 @@ for (const fixture of fixtures) {
     fixtureId: fixture.id,
     sourceBytes,
     derivedBytes,
+    expectedSesliTabCommit: gitHead(projectRoot),
+    oracleEvidence: oracle,
     sourceSnapshot: oracle.sourceSnapshot,
     derivedSnapshot: oracle.derivedSnapshot,
     tabPositions: oracle.tabPositions,
@@ -139,12 +145,14 @@ for (const fixture of fixtures) {
     },
   })
   assert.equal(oracle.partituraVersion, GTAB10C_PINNED_PARTITURA_VERSION)
+  await writeFile(path.join(artifactsRoot, `${fixture.id}.report.json`), `${JSON.stringify({ report, readViews: oracle.readViews }, null, 2)}\n`, 'utf8')
   assert.equal(report.status, 'PASS', `${fixture.id}: ${JSON.stringify(report.diagnostics)}`)
   qualifications.push({
     fixtureId: fixture.id,
     targetSelection: fixture.targetSelection,
     sourceSha256: report.provenance.sourceSha256,
     derivedSha256: report.provenance.derivedSha256,
+    readViews: oracle.readViews,
     preSnapshot: oracle.sourceSnapshot,
     postSnapshot: oracle.derivedSnapshot,
     tabPositions: oracle.tabPositions,
