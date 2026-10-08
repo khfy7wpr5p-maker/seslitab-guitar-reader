@@ -6,6 +6,7 @@ import {
   ensureGuitarTabPanel,
 } from '../src/package4Ui.js'
 import {
+  exportGuitarTabTeacherWorkspaceMusicXml,
   getGuitarTabTeacherWorkspaceState,
   loadGuitarTabTeacherSource,
   resetGuitarTabTeacherWorkspace,
@@ -678,4 +679,80 @@ test('GTAB-09B source replacement and reset clear prior renderer state determini
   assert.equal(root.getElementById('guitar-tab-target-region').disabled, true)
   assert.equal(root.getElementById('guitar-tab-target-region').children.length, 1)
   assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
+})
+
+test('GTAB-10B target invalidation clears the previous notation highlight', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.extractScoreInventory = () => ({ parts: [{
+    partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
+  }] })
+  adapters.parseCanonicalNotes = () => [{ partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 }]
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      return { events: [{ sourceEventId: 'note', partId: 'P1', partIndex: 0, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }], groups: [{ groupId: 'group', sourceEventIds: ['note'] }] }
+    },
+    createTabAssignmentDocument: () => ({ listAssignments: () => [] }),
+    createKeyboardController: () => ({ getState: () => ({ currentEventId: 'note', currentGroupId: 'group', selectedString: 1, fretBuffer: '' }), handleKey() {} }),
+    createFixedSixStringRows: () => [],
+  })
+  const highlights = []
+  let clearCount = 0
+  adapters.clearHighlights = async () => { clearCount += 1; return true }
+  adapters.moveCursor = async () => true
+  adapters.highlightNote = async (_runtime, target) => highlights.push(target)
+  await loadGuitarTabTeacherSource(root, { name: 'one.musicxml', text: async () => '<score-partwise/>' }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  await select.listeners.get('change')[0]()
+  assert.equal(highlights.length, 1)
+  select.value = ''
+  await select.listeners.get('change')[0]()
+  assert.equal(clearCount, 2)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'target-required')
+})
+
+test('GTAB-10B target changes cancel an in-flight export before download', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  let releasePreparation
+  let preparationStarted
+  const started = new Promise((resolve) => { preparationStarted = resolve })
+  const gate = new Promise((resolve) => { releasePreparation = resolve })
+  let handoffCalls = 0
+  let downloadCalls = 0
+  const adapters = successfulAdapters()
+  adapters.extractScoreInventory = () => ({ parts: [{
+    partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
+  }] })
+  adapters.parseCanonicalNotes = () => [{ partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 }]
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      return { sessionId: 'session', events: [{ sourceEventId: 'note', partId: 'P1', partIndex: 0, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }], groups: [{ groupId: 'group', sourceEventIds: ['note'] }] }
+    },
+    createTabAssignmentDocument: () => ({ canExport: () => true, listAssignments: () => [] }),
+    createKeyboardController: () => ({ getState: () => ({ currentEventId: 'note', currentGroupId: 'group', selectedString: 1, fretBuffer: '' }), handleKey() {} }),
+    createFixedSixStringRows: () => [],
+    serializeGuitarTabMusicXml: () => '<score-partwise/>',
+  })
+  adapters.prepareScoreUpload = async () => { preparationStarted(); await gate; return { id: 'upload' } }
+  adapters.prepareHandoff = async () => { handoffCalls += 1; return {} }
+  adapters.downloadText = async () => { downloadCalls += 1 }
+  await loadGuitarTabTeacherSource(root, { name: 'one.musicxml', text: async () => '<score-partwise/>' }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  await select.listeners.get('change')[0]()
+  assert.equal(root.getElementById('guitar-tab-export').disabled, false)
+  const exportPromise = exportGuitarTabTeacherWorkspaceMusicXml(root)
+  await started
+  select.value = ''
+  await select.listeners.get('change')[0]()
+  releasePreparation()
+  assert.deepEqual(await exportPromise, { ok: false, reason: 'STALE_TARGET' })
+  assert.equal(handoffCalls, 0)
+  assert.equal(downloadCalls, 0)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'target-required')
 })

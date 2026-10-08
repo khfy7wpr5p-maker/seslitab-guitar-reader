@@ -277,7 +277,13 @@ async function activateTarget(root, state, selectedRegion) {
   let sourceSession
   try { sourceSession = state.editorRuntime.createSourceSession(state.sourceXml, { targetSelection: selectedRegion }) }
   catch {
-    setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
+    if (workspaceStates.get(root) === invalidatedState) {
+      await synchronizeAuthoringSelection(root, invalidatedState)
+      if (workspaceStates.get(root) === invalidatedState) {
+        renderTargetOptions(root, invalidatedState)
+        setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
+      }
+    }
     return false
   }
   if (workspaceStates.get(root)?.generation !== state.generation) return false
@@ -310,11 +316,14 @@ async function handleTargetChange(root, encodedRegion) {
   const selectedRegion = resolveCanonicalRegion(state, encodedRegion)
   if (!selectedRegion) {
     if (state) {
-      const nextState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null }
+      const nextState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false }
       workspaceStates.set(root, nextState)
       renderAuthoringSurface(root, nextState)
       renderTargetOptions(root, nextState)
-      setStatus(root, state.canonicalTabRegions.length ? 'TAB hedefi seçilmedi; dışa aktarma devre dışı.' : 'Bu MusicXML içinde kullanılabilir TAB bölgesi yok.', 'target-required')
+      await synchronizeAuthoringSelection(root, nextState)
+      if (workspaceStates.get(root) === nextState) {
+        setStatus(root, state.canonicalTabRegions.length ? 'TAB hedefi seçilmedi; dışa aktarma devre dışı.' : 'Bu MusicXML içinde kullanılabilir TAB bölgesi yok.', 'target-required')
+      }
     }
     return false
   }
@@ -400,7 +409,7 @@ function createAuthoringState(editorRuntime, sourceSession, canonicalNotes, rend
 }
 
 async function synchronizeAuthoringSelectionNow(root, state) {
-  if (!state?.rendererRuntime || !state?.keyboardController || !state?.targetResolver || !state?.adapters) return false
+  if (!state?.rendererRuntime || !state?.adapters) return false
   const isCurrent = () => workspaceStates.get(root) === state
   if (!isCurrent()) return false
   const controllerState = currentControllerState(state)
@@ -557,18 +566,22 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
       targetSelection: state.selectedRegion,
     })
   } catch {
+    if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
     setEditorStatus(root, 'TAB MusicXML doğrulanamadı; dosya oluşturulmadı.', 'export-error')
     return Object.freeze({ ok: false, reason: 'EXPORT_VALIDATION_FAILED' })
   }
 
+  if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
   const filename = exportFilename(state.sourceName)
   try {
     await normalized.downloadText({ filename, text: musicXml, mimeType: GUITAR_TAB_MUSICXML_MIME })
   } catch {
+    if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
     setEditorStatus(root, 'TAB MusicXML doğrulandı ancak dosya indirilemedi.', 'export-error')
     return Object.freeze({ ok: false, reason: 'DOWNLOAD_FAILED' })
   }
 
+  if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
   setEditorStatus(root, 'TAB MusicXML doğrulandı ve dışa aktarıldı.', 'export-ready')
   return Object.freeze({ ok: true, musicXml, filename, handoff })
 }
