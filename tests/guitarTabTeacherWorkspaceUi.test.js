@@ -570,6 +570,53 @@ test('GTAB-10C retries the shared runtime once after a transient load failure', 
   assert.equal(attempts, 2)
 })
 
+test('GTAB-10C does not retry a runtime that lacks the source-session contract', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  let attempts = 0
+  adapters.loadEditorRuntime = async () => {
+    attempts += 1
+    return { render: () => {} }
+  }
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'ordinary.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.deepEqual(result, { ok: false, reason: 'EDITOR_RUNTIME_UNAVAILABLE' })
+  assert.equal(attempts, 2)
+})
+
+test('GTAB-10C ignores the retry result after a newer source replaces it', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  let releaseFirstRuntime
+  let attempts = 0
+  adapters.loadEditorRuntime = async (...args) => {
+    attempts += 1
+    if (attempts === 1) {
+      await new Promise((resolve) => { releaseFirstRuntime = resolve })
+      return null
+    }
+    return successfulAdapters().loadEditorRuntime(...args)
+  }
+
+  const staleLoad = loadGuitarTabTeacherSource(root, {
+    name: 'stale.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+  while (!releaseFirstRuntime) await new Promise((resolve) => setImmediate(resolve))
+  const latestLoad = await loadGuitarTabTeacherSource(root, {
+    name: 'latest.musicxml', text: async () => '<score-partwise/>',
+  }, successfulAdapters())
+  releaseFirstRuntime()
+
+  assert.equal(latestLoad.ok, true)
+  assert.deepEqual(await staleLoad, { ok: false, reason: 'STALE_SOURCE' })
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'latest.musicxml')
+})
+
 test('GTAB-10B rejects inventory extraction failures before source-session or renderer access', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
