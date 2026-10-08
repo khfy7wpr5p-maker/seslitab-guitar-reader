@@ -648,6 +648,36 @@ test('GTAB-09B fails closed on unsupported source without removing the editor sh
   assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
 })
 
+test('GTAB-10C clears the TAB loading message when the shared editor runtime is unavailable', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.loadEditorRuntime = async () => null
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'ordinary.musicxml', text: async () => '<score-partwise/>' ,
+  }, adapters)
+
+  assert.deepEqual(result, { ok: false, reason: 'EDITOR_RUNTIME_UNAVAILABLE' })
+  const editorStatus = root.getElementById('guitar-tab-editor-status')
+  assert.notEqual(editorStatus.dataset.state, 'loading')
+  assert.doesNotMatch(editorStatus.textContent, /hazırlanıyor/u)
+  assert.match(editorStatus.textContent, /bileşeni yüklenemedi/u)
+})
+
+test('GTAB-10C resets the file picker so the same MusicXML source can be selected again', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const input = root.getElementById('guitar-tab-source-input')
+  const source = { name: 'ordinary.musicxml', text: async () => '<score-partwise/>' }
+  input.files = [source]
+  input.value = 'C:\\fakepath\\ordinary.musicxml'
+
+  await input.listeners.get('change')[0]()
+  assert.equal(input.value, '')
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, null)
+})
+
 test('GTAB-09B source replacement and reset clear prior renderer state deterministically', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

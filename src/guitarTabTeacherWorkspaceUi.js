@@ -626,7 +626,10 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   let editorRuntime
   try { editorRuntime = await normalized.loadEditorRuntime(root) } catch { editorRuntime = null }
   if (!editorRuntime || typeof editorRuntime.createSourceSession !== 'function') {
-    if (workspaceStates.get(root)?.generation === generation) setStatus(root, 'Guitar TAB Editor çalışma zamanı kullanılamıyor.', 'runtime-unavailable')
+    if (workspaceStates.get(root)?.generation === generation) {
+      setStatus(root, 'Guitar TAB Editor çalışma zamanı kullanılamıyor.', 'runtime-unavailable')
+      setEditorStatus(root, 'TAB düzenleme bileşeni yüklenemedi. Bağlantıyı kontrol edip dosyayı yeniden seçin.', 'runtime-unavailable')
+    }
     return Object.freeze({ ok: false, reason: 'EDITOR_RUNTIME_UNAVAILABLE' })
   }
 
@@ -742,7 +745,10 @@ function bindWorkspaceControls(root) {
   const exportButton = root.getElementById('guitar-tab-export')
   sourceInput?.addEventListener?.('change', async () => {
     const file = sourceInput.files?.[0]
-    if (file) await loadGuitarTabTeacherSource(root, file)
+    if (file) {
+      sourceInput.value = ''
+      await loadGuitarTabTeacherSource(root, file)
+    }
   })
   targetSelect?.addEventListener?.('change', async () => { await handleTargetChange(root, targetSelect.value) })
   resetButton?.addEventListener?.('click', async () => { await resetGuitarTabTeacherWorkspace(root) })
