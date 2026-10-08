@@ -33,15 +33,8 @@ import { initSmoosicEditorTab } from './src/smoosicEditorTabUi.js'
 import { mountTeacherAssignmentProduction } from './src/teacherAssignmentProductionMount.js'
 import { createTeacherAuthSessionController } from './src/teacherAuthSessionController.js'
 import { mountTeacherAuthSessionUi } from './src/teacherAuthSessionUi.js'
-import { mountTeacherStudentManagementProduction } from './src/teacherStudentManagementProductionMount.js'
+import { createTeacherStudentManagementRuntime } from './src/teacherStudentManagementRuntime.js'
 import { installMusicXmlMxlInputBridge } from './src/musicXmlMxlInputBridge.js'
-
-function envText(name) {
-  const value = import.meta.env?.[name]
-  return typeof value === 'string'
-    ? value.trim()
-    : ''
-}
 
 if (typeof document !== 'undefined') {
   installMusicXmlMxlInputBridge(document)
@@ -53,16 +46,12 @@ if (typeof document !== 'undefined') {
     document.getElementById(
       'teacher-auth-session-host',
     )
-  const studentManagementHost =
-    document.getElementById(
-      'teacher-student-management-host',
-    )
-  const accountServiceBaseUrl =
-    envText(
-      'VITE_SESLITAB_ACCOUNT_SERVICE_API_URL',
-    )
   let assignmentHandle = null
-  let studentManagementHandle = null
+  const studentManagementRuntime =
+    createTeacherStudentManagementRuntime({
+      root: document,
+      env: import.meta.env,
+    })
 
   const controller =
     createTeacherAuthSessionController({
@@ -75,24 +64,15 @@ if (typeof document !== 'undefined') {
             composition:
               connection.composition,
           })
-
-        studentManagementHandle?.destroy()
-        studentManagementHandle = null
-        if (studentManagementHost) {
-          studentManagementHandle =
-            mountTeacherStudentManagementProduction({
-              root: document,
-              host: studentManagementHost,
-              baseUrl: accountServiceBaseUrl,
-              getIdToken: connection.getIdToken,
-            })
-        }
+        studentManagementRuntime.onReady(
+          connection,
+        )
       },
       onAuthorityRevoked() {
         assignmentHandle?.destroy()
         assignmentHandle = null
-        studentManagementHandle?.destroy()
-        studentManagementHandle = null
+        studentManagementRuntime
+          .onAuthorityRevoked()
       },
     })
 
