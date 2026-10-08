@@ -154,25 +154,27 @@ export async function createTeacherAssignmentBrowserComposition({
     ) ||
     DEFAULT_SECURE_DELIVERY_API_URL
 
+  async function getIdToken() {
+    const current =
+      auth?.currentUser
+    if (
+      current?.uid !== teacherId ||
+      typeof current?.getIdToken !==
+        'function'
+    ) {
+      throw new Error(
+        'teacher-auth-required',
+      )
+    }
+    return current.getIdToken()
+  }
+
   const secureDeliveryClient =
     createSecureDeliveryApiClient({
       baseUrl,
       fetchImpl,
       onAuthFailure,
-      async getIdToken() {
-        const current =
-          auth?.currentUser
-        if (
-          current?.uid !== teacherId ||
-          typeof current?.getIdToken !==
-            'function'
-        ) {
-          throw new Error(
-            'teacher-auth-required',
-          )
-        }
-        return current.getIdToken()
-      },
+      getIdToken,
     })
 
   const composition =
@@ -189,5 +191,6 @@ export async function createTeacherAssignmentBrowserComposition({
     reason: null,
     composition,
     secureDeliveryClient,
+    getIdToken,
   })
 }
