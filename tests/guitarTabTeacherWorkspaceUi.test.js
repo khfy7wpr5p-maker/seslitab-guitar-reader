@@ -550,6 +550,26 @@ test('GTAB-10B accepts validated FileReader-only sources without requiring File.
   assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'legacy.musicxml')
 })
 
+test('GTAB-10C retries the shared runtime once after a transient load failure', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  const loadRuntime = adapters.loadEditorRuntime
+  let attempts = 0
+  adapters.loadEditorRuntime = async (...args) => {
+    attempts += 1
+    if (attempts === 1) return null
+    return loadRuntime(...args)
+  }
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'ordinary.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.equal(result.ok, true)
+  assert.equal(attempts, 2)
+})
+
 test('GTAB-10B rejects inventory extraction failures before source-session or renderer access', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

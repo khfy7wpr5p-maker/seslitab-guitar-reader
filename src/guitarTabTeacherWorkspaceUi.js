@@ -623,8 +623,17 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     return Object.freeze({ ok: false, reason: 'SOURCE_READ_FAILED' })
   }
 
-  let editorRuntime
-  try { editorRuntime = await normalized.loadEditorRuntime(root) } catch { editorRuntime = null }
+  let editorRuntime = null
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try { editorRuntime = await normalized.loadEditorRuntime(root) } catch { editorRuntime = null }
+    if (editorRuntime && typeof editorRuntime.createSourceSession === 'function') break
+    if (attempt === 0) {
+      if (workspaceStates.get(root)?.generation !== generation) {
+        return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
+      }
+      setEditorStatus(root, 'TAB düzenleme bileşeni yeniden yükleniyor…', 'loading')
+    }
+  }
   if (!editorRuntime || typeof editorRuntime.createSourceSession !== 'function') {
     if (workspaceStates.get(root)?.generation === generation) {
       setStatus(root, 'Guitar TAB Editor çalışma zamanı kullanılamıyor.', 'runtime-unavailable')
