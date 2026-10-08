@@ -157,6 +157,12 @@ async function defaultConnectSecureDelivery({
     )
   }
 
+  if (typeof result.getIdToken !== 'function') {
+    throw new Error(
+      'teacher-token-provider-unavailable',
+    )
+  }
+
   await result.composition
     .prepareAssignmentAuthority()
 
@@ -164,6 +170,7 @@ async function defaultConnectSecureDelivery({
     composition: result.composition,
     secureDeliveryClient:
       result.secureDeliveryClient,
+    getIdToken: result.getIdToken,
   })
 }
 
