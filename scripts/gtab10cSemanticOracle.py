@@ -335,14 +335,22 @@ def verify_original_bytes(path, original):
         raise ValueError("Original MusicXML bytes changed during oracle execution.")
 
 
-def key_staff_coverage(root):
-    # Original XML identity evidence only: the pinned v1 oracle has no key staff field.
+def context_staff_coverage(root, element, number_field):
+    # Original XML identity evidence only: pinned key/time contexts have no staff field.
     rows = []
     for part in root.findall('part'):
-        numbers = [key.get('number') for key in part.findall('measure/attributes/key')]
-        rows.append({"partId": part.get('id'), "rawKeyStaffNumbers": numbers,
+        numbers = [context.get('number') for context in part.findall(f'measure/attributes/{element}')]
+        rows.append({"partId": part.get('id'), number_field: numbers,
             "staffSpecific": any(number is not None for number in numbers)})
     return rows
+
+
+def key_staff_coverage(root):
+    return context_staff_coverage(root, 'key', 'rawKeyStaffNumbers')
+
+
+def time_staff_coverage(root):
+    return context_staff_coverage(root, 'time', 'rawTimeStaffNumbers')
 
 
 def main() -> None:
@@ -365,6 +373,8 @@ def main() -> None:
         if not parts or any(not row["partId"] for row in parts) or len({row["partId"] for row in parts}) != len(parts):
             raise ValueError("Missing/ambiguous part inventory.")
         return parts
+    time_coverage = {"schema": "gtab10c-time-staff-coverage-v1",
+        "source": time_staff_coverage(source_root), "derived": time_staff_coverage(derived_root)}
     key_coverage = {"schema": "gtab10c-key-staff-coverage-v1",
         "source": key_staff_coverage(source_root), "derived": key_staff_coverage(derived_root)}
     source_parts = inventory(source_root)
@@ -394,6 +404,7 @@ def main() -> None:
             "sourceSha256": hashlib.sha256(source_bytes).hexdigest(),
             "derivedSha256": hashlib.sha256(derived_bytes).hexdigest(),
             "keySignatureCoverage": key_coverage,
+            "timeSignatureCoverage": time_coverage,
             "sourceParts": source_parts,
             "derivedParts": derived_parts,
             "partituraVersion": importlib.metadata.version("partitura"),

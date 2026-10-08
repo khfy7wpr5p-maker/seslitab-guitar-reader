@@ -179,14 +179,14 @@ function contextRows(snapshot, field, partId, normalizeStaff = false, staffFilte
   return result.map((row) => JSON.stringify(row)).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
-function hasGlobalKeyCoverage(rows, partId) {
+function hasGlobalContextCoverage(rows, partId, numberField) {
   if (!Array.isArray(rows)) return false
   const identities = new Set()
   for (const row of rows) {
     if (!isRecord(row) || typeof row.partId !== 'string' || !row.partId || identities.has(row.partId)
-      || !Array.isArray(row.rawKeyStaffNumbers)
-      || !row.rawKeyStaffNumbers.every(number => number === null || typeof number === 'string')
-      || row.staffSpecific !== row.rawKeyStaffNumbers.some(number => number !== null)) return false
+      || !Array.isArray(row[numberField])
+      || !row[numberField].every(number => number === null || typeof number === 'string')
+      || row.staffSpecific !== row[numberField].some(number => number !== null)) return false
     identities.add(row.partId)
   }
   return rows.some(row => row.partId === partId && row.staffSpecific === false)
@@ -336,6 +336,13 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     if (output.length === 0) output.push({ code: 'NOTE_MISSING' })
   }
 
+  const timeCoverage = evidence.timeSignatureCoverage
+  if (timeCoverage?.schema !== 'gtab10c-time-staff-coverage-v1'
+    || !hasGlobalContextCoverage(timeCoverage.source, target.partId, 'rawTimeStaffNumbers')
+    || !hasGlobalContextCoverage(timeCoverage.derived, derivedPartId, 'rawTimeStaffNumbers')) {
+    return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED',
+      { cause: 'TIME_SIGNATURE_STAFF_CONTEXT' }, provenance, ['timeSignatures'])
+  }
   const sourceMeters = contextRows(source, 'time_signatures', target.partId)
   const derivedMeters = contextRows(derived, 'time_signatures', derivedPartId)
   if (sourceMeters === null || derivedMeters === null) {
@@ -347,8 +354,8 @@ export function qualifyGtab10cSemanticParity(input = {}) {
   // coverage can establish global context, but cannot recover scoped oracle rows.
   const keyCoverage = evidence.keySignatureCoverage
   if (keyCoverage?.schema !== 'gtab10c-key-staff-coverage-v1'
-    || !hasGlobalKeyCoverage(keyCoverage.source, target.partId)
-    || !hasGlobalKeyCoverage(keyCoverage.derived, derivedPartId)) {
+    || !hasGlobalContextCoverage(keyCoverage.source, target.partId, 'rawKeyStaffNumbers')
+    || !hasGlobalContextCoverage(keyCoverage.derived, derivedPartId, 'rawKeyStaffNumbers')) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED',
       { cause: 'KEY_SIGNATURE_STAFF_CONTEXT' }, provenance, ['keySignatures'])
   }

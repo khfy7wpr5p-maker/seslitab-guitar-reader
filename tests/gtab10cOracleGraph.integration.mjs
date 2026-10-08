@@ -96,3 +96,38 @@ test('real pinned multi-staff keys retain raw evidence and cannot qualify missin
     assert.equal(await readFile(derivedPath, 'utf8'), derivedXml)
   }
 })
+
+test('real pinned multi-staff meters retain raw evidence and cannot qualify missing staff bindings', async () => {
+  const editor = await import(pathToFileURL(path.join(process.env.GTAB_EDITOR_ROOT, 'src/index.js')).href)
+  const selected = { partId: 'P1', partIndex: 0, staff: 1, voice: 1 }
+  const note = staff => `<note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><staff>${staff}</staff></note>`
+  const xml = `<score-partwise><part-list><score-part id="P1"><part-name>Test</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>4</divisions><key><fifths>0</fifths><mode>major</mode></key><time number="1"><beats>1</beats><beat-type>4</beat-type></time><time number="2"><beats>2</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>G</sign><line>2</line></clef></attributes>${note(1)}<backup><duration>4</duration></backup>${note(2)}</measure></part></score-partwise>`
+  const session = editor.createSourceSession(xml, { targetSelection: selected })
+  const document = editor.createTabAssignmentDocument(session)
+  document.assignPosition(session.events[0].sourceEventId, { string: 1, fret: 0 })
+  const exported = editor.serializeGuitarTabMusicXml({ sourceSession: session, document })
+  assert.match(exported, /<time><beats>1<\/beats><beat-type>4<\/beat-type><\/time>/)
+  const sourcePath = fileURLToPath(new URL('artifacts/gtab10c-semantic-parity/time-staff-source.musicxml', root))
+  await writeFile(sourcePath, xml)
+  for (const [name, derivedXml] of [
+    ['selected', exported],
+    ['wrong', exported.replace('<beats>1</beats>', '<beats>2</beats>')],
+    ['leaked', exported.replace('</time>', '</time><time number="2"><beats>2</beats><beat-type>4</beat-type></time>')],
+  ]) {
+    const derivedPath = fileURLToPath(new URL(`artifacts/gtab10c-semantic-parity/time-staff-${name}.musicxml`, root))
+    const outputPath = fileURLToPath(new URL(`artifacts/gtab10c-semantic-parity/time-staff-${name}.json`, root))
+    await writeFile(derivedPath, derivedXml)
+    execFileSync(process.env.GTAB10C_PYTHON, [fileURLToPath(new URL('scripts/gtab10cSemanticOracle.py', root)), sourcePath, derivedPath, outputPath], { env: { ...process.env, PYTHONPATH: path.join(process.env.SEMANTIC_ENGINE_ROOT, 'src') } })
+    const actual = JSON.parse(await readFile(outputPath))
+    assert.deepEqual(actual.timeSignatureCoverage.source[0].rawTimeStaffNumbers, ['1', '2'])
+    assert.ok(actual.sourceSnapshot.time_signatures.every(row => !Object.hasOwn(row, 'staff')))
+    const result = qualifyGtab10cSemanticParity({ ...input, sourceBytes: xml, derivedBytes: derivedXml,
+      sourceSnapshot: actual.sourceSnapshot, derivedSnapshot: actual.derivedSnapshot, tabPositions: actual.tabPositions,
+      oracleEvidence: actual, targetSelection: selected, provenance: { ...input.provenance,
+        sourceSha256: actual.sourceSha256, derivedSha256: actual.derivedSha256, targetSelection: selected } })
+    assert.equal(result.status, 'UNSUPPORTED', name)
+    assert.equal(result.diagnostics[0].cause, 'TIME_SIGNATURE_STAFF_CONTEXT', name)
+    assert.equal(await readFile(sourcePath, 'utf8'), xml)
+    assert.equal(await readFile(derivedPath, 'utf8'), derivedXml)
+  }
+})
