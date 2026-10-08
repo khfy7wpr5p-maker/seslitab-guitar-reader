@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const GUITAR_TAB_EDITOR_REPOSITORY = 'https://github.com/khfy7wpr5p-maker/st-guitar-tab-editor.git'
-export const GUITAR_TAB_EDITOR_REVISION = '34851f3f1ec00d3804144f414090bcfab8314808'
+export const GUITAR_TAB_EDITOR_REVISION = 'e1fe771f4a1637c46dedf15a881f2bfcf260e9ae'
 export const GUITAR_TAB_EDITOR_BROWSER_CONTRACT = 'ST_GUITAR_TAB_EDITOR_BROWSER_BUNDLE'
 export const GUITAR_TAB_EDITOR_BROWSER_VERSION = '1.0.0'
 export const GUITAR_TAB_EDITOR_RUNTIME_VERSION = '1.0.0'

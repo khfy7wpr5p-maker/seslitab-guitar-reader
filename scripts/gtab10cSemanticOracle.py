@@ -12,7 +12,8 @@ import tempfile
 from pathlib import Path
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
-from xml.etree.ElementTree import tostring
+from xml.etree.ElementTree import tostring, Element, SubElement
+from copy import deepcopy
 
 import partitura
 
@@ -162,6 +163,7 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
                     key: semantic_note[key]
                     for key in ("measure_index", "pitch_midi", "onset_div", "duration_div", "voice", "tie_prev", "tie_next")
                 }
+                position["source_id"] = semantic_note["source_id"]
                 position["tie_stop_xml"] = tie_stop
                 position["tie_start_xml"] = tie_start
                 position["string"] = int(string_text) if string_text is not None else None
@@ -174,13 +176,14 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
 
 
 def create_read_view(root, side, original_bytes, directory):
-    """Add IDs only; preserve existing IDs and every original tie/tied element."""
+    """Project part/staff/voice identities only; preserve every pitched note and tie marker."""
     existing = [note.get('id') for note in root.findall('.//note') if note.get('id') is not None]
     if any(not identifier for identifier in existing) or len(set(existing)) != len(existing):
         raise ValueError("Duplicate/empty note IDs are ambiguous.")
     used = set(existing)
     mapping = []
     for part in root.findall('part'):
+        lanes = {}
         for measure_index, measure in enumerate(part.findall('measure')):
             for note_index, note in enumerate(measure.findall('note')):
                 original_id = note.get('id')
@@ -191,13 +194,103 @@ def create_read_view(root, side, original_bytes, directory):
                         raise ValueError("Generated note ID collides with an original ID.")
                     note.set('id', identifier)
                     used.add(identifier)
-                mapping.append({"partId": part.get('id'), "measureIndex": measure_index,
-                    "noteIndex": note_index, "originalId": original_id, "readViewId": identifier})
+                original_voice = int(note.findtext('voice') or '1')
+                original_staff = int(note.findtext('staff') or '1')
+                lane = (original_staff, original_voice)
+                read_voice = lanes.setdefault(lane, len(lanes) + 1)
+                voice = note.find('voice')
+                if voice is None:
+                    voice = SubElement(note, 'voice')
+                read_voice = original_voice
+                mapping.append({"originalVoice": original_voice, "originalStaff": original_staff,
+                    "readViewVoice": read_voice, "tieStop": note_tie_flags(note)[0], "tieStart": note_tie_flags(note)[1],
+                    "partId": part.get('id'), "measureIndex": measure_index,
+                    "noteIndex": note_index, "isPitched": note.find('pitch') is not None, "originalId": original_id, "readViewId": identifier})
+    part_mapping = []
+    part_list = root.find('part-list')
+    if part_list is None:
+        raise ValueError("Missing part-list coverage.")
+    original_parts = list(root.findall('part'))
+    original_declarations = {node.get('id'): node for node in part_list.findall('score-part')}
+    for node in list(part_list):
+        part_list.remove(node)
+    for part_index, part in enumerate(original_parts):
+        root.remove(part)
+        lanes = sorted({(int(note.findtext('staff') or '1'), int(note.findtext('voice') or '1')) for note in part.findall('.//note')})
+        if not lanes or part.get('id') not in original_declarations:
+            raise ValueError("Missing/ambiguous part lane inventory.")
+        for lane_index, lane in enumerate(lanes):
+            read_part_id = f'gtab10c-{side}-part-{part_index}-lane-{lane_index}'
+            projected = deepcopy(part)
+            projected.set('id', read_part_id)
+            declaration = deepcopy(original_declarations[part.get('id')])
+            declaration.set('id', read_part_id)
+            part_list.append(declaration)
+            for measure in projected.findall('measure'):
+                for note in list(measure.findall('note')):
+                    note_lane = (int(note.findtext('staff') or '1'), int(note.findtext('voice') or '1'))
+                    if note_lane != lane:
+                        offset = list(measure).index(note)
+                        measure.remove(note)
+                        if note.find('chord') is None:
+                            duration = note.find('duration')
+                            if duration is None:
+                                raise ValueError("Unsupported lane projection without duration.")
+                            forward = Element('forward')
+                            forward.append(deepcopy(duration))
+                            measure.insert(offset, forward)
+                    else:
+                        row = next(row for row in mapping if row['readViewId'] == note.get('id'))
+                        row['readViewPartId'] = read_part_id
+            root.append(projected)
+            part_mapping.append({"originalPartId": part.get('id'), "readViewPartId": read_part_id,
+                "originalStaff": lane[0], "originalVoice": lane[1]})
     raw = tostring(root, encoding='utf-8', xml_declaration=True)
     view = Path(directory) / f'{side}.musicxml'
     view.write_bytes(raw)
-    return view, {"policy": "gtab10c-note-id-read-view-v1", "originalSha256": hashlib.sha256(original_bytes).hexdigest(),
-        "readViewSha256": hashlib.sha256(raw).hexdigest(), "mapping": mapping}
+    return view, {"policy": "gtab10c-note-id-part-lane-read-view-v3", "originalSha256": hashlib.sha256(original_bytes).hexdigest(),
+        "readViewSha256": hashlib.sha256(raw).hexdigest(), "mapping": mapping, "partMapping": part_mapping}
+
+
+def restore_original_identity(snapshot, evidence, positions=None):
+    mapping = {row['readViewId']: row for row in evidence['mapping']}
+    notes = snapshot.get('notes')
+    if not isinstance(notes, list):
+        raise ValueError("Missing oracle note coverage.")
+    seen = set()
+    for note in notes:
+        if note.get('source_id') in seen:
+            raise ValueError("Duplicate projected note identity.")
+        seen.add(note.get('source_id'))
+        row = mapping.get(note.get('source_id'))
+        if row is None or note.get('part_id') != row['readViewPartId'] or note.get('staff') != row['originalStaff'] or note.get('voice') != row['readViewVoice']:
+            raise ValueError("Read-view identity cannot be restored uniquely.")
+        if bool(note.get('tie_prev')) != row['tieStop'] or bool(note.get('tie_next')) != row['tieStart']:
+            raise ValueError("Pinned oracle tie graph does not cover original XML tie markers.")
+        note['voice'] = row['originalVoice']
+        note['part_id'] = row['partId']
+    if seen != {row['readViewId'] for row in evidence['mapping'] if row.get('isPitched')} :
+        raise ValueError("Incomplete pitched-event oracle coverage.")
+    part_mapping = {row['readViewPartId']: row['originalPartId'] for row in evidence['partMapping']}
+    for field in ['time_signatures', 'key_signatures', 'clefs']:
+        rows = snapshot.get(field)
+        if not isinstance(rows, list):
+            raise ValueError("Missing context coverage in projected snapshot.")
+        restored = []
+        for row in rows:
+            if row.get('part_id') not in part_mapping:
+                raise ValueError("Unbound projected context identity.")
+            row['part_id'] = part_mapping[row['part_id']]
+            if row not in restored:
+                restored.append(row)
+        snapshot[field] = restored
+    snapshot['part_count'] = len(set(part_mapping.values()))
+    if positions is not None:
+        for position in positions:
+            row = mapping.get(position.get('source_id'))
+            if row is None or position.get('voice') != row['readViewVoice']:
+                raise ValueError("TAB identity cannot be restored uniquely.")
+            position['voice'] = row['originalVoice']
 
 
 def verify_original_bytes(path, original):
@@ -222,20 +315,28 @@ def main() -> None:
         return parts
     source_parts = inventory(source_root)
     derived_parts = inventory(derived_root)
-    # Temporary read views add only deterministic IDs. Export/source bytes are
-    # never rewritten. This preserves Partitura's actual tie links in v1 output
-    # when the editor's valid export lacks note IDs.
+    # Temporary read views add IDs and separate identity lanes into parts.
+    # Each pitched note/tie marker appears exactly once. Original source/export
+    # bytes are immutable; snapshots are explicitly labeled read-view output.
     with tempfile.TemporaryDirectory(prefix="gtab10c-oracle-") as directory:
         source_view, source_normalization = create_read_view(source_root, 'source', source_bytes, directory)
         derived_view, derived_normalization = create_read_view(derived_root, 'derived', derived_bytes, directory)
         views = [source_view, derived_view]
         source_snapshot = snapshot_to_dict(load_musicxml_snapshot(views[0]))
         derived_snapshot = snapshot_to_dict(load_musicxml_snapshot(views[1]))
+        positions = tab_positions(views[1], derived_snapshot)
+        read_view_source_snapshot = deepcopy(source_snapshot)
+        read_view_derived_snapshot = deepcopy(derived_snapshot)
+        # Only reversible identity projection: never create or alter a tie edge.
+        restore_original_identity(source_snapshot, source_normalization)
+        restore_original_identity(derived_snapshot, derived_normalization, positions)
         payload = {
             "schema": "gtab-10c-semantic-oracle-output-v1",
+            "readViewSourceSnapshot": read_view_source_snapshot,
+            "readViewDerivedSnapshot": read_view_derived_snapshot,
             "sourceSnapshot": source_snapshot,
             "derivedSnapshot": derived_snapshot,
-            "tabPositions": tab_positions(views[1], derived_snapshot),
+            "tabPositions": positions,
             "sourceSha256": hashlib.sha256(source_bytes).hexdigest(),
             "derivedSha256": hashlib.sha256(derived_bytes).hexdigest(),
             "sourceParts": source_parts,
