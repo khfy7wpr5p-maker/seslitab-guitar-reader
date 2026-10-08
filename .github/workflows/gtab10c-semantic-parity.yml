@@ -1,0 +1,76 @@
+name: GTAB-10C Semantic Parity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gtab10c-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semantic-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GTAB_EDITOR_SHA: 34851f3f1ec00d3804144f414090bcfab8314808
+      SEMANTIC_ENGINE_SHA: ef305f45ff90d940ac6c51a0c46c4fac006d7c5c
+
+    steps:
+      - name: Checkout SesliTab qualification harness at exact workflow SHA
+        uses: actions/checkout@v4
+        with:
+          path: teacher
+
+      - name: Checkout pinned ST Guitar TAB Editor source
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-guitar-tab-editor
+          ref: ${{ env.GTAB_EDITOR_SHA }}
+          path: editor
+
+      - name: Checkout pinned ST Score Semantic Engine oracle
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-score-semantic-engine
+          ref: ${{ env.SEMANTIC_ENGINE_SHA }}
+          path: semantic-engine
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned Semantic Engine and Partitura dependencies
+        run: python -m pip install --disable-pip-version-check ./semantic-engine
+
+      - name: Run GTAB-10C bundle and comparator tests
+        working-directory: teacher
+        run: node --test --test-concurrency=1 --test-reporter=spec tests/gtab10cSemanticParity.test.js
+
+      - name: Qualify exact-target exports with pinned semantic snapshots
+        working-directory: teacher
+        env:
+          GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
+          SEMANTIC_ENGINE_ROOT: ${{ github.workspace }}/semantic-engine
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/verifyGtab10cSemanticParity.js
+
+      - name: Upload GTAB-10C pre/post snapshots, exports, and parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtab10c-semantic-parity-${{ github.sha }}
+          path: teacher/artifacts/gtab10c-semantic-parity/
+          if-no-files-found: warn

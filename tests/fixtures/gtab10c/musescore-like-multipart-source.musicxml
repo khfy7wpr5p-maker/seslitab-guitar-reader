@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Flute</part-name></score-part><score-part id="P2"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note id="m1"><pitch><step>C</step><octave>5</octave></pitch><duration>16</duration><voice>1</voice><type>whole</type><staff>1</staff></note></measure>
+    <measure number="2"><attributes><time><beats>3</beats><beat-type>4</beat-type></time></attributes><note id="m2"><pitch><step>D</step><octave>5</octave></pitch><duration>12</duration><voice>1</voice><type>half</type><staff>1</staff></note></measure>
+    <measure number="3"><note id="m3"><pitch><step>E</step><octave>5</octave></pitch><duration>12</duration><voice>1</voice><type>half</type><staff>1</staff></note></measure>
+  </part>
+  <part id="P2">
+    <measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time><key><fifths>0</fifths><mode>major</mode></key><clef><sign>G</sign><line>2</line></clef></attributes><note id="g1"><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>16</duration><voice>1</voice><type>whole</type><staff>1</staff><tie type="start"/><notations><tied type="start"/></notations></note></measure>
+    <measure number="2"><attributes><time><beats>3</beats><beat-type>4</beat-type></time></attributes><note id="g2"><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff><tie type="stop"/><notations><tied type="stop"/></notations></note><note id="g3"><pitch><step>F</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note><forward><duration>4</duration></forward></measure>
+    <measure number="3"><note id="g4"><pitch><step>A</step><octave>4</octave></pitch><duration>12</duration><voice>1</voice><type>half</type><staff>1</staff></note></measure>
+  </part>
+</score-partwise>

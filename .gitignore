@@ -31,3 +31,4 @@ public/st-guitar-tab-editor-runtime/
 *.sln
 *.sw?
 /storage/jobs/*
+/artifacts/gtab10c-semantic-parity/
