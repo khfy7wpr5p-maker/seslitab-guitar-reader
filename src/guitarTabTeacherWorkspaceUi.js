@@ -708,12 +708,13 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
       ticket: nextRenderTicket(), pageMode: 'continuous', autoResize: true, drawTitle: true, drawComposer: true,
     })
   } catch {
-    if (workspaceStates.get(root)?.generation === generation) {
-      removeScoreRuntimeFrame(root)
-      setStatus(root, `${payload.name} yüklendi. Nota görünümü kullanılamadı; TAB çalışma alanı kullanılabilir.`, 'renderer-unavailable')
-    }
     const currentState = workspaceStates.get(root)
-    return Object.freeze({ ok: true, sourceSession: currentState?.sourceSession ?? null, rendererAvailable: false })
+    if (currentState?.generation !== generation) {
+      return Object.freeze({ ok: false, reason: 'STALE_SOURCE' })
+    }
+    removeScoreRuntimeFrame(root)
+    setStatus(root, `${payload.name} yüklendi. Nota görünümü kullanılamadı; TAB çalışma alanı kullanılabilir.`, 'renderer-unavailable')
+    return Object.freeze({ ok: true, sourceSession: currentState.sourceSession ?? null, rendererAvailable: false })
   }
 
   if (workspaceStates.get(root)?.generation !== generation) {

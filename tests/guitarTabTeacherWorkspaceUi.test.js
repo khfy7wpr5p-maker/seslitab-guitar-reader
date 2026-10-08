@@ -765,3 +765,34 @@ test('GTAB-10B target changes cancel an in-flight export before download', async
   assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'target-required')
 })
+
+test('GTAB-10B stale renderer rejection cannot return a newer source session', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  let releaseFirstRender
+  let signalFirstRender
+  const firstRenderStarted = new Promise((resolve) => { signalFirstRender = resolve })
+  const firstRenderGate = new Promise((resolve) => { releaseFirstRender = resolve })
+  adapters.loadEditorRuntime = async () => ({ createSourceSession(_xml, { targetSelection }) {
+    return sourceSession(`${targetSelection.partId}-${_xml.includes('first') ? 'first' : 'second'}`)
+  } })
+  adapters.loadScoreRuntime = async (_root) => ({ id: 'renderer' })
+  adapters.renderScore = async (_runtime, xml) => {
+    if (xml.includes('first')) {
+      signalFirstRender()
+      await firstRenderGate
+      throw new Error('stale renderer failure')
+    }
+    return { renderEpoch: 'second' }
+  }
+  const first = loadGuitarTabTeacherSource(root, { name: 'first.musicxml', text: async () => '<score-partwise>first</score-partwise>' }, adapters)
+  await firstRenderStarted
+  const second = await loadGuitarTabTeacherSource(root, { name: 'second.musicxml', text: async () => '<score-partwise>second</score-partwise>' }, adapters)
+  assert.equal(second.ok, true)
+  const currentSession = getGuitarTabTeacherWorkspaceState(root).sourceSession
+  releaseFirstRender()
+  assert.deepEqual(await first, { ok: false, reason: 'STALE_SOURCE' })
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession, currentSession)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'second.musicxml')
+})
