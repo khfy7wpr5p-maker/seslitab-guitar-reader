@@ -6,7 +6,7 @@ export const GTAB10C_PINNED_SEMANTIC_ENGINE_COMMIT = 'ef305f45ff90d940ac6c51a0c4
 export const GTAB10C_PINNED_SNAPSHOT_SCHEMA = 'st-semantic-snapshot-v1'
 export const GTAB10C_PINNED_PARTITURA_VERSION = '1.9.0'
 // This is the exact upstream revision used to build the editor runtime pinned by SesliTab.
-export const GTAB10C_PINNED_EDITOR_COMMIT = 'e1fe771f4a1637c46dedf15a881f2bfcf260e9ae'
+export const GTAB10C_PINNED_EDITOR_COMMIT = '28ac378babde8d35e9213648cc6e16429e9a7fd7'
 
 const STANDARD_TUNING_MIDI = Object.freeze({ 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 })
 const MAX_FRET = 20

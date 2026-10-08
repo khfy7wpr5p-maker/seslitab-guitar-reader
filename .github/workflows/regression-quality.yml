@@ -97,7 +97,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: khfy7wpr5p-maker/st-guitar-tab-editor
-          ref: e1fe771f4a1637c46dedf15a881f2bfcf260e9ae
+          ref: 28ac378babde8d35e9213648cc6e16429e9a7fd7
           path: .gtab10c-dependencies/editor
           persist-credentials: false
 
