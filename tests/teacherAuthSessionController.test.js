@@ -202,6 +202,7 @@ test('SES-146 valid Email/Password sign-in reaches READY through AUTHENTICATED a
             Object.freeze({
               marker: 'composition',
             }),
+          getIdToken: user().getIdToken,
         })
       },
       onReady(connection) {
@@ -209,6 +210,10 @@ test('SES-146 valid Email/Password sign-in reaches READY through AUTHENTICATED a
         assert.equal(
           connection.composition.marker,
           'composition',
+        )
+        assert.equal(
+          typeof connection.getIdToken,
+          'function',
         )
       },
     })
@@ -266,6 +271,7 @@ test('SES-146 existing Firebase session restores to READY without another sign-i
             Object.freeze({
               marker: 'restored',
             }),
+          getIdToken: user().getIdToken,
         })
       },
     })
@@ -413,6 +419,7 @@ test('SES-146 signOut revokes authority and returns to SIGNED_OUT', async () => 
             Object.freeze({
               marker: 'ready',
             }),
+          getIdToken: user().getIdToken,
         })
       },
       onAuthorityRevoked() {
