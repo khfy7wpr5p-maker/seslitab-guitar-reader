@@ -559,6 +559,7 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
       draftId: state.sourceSession.sessionId,
       now: () => new Date().toISOString(),
     })
+    if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
     handoff = await normalized.prepareHandoff({
       scoreUpload,
       guitarTabMusicXml: musicXml,
