@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
-from xml.etree.ElementTree import tostring, Element, SubElement
+from xml.etree.ElementTree import tostring, Element
 from copy import deepcopy
 
 import partitura
@@ -24,8 +24,42 @@ MAX_XML_BYTES = 20 * 1024 * 1024
 STEP_TO_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ARTIFACT_ROOT = PROJECT_ROOT / "artifacts/gtab10c-semantic-parity"
+
+
+def qualified_path(path: Path, *, output: bool = False) -> Path:
+    """Resolve symlinks before authorizing a CI fixture/artifact path."""
+    resolved = path.resolve()
+    roots = [ARTIFACT_ROOT.resolve()]
+    if not output:
+        roots.append((PROJECT_ROOT / "tests/fixtures/gtab10c").resolve())
+    # Private CI test/read-view directories only, never arbitrary filesystem paths.
+    temporary = Path(tempfile.gettempdir()).resolve()
+    parent = resolved.parent
+    if parent.parent == temporary and parent.name.startswith("gtab10c-"):
+        roots.append(parent)
+    if not any(resolved.is_relative_to(root) and resolved != root for root in roots):
+        raise ValueError("Path is outside authorized GTAB-10C fixture/artifact roots.")
+    if output:
+        if resolved.suffix != ".json" or (resolved.exists() and not resolved.is_file()):
+            raise ValueError("Oracle output must be a regular JSON artifact.")
+    elif not resolved.is_file() or resolved.stat().st_size > MAX_XML_BYTES:
+        raise ValueError("Oracle input must be a bounded regular fixture file.")
+    return resolved
+
+
+def read_fixture(path: Path) -> bytes:
+    bounded = qualified_path(path)
+    with bounded.open("rb") as stream:
+        raw = stream.read(MAX_XML_BYTES + 1)
+    if not raw or len(raw) > MAX_XML_BYTES:
+        raise ValueError("MusicXML fixture is empty or exceeds the qualification size bound.")
+    return raw
+
+
 def safe_root(path: Path, raw: bytes | None = None) -> ET.Element:
-    raw = path.read_bytes() if raw is None else raw
+    raw = read_fixture(path) if raw is None else raw
     if len(raw) == 0 or len(raw) > MAX_XML_BYTES:
         raise ValueError("MusicXML fixture is empty or exceeds the qualification size bound.")
     upper = raw.upper()
@@ -183,7 +217,6 @@ def create_read_view(root, side, original_bytes, directory):
     used = set(existing)
     mapping = []
     for part in root.findall('part'):
-        lanes = {}
         for measure_index, measure in enumerate(part.findall('measure')):
             for note_index, note in enumerate(measure.findall('note')):
                 original_id = note.get('id')
@@ -196,11 +229,10 @@ def create_read_view(root, side, original_bytes, directory):
                     used.add(identifier)
                 original_voice = int(note.findtext('voice') or '1')
                 original_staff = int(note.findtext('staff') or '1')
-                lane = (original_staff, original_voice)
-                read_voice = lanes.setdefault(lane, len(lanes) + 1)
-                voice = note.find('voice')
-                if voice is None:
-                    voice = SubElement(note, 'voice')
+                if note.find('pitch') is not None and (
+                    not note.findtext('voice') or not note.findtext('staff')
+                ):
+                    raise ValueError("Pitched notes require explicit voice/staff identity coverage.")
                 read_voice = original_voice
                 mapping.append({"originalVoice": original_voice, "originalStaff": original_staff,
                     "readViewVoice": read_voice, "tieStop": note_tie_flags(note)[0], "tieStart": note_tie_flags(note)[1],
@@ -294,7 +326,7 @@ def restore_original_identity(snapshot, evidence, positions=None):
 
 
 def verify_original_bytes(path, original):
-    if path.read_bytes() != original:
+    if read_fixture(path) != original:
         raise ValueError("Original MusicXML bytes changed during oracle execution.")
 
 
@@ -304,8 +336,13 @@ def main() -> None:
     parser.add_argument("derived", type=Path)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
-    source_bytes = args.source.read_bytes()
-    derived_bytes = args.derived.read_bytes()
+    args.source = qualified_path(args.source)
+    args.derived = qualified_path(args.derived)
+    args.output = qualified_path(args.output, output=True)
+    if args.output in (args.source, args.derived):
+        raise ValueError("Oracle output cannot overwrite an input fixture.")
+    source_bytes = read_fixture(args.source)
+    derived_bytes = read_fixture(args.derived)
     source_root = safe_root(args.source, source_bytes)
     derived_root = safe_root(args.derived, derived_bytes)
     def inventory(root):

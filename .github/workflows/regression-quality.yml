@@ -80,7 +80,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --yes --package=c8@12.0.0 -- c8 --version
+          npm install --ignore-scripts --no-save --package-lock=false c8@12.0.0
+          ./node_modules/.bin/c8 --version
 
       - name: Generate LCOV coverage with c8
         shell: bash
@@ -90,7 +91,7 @@ jobs:
           ./node_modules/.bin/firebase emulators:exec \
             --project demo-seslitab-td06 \
             --only auth,firestore \
-            "npm exec --yes --package=c8@12.0.0 -- c8 --reporter=lcov --reports-dir=coverage node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js"
+            "./node_modules/.bin/c8 --reporter=lcov --reports-dir=coverage node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js"
           test -s coverage/lcov.info
 
       - name: Checkout exact Editor qualification dependency
@@ -119,7 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           mv .gtab10c-dependencies "$RUNNER_TEMP/gtab10c-dependencies"
-          python -m pip install --disable-pip-version-check "$RUNNER_TEMP/gtab10c-dependencies/semantic-engine" defusedxml==0.7.1 coverage==7.10.7
+          python -m pip install --only-binary :all: --disable-pip-version-check "$RUNNER_TEMP/gtab10c-dependencies/semantic-engine" defusedxml==0.7.1 coverage==7.10.7
 
       - name: Cover actual pinned export and Python oracle execution
         shell: bash
@@ -132,7 +133,7 @@ jobs:
           export GTAB_EDITOR_ROOT="$RUNNER_TEMP/gtab10c-dependencies/editor"
           export SEMANTIC_ENGINE_ROOT="$RUNNER_TEMP/gtab10c-dependencies/semantic-engine"
           export GTAB10C_PYTHON="$pythonLocation/bin/python"
-          npm exec --yes --package=c8@12.0.0 -- c8 --reporter=lcov --reports-dir=coverage/gtab10c-integration node scripts/verifyGtab10cSemanticParity.js
+          ./node_modules/.bin/c8 --reporter=lcov --reports-dir=coverage/gtab10c-integration node scripts/verifyGtab10cSemanticParity.js
           node --test tests/gtab10cOracleGraph.integration.mjs
           python -m coverage run --parallel-mode -m unittest discover -s tests/python -v
           python -m coverage combine

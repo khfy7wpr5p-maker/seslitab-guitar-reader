@@ -14,7 +14,7 @@ spec.loader.exec_module(oracle)
 
 class OracleBoundaryTest(unittest.TestCase):
     def test_utf16_entity_is_rejected_before_any_oracle_load(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as root:
             path = Path(root) / 'attack.xml'
             path.write_bytes('<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE score-partwise [<!ENTITY injected "MARKER">]><score-partwise>&injected;</score-partwise>'.encode('utf-16'))
             with self.assertRaises(ValueError):
@@ -29,7 +29,7 @@ class OracleBoundaryTest(unittest.TestCase):
     def test_read_view_preserves_ids_and_tie_elements_and_binds_exact_bytes(self):
         raw = b'<score-partwise><part-list><score-part id="P1"><part-name>test</part-name></score-part></part-list><part id="P1"><measure><note id="original"><tie type="start"/><notations><tied type="start"/></notations></note><note><tie type="stop"/></note></measure></part></score-partwise>'
         root = oracle.safe_root(Path('unused'), raw)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
             view, evidence = oracle.create_read_view(root, 'source', raw, directory)
             actual = view.read_bytes()
             parsed = oracle.safe_root(view)
@@ -44,11 +44,11 @@ class OracleBoundaryTest(unittest.TestCase):
     def test_duplicate_empty_and_generated_id_collisions_are_rejected(self):
         for notes in ['<note id="same"/><note id="same"/>', '<note id=""/>', '<note/><note id="gtab10c-source-0"/>']:
             root = oracle.safe_root(Path('unused'), f'<score-partwise><part-list><score-part id="P1"><part-name>test</part-name></score-part></part-list><part id="P1"><measure>{notes}</measure></part></score-partwise>'.encode())
-            with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
+            with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory, self.assertRaises(ValueError):
                 oracle.create_read_view(root, 'source', b'original', directory)
 
     def test_original_mutation_is_detected_before_output(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
             path = Path(directory) / 'source.xml'
             path.write_bytes(b'original')
             oracle.verify_original_bytes(path, b'original')
@@ -77,7 +77,7 @@ class OracleBoundaryTest(unittest.TestCase):
         # The real pinned export is produced by the integration command, not a mock fixture.
         self.assertTrue(derived.exists(), 'Run pinned Editor integration before Python integration tests.')
         original = (source.read_bytes(), derived.read_bytes())
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
             output = Path(directory) / 'snapshot.json'
             subprocess.run([sys.executable, str(project / 'scripts/gtab10cSemanticOracle.py'), str(source), str(derived), str(output)], check=True)
             payload = json.loads(output.read_text())
@@ -102,7 +102,7 @@ class OracleBoundaryTest(unittest.TestCase):
             lambda root: root.findall('.//note')[0].append(oracle.Element('tie', {'type': 'start'})),
         ]
         for mutate in mutations:
-            with self.subTest(mutate=mutate), tempfile.TemporaryDirectory() as directory:
+            with self.subTest(mutate=mutate), tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
                 derived = Path(directory) / 'derived.xml'
                 output = Path(directory) / 'out.json'
                 root = oracle.safe_root(Path('unused'), original)
@@ -120,6 +120,30 @@ class OracleBoundaryTest(unittest.TestCase):
             {'notes': [{'source_id': 'n', 'part_id': 'view', 'staff': 1, 'voice': 3}], 'time_signatures': None}]:
             with self.assertRaises(ValueError):
                 oracle.restore_original_identity(snapshot, evidence)
+
+class OraclePathBoundaryTest(unittest.TestCase):
+    def test_escape_absolute_symlink_and_output_targets_are_rejected(self):
+        for path in [Path('/etc/passwd'), oracle.ARTIFACT_ROOT / '../../../etc/passwd']:
+            with self.assertRaises(ValueError):
+                oracle.qualified_path(path)
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
+            link = Path(directory) / 'escape.xml'
+            link.symlink_to('/etc/passwd')
+            with self.assertRaises(ValueError):
+                oracle.safe_root(link)
+            with self.assertRaises(ValueError):
+                oracle.qualified_path(Path(directory) / 'source.xml', output=True)
+            self.assertEqual(oracle.qualified_path(Path(directory) / 'result.json', output=True),
+                Path(directory) / 'result.json')
+
+    def test_missing_pitched_voice_or_staff_is_rejected_before_projection(self):
+        for missing in ['voice', 'staff']:
+            raw = b'<score-partwise><part-list><score-part id="P1"><part-name>test</part-name></score-part></part-list><part id="P1"><measure><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note></measure></part></score-partwise>'
+            root = oracle.safe_root(Path('unused'), raw)
+            note = root.find('.//note')
+            note.remove(note.find(missing))
+            with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory, self.assertRaises(ValueError):
+                oracle.create_read_view(root, 'source', raw, directory)
 
 if __name__ == '__main__':
     unittest.main()
