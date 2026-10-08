@@ -243,7 +243,7 @@ jobs:
         run: |
           sudo find /etc/apt -type f \
             \( -name '*.list' -o -name '*.sources' \) \
-            -exec sed -i 's#[[:alpha:]]+://azure\\.archive\\.ubuntu\\.com#https://archive.ubuntu.com#g' {} +
+            -exec sed -i 's#[[:alpha:]]+://azure\.archive\.ubuntu\.com#https://archive.ubuntu.com#g' {} +
 
       - name: Install qualification browser
         working-directory: student-app
