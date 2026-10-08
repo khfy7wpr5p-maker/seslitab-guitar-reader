@@ -82,7 +82,7 @@ function input(overrides = {}) {
     sourceBytes,
     derivedBytes,
     expectedSesliTabCommit: '55512de2d9db5bbf97949b32a3be3438d9c51d5f',
-    oracleEvidence: { schema: 'gtab-10c-semantic-oracle-output-v1', sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
+    oracleEvidence: { schema: 'gtab-10c-semantic-oracle-output-v1', keySignatureCoverage: { schema: 'gtab10c-key-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawKeyStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }, sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
     sourceSnapshot: snapshot(sourceNotes),
     derivedSnapshot: derivedSnapshot(postNotes),
     targetSelection,
@@ -324,4 +324,39 @@ test('GTAB-10C renamed tie endpoints preserve topology; corrupted edges fail clo
     mutate(value)
     assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
   }
+})
+
+test('GTAB-10C cannot qualify staff-scoped keys when pinned snapshot loses their staff identity', () => {
+  for (const exportedKeys of [[0, 3], [0], [3]]) {
+    const value = input()
+    value.oracleEvidence.keySignatureCoverage = { schema: 'gtab10c-key-staff-coverage-v1',
+      source: [{ partId: 'P-GUITAR', staffSpecific: true, rawKeyStaffNumbers: ['1', '2'] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }
+    value.sourceSnapshot.key_signatures.push({ part_id: 'P-GUITAR', onset_div: 0, fifths: 3, mode: 'major' })
+    value.derivedSnapshot.key_signatures = exportedKeys.map(fifths => ({ part_id: 'P-DERIVED', onset_div: 0, fifths, mode: 'major' }))
+    const report = qualifyGtab10cSemanticParity(value)
+    assert.equal(report.status, 'UNSUPPORTED')
+    assert.equal(report.diagnostics[0].cause, 'KEY_SIGNATURE_STAFF_CONTEXT')
+  }
+})
+
+test('GTAB-10C rejects absent or inconsistent raw key scope binding', () => {
+  for (const mutate of [
+    value => { delete value.oracleEvidence.keySignatureCoverage },
+    value => { delete value.oracleEvidence.keySignatureCoverage.source[0].rawKeyStaffNumbers },
+    value => { value.oracleEvidence.keySignatureCoverage.source[0].rawKeyStaffNumbers = ['2'] },
+    value => { value.oracleEvidence.keySignatureCoverage.derived[0].partId = 'foreign' },
+    value => { value.oracleEvidence.keySignatureCoverage.source.push({ ...value.oracleEvidence.keySignatureCoverage.source[0] }) },
+  ]) {
+    const value = input()
+    mutate(value)
+    const report = qualifyGtab10cSemanticParity(value)
+    assert.equal(report.status, 'UNSUPPORTED')
+    assert.equal(report.diagnostics[0].cause, 'KEY_SIGNATURE_STAFF_CONTEXT')
+  }
+})
+
+test('GTAB-10C scoped keys in an unselected part do not invalidate selected global key coverage', () => {
+  const value = input()
+  value.oracleEvidence.keySignatureCoverage.source.push({ partId: 'P-FLUTE', rawKeyStaffNumbers: ['2'], staffSpecific: true })
+  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
 })

@@ -179,6 +179,19 @@ function contextRows(snapshot, field, partId, normalizeStaff = false, staffFilte
   return result.map((row) => JSON.stringify(row)).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
+function hasGlobalKeyCoverage(rows, partId) {
+  if (!Array.isArray(rows)) return false
+  const identities = new Set()
+  for (const row of rows) {
+    if (!isRecord(row) || typeof row.partId !== 'string' || !row.partId || identities.has(row.partId)
+      || !Array.isArray(row.rawKeyStaffNumbers)
+      || !row.rawKeyStaffNumbers.every(number => number === null || typeof number === 'string')
+      || row.staffSpecific !== row.rawKeyStaffNumbers.some(number => number !== null)) return false
+    identities.add(row.partId)
+  }
+  return rows.some(row => row.partId === partId && row.staffSpecific === false)
+}
+
 function sameRows(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
@@ -330,6 +343,15 @@ export function qualifyGtab10cSemanticParity(input = {}) {
   }
   if (!sameRows(sourceMeters, derivedMeters)) output.push({ code: 'METER_MISMATCH' })
 
+  // st-semantic-snapshot-v1 drops MusicXML key/@number. Raw hash-bound XML
+  // coverage can establish global context, but cannot recover scoped oracle rows.
+  const keyCoverage = evidence.keySignatureCoverage
+  if (keyCoverage?.schema !== 'gtab10c-key-staff-coverage-v1'
+    || !hasGlobalKeyCoverage(keyCoverage.source, target.partId)
+    || !hasGlobalKeyCoverage(keyCoverage.derived, derivedPartId)) {
+    return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED',
+      { cause: 'KEY_SIGNATURE_STAFF_CONTEXT' }, provenance, ['keySignatures'])
+  }
   if (!unverifiedContexts.includes('keySignatures')) {
     const sourceKeys = contextRows(source, 'key_signatures', target.partId)
     const derivedKeys = contextRows(derived, 'key_signatures', derivedPartId)

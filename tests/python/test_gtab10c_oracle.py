@@ -196,5 +196,16 @@ class OraclePathBoundaryTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 oracle.read_fixture(path)
 
+
+    def test_raw_key_staff_inventory_preserves_scope_without_inventing_oracle_staff(self):
+        raw = b'<score-partwise><part id="Scoped"><measure><attributes><key number="1"><fifths>3</fifths></key><key number="2"><fifths>0</fifths></key></attributes></measure></part><part id="Global"><measure><attributes><key><fifths>0</fifths></key></attributes></measure></part><part id="Absent"><measure/></part></score-partwise>'
+        root = oracle.safe_root(Path('unused'), raw)
+        before = oracle.tostring(root)
+        self.assertEqual(oracle.key_staff_coverage(root), [
+            {'partId': 'Scoped', 'rawKeyStaffNumbers': ['1', '2'], 'staffSpecific': True},
+            {'partId': 'Global', 'rawKeyStaffNumbers': [None], 'staffSpecific': False},
+            {'partId': 'Absent', 'rawKeyStaffNumbers': [], 'staffSpecific': False}])
+        self.assertEqual(oracle.tostring(root), before)
+
 if __name__ == '__main__':
     unittest.main()

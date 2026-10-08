@@ -335,6 +335,16 @@ def verify_original_bytes(path, original):
         raise ValueError("Original MusicXML bytes changed during oracle execution.")
 
 
+def key_staff_coverage(root):
+    # Original XML identity evidence only: the pinned v1 oracle has no key staff field.
+    rows = []
+    for part in root.findall('part'):
+        numbers = [key.get('number') for key in part.findall('measure/attributes/key')]
+        rows.append({"partId": part.get('id'), "rawKeyStaffNumbers": numbers,
+            "staffSpecific": any(number is not None for number in numbers)})
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
@@ -355,6 +365,8 @@ def main() -> None:
         if not parts or any(not row["partId"] for row in parts) or len({row["partId"] for row in parts}) != len(parts):
             raise ValueError("Missing/ambiguous part inventory.")
         return parts
+    key_coverage = {"schema": "gtab10c-key-staff-coverage-v1",
+        "source": key_staff_coverage(source_root), "derived": key_staff_coverage(derived_root)}
     source_parts = inventory(source_root)
     derived_parts = inventory(derived_root)
     # Temporary read views add IDs and separate identity lanes into parts.
@@ -381,6 +393,7 @@ def main() -> None:
             "tabPositions": positions,
             "sourceSha256": hashlib.sha256(source_bytes).hexdigest(),
             "derivedSha256": hashlib.sha256(derived_bytes).hexdigest(),
+            "keySignatureCoverage": key_coverage,
             "sourceParts": source_parts,
             "derivedParts": derived_parts,
             "partituraVersion": importlib.metadata.version("partitura"),

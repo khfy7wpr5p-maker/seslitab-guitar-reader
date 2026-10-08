@@ -1,5 +1,8 @@
+import { execFileSync } from 'node:child_process'
+import path from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import test from 'node:test'
 import { qualifyGtab10cSemanticParity } from '../src/qualification/gtab10cSemanticParity.js'
 
@@ -55,5 +58,41 @@ test('actual pinned oracle graph retains original identities and rejects corrupt
     const start = value.derivedSnapshot.notes.find(n => n.staff === 1 && n.tie_next)
     corrupt(value, start)
     assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  }
+})
+
+
+test('real pinned multi-staff keys retain raw evidence and cannot qualify missing staff bindings', async () => {
+  const editor = await import(pathToFileURL(path.join(process.env.GTAB_EDITOR_ROOT, 'src/index.js')).href)
+  const selected = { partId: 'P1', partIndex: 0, staff: 2, voice: 1 }
+  const note = staff => `<note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><staff>${staff}</staff></note>`
+  const xml = `<score-partwise><part-list><score-part id="P1"><part-name>Test</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>4</divisions><key number="1"><fifths>3</fifths><mode>major</mode></key><key number="2"><fifths>0</fifths><mode>major</mode></key><time><beats>1</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>G</sign><line>2</line></clef></attributes>${note(1)}<backup><duration>4</duration></backup>${note(2)}</measure></part></score-partwise>`
+  const session = editor.createSourceSession(xml, { targetSelection: selected })
+  const document = editor.createTabAssignmentDocument(session)
+  document.assignPosition(session.events[0].sourceEventId, { string: 1, fret: 0 })
+  const exported = editor.serializeGuitarTabMusicXml({ sourceSession: session, document })
+  assert.match(exported, /<key number="1"><fifths>0<\/fifths><mode>major<\/mode><\/key>/)
+  const sourcePath = fileURLToPath(new URL('artifacts/gtab10c-semantic-parity/key-staff-source.musicxml', root))
+  await writeFile(sourcePath, xml)
+  for (const [name, derivedXml] of [
+    ['selected', exported],
+    ['wrong', exported.replace('<fifths>0</fifths>', '<fifths>3</fifths>')],
+    ['leaked', exported.replace('</key>', '</key><key number="2"><fifths>3</fifths><mode>major</mode></key>')],
+  ]) {
+    const derivedPath = fileURLToPath(new URL(`artifacts/gtab10c-semantic-parity/key-staff-${name}.musicxml`, root))
+    const outputPath = fileURLToPath(new URL(`artifacts/gtab10c-semantic-parity/key-staff-${name}.json`, root))
+    await writeFile(derivedPath, derivedXml)
+    execFileSync(process.env.GTAB10C_PYTHON, [fileURLToPath(new URL('scripts/gtab10cSemanticOracle.py', root)), sourcePath, derivedPath, outputPath], { env: { ...process.env, PYTHONPATH: path.join(process.env.SEMANTIC_ENGINE_ROOT, 'src') } })
+    const actual = JSON.parse(await readFile(outputPath))
+    assert.deepEqual(actual.keySignatureCoverage.source[0].rawKeyStaffNumbers, ['1', '2'])
+    assert.ok(actual.sourceSnapshot.key_signatures.every(row => !Object.hasOwn(row, 'staff')))
+    const result = qualifyGtab10cSemanticParity({ ...input, sourceBytes: xml, derivedBytes: derivedXml,
+      sourceSnapshot: actual.sourceSnapshot, derivedSnapshot: actual.derivedSnapshot, tabPositions: actual.tabPositions,
+      oracleEvidence: actual, targetSelection: selected, provenance: { ...input.provenance,
+        sourceSha256: actual.sourceSha256, derivedSha256: actual.derivedSha256, targetSelection: selected } })
+    assert.equal(result.status, 'UNSUPPORTED', name)
+    assert.equal(result.diagnostics[0].cause, 'KEY_SIGNATURE_STAFF_CONTEXT', name)
+    assert.equal(await readFile(sourcePath, 'utf8'), xml)
+    assert.equal(await readFile(derivedPath, 'utf8'), derivedXml)
   }
 })
