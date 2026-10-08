@@ -77,12 +77,12 @@ function input(overrides = {}) {
     note({ source_id: 'tab-a', staff: 2 }),
     note({ source_id: 'tab-b', measure_index: 1, pitch_midi: 65, onset_div: 4, staff: 2 }),
   ]
-  return {
+  const value = {
     fixtureId: 'f-sharp-natural-meter-change',
     sourceBytes,
     derivedBytes,
     expectedSesliTabCommit: '55512de2d9db5bbf97949b32a3be3438d9c51d5f',
-    oracleEvidence: { timeSignatureCoverage: { schema: 'gtab10c-time-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawTimeStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawTimeStaffNumbers: [null] }] }, schema: 'gtab-10c-semantic-oracle-output-v1', keySignatureCoverage: { schema: 'gtab10c-key-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawKeyStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }, sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
+    oracleEvidence: { partituraVersion: GTAB10C_PINNED_PARTITURA_VERSION, timeSignatureCoverage: { schema: 'gtab10c-time-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawTimeStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawTimeStaffNumbers: [null] }] }, schema: 'gtab-10c-semantic-oracle-output-v1', keySignatureCoverage: { schema: 'gtab10c-key-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawKeyStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }, sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
     sourceSnapshot: snapshot(sourceNotes),
     derivedSnapshot: derivedSnapshot(postNotes),
     targetSelection,
@@ -103,10 +103,22 @@ function input(overrides = {}) {
     ],
     ...overrides,
   }
+  bindOracleFields(value)
+  return value
+}
+
+function bindOracleFields(value) {
+  for (const field of ['sourceSnapshot', 'derivedSnapshot', 'tabPositions']) value.oracleEvidence[field] = value[field]
+}
+
+// Semantic mutation tests represent one internally bound, but semantically wrong artifact.
+function qualifyBoundArtifact(value) {
+  bindOracleFields(value)
+  return qualifyGtab10cSemanticParity(value)
 }
 
 test('GTAB-10C passes immutable source parity, meter change, F sharp/natural, and TAB position mapping', () => {
-  const report = qualifyGtab10cSemanticParity(input())
+  const report = qualifyBoundArtifact(input())
 
   assert.equal(report.status, 'PASS')
   assert.deepEqual(report.diagnostics, [])
@@ -117,13 +129,13 @@ test('GTAB-10C passes immutable source parity, meter change, F sharp/natural, an
 })
 
 test('GTAB-10C rejects stale source bytes before semantic comparison', () => {
-  const report = qualifyGtab10cSemanticParity(input({ sourceBytes: '<score-partwise>changed</score-partwise>' }))
+  const report = qualifyBoundArtifact(input({ sourceBytes: '<score-partwise>changed</score-partwise>' }))
   assert.equal(report.status, 'UNSUPPORTED')
   assert.equal(report.diagnostics[0].code, 'SOURCE_PROVENANCE_MISMATCH')
 })
 
 test('GTAB-10C rejects a target tuple that differs from the bound GTAB-10B selection', () => {
-  const report = qualifyGtab10cSemanticParity(input({
+  const report = qualifyBoundArtifact(input({
     targetSelection: { ...targetSelection, voice: 2 },
   }))
   assert.equal(report.status, 'UNSUPPORTED')
@@ -133,7 +145,7 @@ test('GTAB-10C rejects a target tuple that differs from the bound GTAB-10B selec
 test('GTAB-10C rejects unsupported semantic oracle diagnostics instead of passing', () => {
   const value = input()
   value.sourceSnapshot.diagnostics = [{ code: 'UNSUPPORTED_STRUCTURE', severity: 'ERROR' }]
-  const report = qualifyGtab10cSemanticParity(value)
+  const report = qualifyBoundArtifact(value)
   assert.equal(report.status, 'UNSUPPORTED')
   assert.equal(report.diagnostics[0].code, 'SEMANTIC_ORACLE_UNSUPPORTED')
 })
@@ -142,13 +154,13 @@ test('GTAB-10C allows source-ID-only warnings when the required semantic fields 
   const value = input()
   value.sourceSnapshot.diagnostics = [{ code: 'MISSING_SOURCE_ID', severity: 'WARNING' }]
   value.derivedSnapshot.diagnostics = [{ code: 'MISSING_SOURCE_ID', severity: 'WARNING' }]
-  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  assert.equal(qualifyBoundArtifact(value).status, 'PASS')
 })
 
 test('GTAB-10C reports a specific pitch mutation and never passes', () => {
   const value = input()
   value.derivedSnapshot.notes[0].pitch_midi = 67
-  const report = qualifyGtab10cSemanticParity(value)
+  const report = qualifyBoundArtifact(value)
   assert.equal(report.status, 'DIAGNOSTIC')
   assert.ok(report.diagnostics.some((item) => item.code === 'PITCH_MISMATCH'))
 })
@@ -165,7 +177,7 @@ test('GTAB-10C reports duration, onset, voice, measure, tie, and meter mutations
   for (const [code, mutate] of cases) {
     const value = input()
     mutate(value)
-    const report = qualifyGtab10cSemanticParity(value)
+    const report = qualifyBoundArtifact(value)
     assert.notEqual(report.status, 'PASS', `${code} must fail closed`)
     assert.ok(report.diagnostics.some((item) => item.code === code), `${code} should be reported`)
   }
@@ -174,13 +186,13 @@ test('GTAB-10C reports duration, onset, voice, measure, tie, and meter mutations
 test('GTAB-10C detects dropped key signature and clef context instead of silently claiming parity', () => {
   const keyValue = input()
   keyValue.derivedSnapshot.key_signatures = []
-  const keyReport = qualifyGtab10cSemanticParity(keyValue)
+  const keyReport = qualifyBoundArtifact(keyValue)
   assert.equal(keyReport.status, 'DIAGNOSTIC')
   assert.ok(keyReport.diagnostics.some((item) => item.code === 'KEY_SIGNATURE_MISMATCH'))
 
   const clefValue = input()
   clefValue.derivedSnapshot.clefs[0].sign = 'F'
-  const clefReport = qualifyGtab10cSemanticParity(clefValue)
+  const clefReport = qualifyBoundArtifact(clefValue)
   assert.equal(clefReport.status, 'DIAGNOSTIC')
   assert.ok(clefReport.diagnostics.some((item) => item.code === 'CLEF_MISMATCH'))
 })
@@ -188,7 +200,7 @@ test('GTAB-10C detects dropped key signature and clef context instead of silentl
 test('GTAB-10C rejects events from unselected source voices leaking into notation or TAB', () => {
   const value = input()
   value.derivedSnapshot.notes.push(note({ source_id: 'leaked', part_id: 'P-DERIVED', staff: 1, voice: 2 }))
-  const report = qualifyGtab10cSemanticParity(value)
+  const report = qualifyBoundArtifact(value)
   assert.equal(report.status, 'DIAGNOSTIC')
   assert.ok(report.diagnostics.some((item) => item.code === 'NOTE_EXTRA'))
 })
@@ -196,12 +208,12 @@ test('GTAB-10C rejects events from unselected source voices leaking into notatio
 test('GTAB-10C classifies missing notation events and measure-count changes', () => {
   const missing = input()
   missing.derivedSnapshot.notes = missing.derivedSnapshot.notes.filter((entry) => entry.staff !== 1 || entry.measure_index !== 1)
-  const missingReport = qualifyGtab10cSemanticParity(missing)
+  const missingReport = qualifyBoundArtifact(missing)
   assert.ok(missingReport.diagnostics.some((item) => item.code === 'NOTE_MISSING'))
 
   const changedMeasureCount = input()
   changedMeasureCount.derivedSnapshot.measure_count = 3
-  const measureReport = qualifyGtab10cSemanticParity(changedMeasureCount)
+  const measureReport = qualifyBoundArtifact(changedMeasureCount)
   assert.ok(measureReport.diagnostics.some((item) => item.code === 'MEASURE_COUNT_MISMATCH'))
 })
 
@@ -210,7 +222,7 @@ test('GTAB-10C rejects duplicate structural events as ambiguous', () => {
   value.sourceSnapshot.notes.push({ ...value.sourceSnapshot.notes[0], source_id: 'duplicate' })
   value.derivedSnapshot.notes.push({ ...value.derivedSnapshot.notes[0], source_id: 'duplicate-output' })
   value.derivedSnapshot.notes.push({ ...value.derivedSnapshot.notes[2], source_id: 'duplicate-tab' })
-  const report = qualifyGtab10cSemanticParity(value)
+  const report = qualifyBoundArtifact(value)
   assert.ok(report.diagnostics.some((item) => item.code === 'AMBIGUOUS_STRUCTURAL_MATCH'))
 })
 
@@ -222,7 +234,7 @@ test('GTAB-10C rejects invalid TAB strings, frets, and pitch mappings', () => {
   ]) {
     const value = input()
     Object.assign(value.tabPositions[0], position)
-    const report = qualifyGtab10cSemanticParity(value)
+    const report = qualifyBoundArtifact(value)
     assert.equal(report.status, 'DIAGNOSTIC')
     assert.ok(report.diagnostics.some((item) => item.code === 'TAB_POSITION_PITCH_MISMATCH'))
   }
@@ -231,11 +243,11 @@ test('GTAB-10C rejects invalid TAB strings, frets, and pitch mappings', () => {
 test('GTAB-10C rejects malformed snapshots and provenance pins', () => {
   const badSchema = input()
   badSchema.sourceSnapshot.schema_version = 'future-schema'
-  assert.equal(qualifyGtab10cSemanticParity(badSchema).status, 'UNSUPPORTED')
+  assert.equal(qualifyBoundArtifact(badSchema).status, 'UNSUPPORTED')
 
   const badPin = input()
   badPin.provenance.partituraVersion = '2.0.0'
-  assert.equal(qualifyGtab10cSemanticParity(badPin).status, 'UNSUPPORTED')
+  assert.equal(qualifyBoundArtifact(badPin).status, 'UNSUPPORTED')
 })
 
 test('GTAB-10C oracle pin matches the exact editor runtime revision used by SesliTab', () => {
@@ -245,7 +257,7 @@ test('GTAB-10C oracle pin matches the exact editor runtime revision used by Sesl
 test('GTAB-10C unexpected derived staff returns controlled rejection, never TDZ throw', () => {
   const value = input()
   value.derivedSnapshot.notes[0].staff = 3
-  assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  assert.notEqual(qualifyBoundArtifact(value).status, 'PASS')
 })
 
 test('GTAB-10C missing or invalid context cannot claim complete oracle PASS', () => {
@@ -253,7 +265,7 @@ test('GTAB-10C missing or invalid context cannot claim complete oracle PASS', ()
     for (const invalid of [undefined, null, [{ part_id: 'P-GUITAR', onset_div: 0 }]]) {
       const value = input()
       value.sourceSnapshot[field] = invalid
-      assert.equal(qualifyGtab10cSemanticParity(value).status, 'UNSUPPORTED')
+      assert.equal(qualifyBoundArtifact(value).status, 'UNSUPPORTED')
     }
   }
 })
@@ -264,14 +276,14 @@ test('GTAB-10C rejects a dangling tie even when its presence bits match on every
   value.derivedSnapshot.notes[0].tie_next = 'dangling-output'
   value.derivedSnapshot.notes[2].tie_next = 'dangling-tab'
   value.tabPositions[0].tie_next = 'dangling-tab'
-  assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  assert.notEqual(qualifyBoundArtifact(value).status, 'PASS')
 })
 
 test('GTAB-10C distinguishes valid absent keys from missing schema coverage', () => {
   const value = input()
   value.sourceSnapshot.key_signatures = []
   value.derivedSnapshot.key_signatures = []
-  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  assert.equal(qualifyBoundArtifact(value).status, 'PASS')
 })
 
 test('GTAB-10C rejects stale checkout, foreign oracle bytes, and wrong selected part ordinal', () => {
@@ -283,7 +295,7 @@ test('GTAB-10C rejects stale checkout, foreign oracle bytes, and wrong selected 
   ]) {
     const value = input()
     mutate(value)
-    assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+    assert.notEqual(qualifyBoundArtifact(value).status, 'PASS')
   }
 })
 
@@ -291,7 +303,7 @@ test('GTAB-10C compares selected part measure count rather than another part max
   const value = input()
   value.sourceSnapshot.measure_count = 5
   value.oracleEvidence.sourceParts[0].measureCount = 5
-  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  assert.equal(qualifyBoundArtifact(value).status, 'PASS')
 })
 
 test('GTAB-10C renamed tie endpoints preserve topology; corrupted edges fail closed', () => {
@@ -313,7 +325,7 @@ test('GTAB-10C renamed tie endpoints preserve topology; corrupted edges fail clo
     value.tabPositions[1].fret = 2
     return value
   }
-  assert.equal(qualifyGtab10cSemanticParity(make()).status, 'PASS')
+  assert.equal(qualifyBoundArtifact(make()).status, 'PASS')
   for (const mutate of [
     value => { value.derivedSnapshot.notes[1].tie_prev = null },
     value => { value.derivedSnapshot.notes[0].tie_next = 'tab-b' },
@@ -322,7 +334,7 @@ test('GTAB-10C renamed tie endpoints preserve topology; corrupted edges fail clo
   ]) {
     const value = make()
     mutate(value)
-    assert.notEqual(qualifyGtab10cSemanticParity(value).status, 'PASS')
+    assert.notEqual(qualifyBoundArtifact(value).status, 'PASS')
   }
 })
 
@@ -333,7 +345,7 @@ test('GTAB-10C cannot qualify staff-scoped keys when pinned snapshot loses their
       source: [{ partId: 'P-GUITAR', staffSpecific: true, rawKeyStaffNumbers: ['1', '2'] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }
     value.sourceSnapshot.key_signatures.push({ part_id: 'P-GUITAR', onset_div: 0, fifths: 3, mode: 'major' })
     value.derivedSnapshot.key_signatures = exportedKeys.map(fifths => ({ part_id: 'P-DERIVED', onset_div: 0, fifths, mode: 'major' }))
-    const report = qualifyGtab10cSemanticParity(value)
+    const report = qualifyBoundArtifact(value)
     assert.equal(report.status, 'UNSUPPORTED')
     assert.equal(report.diagnostics[0].cause, 'KEY_SIGNATURE_STAFF_CONTEXT')
   }
@@ -349,7 +361,7 @@ test('GTAB-10C rejects absent or inconsistent raw key scope binding', () => {
   ]) {
     const value = input()
     mutate(value)
-    const report = qualifyGtab10cSemanticParity(value)
+    const report = qualifyBoundArtifact(value)
     assert.equal(report.status, 'UNSUPPORTED')
     assert.equal(report.diagnostics[0].cause, 'KEY_SIGNATURE_STAFF_CONTEXT')
   }
@@ -358,7 +370,7 @@ test('GTAB-10C rejects absent or inconsistent raw key scope binding', () => {
 test('GTAB-10C scoped keys in an unselected part do not invalidate selected global key coverage', () => {
   const value = input()
   value.oracleEvidence.keySignatureCoverage.source.push({ partId: 'P-FLUTE', rawKeyStaffNumbers: ['2'], staffSpecific: true })
-  assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  assert.equal(qualifyBoundArtifact(value).status, 'PASS')
 })
 
 
@@ -368,7 +380,7 @@ test('GTAB-10C rejects staff-scoped meters rather than accepting leaked context'
     value.oracleEvidence.timeSignatureCoverage = { schema: 'gtab10c-time-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: true, rawTimeStaffNumbers: ['1', '2'] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawTimeStaffNumbers: [null] }] }
     value.sourceSnapshot.time_signatures = [4, 3].map(beats => ({ part_id: 'P-GUITAR', onset_div: 0, beats, beat_type: 4 }))
     value.derivedSnapshot.time_signatures = exportedMeters.map(beats => ({ part_id: 'P-DERIVED', onset_div: 0, beats, beat_type: 4 }))
-    const report = qualifyGtab10cSemanticParity(value)
+    const report = qualifyBoundArtifact(value)
     assert.equal(report.status, 'UNSUPPORTED')
     assert.equal(report.diagnostics[0].cause, 'TIME_SIGNATURE_STAFF_CONTEXT')
   }
@@ -387,11 +399,51 @@ test('GTAB-10C rejects missing or inconsistent time scope evidence', () => {
   ]) {
     const value = input()
     mutate(value)
-    const report = qualifyGtab10cSemanticParity(value)
+    const report = qualifyBoundArtifact(value)
     assert.equal(report.status, 'UNSUPPORTED')
     assert.equal(report.diagnostics[0].cause, 'TIME_SIGNATURE_STAFF_CONTEXT')
   }
   const value = input()
   value.oracleEvidence.timeSignatureCoverage.source.push({ partId: 'P-FLUTE', rawTimeStaffNumbers: ['2'], staffSpecific: true })
+  assert.equal(qualifyBoundArtifact(value).status, 'PASS')
+})
+
+
+test('GTAB-10C rejects mixed or missing oracle snapshot and TAB envelope fields', () => {
+  for (const field of ['sourceSnapshot', 'derivedSnapshot', 'tabPositions']) {
+    for (const missing of [false, true]) {
+      const value = input()
+      value.oracleEvidence[field] = structuredClone(value[field])
+      if (missing) delete value.oracleEvidence[field]
+      else if (field === 'tabPositions') value.oracleEvidence[field][0].fret = 0
+      else value.oracleEvidence[field].notes[0].pitch_midi = 64
+      const report = qualifyGtab10cSemanticParity(value)
+      assert.equal(report.status, 'UNSUPPORTED', field)
+      assert.equal(report.diagnostics[0].cause, 'ORACLE_FIELDS', field)
+    }
+  }
+})
+
+
+test('GTAB-10C envelope equality is structural, independent of JSON property order', () => {
+  const value = input()
+  for (const field of ['sourceSnapshot', 'derivedSnapshot', 'tabPositions']) {
+    value.oracleEvidence[field] = structuredClone(value[field])
+  }
+  value.oracleEvidence.sourceSnapshot = Object.fromEntries(Object.entries(value.oracleEvidence.sourceSnapshot).reverse())
   assert.equal(qualifyGtab10cSemanticParity(value).status, 'PASS')
+  value.oracleEvidence.sourceSnapshot.circular = value.oracleEvidence.sourceSnapshot
+  assert.equal(qualifyGtab10cSemanticParity(value).diagnostics[0].cause, 'ORACLE_FIELDS')
+})
+
+
+test('GTAB-10C rejects stale or missing actual envelope Partitura version', () => {
+  for (const version of [undefined, '1.8.0']) {
+    const value = input()
+    if (version === undefined) delete value.oracleEvidence.partituraVersion
+    else value.oracleEvidence.partituraVersion = version
+    const result = qualifyGtab10cSemanticParity(value)
+    assert.equal(result.status, 'UNSUPPORTED')
+    assert.equal(result.diagnostics[0].cause, 'ORACLE_VERSION')
+  }
 })

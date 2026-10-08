@@ -131,3 +131,16 @@ test('real pinned multi-staff meters retain raw evidence and cannot qualify miss
     assert.equal(await readFile(derivedPath, 'utf8'), derivedXml)
   }
 })
+
+
+test('actual oracle regression envelope cannot be mixed with pristine independent inputs', () => {
+  for (const field of ['sourceSnapshot', 'derivedSnapshot', 'tabPositions']) {
+    const value = structuredClone(input)
+    value.oracleEvidence = structuredClone(value.oracleEvidence)
+    if (field === 'tabPositions') value.oracleEvidence[field][0].fret += 1
+    else value.oracleEvidence[field].notes[0].pitch_midi += 1
+    const result = qualifyGtab10cSemanticParity(value)
+    assert.equal(result.status, 'UNSUPPORTED', field)
+    assert.equal(result.diagnostics[0].cause, 'ORACLE_FIELDS', field)
+  }
+})

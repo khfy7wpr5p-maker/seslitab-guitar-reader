@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 
 export const GTAB10C_REPORT_SCHEMA = 'gtab-10c-semantic-parity-report-v1'
 export const GTAB10C_REFERENCE_BUNDLE_SCHEMA = 'gtab-10c-semantic-reference-bundle-v1'
@@ -192,6 +193,17 @@ function hasGlobalContextCoverage(rows, partId, numberField) {
   return rows.some(row => row.partId === partId && row.staffSpecific === false)
 }
 
+function hasBoundOracleFields(input, evidence) {
+  if (!isRecord(evidence.sourceSnapshot) || !isRecord(evidence.derivedSnapshot)
+    || !Array.isArray(evidence.tabPositions)) return false
+  try {
+    return ['sourceSnapshot', 'derivedSnapshot', 'tabPositions'].every(field =>
+      Object.hasOwn(evidence, field) && isDeepStrictEqual(input[field], evidence[field]))
+  } catch {
+    return false
+  }
+}
+
 function sameRows(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
@@ -239,6 +251,13 @@ export function qualifyGtab10cSemanticParity(input = {}) {
       evidence.sourceSha256 !== sourceHash || evidence.derivedSha256 !== derivedHash ||
       !Array.isArray(evidence.sourceParts) || !Array.isArray(evidence.derivedParts)) {
     return rejected('UNSUPPORTED', 'SOURCE_PROVENANCE_MISMATCH', { cause: 'ORACLE_BUNDLE' }, provenance)
+  }
+  if (evidence.partituraVersion !== GTAB10C_PINNED_PARTITURA_VERSION
+    || evidence.partituraVersion !== input.provenance.partituraVersion) {
+    return rejected('UNSUPPORTED', 'SOURCE_PROVENANCE_MISMATCH', { cause: 'ORACLE_VERSION' }, provenance)
+  }
+  if (!hasBoundOracleFields(input, evidence)) {
+    return rejected('UNSUPPORTED', 'SOURCE_PROVENANCE_MISMATCH', { cause: 'ORACLE_FIELDS' }, provenance)
   }
   const validParts = (parts) => parts.length > 0 && new Set(parts.map((part) => part?.partId)).size === parts.length &&
     parts.every((part) => isRecord(part) && typeof part.partId === 'string' && part.partId.trim() &&
