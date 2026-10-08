@@ -1,0 +1,10 @@
+[run]
+relative_files = True
+source = scripts
+parallel = True
+branch = True
+[report]
+include = scripts/gtab10cSemanticOracle.py
+fail_under = 80
+[xml]
+output = coverage/gtab10c-python.xml

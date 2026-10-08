@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      GTAB_EDITOR_SHA: 34851f3f1ec00d3804144f414090bcfab8314808
+      GTAB_EDITOR_SHA: 28ac378babde8d35e9213648cc6e16429e9a7fd7
       STUDENT_APP_SHA: 5f7d1d5a1b70616e599dec21ac384649d4803fcd
 
     steps:
@@ -28,7 +28,7 @@ jobs:
         with:
           path: teacher
 
-      - name: Checkout ST Guitar TAB Editor exact approved main
+      - name: Checkout ST Guitar TAB Editor exact reviewed dependency SHA
         uses: actions/checkout@v4
         with:
           repository: khfy7wpr5p-maker/st-guitar-tab-editor

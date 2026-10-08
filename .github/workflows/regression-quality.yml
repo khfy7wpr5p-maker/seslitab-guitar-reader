@@ -80,7 +80,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --yes --package=c8@12.0.0 -- c8 --version
+          npm install --prefix "$RUNNER_TEMP/gtab10c-coverage-tools" --ignore-scripts --no-audit --no-fund --package-lock=false c8@12.0.0
+          "$RUNNER_TEMP/gtab10c-coverage-tools/node_modules/.bin/c8" --version
 
       - name: Generate LCOV coverage with c8
         shell: bash
@@ -90,8 +91,56 @@ jobs:
           ./node_modules/.bin/firebase emulators:exec \
             --project demo-seslitab-td06 \
             --only auth,firestore \
-            "npm exec --yes --package=c8@12.0.0 -- c8 --reporter=lcov --reports-dir=coverage node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js"
+            "\"$RUNNER_TEMP/gtab10c-coverage-tools/node_modules/.bin/c8\" --reporter=lcov --reports-dir=coverage node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js"
           test -s coverage/lcov.info
+
+      - name: Checkout exact Editor qualification dependency
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-guitar-tab-editor
+          ref: 28ac378babde8d35e9213648cc6e16429e9a7fd7
+          path: .gtab10c-dependencies/editor
+          persist-credentials: false
+
+      - name: Checkout exact Semantic Engine qualification dependency
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-score-semantic-engine
+          ref: ef305f45ff90d940ac6c51a0c46c4fac006d7c5c
+          path: .gtab10c-dependencies/semantic-engine
+          persist-credentials: false
+
+      - name: Set up CI-only Python oracle
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned oracle outside analyzed first-party source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv .gtab10c-dependencies "$RUNNER_TEMP/gtab10c-dependencies"
+          python -m pip install --only-binary :all: --disable-pip-version-check "$RUNNER_TEMP/gtab10c-dependencies/semantic-engine" defusedxml==0.7.1 coverage==7.10.7
+
+      - name: Cover actual pinned export and Python oracle execution
+        shell: bash
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GTAB10C_COVERAGE: '1'
+          COVERAGE_RCFILE: .coveragerc-gtab10c
+        run: |
+          set -euo pipefail
+          export GTAB_EDITOR_ROOT="$RUNNER_TEMP/gtab10c-dependencies/editor"
+          export SEMANTIC_ENGINE_ROOT="$RUNNER_TEMP/gtab10c-dependencies/semantic-engine"
+          export GTAB10C_PYTHON="$pythonLocation/bin/python"
+          "$RUNNER_TEMP/gtab10c-coverage-tools/node_modules/.bin/c8" --reporter=lcov --reports-dir=coverage/gtab10c-integration node scripts/verifyGtab10cSemanticParity.js
+          node --test tests/gtab10cOracleGraph.integration.mjs
+          python -m coverage run --parallel-mode -m unittest discover -s tests/python -v
+          python -m coverage combine
+          python -m coverage xml
+          python -m coverage report
+          test -s coverage/gtab10c-integration/lcov.info
+          test -s coverage/gtab10c-python.xml
 
       - name: Detect SonarQube configuration
         id: sonar-config
@@ -163,24 +212,25 @@ jobs:
           retention-days: 14
 
       - name: Report SonarCloud PR issues
-        if: steps.sonar-config.outputs.mode == 'cloud' && github.event_name == 'pull_request'
+        if: always() && steps.sonar-config.outputs.mode == 'cloud' && github.event_name == 'pull_request'
         shell: bash
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          curl --silent --show-error --fail \
+          mkdir -p artifacts/sonar-pr-diagnostics
+          curl --silent --show-error --fail --max-time 30 \
             -u "${SONAR_TOKEN}:" \
             --get \
             --data-urlencode "componentKeys=khfy7wpr5p-maker_seslitab-guitar-reader" \
             --data-urlencode "pullRequest=${PR_NUMBER}" \
             --data-urlencode "issueStatuses=OPEN,CONFIRMED" \
             --data-urlencode "ps=100" \
-            "https://sonarcloud.io/api/issues/search" > /tmp/sonar-pr-issues.json
+            "https://sonarcloud.io/api/issues/search" > artifacts/sonar-pr-diagnostics/issues-current-pr-snapshot.json
           node - <<'NODE'
           const fs = require('node:fs')
-          const data = JSON.parse(fs.readFileSync('/tmp/sonar-pr-issues.json', 'utf8'))
+          const data = JSON.parse(fs.readFileSync('artifacts/sonar-pr-diagnostics/issues-current-pr-snapshot.json', 'utf8'))
           console.log(`Sonar PR issue count: ${data.total ?? data.issues?.length ?? 0}`)
           for (const issue of data.issues ?? []) {
             console.log(JSON.stringify({
@@ -193,6 +243,50 @@ jobs:
             }))
           }
           NODE
+          # Query only a fixed trusted host. No artifact URL receives credentials.
+          task_id="$(node --input-type=module - <<'NODE'
+          import fs from 'node:fs'
+          const text = fs.readFileSync('.scannerwork/report-task.txt', 'utf8')
+          const rows = Object.fromEntries(text.trim().split(/\r?\n/u).map(row => { const at = row.indexOf('='); return [row.slice(0, at), row.slice(at + 1)] }))
+          if (rows.serverUrl !== 'https://sonarcloud.io' || rows.projectKey !== 'khfy7wpr5p-maker_seslitab-guitar-reader' || !/^[A-Za-z0-9_-]{1,128}$/u.test(rows.ceTaskId ?? '')) throw new Error('Untrusted Sonar task identity')
+          process.stdout.write(rows.ceTaskId)
+          NODE
+          )"
+          curl --silent --show-error --fail --max-time 30 -u "${SONAR_TOKEN}:" --get \
+            --data-urlencode "id=${task_id}" "https://sonarcloud.io/api/ce/task" > /tmp/sonar-pr-ce-task.json
+          analysis_id="$(SONAR_EXPECTED_TASK_ID="$task_id" node --input-type=module - <<'NODE'
+          import fs from 'node:fs'
+          const { task } = JSON.parse(fs.readFileSync('/tmp/sonar-pr-ce-task.json', 'utf8'))
+          if (task?.id !== process.env.SONAR_EXPECTED_TASK_ID || task?.componentKey !== 'khfy7wpr5p-maker_seslitab-guitar-reader' || !['PENDING', 'IN_PROGRESS', 'SUCCESS', 'FAILED', 'CANCELED'].includes(task.status)) throw new Error('Foreign or invalid CE task evidence')
+          fs.writeFileSync('artifacts/sonar-pr-diagnostics/exact-ce-task.json', JSON.stringify({ task }, null, 2) + '\n')
+          if (task?.status === 'SUCCESS' && /^[A-Za-z0-9_-]{1,128}$/u.test(task.analysisId ?? '')) process.stdout.write(task.analysisId)
+          NODE
+          )"
+          if [ -n "$analysis_id" ]; then
+            curl --silent --show-error --fail --max-time 30 -u "${SONAR_TOKEN}:" --get \
+              --data-urlencode "analysisId=${analysis_id}" "https://sonarcloud.io/api/qualitygates/project_status" > artifacts/sonar-pr-diagnostics/exact-quality-gate.json
+          fi
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs'
+          const directory = 'artifacts/sonar-pr-diagnostics'
+          const { task } = JSON.parse(fs.readFileSync(`${directory}/exact-ce-task.json`, 'utf8'))
+          const gatePath = `${directory}/exact-quality-gate.json`
+          const gate = fs.existsSync(gatePath) ? JSON.parse(fs.readFileSync(gatePath, 'utf8')).projectStatus : null
+          const manifest = { workflowSha: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            taskId: task.id, analysisId: task.analysisId ?? null, ceStatus: task.status, gateStatus: gate?.status ?? null,
+            issuesBinding: 'current PR inventory; not an immutable historical analysis snapshot' }
+          fs.writeFileSync(`${directory}/manifest.json`, JSON.stringify(manifest, null, 2) + '\n')
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Sonar PR diagnostics: CE **${manifest.ceStatus}**, exact-analysis gate **${manifest.gateStatus ?? 'unavailable'}**. Issue inventory is the current PR snapshot, not historical evidence.\n`)
+          NODE
+
+      - name: Upload failed-or-passed Sonar PR diagnostic evidence
+        if: always() && steps.sonar-config.outputs.mode == 'cloud' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-pr-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/sonar-pr-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Explain disabled SonarQube scan
         if: steps.sonar-config.outputs.mode == 'disabled'

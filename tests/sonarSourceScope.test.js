@@ -14,7 +14,8 @@ test('generated npm locks are excluded at root and nested paths without hiding m
     assert.equal(sourceIncluded(path, patterns), true, path)
   }
   assert.match(config, /^sonar\.tests=tests,browser-tests,scripts$/m)
-  assert.match(config, /^sonar\.javascript\.lcov\.reportPaths=coverage\/lcov.info$/m)
+  assert.match(config, /^sonar\.javascript\.lcov\.reportPaths=coverage\/lcov.info,coverage\/gtab10c-integration\/lcov.info$/m)
+  assert.match(config, /^sonar\.python\.coverage\.reportPaths=coverage\/gtab10c-python.xml$/m)
 })
 test('targeted exclusion changes tracked inventory only for npm-generated lockfiles', () => {
   const before = trackedInventory(config.replace(',**/package-lock.json', ''))
@@ -85,4 +86,15 @@ test('inventory uses trusted system git even when PATH starts with an attacker e
     assert.ok(inventory.files.some((file) => file.path === 'src/data/chordBoardCatalogSnapshotV1.json'))
     assert.ok(inventory.files.length > 300)
   } finally { rmSync(directory, { recursive: true, force: true }) }
+})
+
+
+test('Python oracle tests are tests while actual qualification implementation remains analyzed source', () => {
+  assert.equal(analysisType('tests/python/test_gtab10c_oracle.py', config), 'test')
+  assert.equal(analysisType('tests/gtab10cOracleGraph.integration.mjs', config), 'test')
+  for (const path of ['scripts/gtab10cSemanticOracle.py', 'scripts/verifyGtab10cSemanticParity.js', 'src/qualification/gtab10cSemanticParity.js']) {
+    assert.equal(analysisType(path, config), 'source', path)
+    const exclusions = /^sonar\.coverage\.exclusions=(.*)$/m.exec(config)[1].split(',')
+    assert.equal(sourceIncluded(path, exclusions), true, path)
+  }
 })
