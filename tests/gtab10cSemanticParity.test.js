@@ -61,9 +61,18 @@ function derivedSnapshot(notes, overrides = {}) {
       { part_id: 'P-DERIVED', onset_div: 4, beats: 3, beat_type: 4 },
     ],
     key_signatures: [{ part_id: 'P-DERIVED', onset_div: 0, fifths: 0, mode: 'major' }],
-    clefs: [{ part_id: 'P-DERIVED', onset_div: 0, staff: 1, sign: 'G', line: 2, octave_change: 0 }],
+    clefs: [{ part_id: 'P-DERIVED', onset_div: 0, staff: 1, sign: 'G', line: 2, octave_change: 0 },
+      { part_id: 'P-DERIVED', onset_div: 0, staff: 2, sign: 'TAB', line: 5, octave_change: 0 }],
     ...overrides,
   })
+}
+
+function standardTabProfile() {
+  return { schema: 'gtab10c-derived-tab-profile-v1', parts: [{ partId: 'P-DERIVED', staffCounts: [{ measureIndex: 0, beforeEvents: true, values: ['2'] }], staffDetails: [{
+    number: '2', measureIndex: 0, beforeEvents: true, staffLines: ['6'], capos: [],
+    tunings: [['E', '2'], ['A', '2'], ['D', '3'], ['G', '3'], ['B', '3'], ['E', '4']].map(([step, octave], index) =>
+      ({ line: String(index + 1), steps: [step], alters: [], octaves: [octave] })),
+  }] }] }
 }
 
 function input(overrides = {}) {
@@ -82,7 +91,7 @@ function input(overrides = {}) {
     sourceBytes,
     derivedBytes,
     expectedSesliTabCommit: '55512de2d9db5bbf97949b32a3be3438d9c51d5f',
-    oracleEvidence: { partituraVersion: GTAB10C_PINNED_PARTITURA_VERSION, timeSignatureCoverage: { schema: 'gtab10c-time-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawTimeStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawTimeStaffNumbers: [null] }] }, schema: 'gtab-10c-semantic-oracle-output-v1', keySignatureCoverage: { schema: 'gtab10c-key-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawKeyStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }, sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
+    oracleEvidence: { derivedTabProfile: standardTabProfile(), partituraVersion: GTAB10C_PINNED_PARTITURA_VERSION, timeSignatureCoverage: { schema: 'gtab10c-time-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawTimeStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawTimeStaffNumbers: [null] }] }, schema: 'gtab-10c-semantic-oracle-output-v1', keySignatureCoverage: { schema: 'gtab10c-key-staff-coverage-v1', source: [{ partId: 'P-GUITAR', staffSpecific: false, rawKeyStaffNumbers: [null] }], derived: [{ partId: 'P-DERIVED', staffSpecific: false, rawKeyStaffNumbers: [null] }] }, sourceSha256: sha256(sourceBytes), derivedSha256: sha256(derivedBytes), sourceParts: [{ partId: 'P-FLUTE', measureCount: 2 }, { partId: 'P-GUITAR', measureCount: 2 }], derivedParts: [{ partId: 'P-DERIVED', measureCount: 2 }] },
     sourceSnapshot: snapshot(sourceNotes),
     derivedSnapshot: derivedSnapshot(postNotes),
     targetSelection,
@@ -446,4 +455,46 @@ test('GTAB-10C rejects stale or missing actual envelope Partitura version', () =
     assert.equal(result.status, 'UNSUPPORTED')
     assert.equal(result.diagnostics[0].cause, 'ORACLE_VERSION')
   }
+})
+
+
+test('GTAB-10C requires authoritative standard TAB clef and raw staff profile', () => {
+  for (const mutate of [
+    v => { v.derivedSnapshot.clefs = v.derivedSnapshot.clefs.filter(c => c.staff !== 2) },
+    v => { v.derivedSnapshot.clefs[1].sign = 'G' },
+    v => { v.derivedSnapshot.clefs[1].line = 2 },
+    v => { v.derivedSnapshot.clefs[1].octave_change = 1 },
+    v => { v.derivedSnapshot.clefs[1].onset_div = 4 },
+    v => { v.derivedSnapshot.clefs.push({ ...v.derivedSnapshot.clefs[1], onset_div: 4, sign: 'G' }) },
+    v => { delete v.oracleEvidence.derivedTabProfile },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].partId = 'foreign' },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails = [] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffCounts = [] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffCounts[0].values = ['3'] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffCounts[0].values = ['2', '2'] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].staffLines = ['5'] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].capos = ['2'] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].capos = ['0', '2'] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].tunings.pop() },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].tunings[0].steps = ['F'] },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].number = null },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].beforeEvents = false },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0].measureIndex = 1 },
+    v => { v.oracleEvidence.derivedTabProfile.parts[0].staffDetails.push({ ...v.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0], staffLines: ['5'], measureIndex: 1 }) },
+  ]) {
+    const value = input()
+    mutate(value)
+    const report = qualifyBoundArtifact(value)
+    assert.equal(report.status, 'DIAGNOSTIC')
+    assert.ok(report.diagnostics.some(row => ['TAB_CLEF_MISMATCH', 'TAB_PROFILE_MISMATCH'].includes(row.code)))
+  }
+})
+
+
+test('GTAB-10C accepts explicit zero capo and zero tuning alters without changing guitar intent', () => {
+  const value = input()
+  const row = value.oracleEvidence.derivedTabProfile.parts[0].staffDetails[0]
+  row.capos = ['0']
+  for (const tuning of row.tunings) tuning.alters = ['0']
+  assert.equal(qualifyBoundArtifact(value).status, 'PASS')
 })

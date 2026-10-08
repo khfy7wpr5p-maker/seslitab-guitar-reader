@@ -112,6 +112,40 @@ class OracleBoundaryTest(unittest.TestCase):
                     oracle.main()
                 self.assertFalse(output.exists(), 'Failure must not publish a trusted snapshot.')
 
+    def test_actual_cli_rejects_duplicate_or_conflicting_tab_technical_metadata(self):
+        project = Path(__file__).resolve().parents[2]
+        source = project / 'tests/fixtures/gtab10c/audiveris-like-source.musicxml'
+        original = (project / 'artifacts/gtab10c-semantic-parity/derived/audiveris-like-single-part.musicxml').read_bytes()
+        accepted = []
+        for kind in ['technical', 'notations', 'string', 'fret']:
+            with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
+                derived = Path(directory) / 'derived.xml'
+                output = Path(directory) / 'out.json'
+                root = oracle.safe_root(Path('unused'), original)
+                note = next(note for note in root.findall('.//note') if note.findtext('staff') == '2')
+                notations = note.find('notations')
+                technical = notations.find('technical')
+                if kind == 'technical':
+                    notations.append(oracle.deepcopy(technical))
+                elif kind == 'notations':
+                    note.append(oracle.deepcopy(notations))
+                else:
+                    duplicate = oracle.deepcopy(technical.find(kind))
+                    duplicate.text = '6' if kind == 'string' else '19'
+                    technical.append(duplicate)
+                raw = oracle.tostring(root)
+                derived.write_bytes(raw)
+                try:
+                    with patch.object(sys, 'argv', ['oracle', str(source), str(derived), str(output)]):
+                        oracle.main()
+                except ValueError as error:
+                    self.assertIn('Ambiguous TAB technical', str(error))
+                    self.assertFalse(output.exists())
+                else:
+                    accepted.append(kind)
+                self.assertEqual(derived.read_bytes(), raw)
+        self.assertEqual(accepted, [])
+
     def test_restored_identity_rejects_foreign_or_missing_coverage(self):
         row = {'readViewId': 'n', 'partId': 'original', 'readViewPartId': 'view', 'originalStaff': 1,
             'originalVoice': 3, 'readViewVoice': 3, 'tieStop': False, 'tieStart': False}
@@ -215,6 +249,23 @@ class OraclePathBoundaryTest(unittest.TestCase):
             {'partId': 'Scoped', 'rawTimeStaffNumbers': ['1', '2'], 'staffSpecific': True},
             {'partId': 'Global', 'rawTimeStaffNumbers': [None], 'staffSpecific': False},
             {'partId': 'Absent', 'rawTimeStaffNumbers': [], 'staffSpecific': False}])
+        self.assertEqual(oracle.tostring(root), before)
+
+    def test_raw_tab_profile_keeps_conflicting_and_late_declarations_without_mutation(self):
+        raw = b'<score-partwise><part id="P1"><measure><attributes><staves>2</staves><staff-details number="2"><staff-lines>6</staff-lines><staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning></staff-details></attributes><note/><attributes><staff-details number="2"><staff-lines>5</staff-lines></staff-details></attributes></measure></part></score-partwise>'
+        root = oracle.safe_root(Path('unused'), raw)
+        before = oracle.tostring(root)
+        profile = oracle.derived_tab_profile(root)
+        self.assertEqual(profile['schema'], 'gtab10c-derived-tab-profile-v1')
+        rows = profile['parts'][0]['staffDetails']
+        self.assertEqual(profile['parts'][0]['partId'], 'P1')
+        self.assertEqual(profile['parts'][0]['staffCounts'], [{'measureIndex': 0, 'beforeEvents': True, 'values': ['2']}])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]['staffLines'], ['6'])
+        self.assertTrue(rows[0]['beforeEvents'])
+        self.assertEqual(rows[0]['tunings'], [{'line': '1', 'steps': ['E'], 'alters': [], 'octaves': ['2']}])
+        self.assertEqual(rows[1]['staffLines'], ['5'])
+        self.assertFalse(rows[1]['beforeEvents'])
         self.assertEqual(oracle.tostring(root), before)
 
 if __name__ == '__main__':

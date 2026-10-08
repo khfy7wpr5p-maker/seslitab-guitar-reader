@@ -197,9 +197,17 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
                     raise ValueError("TAB technical data cannot be matched uniquely to a semantic event.")
                 semantic_note = candidates[0]
                 remaining.remove(semantic_note)
-                technical = child.find("notations/technical")
-                string_text = technical.findtext("string") if technical is not None else None
-                fret_text = technical.findtext("fret") if technical is not None else None
+                notations = child.findall("notations")
+                technical_nodes = child.findall("notations/technical")
+                if len(notations) != 1 or len(technical_nodes) != 1:
+                    raise ValueError("Ambiguous TAB technical metadata: require one notations/technical block.")
+                technical = technical_nodes[0]
+                strings = technical.findall("string")
+                frets = technical.findall("fret")
+                if len(strings) != 1 or len(frets) != 1 or strings[0].text is None or frets[0].text is None:
+                    raise ValueError("Ambiguous TAB technical metadata: require one explicit string/fret pair.")
+                string_text = strings[0].text
+                fret_text = frets[0].text
                 position: dict[str, object] = {
                     key: semantic_note[key]
                     for key in ("measure_index", "pitch_midi", "onset_div", "duration_div", "voice", "tie_prev", "tie_next")
@@ -353,6 +361,35 @@ def time_staff_coverage(root):
     return context_staff_coverage(root, 'time', 'rawTimeStaffNumbers')
 
 
+def derived_tab_profile(root):
+    parts = []
+    for part in root.findall('part'):
+        declarations = []
+        staff_counts = []
+        for measure_index, measure in enumerate(part.findall('measure')):
+            elapsed = False
+            for child in measure:
+                if child.tag in ('note', 'forward', 'backup'):
+                    elapsed = True
+                if child.tag != 'attributes':
+                    continue
+                if child.findall('staves'):
+                    staff_counts.append({"measureIndex": measure_index, "beforeEvents": not elapsed,
+                        "values": [node.text for node in child.findall('staves')]})
+                for details in child.findall('staff-details'):
+                    declarations.append({"number": details.get('number'), "measureIndex": measure_index,
+                        "beforeEvents": not elapsed,
+                        "staffLines": [node.text for node in details.findall('staff-lines')],
+                        "capos": [node.text for node in details.findall('capo')],
+                        "tunings": [{"line": tuning.get('line'),
+                            "steps": [node.text for node in tuning.findall('tuning-step')],
+                            "alters": [node.text for node in tuning.findall('tuning-alter')],
+                            "octaves": [node.text for node in tuning.findall('tuning-octave')]}
+                            for tuning in details.findall('staff-tuning')]})
+        parts.append({"partId": part.get('id'), "staffDetails": declarations, "staffCounts": staff_counts})
+    return {"schema": "gtab10c-derived-tab-profile-v1", "parts": parts}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
@@ -373,6 +410,7 @@ def main() -> None:
         if not parts or any(not row["partId"] for row in parts) or len({row["partId"] for row in parts}) != len(parts):
             raise ValueError("Missing/ambiguous part inventory.")
         return parts
+    tab_profile = derived_tab_profile(derived_root)
     time_coverage = {"schema": "gtab10c-time-staff-coverage-v1",
         "source": time_staff_coverage(source_root), "derived": time_staff_coverage(derived_root)}
     key_coverage = {"schema": "gtab10c-key-staff-coverage-v1",
@@ -405,6 +443,7 @@ def main() -> None:
             "derivedSha256": hashlib.sha256(derived_bytes).hexdigest(),
             "keySignatureCoverage": key_coverage,
             "timeSignatureCoverage": time_coverage,
+            "derivedTabProfile": tab_profile,
             "sourceParts": source_parts,
             "derivedParts": derived_parts,
             "partituraVersion": importlib.metadata.version("partitura"),

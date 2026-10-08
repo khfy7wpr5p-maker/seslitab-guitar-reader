@@ -144,3 +144,39 @@ test('actual oracle regression envelope cannot be mixed with pristine independen
     assert.equal(result.diagnostics[0].cause, 'ORACLE_FIELDS', field)
   }
 })
+
+
+test('real oracle cannot qualify missing or altered TAB clef, lines or tuning', async () => {
+  const original = await readFile(new URL(`artifacts/gtab10c-semantic-parity/derived/${fixtureId}.musicxml`, root), 'utf8')
+  const sourcePath = fileURLToPath(new URL('tests/fixtures/gtab10c/musescore-like-multipart-source.musicxml', root))
+  const mutations = [
+    ['wrong-staves', xml => xml.replace('<staves>2</staves>', '<staves>3</staves>')],
+    ['missing-staves', xml => xml.replace('<staves>2</staves>', '')],
+    ['missing-clef', xml => xml.replace('<clef number="2"><sign>TAB</sign><line>5</line></clef>', '')],
+    ['wrong-clef', xml => xml.replace('<sign>TAB</sign><line>5</line>', '<sign>G</sign><line>2</line>')],
+    ['conflicting-clef', xml => xml.replace('<time><beats>3</beats><beat-type>4</beat-type></time>', '<time><beats>3</beats><beat-type>4</beat-type></time><clef number="2"><sign>G</sign><line>2</line></clef>')],
+    ['nonzero-capo', xml => xml.replace('<staff-lines>6</staff-lines>', '<staff-lines>6</staff-lines><capo>2</capo>')],
+    ['missing-profile', xml => xml.replace(/<staff-details[^>]*>[\s\S]*?<\/staff-details>/, '')],
+    ['wrong-lines', xml => xml.replace('<staff-lines>6</staff-lines>', '<staff-lines>5</staff-lines>')],
+    ['wrong-tuning', xml => xml.replace('<tuning-step>E</tuning-step><tuning-octave>2</tuning-octave>', '<tuning-step>F</tuning-step><tuning-octave>2</tuning-octave>')],
+    ['conflicting-profile', xml => xml.replace('<time><beats>3</beats><beat-type>4</beat-type></time>', '<time><beats>3</beats><beat-type>4</beat-type></time><staff-details number="2"><staff-lines>5</staff-lines></staff-details>')],
+    ['missing-tuning', xml => xml.replace(/<staff-tuning line="1">[\s\S]*?<\/staff-tuning>/, '')],
+  ]
+  const passedMutations = []
+  for (const [name, mutate] of mutations) {
+    const xml = mutate(original)
+    assert.notEqual(xml, original)
+    const derivedPath = fileURLToPath(new URL(`artifacts/gtab10c-semantic-parity/tab-profile-${name}.musicxml`, root))
+    const outputPath = derivedPath.replace('.musicxml', '.json')
+    await writeFile(derivedPath, xml)
+    execFileSync(process.env.GTAB10C_PYTHON, [fileURLToPath(new URL('scripts/gtab10cSemanticOracle.py', root)), sourcePath, derivedPath, outputPath], { env: { ...process.env, PYTHONPATH: path.join(process.env.SEMANTIC_ENGINE_ROOT, 'src') } })
+    const actual = JSON.parse(await readFile(outputPath))
+    const result = qualifyGtab10cSemanticParity({ ...input, derivedBytes: xml, oracleEvidence: actual,
+      sourceSnapshot: actual.sourceSnapshot, derivedSnapshot: actual.derivedSnapshot, tabPositions: actual.tabPositions,
+      provenance: { ...input.provenance, derivedSha256: actual.derivedSha256 } })
+    if (result.status === 'PASS') passedMutations.push(name)
+    assert.ok(result.diagnostics.some(row => row.code === (name.includes('clef') ? 'TAB_CLEF_MISMATCH' : 'TAB_PROFILE_MISMATCH')), name)
+    assert.equal(await readFile(derivedPath, 'utf8'), xml)
+  }
+  assert.deepEqual(passedMutations, [])
+})

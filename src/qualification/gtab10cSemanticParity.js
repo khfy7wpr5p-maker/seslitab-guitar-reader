@@ -204,6 +204,30 @@ function hasBoundOracleFields(input, evidence) {
   }
 }
 
+function hasStandardTabProfile(profile, partId) {
+  if (profile?.schema !== 'gtab10c-derived-tab-profile-v1' || !Array.isArray(profile.parts)
+    || profile.parts.length !== 1 || profile.parts[0]?.partId !== partId
+    || !Array.isArray(profile.parts[0].staffDetails)) return false
+  const counts = profile.parts[0].staffCounts
+  if (!Array.isArray(counts) || counts.length === 0
+    || counts[0]?.measureIndex !== 0 || counts.some(row => !isRecord(row)
+      || !Number.isSafeInteger(row.measureIndex) || row.measureIndex < 0
+      || row.beforeEvents !== true || !isDeepStrictEqual(row.values, ['2']))) return false
+  const declarations = profile.parts[0].staffDetails
+  if (declarations.some(row => !isRecord(row) || !['1', '2'].includes(row.number))) return false
+  const tab = declarations.filter(row => row.number === '2')
+  const tuning = [['E', '2'], ['A', '2'], ['D', '3'], ['G', '3'], ['B', '3'], ['E', '4']]
+  return tab.length > 0 && tab[0].measureIndex === 0 && tab[0].beforeEvents === true
+    && tab.every(row => Number.isSafeInteger(row.measureIndex) && row.measureIndex >= 0
+      && row.beforeEvents === true && isDeepStrictEqual(row.staffLines, ['6'])
+      && (isDeepStrictEqual(row.capos, []) || isDeepStrictEqual(row.capos, ['0']))
+      && Array.isArray(row.tunings) && row.tunings.length === 6
+      && row.tunings.every((entry, index) => isRecord(entry) && entry.line === String(index + 1)
+        && isDeepStrictEqual(entry.steps, [tuning[index][0]])
+        && isDeepStrictEqual(entry.octaves, [tuning[index][1]])
+        && (isDeepStrictEqual(entry.alters, []) || isDeepStrictEqual(entry.alters, ['0']))))
+}
+
 function sameRows(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
@@ -389,6 +413,16 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     const derivedClefs = contextRows(derived, 'clefs', derivedPartId, false, 1)
     if (sourceClefs === null || derivedClefs === null) unverifiedContexts.push('clefs')
     else if (!sameRows(sourceClefs, derivedClefs)) output.push({ code: 'CLEF_MISMATCH' })
+  }
+
+  const tabClefs = Array.isArray(derived.clefs)
+    ? derived.clefs.filter(row => isRecord(row) && row.part_id === derivedPartId && row.staff === 2) : []
+  if (tabClefs.length === 0 || !tabClefs.some(row => row.onset_div === 0)
+    || tabClefs.some(row => row.sign !== 'TAB' || row.line !== 5 || row.octave_change !== 0)) {
+    output.push({ code: 'TAB_CLEF_MISMATCH' })
+  }
+  if (!hasStandardTabProfile(evidence.derivedTabProfile, derivedPartId)) {
+    output.push({ code: 'TAB_PROFILE_MISMATCH' })
   }
 
   if (tabNotes.length !== notationNotes.length) {
