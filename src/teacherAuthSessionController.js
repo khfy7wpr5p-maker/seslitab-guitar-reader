@@ -157,12 +157,6 @@ async function defaultConnectSecureDelivery({
     )
   }
 
-  if (typeof result.getIdToken !== 'function') {
-    throw new Error(
-      'teacher-token-provider-unavailable',
-    )
-  }
-
   await result.composition
     .prepareAssignmentAuthority()
 
@@ -340,6 +334,15 @@ export function createTeacherAuthSessionController({
       ) {
         throw new Error(
           'secure-delivery-connection-invalid',
+        )
+      }
+
+      if (
+        typeof connection.getIdToken !==
+        'function'
+      ) {
+        throw new Error(
+          'teacher-token-provider-unavailable',
         )
       }
 
