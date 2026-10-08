@@ -685,16 +685,25 @@ test('GTAB-10B target invalidation clears the previous notation highlight', asyn
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
   const adapters = successfulAdapters()
-  adapters.extractScoreInventory = () => ({ parts: [{
-    partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
-  }] })
-  adapters.parseCanonicalNotes = () => [{ partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 }]
+  adapters.extractScoreInventory = () => ({ parts: [
+    { partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+    { partId: 'P2', partIndex: 1, name: 'Piano', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+  ] })
+  adapters.parseCanonicalNotes = () => [
+    { partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 },
+    { partId: 'P2', partIndex: 1, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 },
+  ]
   adapters.loadEditorRuntime = async () => ({
-    createSourceSession() {
-      return { events: [{ sourceEventId: 'note', partId: 'P1', partIndex: 0, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }], groups: [{ groupId: 'group', sourceEventIds: ['note'] }] }
+    createSourceSession(_xml, { targetSelection }) {
+      const noteId = `${targetSelection.partId}-note`
+      const groupId = `${noteId}-group`
+      return {
+        events: [{ sourceEventId: noteId, partId: targetSelection.partId, partIndex: targetSelection.partIndex, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }],
+        groups: [{ groupId, sourceEventIds: [noteId] }],
+      }
     },
     createTabAssignmentDocument: () => ({ listAssignments: () => [] }),
-    createKeyboardController: () => ({ getState: () => ({ currentEventId: 'note', currentGroupId: 'group', selectedString: 1, fretBuffer: '' }), handleKey() {} }),
+    createKeyboardController: ({ sourceSession }) => ({ getState: () => ({ currentEventId: sourceSession.events[0].sourceEventId, currentGroupId: sourceSession.groups[0].groupId, selectedString: 1, fretBuffer: '' }), handleKey() {} }),
     createFixedSixStringRows: () => [],
   })
   const highlights = []
@@ -707,13 +716,13 @@ test('GTAB-10B target invalidation clears the previous notation highlight', asyn
   select.value = select.children[1].value
   await select.listeners.get('change')[0]()
   assert.equal(highlights.length, 1)
+  const clearCountBeforeInvalidation = clearCount
   select.value = ''
   await select.listeners.get('change')[0]()
-  assert.equal(clearCount, 2)
+  assert.equal(clearCount, clearCountBeforeInvalidation + 1)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'target-required')
 })
-
 test('GTAB-10B target changes cancel an in-flight export before download', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)

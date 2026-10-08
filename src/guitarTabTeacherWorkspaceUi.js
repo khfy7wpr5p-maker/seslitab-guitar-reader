@@ -278,11 +278,9 @@ async function activateTarget(root, state, selectedRegion) {
   try { sourceSession = state.editorRuntime.createSourceSession(state.sourceXml, { targetSelection: selectedRegion }) }
   catch {
     if (workspaceStates.get(root) === invalidatedState) {
+      renderTargetOptions(root, invalidatedState)
+      setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
       await synchronizeAuthoringSelection(root, invalidatedState)
-      if (workspaceStates.get(root) === invalidatedState) {
-        renderTargetOptions(root, invalidatedState)
-        setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
-      }
     }
     return false
   }
