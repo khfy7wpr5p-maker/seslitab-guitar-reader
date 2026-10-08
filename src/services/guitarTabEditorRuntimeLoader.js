@@ -62,14 +62,16 @@ export async function loadGuitarTabEditorRuntime(
   const promise = new Promise((resolve) => {
     let settled = false
     let timer = null
+    let script = null
     const finish = (value) => {
       if (settled) return
       settled = true
       if (timer !== null) clearTimeout(timer)
+      if (!value) script?.remove?.()
       resolve(value)
     }
 
-    let script =
+    script =
       root.querySelector?.(
         'script[data-seslitab-guitar-tab-editor-runtime="true"]',
       ) ?? null
