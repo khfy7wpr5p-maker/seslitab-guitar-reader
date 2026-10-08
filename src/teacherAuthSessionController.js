@@ -164,6 +164,7 @@ async function defaultConnectSecureDelivery({
     composition: result.composition,
     secureDeliveryClient:
       result.secureDeliveryClient,
+    getIdToken: result.getIdToken,
   })
 }
 
@@ -333,6 +334,15 @@ export function createTeacherAuthSessionController({
       ) {
         throw new Error(
           'secure-delivery-connection-invalid',
+        )
+      }
+
+      if (
+        typeof connection.getIdToken !==
+        'function'
+      ) {
+        throw new Error(
+          'teacher-token-provider-unavailable',
         )
       }
 

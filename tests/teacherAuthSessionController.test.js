@@ -202,6 +202,7 @@ test('SES-146 valid Email/Password sign-in reaches READY through AUTHENTICATED a
             Object.freeze({
               marker: 'composition',
             }),
+          getIdToken: user().getIdToken,
         })
       },
       onReady(connection) {
@@ -209,6 +210,10 @@ test('SES-146 valid Email/Password sign-in reaches READY through AUTHENTICATED a
         assert.equal(
           connection.composition.marker,
           'composition',
+        )
+        assert.equal(
+          typeof connection.getIdToken,
+          'function',
         )
       },
     })
@@ -266,6 +271,7 @@ test('SES-146 existing Firebase session restores to READY without another sign-i
             Object.freeze({
               marker: 'restored',
             }),
+          getIdToken: user().getIdToken,
         })
       },
     })
@@ -413,6 +419,7 @@ test('SES-146 signOut revokes authority and returns to SIGNED_OUT', async () => 
             Object.freeze({
               marker: 'ready',
             }),
+          getIdToken: user().getIdToken,
         })
       },
       onAuthorityRevoked() {
@@ -434,4 +441,41 @@ test('SES-146 signOut revokes authority and returns to SIGNED_OUT', async () => 
     publicSnapshot(result),
     /provider-uid|token-must/,
   )
+})
+
+test('ACCOUNT-PROD-03 connection without request-time ID-token provider fails closed before READY', async () => {
+  const h = harness({
+    initialUser: user(),
+  })
+  let readyCalls = 0
+
+  const controller =
+    createTeacherAuthSessionController({
+      env: ENV,
+      firebaseSdk: h.sdk,
+      async connectSecureDelivery() {
+        return Object.freeze({
+          composition:
+            Object.freeze({
+              marker: 'ready-without-token-provider',
+            }),
+        })
+      },
+      onReady() {
+        readyCalls += 1
+      },
+    })
+
+  const result =
+    await controller.start()
+
+  assert.equal(
+    result.state,
+    TEACHER_AUTH_STATE.API_UNAVAILABLE,
+  )
+  assert.equal(
+    result.reason,
+    'secure-delivery-unavailable',
+  )
+  assert.equal(readyCalls, 0)
 })

@@ -33,6 +33,7 @@ import { initSmoosicEditorTab } from './src/smoosicEditorTabUi.js'
 import { mountTeacherAssignmentProduction } from './src/teacherAssignmentProductionMount.js'
 import { createTeacherAuthSessionController } from './src/teacherAuthSessionController.js'
 import { mountTeacherAuthSessionUi } from './src/teacherAuthSessionUi.js'
+import { createTeacherStudentManagementRuntime } from './src/teacherStudentManagementRuntime.js'
 import { installMusicXmlMxlInputBridge } from './src/musicXmlMxlInputBridge.js'
 
 if (typeof document !== 'undefined') {
@@ -46,6 +47,11 @@ if (typeof document !== 'undefined') {
       'teacher-auth-session-host',
     )
   let assignmentHandle = null
+  const studentManagementRuntime =
+    createTeacherStudentManagementRuntime({
+      root: document,
+      env: import.meta.env,
+    })
 
   const controller =
     createTeacherAuthSessionController({
@@ -58,10 +64,15 @@ if (typeof document !== 'undefined') {
             composition:
               connection.composition,
           })
+        studentManagementRuntime.onReady(
+          connection,
+        )
       },
       onAuthorityRevoked() {
         assignmentHandle?.destroy()
         assignmentHandle = null
+        studentManagementRuntime
+          .onAuthorityRevoked()
       },
     })
 
