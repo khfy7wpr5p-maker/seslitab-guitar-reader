@@ -68,6 +68,9 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+      - name: Verify Guitar TAB Editor runtime is shipped
+        run: node scripts/verifyGuitarTabEditorRuntimeBuild.js
+
       - name: Verify S16 build composition identity
         run: node scripts/verifyS16BuildCompositionManifest.js
 

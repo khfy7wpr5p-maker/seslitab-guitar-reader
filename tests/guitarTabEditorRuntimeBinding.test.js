@@ -72,6 +72,7 @@ function validRuntime() {
 function fakeDocument({ scope = {}, existingScript = null, onAppend = null } = {}) {
   const appended = []
   const created = []
+  let currentScript = existingScript
   const makeScript = () => {
     const listeners = new Map()
     const script = {
@@ -83,6 +84,9 @@ function fakeDocument({ scope = {}, existingScript = null, onAppend = null } = {
       },
       dispatch(type) {
         listeners.get(type)?.()
+      },
+      remove() {
+        if (currentScript === script) currentScript = null
       },
     }
     created.push(script)
@@ -99,10 +103,11 @@ function fakeDocument({ scope = {}, existingScript = null, onAppend = null } = {
         selector,
         'script[data-seslitab-guitar-tab-editor-runtime="true"]',
       )
-      return existingScript
+      return currentScript
     },
     head: {
       appendChild(script) {
+        currentScript = script
         appended.push(script)
         onAppend?.(script, scope)
         return script
@@ -288,6 +293,26 @@ test('GTAB-09A loader clears a failed load so the same document can retry', asyn
   assert.equal(await loadGuitarTabEditorRuntime(root, 100), null)
   assert.equal(await loadGuitarTabEditorRuntime(root, 100), runtime)
   assert.equal(appended.length, 2)
+})
+
+test('GTAB-10C loader removes the failed script before retrying its pinned runtime', async () => {
+  let attempt = 0
+  const runtime = validRuntime()
+  const { root, appended, scope } = fakeDocument({
+    onAppend(script) {
+      attempt += 1
+      if (attempt === 1) queueMicrotask(() => script.dispatch('error'))
+      else {
+        scope[GUITAR_TAB_EDITOR_RUNTIME_GLOBAL] = runtime
+        queueMicrotask(() => script.dispatch('load'))
+      }
+    },
+  })
+
+  assert.equal(await loadGuitarTabEditorRuntime(root, 100), null)
+  assert.equal(await loadGuitarTabEditorRuntime(root, 100), runtime)
+  assert.equal(appended.length, 2)
+  assert.notEqual(appended[0], appended[1])
 })
 
 test('GTAB-09A loader times out fail-closed when the runtime never becomes valid', async () => {
