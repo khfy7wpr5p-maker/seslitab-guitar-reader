@@ -9,6 +9,8 @@ import json
 import hashlib
 import math
 import tempfile
+import os
+import stat
 from pathlib import Path
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
@@ -34,10 +36,15 @@ def qualified_path(path: Path, *, output: bool = False) -> Path:
     roots = [ARTIFACT_ROOT.resolve()]
     if not output:
         roots.append((PROJECT_ROOT / "tests/fixtures/gtab10c").resolve())
+    if any(not root.is_relative_to(PROJECT_ROOT) for root in roots):
+        raise ValueError("Authorized project root is redirected outside the project.")
     # Private CI test/read-view directories only, never arbitrary filesystem paths.
     temporary = Path(tempfile.gettempdir()).resolve()
     parent = resolved.parent
     if parent.parent == temporary and parent.name.startswith("gtab10c-"):
+        metadata = parent.stat()
+        if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise ValueError("GTAB-10C temporary directory must be private and owned by this process user.")
         roots.append(parent)
     if not any(resolved.is_relative_to(root) and resolved != root for root in roots):
         raise ValueError("Path is outside authorized GTAB-10C fixture/artifact roots.")
@@ -227,15 +234,13 @@ def create_read_view(root, side, original_bytes, directory):
                         raise ValueError("Generated note ID collides with an original ID.")
                     note.set('id', identifier)
                     used.add(identifier)
+                if note.find('pitch') is not None and any(not (note.findtext(field) or '').strip() for field in ['voice', 'staff']):
+                    raise ValueError("Unsupported missing voice/staff oracle context.")
                 original_voice = int(note.findtext('voice') or '1')
                 original_staff = int(note.findtext('staff') or '1')
-                if note.find('pitch') is not None and (
-                    not note.findtext('voice') or not note.findtext('staff')
-                ):
-                    raise ValueError("Pitched notes require explicit voice/staff identity coverage.")
-                read_voice = original_voice
+
                 mapping.append({"originalVoice": original_voice, "originalStaff": original_staff,
-                    "readViewVoice": read_voice, "tieStop": note_tie_flags(note)[0], "tieStart": note_tie_flags(note)[1],
+                    "readViewVoice": original_voice, "tieStop": note_tie_flags(note)[0], "tieStart": note_tie_flags(note)[1],
                     "partId": part.get('id'), "measureIndex": measure_index,
                     "noteIndex": note_index, "isPitched": note.find('pitch') is not None, "originalId": original_id, "readViewId": identifier})
     part_mapping = []
@@ -339,7 +344,7 @@ def main() -> None:
     args.source = qualified_path(args.source)
     args.derived = qualified_path(args.derived)
     args.output = qualified_path(args.output, output=True)
-    if args.output in (args.source, args.derived):
+    if args.output in (args.source, args.derived) or (args.output.exists() and any(args.output.samefile(path) for path in (args.source, args.derived))):
         raise ValueError("Oracle output cannot overwrite an input fixture.")
     source_bytes = read_fixture(args.source)
     derived_bytes = read_fixture(args.derived)

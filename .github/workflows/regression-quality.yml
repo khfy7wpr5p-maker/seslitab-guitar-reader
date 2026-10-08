@@ -253,10 +253,12 @@ jobs:
           NODE
           )"
           curl --silent --show-error --fail --max-time 30 -u "${SONAR_TOKEN}:" --get \
-            --data-urlencode "id=${task_id}" "https://sonarcloud.io/api/ce/task" > artifacts/sonar-pr-diagnostics/exact-ce-task.json
-          analysis_id="$(node --input-type=module - <<'NODE'
+            --data-urlencode "id=${task_id}" "https://sonarcloud.io/api/ce/task" > /tmp/sonar-pr-ce-task.json
+          analysis_id="$(SONAR_EXPECTED_TASK_ID="$task_id" node --input-type=module - <<'NODE'
           import fs from 'node:fs'
-          const { task } = JSON.parse(fs.readFileSync('artifacts/sonar-pr-diagnostics/exact-ce-task.json', 'utf8'))
+          const { task } = JSON.parse(fs.readFileSync('/tmp/sonar-pr-ce-task.json', 'utf8'))
+          if (task?.id !== process.env.SONAR_EXPECTED_TASK_ID || task?.componentKey !== 'khfy7wpr5p-maker_seslitab-guitar-reader' || !['PENDING', 'IN_PROGRESS', 'SUCCESS', 'FAILED', 'CANCELED'].includes(task.status)) throw new Error('Foreign or invalid CE task evidence')
+          fs.writeFileSync('artifacts/sonar-pr-diagnostics/exact-ce-task.json', JSON.stringify({ task }, null, 2) + '\n')
           if (task?.status === 'SUCCESS' && /^[A-Za-z0-9_-]{1,128}$/u.test(task.analysisId ?? '')) process.stdout.write(task.analysisId)
           NODE
           )"

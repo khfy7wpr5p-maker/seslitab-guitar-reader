@@ -145,5 +145,56 @@ class OraclePathBoundaryTest(unittest.TestCase):
             with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory, self.assertRaises(ValueError):
                 oracle.create_read_view(root, 'source', raw, directory)
 
+    def test_missing_voice_or_staff_is_controlled_unsupported_before_pinned_load(self):
+        project = Path(__file__).resolve().parents[2]
+        source = project / 'tests/fixtures/gtab10c/audiveris-like-source.musicxml'
+        original = (project / 'artifacts/gtab10c-semantic-parity/derived/audiveris-like-single-part.musicxml').read_bytes()
+        for field in ['voice', 'staff']:
+            with self.subTest(field=field), tempfile.TemporaryDirectory(prefix="gtab10c-test-") as directory:
+                root = oracle.safe_root(Path('unused'), original)
+                note = root.findall('.//note')[0]
+                note.remove(note.find(field))
+                derived = Path(directory) / 'derived.xml'
+                output = Path(directory) / 'out.json'
+                derived.write_bytes(oracle.tostring(root))
+                with patch.object(sys, 'argv', ['oracle', str(source), str(derived), str(output)]), self.assertRaisesRegex(ValueError, 'Unsupported missing voice/staff oracle context'):
+                    oracle.main()
+                self.assertFalse(output.exists())
+                self.assertEqual(derived.read_bytes(), oracle.tostring(root))
+
+
+    def test_output_hardlink_cannot_overwrite_source_bytes(self):
+        project = Path(__file__).resolve().parents[2]
+        original = (project / 'tests/fixtures/gtab10c/audiveris-like-source.musicxml').read_bytes()
+        derived_bytes = (project / 'artifacts/gtab10c-semantic-parity/derived/audiveris-like-single-part.musicxml').read_bytes()
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
+            source = Path(directory) / 'source.json'
+            derived = Path(directory) / 'derived.xml'
+            output = Path(directory) / 'output.json'
+            source.write_bytes(original)
+            derived.write_bytes(derived_bytes)
+            output.hardlink_to(source)
+            with patch.object(sys, 'argv', ['oracle', str(source), str(derived), str(output)]), self.assertRaisesRegex(ValueError, 'overwrite'):
+                oracle.main()
+            self.assertEqual(source.read_bytes(), original)
+
+    def test_prefix_alone_does_not_authorize_a_public_directory(self):
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
+            path = Path(directory) / 'fixture.xml'
+            path.write_bytes(b'<score-partwise/>')
+            Path(directory).chmod(0o777)
+            with self.assertRaises(ValueError):
+                oracle.read_fixture(path)
+            with self.assertRaises(ValueError):
+                oracle.qualified_path(Path(directory) / 'output.json', output=True)
+
+    def test_oversized_input_is_rejected_before_read_or_parse(self):
+        with tempfile.TemporaryDirectory(prefix='gtab10c-test-') as directory:
+            path = Path(directory) / 'oversized.xml'
+            with path.open('wb') as stream:
+                stream.truncate(oracle.MAX_XML_BYTES + 1)
+            with self.assertRaises(ValueError):
+                oracle.read_fixture(path)
+
 if __name__ == '__main__':
     unittest.main()
