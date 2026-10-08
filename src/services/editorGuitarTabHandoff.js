@@ -163,10 +163,64 @@ function technicalPosition(note) {
   })
 }
 
-function parseTimeline(root, label) {
+function normalizeTargetSelection(targetSelection) {
+  if (targetSelection === null || targetSelection === undefined) return null
+  if (!isRecord(targetSelection)) fail('target-selection-invalid')
+  const { partId, partIndex, staff, voice } = targetSelection
+  if (
+    !hasText(partId) || partId !== partId.trim()
+    || !Number.isSafeInteger(partIndex) || partIndex < 0
+    || !Number.isSafeInteger(staff) || staff < 1
+    || !Number.isSafeInteger(voice) || voice < 0
+  ) fail('target-selection-invalid')
+  return Object.freeze({ partId, partIndex, staff, voice })
+}
+
+function canonicalPositiveIntegerText(node, code) {
+  const value = textOf(node)
+  if (!/^[1-9][0-9]*$/u.test(value)) fail(code)
+  const number = Number(value)
+  if (!Number.isSafeInteger(number)) fail(code)
+  return number
+}
+
+function canonicalVoiceIntegerText(node, code) {
+  const value = textOf(node)
+  if (!/^(0|[1-9][0-9]*)$/u.test(value)) fail(code)
+  const number = Number(value)
+  if (!Number.isSafeInteger(number)) fail(code)
+  return number
+}
+
+function assertTargetPartIdentityMapping(root, label, parts) {
+  const partLists = directChildren(root, 'part-list')
+  const partList = partLists.length === 1 ? partLists[0] : null
+  const listedParts = partList ? directChildren(partList, 'score-part') : []
+  const listedIds = listedParts.map((part) => part.getAttribute?.('id'))
+  const bodyIds = parts.map((part) => part.getAttribute?.('id'))
+  const allIds = [...listedIds, ...bodyIds]
+  if (
+    !partList || listedParts.length !== parts.length ||
+    allIds.some((id) => typeof id !== 'string' || id.trim() === '') ||
+    new Set(listedIds).size !== listedIds.length ||
+    new Set(bodyIds).size !== bodyIds.length
+  ) fail(`${label}-part-identity-mismatch`)
+  for (let index = 0; index < parts.length; index += 1) {
+    if (listedIds[index] !== bodyIds[index]) fail(`${label}-part-identity-mismatch`)
+  }
+}
+function parseTimeline(root, label, targetSelection = null) {
   const parts = directChildren(root, 'part')
-  if (parts.length !== 1) fail(`${label}-one-part-required`)
-  const part = parts[0]
+  let part
+  if (targetSelection === null) {
+    if (parts.length !== 1) fail(`${label}-one-part-required`)
+    part = parts[0]
+  } else {
+    assertTargetPartIdentityMapping(root, label, parts)
+    const { partId, partIndex } = targetSelection
+    if (partIndex >= parts.length || parts[partIndex].getAttribute?.('id') !== partId) fail(`${label}-target-part-mismatch`)
+    part = parts[partIndex]
+  }
   const measures = directChildren(part, 'measure')
   if (measures.length === 0) fail(`${label}-measure-required`)
 
@@ -206,20 +260,46 @@ function parseTimeline(root, label) {
 
       const isChord = directChild(child, 'chord') !== null
       const isGrace = directChild(child, 'grace') !== null
-      if (isGrace) fail('grace-unsupported')
+      const isUnpitched = directChild(child, 'unpitched') !== null
+      const isRest = directChild(child, 'rest') !== null
+      const voiceNodes = directChildren(child, 'voice')
+      const staffNodes = directChildren(child, 'staff')
+      if (targetSelection !== null && (voiceNodes.length > 1 || staffNodes.length > 1)) {
+        fail(`${label}-target-identity-ambiguous`)
+      }
+      const voiceNode = voiceNodes[0] ?? null
+      const staffNode = staffNodes[0] ?? null
+      let voice = textOf(voiceNode) || '1'
+      let staff = staffNode
+        ? integerText(staffNode, `${label}-staff-invalid`, { min: 1 })
+        : 1
+      if (targetSelection !== null && (isGrace || isUnpitched || (!isRest && directChild(child, 'pitch')))) {
+        if (!voiceNode || !staffNode) fail(`${label}-target-identity-required`)
+        voice = String(canonicalVoiceIntegerText(voiceNode, `${label}-voice-invalid`))
+        staff = canonicalPositiveIntegerText(staffNode, `${label}-staff-invalid`)
+      }
+      const matchesTarget = targetSelection === null
+        || (staff === targetSelection.staff && voice === String(targetSelection.voice))
+      if (isGrace) {
+        if (matchesTarget) fail('grace-unsupported')
+        continue
+      }
+
       const duration = integerText(
         directChild(child, 'duration'),
         `${label}-note-duration-invalid`,
         { min: 1 },
       )
       const onset = isChord ? lastNonChordOnset : cursor
+      if (targetSelection !== null && !matchesTarget) {
+        if (!isChord) {
+          lastNonChordOnset = onset
+          cursor += duration
+        }
+        continue
+      }
+      if (isUnpitched) fail('unpitched-unsupported')
       const pitch = parsePitch(child)
-      const isRest = directChild(child, 'rest') !== null
-      const voice = textOf(directChild(child, 'voice')) || '1'
-      const staffNode = directChild(child, 'staff')
-      const staff = staffNode
-        ? integerText(staffNode, `${label}-staff-invalid`, { min: 1 })
-        : 1
 
       if (pitch && !isRest) {
         const ties = tieFlags(child)
@@ -399,6 +479,7 @@ export async function prepareEditorGuitarTabHandoff({
   scoreUpload,
   guitarTabMusicXml,
   draftId,
+  targetSelection = null,
 } = {}) {
   if (!isRecord(scoreUpload)) fail('score-upload-required')
   if (!hasText(draftId)) fail('draft-id-required')
@@ -412,11 +493,12 @@ export async function prepareEditorGuitarTabHandoff({
   }
   if (!hasText(guitarTabMusicXml)) fail('tab-empty')
 
+  const normalizedTargetSelection = normalizeTargetSelection(targetSelection)
   const scoreRoot = parseSafeDocument(scoreUpload.musicXml, 'score')
   const tabRoot = parseSafeDocument(guitarTabMusicXml, 'tab')
   assertTabShape(tabRoot)
 
-  const scoreEvents = parseTimeline(scoreRoot, 'score')
+  const scoreEvents = parseTimeline(scoreRoot, 'score', normalizedTargetSelection)
   const tabEvents = parseTimeline(tabRoot, 'tab')
   if (scoreEvents.length === 0) fail('score-pitched-note-required')
 
@@ -424,6 +506,16 @@ export async function prepareEditorGuitarTabHandoff({
   assertPhysicalTab(tabEvents)
 
   const guitarTabMusicXmlFingerprint = await sha256Utf8(guitarTabMusicXml)
+  const targetSelectionFingerprint =
+    normalizedTargetSelection === null
+      ? null
+      : await sha256Utf8(JSON.stringify({
+          schemaVersion: EDITOR_GUITAR_TAB_HANDOFF_SCHEMA_VERSION,
+          draftId,
+          scoreMusicXmlFingerprint: scoreUpload.musicXmlFingerprint,
+          guitarTabMusicXmlFingerprint,
+          targetSelection: normalizedTargetSelection,
+        }))
 
   return Object.freeze({
     schemaVersion: EDITOR_GUITAR_TAB_HANDOFF_SCHEMA_VERSION,
@@ -432,5 +524,11 @@ export async function prepareEditorGuitarTabHandoff({
     guitarTabMusicXmlFingerprint,
     guitarTabMusicXml,
     pitchedEventCount: scoreEvents.length,
+    ...(normalizedTargetSelection === null
+      ? {}
+      : {
+          targetSelection: normalizedTargetSelection,
+          targetSelectionFingerprint,
+        }),
   })
 }

@@ -261,3 +261,16 @@ test('GTAB-10A keeps validation fail-closed for invalid name, size and unsupport
     /10 MB/i,
   )
 })
+
+test('GTAB-10B rejects an invalid upload before reading any bytes', async () => {
+  const reads = []
+  const invalid = {
+    name: 'lesson.txt',
+    size: 12,
+    async text() { reads.push('text'); throw new Error('invalid file reached text reader') },
+    async arrayBuffer() { reads.push('arrayBuffer'); throw new Error('invalid file reached binary reader') },
+  }
+
+  await assert.rejects(() => readMusicXmlSourceFile(invalid), /Yalnızca/u)
+  assert.deepEqual(reads, [])
+})

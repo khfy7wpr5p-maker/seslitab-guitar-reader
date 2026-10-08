@@ -152,7 +152,8 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
 
   // Voice
   const voiceEl = noteEl.querySelector('voice')
-  const voice = voiceEl ? parseInt(voiceEl.textContent, 10) || 1 : 1
+  const parsedVoice = voiceEl ? parseInt(voiceEl.textContent, 10) : 1
+  const voice = Number.isInteger(parsedVoice) ? parsedVoice : 1
 
   // Staff
   const staffEl = noteEl.querySelector('staff')

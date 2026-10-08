@@ -67,8 +67,8 @@ function voiceTracks(events, staff, technicalById = null) {
   return { xml, extent }
 }
 
-function sourceScore(events) {
-  const { xml } = voiceTracks(events, null)
+function sourceScore(events, staff = null) {
+  const { xml } = voiceTracks(events, staff)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list>
@@ -147,6 +147,162 @@ test('GTAB-04 accepts Editor direct-pitch C4 as string 2 fret 1 and preserves ex
   assert.match(result.guitarTabMusicXmlFingerprint, /^[0-9a-f]{64}$/u)
   assert.equal(result.guitarTabMusicXml, tabXml)
   assert.equal(result.pitchedEventCount, 1)
+})
+
+test('GTAB-10B validates selected part/staff/voice in a full multipart score', async () => {
+  const selected = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const other = [{ id: 'other', pitch: PITCHES.G4, voice: '1', onset: 0, duration: 1 }]
+  const first = sourceScore(other, 1)
+  const secondPart = sourceScore(selected, 1).match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
+    .replace(/^\s*<measure number="1">/u, '<measure number="1">')
+  const fullScore = first
+    .replace('</part-list>', '<score-part id="P2"><part-name>Guitar</part-name></score-part></part-list>')
+    .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondPart}</part>\n</score-partwise>`)
+  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+    musicXml: fullScore, teacherId: 'teacher-a', draftId: 'multipart-draft', now: () => '2026-10-04T10:00:00Z',
+  })
+  const tabXml = editorTab(selected, { n1: { string: 2, fret: 1 } })
+  const result = await prepareEditorGuitarTabHandoff({
+    scoreUpload, guitarTabMusicXml: tabXml, draftId: 'multipart-draft',
+    targetSelection: { partId: 'P2', partIndex: 1, staff: 1, voice: 1 },
+  })
+  assert.equal(result.scoreMusicXmlFingerprint, scoreUpload.musicXmlFingerprint)
+  assert.equal(result.pitchedEventCount, 1)
+  await assert.rejects(prepareEditorGuitarTabHandoff({
+    scoreUpload, guitarTabMusicXml: tabXml, draftId: 'multipart-draft',
+    targetSelection: { partId: 'P1', partIndex: 1, staff: 1, voice: 1 },
+  }), /target-part-mismatch/u)
+})
+
+test('GTAB-10B targeted handoff rejects duplicate or mismatched part identities', async () => {
+  const events = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const base = sourceScore(events, 1)
+  const secondBody = base.match(/<part id="P1">([\s\S]*?)<\/part>/u)[1]
+  const multipart = base
+    .replace('</part-list>', '<score-part id="P2"><part-name>Second</part-name></score-part></part-list>')
+    .replace('  </part>\n</score-partwise>', `  </part>\n  <part id="P2">${secondBody}</part>\n</score-partwise>`)
+  const withDuplicatePartList = multipart.replace('</score-partwise>', '<part-list><score-part id="P1"><part-name>First</part-name></score-part><score-part id="P2"><part-name>Second</part-name></score-part></part-list></score-partwise>')
+  const invalidScores = [
+    multipart.replace('<score-part id="P2">', '<score-part id="P1">'),
+    multipart.replace('<part id="P2">', '<part id="P1">'),
+    multipart.replace('<score-part id="P2">', '<score-part id="P1">').replace('<part id="P2">', '<part id="P1">'),
+    withDuplicatePartList,
+  ]
+  for (let index = 0; index < invalidScores.length; index += 1) {
+    const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+      musicXml: invalidScores[index], teacherId: 'teacher-a', draftId: `duplicate-${index}`,
+      now: () => '2026-10-04T10:00:00Z',
+    })
+    await assert.rejects(prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+      draftId: `duplicate-${index}`,
+      targetSelection: { partId: 'P1', partIndex: 1, staff: 1, voice: 1 },
+    }), /score-part-identity-mismatch/u)
+  }
+})
+
+test('GTAB-10B accepts canonical voice zero in a targeted handoff', async () => {
+  const events = [{ id: 'voice-zero', pitch: PITCHES.C4, voice: '0', onset: 0, duration: 1 }]
+  const sourceXml = sourceScore(events, 1)
+  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+    musicXml: sourceXml, teacherId: 'teacher-a', draftId: 'draft-voice-zero',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  const result = await prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(events, { 'voice-zero': { string: 2, fret: 1 } }),
+    draftId: 'draft-voice-zero',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 0 },
+  })
+  assert.equal(result.pitchedEventCount, 1)
+  assert.equal(result.targetSelection.voice, 0)
+})
+
+test('GTAB-10B requires explicit canonical staff and voice for targeted source notes', async () => {
+  const events = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const scoreUpload = await preparedScore(events, 'draft-identity')
+  const missingStaff = sourceScore(events, 1).replace(/<staff>1<\/staff>/gu, '')
+  await assert.rejects(
+    prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+      draftId: 'draft-identity',
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }),
+    /target-identity-required/u,
+  )
+
+  const missingVoiceScore = sourceScore(events, 1).replace(/<voice>1<\/voice>/gu, '')
+  const uploadWithoutVoice = await prepareTeacherAssignmentScoreUpload({
+    musicXml: missingVoiceScore, teacherId: 'teacher-a', draftId: 'draft-no-voice',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  await assert.rejects(
+    prepareEditorGuitarTabHandoff({
+      scoreUpload: uploadWithoutVoice,
+      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+      draftId: 'draft-no-voice',
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }),
+    /target-identity-required/u,
+  )
+})
+
+test('GTAB-10B targeted handoff ignores unsupported notes outside the selected voice', async () => {
+  const selected = [{ id: 'selected', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const sourceXml = sourceScore(selected, 1).replace(
+    '</measure>',
+    '<backup><duration>1</duration></backup>' +
+      '<note><unpitched><display-step>C</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><voice>2</voice><staff>1</staff></note>' +
+      '<note><grace/><pitch><step>D</step><octave>4</octave></pitch><voice>3</voice><staff>1</staff></note></measure>',
+  )
+  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+    musicXml: sourceXml, teacherId: 'teacher-a', draftId: 'draft-target-filter',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  const handoff = await prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
+    draftId: 'draft-target-filter',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+  })
+  assert.equal(handoff.pitchedEventCount, 1)
+
+  await assert.rejects(prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
+    draftId: 'draft-target-filter',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 2 },
+  }), /unpitched-unsupported/u)
+  await assert.rejects(prepareEditorGuitarTabHandoff({
+    scoreUpload,
+    guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
+    draftId: 'draft-target-filter',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3 },
+  }), /grace-unsupported/u)
+})
+
+test('GTAB-10B targeted handoff rejects repeated staff or voice identities', async () => {
+  const events = [{ id: 'selected', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
+  const validSource = sourceScore(events, 1)
+  const ambiguousSources = [
+    validSource.replace('<voice>1</voice>', '<voice>1</voice><voice>2</voice>'),
+    validSource.replace('<staff>1</staff>', '<staff>1</staff><staff>2</staff>'),
+  ]
+
+  for (let index = 0; index < ambiguousSources.length; index += 1) {
+    const scoreUpload = await prepareTeacherAssignmentScoreUpload({
+      musicXml: ambiguousSources[index], teacherId: 'teacher-a', draftId: `repeated-target-identity-${index}`,
+      now: () => '2026-10-04T10:00:00Z',
+    })
+    await assert.rejects(prepareEditorGuitarTabHandoff({
+      scoreUpload,
+      guitarTabMusicXml: editorTab(events, { selected: { string: 2, fret: 1 } }),
+      draftId: `repeated-target-identity-${index}`,
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }), /target-identity-ambiguous/u)
+  }
 })
 
 test('GTAB-04 rejects malformed TAB shape and missing technical data', async () => {

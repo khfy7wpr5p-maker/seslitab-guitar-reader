@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>GTAB-10B multipart target browser proof</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "jszip": "./jszip-browser-stub.js",
+      "firebase/app": "./firebase-app-browser-stub.js",
+      "firebase/auth": "./firebase-auth-browser-stub.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <pre id="proof">RUNNING</pre>
+  <div id="guitar-tab-proof-host"></div>
+  <script type="module">
+    import {
+      ensureGuitarTabTeacherWorkspace,
+      getGuitarTabTeacherWorkspaceState,
+      loadGuitarTabTeacherSource,
+      resetGuitarTabTeacherWorkspace,
+    } from '../../src/guitarTabTeacherWorkspaceUi.js'
+
+    const proof = document.getElementById('proof')
+    const host = document.getElementById('guitar-tab-proof-host')
+    const targetCalls = []
+    let sessionNumber = 0
+    const rootSession = () => ({
+      sessionId: `browser-proof-${++sessionNumber}`,
+      events: [],
+      groups: [],
+    })
+    const adapters = {
+      validateMusicXmlFile: () => null,
+      async readMusicXmlSourceFile(file) { return { xmlText: await file.text(), sourceName: file.name } },
+      extractScoreInventory(xml) {
+        return xml.includes('single-part')
+          ? { parts: [{ partId: 'P-LEGACY', partIndex: 0, name: 'Gitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] }] }
+          : { parts: [
+            { partId: 'P-PIANO', partIndex: 0, name: 'Piyano', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] },
+            { partId: 'P-GUITAR', partIndex: 1, name: 'Gitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+          ] }
+      },
+      parseCanonicalNotes() { return [] },
+      async loadEditorRuntime() {
+        return { createSourceSession(_xml, options) { targetCalls.push(options.targetSelection); return rootSession() } }
+      },
+      async loadScoreRuntime() { return null },
+    }
+
+    try {
+      ensureGuitarTabTeacherWorkspace(document, host)
+      await loadGuitarTabTeacherSource(document, '<score-partwise id="multipart"/>', adapters, { filename: 'multipart.musicxml' })
+      const select = document.getElementById('guitar-tab-target-region')
+      const multipartState = getGuitarTabTeacherWorkspaceState(document)
+      const multipartVisible = !select.hidden && select.options.length === 3
+        && multipartState.selectedRegion === null
+        && document.getElementById('guitar-tab-export').disabled
+      select.value = select.options[1].value
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      const firstSelection = getGuitarTabTeacherWorkspaceState(document)
+      const firstTarget = firstSelection.selectedRegion
+      select.value = select.options[2].value
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      const secondSelection = getGuitarTabTeacherWorkspaceState(document)
+      const switchingWorked = firstTarget.partId === 'P-PIANO'
+        && secondSelection.selectedRegion.partId === 'P-GUITAR'
+        && secondSelection.selectedRegionSummary.partIndex === 1
+        && targetCalls.length === 2
+        && targetCalls[0].partIndex === 0
+        && targetCalls[1].partIndex === 1
+
+      await resetGuitarTabTeacherWorkspace(document, adapters)
+      await loadGuitarTabTeacherSource(document, '<score-partwise id="single-part"/>', adapters, { filename: 'legacy.musicxml' })
+      const legacyState = getGuitarTabTeacherWorkspaceState(document)
+      const legacyStable = document.getElementById('guitar-tab-target-region').hidden
+        && legacyState.selectedRegion.partId === 'P-LEGACY'
+        && legacyState.selectedRegion.partIndex === 0
+
+      document.body.dataset.multipartVisiblePass = String(multipartVisible)
+      document.body.dataset.targetSwitchPass = String(switchingWorked)
+      document.body.dataset.legacySinglePartPass = String(legacyStable)
+      if (!multipartVisible || !switchingWorked || !legacyStable) throw new Error('multipart target browser assertions failed')
+      proof.textContent = 'PASS'
+    } catch (error) {
+      document.body.dataset.error = String(error?.stack ?? error)
+      proof.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>
