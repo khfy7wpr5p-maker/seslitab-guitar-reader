@@ -732,6 +732,25 @@ test('GTAB-10C clears the TAB loading message when the shared editor runtime is 
   assert.match(editorStatus.textContent, /bileşeni yüklenemedi/u)
 })
 
+test('GTAB-10C reports runtime loader exceptions after the single retry', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  let attempts = 0
+  adapters.loadEditorRuntime = async () => {
+    attempts += 1
+    throw new Error('runtime chunk request failed')
+  }
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'ordinary.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.deepEqual(result, { ok: false, reason: 'EDITOR_RUNTIME_UNAVAILABLE' })
+  assert.equal(attempts, 2)
+  assert.equal(root.getElementById('guitar-tab-editor-status').dataset.state, 'runtime-unavailable')
+})
+
 test('GTAB-10C resets the file picker so the same MusicXML source can be selected again', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
