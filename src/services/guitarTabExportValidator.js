@@ -196,7 +196,7 @@ function noteIdentity(note) {
   return { voice, staff }
 }
 
-function parsePartTimeline(part) {
+function parsePartTimeline(part, { targetSelection = null } = {}) {
   const measures = directChildren(part, 'measure')
   if (measures.length === 0) fail('SEMANTIC', 'MEASURE_REQUIRED')
   const events = []
@@ -227,7 +227,14 @@ function parsePartTimeline(part) {
         continue
       }
       if (tag !== 'note') continue
-      if (directChildren(child, 'grace').length > 0) fail('SEMANTIC', 'GRACE_UNSUPPORTED')
+
+      const { voice, staff } = noteIdentity(child)
+      const selected = targetSelection === null
+        || (staff === targetSelection.staff && voice === targetSelection.voice)
+      if (directChildren(child, 'grace').length > 0) {
+        if (selected) fail('SEMANTIC', 'GRACE_UNSUPPORTED')
+        continue
+      }
 
       const durationNodes = directChildren(child, 'duration')
       if (durationNodes.length !== 1) fail('SEMANTIC', 'NOTE_DURATION_INVALID')
@@ -235,30 +242,32 @@ function parsePartTimeline(part) {
       const isChord = directChildren(child, 'chord').length > 0
       if (isChord && lastNonChordOnset === null) fail('SEMANTIC', 'CHORD_WITHOUT_BASE')
       const onset = isChord ? lastNonChordOnset : cursor
-      const { voice, staff } = noteIdentity(child)
-      const pitch = parsePitch(child)
-      const isRest = directChildren(child, 'rest').length > 0
-      if (!pitch && !isRest) fail('SEMANTIC', 'NOTE_PITCH_OR_REST_REQUIRED')
-      if (pitch && !isRest) {
-        const semitones = transposeState.byStaff.get(staff) ?? transposeState.default
-        const soundingPitchMidi = pitch.midi + semitones
-        if (!Number.isSafeInteger(soundingPitchMidi) || soundingPitchMidi < 0 || soundingPitchMidi > 127) {
-          fail('SEMANTIC', 'SOUNDING_PITCH_INVALID')
+
+      if (selected) {
+        const pitch = parsePitch(child)
+        const isRest = directChildren(child, 'rest').length > 0
+        if (!pitch && !isRest) fail('SEMANTIC', 'NOTE_PITCH_OR_REST_REQUIRED')
+        if (pitch && !isRest) {
+          const semitones = transposeState.byStaff.get(staff) ?? transposeState.default
+          const soundingPitchMidi = pitch.midi + semitones
+          if (!Number.isSafeInteger(soundingPitchMidi) || soundingPitchMidi < 0 || soundingPitchMidi > 127) {
+            fail('SEMANTIC', 'SOUNDING_PITCH_INVALID')
+          }
+          const ties = parseTieFlags(child)
+          events.push(Object.freeze({
+            measureIndex,
+            onset,
+            duration,
+            divisions: currentDivisions,
+            voice,
+            staff,
+            pitch,
+            soundingPitchMidi,
+            tieStart: ties.tieStart,
+            tieStop: ties.tieStop,
+            technical: parseTechnical(child),
+          }))
         }
-        const ties = parseTieFlags(child)
-        events.push(Object.freeze({
-          measureIndex,
-          onset,
-          duration,
-          divisions: currentDivisions,
-          voice,
-          staff,
-          pitch,
-          soundingPitchMidi,
-          tieStart: ties.tieStart,
-          tieStop: ties.tieStop,
-          technical: parseTechnical(child),
-        }))
       }
       if (!isChord) {
         lastNonChordOnset = onset
@@ -381,10 +390,7 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, D
   }
 
   const tabPart = assertTabShape(tabRoot)
-  let scoreEvents = parsePartTimeline(scorePart)
-  if (selectedTarget) {
-    scoreEvents = scoreEvents.filter((event) => event.staff === selectedTarget.staff && event.voice === selectedTarget.voice)
-  }
+  const scoreEvents = parsePartTimeline(scorePart, { targetSelection: selectedTarget })
   if (scoreEvents.length === 0) fail('IDENTITY', 'TARGET_EMPTY')
 
   const tabEvents = parsePartTimeline(tabPart)
