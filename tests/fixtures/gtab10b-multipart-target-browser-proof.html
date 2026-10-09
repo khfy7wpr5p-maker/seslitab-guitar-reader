@@ -44,6 +44,7 @@
             { partId: 'P-GUITAR', partIndex: 1, name: 'Gitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
           ] }
       },
+      prepareEditorSourceXml(xml) { return xml },
       parseCanonicalNotes() { return [] },
       async loadEditorRuntime() {
         return { createSourceSession(_xml, options) { targetCalls.push(options.targetSelection); return rootSession() } }

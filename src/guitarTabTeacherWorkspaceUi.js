@@ -1,5 +1,6 @@
 import { parseMusicXml } from '../musicXmlParser.js'
 import { prepareEditorGuitarTabHandoff } from './services/editorGuitarTabHandoff.js'
+import { validateGuitarTabExport } from './services/guitarTabExportValidator.js'
 import { loadGuitarTabEditorRuntime } from './services/guitarTabEditorRuntimeLoader.js'
 import { resolveGuitarTabEventMidi } from './services/guitarTabPitchPolicy.js'
 import { createGuitarTabRendererTargetResolver } from './services/guitarTabSourceIdentity.js'
@@ -154,6 +155,7 @@ const defaultAdapters = Object.freeze({
   highlightNote: highlightScoreNote,
   prepareScoreUpload: prepareTeacherAssignmentScoreUpload,
   prepareHandoff: prepareEditorGuitarTabHandoff,
+  validateExport: validateGuitarTabExport,
   downloadText: downloadTextFile,
   validateMusicXmlFile,
   readMusicXmlSourceFile,
@@ -173,6 +175,7 @@ function normalizeAdapters(adapters = {}) {
     highlightNote: adapters.highlightNote ?? defaultAdapters.highlightNote,
     prepareScoreUpload: adapters.prepareScoreUpload ?? defaultAdapters.prepareScoreUpload,
     prepareHandoff: adapters.prepareHandoff ?? defaultAdapters.prepareHandoff,
+    validateExport: adapters.validateExport ?? defaultAdapters.validateExport,
     downloadText: adapters.downloadText ?? defaultAdapters.downloadText,
     validateMusicXmlFile: adapters.validateMusicXmlFile ?? defaultAdapters.validateMusicXmlFile,
     readMusicXmlSourceFile: adapters.readMusicXmlSourceFile ?? defaultAdapters.readMusicXmlSourceFile,
@@ -210,6 +213,8 @@ function emptyState(generation = 0) {
     targetResolver: null,
     adapters: null,
     notationSynchronized: false,
+    exportValidationCategory: null,
+    exportValidationCode: null,
   }
 }
 
@@ -227,9 +232,64 @@ function currentEventMidi(state, controllerState) {
   return resolveGuitarTabEventMidi(event)
 }
 
+function setExportValidation(state, category = null, code = null) {
+  if (!state) return
+  state.exportValidationCategory = typeof category === 'string' && category ? category : null
+  state.exportValidationCode = typeof code === 'string' && code ? code : null
+}
+
 function canExportState(state) {
-  if (!state?.sourceXml || !state?.sourceSession || !state?.tabDocument || typeof state?.editorRuntime?.serializeGuitarTabMusicXml !== 'function') return false
-  try { return state.tabDocument.canExport?.() === true } catch { return false }
+  if (
+    !state?.sourceXml
+    || !state?.sourceSession
+    || !state?.selectedRegion
+    || !state?.tabDocument
+    || typeof state?.editorRuntime?.serializeGuitarTabMusicXml !== 'function'
+    || typeof state?.adapters?.validateExport !== 'function'
+  ) {
+    setExportValidation(state)
+    return false
+  }
+  try {
+    if (state.tabDocument.canExport?.() !== true) {
+      setExportValidation(state)
+      return false
+    }
+    const guitarTabMusicXml = state.editorRuntime.serializeGuitarTabMusicXml({
+      sourceSession: state.sourceSession,
+      document: state.tabDocument,
+    })
+    const validation = state.adapters.validateExport({
+      scoreMusicXml: state.sourceXml,
+      guitarTabMusicXml,
+      targetSelection: state.selectedRegion,
+    })
+    if (validation?.ok === true) {
+      setExportValidation(state)
+      return true
+    }
+    setExportValidation(
+      state,
+      typeof validation?.category === 'string' ? validation.category : 'RUNTIME',
+      typeof validation?.code === 'string' ? validation.code : 'VALIDATION_FAILED',
+    )
+    return false
+  } catch {
+    setExportValidation(state, 'RUNTIME', 'VALIDATION_EXCEPTION')
+    return false
+  }
+}
+
+function exportValidationMessage(category, code) {
+  if (category === 'IDENTITY') return 'TAB hedefi nota kaynağıyla eşleşmiyor. Hedef bölgeyi yeniden seçin.'
+  if (category === 'PHYSICAL') {
+    if (code === 'TECHNICAL_EVIDENCE_AMBIGUOUS') return 'TAB tel/perde bilgisi belirsiz. İlgili notanın tel ve perdesini yeniden atayın.'
+    return 'TAB tel/perde ataması gitarın gerçek ses yüksekliğiyle eşleşmiyor.'
+  }
+  if (category === 'SEMANTIC') return 'TAB MusicXML nota verisi kaynak MusicXML ile eşleşmiyor.'
+  if (category === 'TAB_SHAPE') return 'TAB MusicXML yapısı doğrulanamadı. Altı telli TAB çıktısını yeniden oluşturun.'
+  if (category === 'SECURITY') return 'TAB MusicXML güvenlik doğrulamasından geçmedi.'
+  return 'TAB MusicXML doğrulanamadı; dosya oluşturulmadı.'
 }
 
 function updateExportButton(root, state) {
@@ -277,7 +337,18 @@ function resolveCanonicalRegion(state, encodedRegion) {
 
 async function activateTarget(root, state, selectedRegion) {
   if (!state || workspaceStates.get(root)?.generation !== state.generation) return false
-  const invalidatedState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false }
+  const invalidatedState = {
+    ...state,
+    sourceSession: null,
+    selectedRegion: null,
+    selectedRegionSummary: null,
+    tabDocument: null,
+    keyboardController: null,
+    targetResolver: null,
+    notationSynchronized: false,
+    exportValidationCategory: null,
+    exportValidationCode: null,
+  }
   workspaceStates.set(root, invalidatedState)
   renderTargetOptions(root, invalidatedState)
   renderAuthoringSurface(root, invalidatedState)
@@ -319,6 +390,8 @@ async function activateTarget(root, state, selectedRegion) {
     keyboardController: authoring?.keyboardController ?? null,
     targetResolver: authoring?.targetResolver ?? null,
     notationSynchronized: false,
+    exportValidationCategory: null,
+    exportValidationCode: null,
   }
   workspaceStates.set(root, nextState)
   renderTargetOptions(root, nextState)
@@ -338,7 +411,18 @@ async function handleTargetChange(root, encodedRegion) {
   const selectedRegion = resolveCanonicalRegion(state, encodedRegion)
   if (!selectedRegion) {
     if (state) {
-      const nextState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false }
+      const nextState = {
+        ...state,
+        sourceSession: null,
+        selectedRegion: null,
+        selectedRegionSummary: null,
+        tabDocument: null,
+        keyboardController: null,
+        targetResolver: null,
+        notationSynchronized: false,
+        exportValidationCategory: null,
+        exportValidationCode: null,
+      }
       workspaceStates.set(root, nextState)
       renderAuthoringSurface(root, nextState)
       renderTargetOptions(root, nextState)
@@ -616,6 +700,7 @@ export function getGuitarTabTeacherWorkspaceState(root) {
   const controllerState = currentControllerState(state)
   let assignmentCount = 0
   try { assignmentCount = state.tabDocument?.listAssignments?.().length ?? 0 } catch {}
+  const exportReady = canExportState(state)
   return Object.freeze({
     generation: state.generation,
     sourceName: state.sourceName,
@@ -631,7 +716,9 @@ export function getGuitarTabTeacherWorkspaceState(root) {
     selectedString: controllerState?.selectedString ?? null,
     fretBuffer: controllerState?.fretBuffer ?? '',
     notationSynchronized: state.notationSynchronized === true,
-    exportReady: canExportState(state),
+    exportValidationCategory: state.exportValidationCategory ?? null,
+    exportValidationCode: state.exportValidationCode ?? null,
+    exportReady,
   })
 }
 
@@ -642,6 +729,15 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
     return Object.freeze({ ok: false, reason: 'NO_SOURCE' })
   }
   if (!canExportState(state)) {
+    if (state.exportValidationCategory || state.exportValidationCode) {
+      setEditorStatus(root, exportValidationMessage(state.exportValidationCategory, state.exportValidationCode), 'export-error')
+      return Object.freeze({
+        ok: false,
+        reason: 'EXPORT_VALIDATION_FAILED',
+        category: state.exportValidationCategory,
+        code: state.exportValidationCode,
+      })
+    }
     return Object.freeze({ ok: false, reason: 'INCOMPLETE_ASSIGNMENTS' })
   }
 
@@ -667,10 +763,13 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
       draftId: state.sourceSession.sessionId,
       targetSelection: state.selectedRegion,
     })
-  } catch {
+  } catch (error) {
     if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
-    setEditorStatus(root, 'TAB MusicXML doğrulanamadı; dosya oluşturulmadı.', 'export-error')
-    return Object.freeze({ ok: false, reason: 'EXPORT_VALIDATION_FAILED' })
+    const category = typeof error?.category === 'string' ? error.category : (state.exportValidationCategory ?? 'RUNTIME')
+    const code = typeof error?.code === 'string' ? error.code : (state.exportValidationCode ?? 'VALIDATION_FAILED')
+    setExportValidation(state, category, code)
+    setEditorStatus(root, exportValidationMessage(category, code), 'export-error')
+    return Object.freeze({ ok: false, reason: 'EXPORT_VALIDATION_FAILED', category, code })
   }
 
   if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
@@ -684,6 +783,7 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
   }
 
   if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
+  setExportValidation(state)
   setEditorStatus(root, 'TAB MusicXML doğrulandı ve dışa aktarıldı.', 'export-ready')
   return Object.freeze({ ok: true, musicXml, filename, handoff })
 }
