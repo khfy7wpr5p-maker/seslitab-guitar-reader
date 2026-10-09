@@ -63,7 +63,7 @@ export function mountTeacherStudentManagementUi({
   const mountId = ++managementMountSequence
   let destroyed = false
 
-  function render(message = '') {
+  function render(message = '', expandedManagementId = null) {
     if (destroyed) return
 
     const viewModel = trustedController.getViewModel()
@@ -225,14 +225,16 @@ export function mountTeacherStudentManagementUi({
         'teacher-student-management__row-summary',
       )
       summary.type = 'button'
-      summary.setAttribute('aria-expanded', 'false')
+      const isExpanded = expandedManagementId !== null
+        && row?.managementId === expandedManagementId
+      summary.setAttribute('aria-expanded', String(isExpanded))
       summary.setAttribute('aria-controls', detailsId)
       article.appendChild(summary)
 
       const details = root.createElement('div')
       details.id = detailsId
       details.className = 'teacher-student-management__row-details'
-      details.hidden = true
+      details.hidden = !isExpanded
       details.appendChild(
         textNode(root, 'p', `Durum: ${metadataText(row?.state)}`),
       )
@@ -285,9 +287,9 @@ export function mountTeacherStudentManagementUi({
             await trustedController.revokeInvitation(
               row.managementId,
             )
-            render('Davet iptal edildi.')
+            render('Davet iptal edildi.', row.managementId)
           } catch {
-            render('Davet iptal edilemedi.')
+            render('Davet iptal edilemedi.', row.managementId)
           }
         })
         details.appendChild(revoke)
