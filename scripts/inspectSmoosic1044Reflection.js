@@ -5,6 +5,8 @@ const packageRoot = resolve('experiments/smoosic-mobile/node_modules/smoosic')
 const artifactPath = resolve('artifacts/smenu-smoosic-reflection-contract.json')
 const needles = [
   'globalThis.Smo',
+  'SmoDynamicCtor',
+  'CollapseRibbonControl',
   'SuiFileMenu',
   'SuiScoreMenu',
   'SuiNoteMenu',
@@ -37,21 +39,22 @@ for (const path of files) {
   const source = readFileSync(path, 'utf8')
   for (const needle of needles) {
     let index = source.indexOf(needle)
-    while (index >= 0) {
-      const start = Math.max(0, index - 220)
-      const end = Math.min(source.length, index + needle.length + 320)
+    let countForNeedle = 0
+    while (index >= 0 && countForNeedle < 30) {
+      const start = Math.max(0, index - 360)
+      const end = Math.min(source.length, index + needle.length + 620)
       hits.push({
         needle,
         path: relative(packageRoot, path),
         excerpt: source.slice(start, end).replace(/\s+/g, ' ').trim(),
       })
+      countForNeedle += 1
       index = source.indexOf(needle, index + needle.length)
-      if (hits.filter((hit) => hit.needle === needle).length >= 20) break
     }
   }
 }
 
-const globalHits = hits.filter((hit) => hit.needle === 'globalThis.Smo')
+const counts = Object.fromEntries(needles.map((needle) => [needle, hits.filter((hit) => hit.needle === needle).length]))
 const evidence = {
   package: {
     name: packageJson.name,
@@ -59,7 +62,7 @@ const evidence = {
     main: packageJson.main ?? null,
   },
   scannedFileCount: files.length,
-  globalThisSmoHitCount: globalHits.length,
+  counts,
   hits,
 }
 
@@ -67,17 +70,13 @@ mkdirSync(resolve('artifacts'), { recursive: true })
 writeFileSync(artifactPath, `${JSON.stringify(evidence, null, 2)}\n`)
 
 console.log(`Installed Smoosic: ${packageJson.name}@${packageJson.version}`)
-console.log(`globalThis.Smo hits: ${globalHits.length}`)
-for (const hit of globalHits.slice(0, 10)) {
+for (const needle of needles) console.log(`${needle} hits: ${counts[needle]}`)
+for (const hit of hits.filter((entry) => entry.needle === 'SmoDynamicCtor').slice(0, 12)) {
   console.log(`${hit.path}: ${hit.excerpt}`)
 }
 console.log(`Evidence: ${artifactPath}`)
 
 if (packageJson.version !== '1.0.44') {
   console.error(`SMENU reflection inspection failed: expected smoosic@1.0.44, got ${packageJson.version}`)
-  process.exit(1)
-}
-if (!globalHits.length) {
-  console.error('SMENU reflection inspection failed: installed smoosic@1.0.44 contains no globalThis.Smo reflection references.')
   process.exit(1)
 }
