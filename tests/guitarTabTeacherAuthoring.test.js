@@ -247,6 +247,7 @@ test('GTAB-10C uses distinct strings while clicking through a simultaneous chord
     extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 3 }] }] }] }),
     prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => [],
+    validateExport: () => ({ ok: true, category: null, code: null, facts: {} }),
   }
 
   assert.equal((await loadGuitarTabTeacherSource(documentRoot, '<score-partwise/>', adapters)).ok, true)
@@ -281,6 +282,7 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
     extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
     prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => [],
+    validateExport: () => ({ ok: true, category: null, code: null, facts: {} }),
     async prepareScoreUpload(input) {
       observations.scoreUploadInput = input
       return Object.freeze({ draftId: input.draftId, musicXml: input.musicXml, musicXmlFingerprint: 'a'.repeat(64) })
@@ -322,4 +324,36 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
   })
   assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).sourceName, 'audiveris-export.musicxml')
   assert.equal(observations.scoreUploadInput.musicXml, exactSource)
+})
+
+test('GTAB-VALIDATOR-01 blocks export readiness and final export on unified validator failure', async () => {
+  const workspaceModule = await import('../src/guitarTabTeacherWorkspaceUi.js')
+  const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
+  const session = sourceSession(); const observations = {}; const editorRuntime = runtime(session, observations)
+  const adapters = {
+    loadEditorRuntime: async () => editorRuntime,
+    loadScoreRuntime: async () => null,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
+    prepareEditorSourceXml: (xml) => xml,
+    parseCanonicalNotes: () => [],
+    validateExport: () => ({ ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH' }),
+  }
+
+  assert.equal((await loadGuitarTabTeacherSource(documentRoot, '<score-partwise/>', adapters)).ok, true)
+  observations.document.assignPosition('e1', { string: 2, fret: 1 })
+  observations.document.assignPosition('e2', { string: 1, fret: 3 })
+
+  const state = getGuitarTabTeacherWorkspaceState(documentRoot)
+  assert.equal(state.exportReady, false)
+  assert.equal(state.exportValidationCategory, 'PHYSICAL')
+  assert.equal(state.exportValidationCode, 'TECHNICAL_POSITION_PITCH_MISMATCH')
+
+  const result = await workspaceModule.exportGuitarTabTeacherWorkspaceMusicXml(documentRoot, adapters)
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'EXPORT_VALIDATION_FAILED',
+    category: 'PHYSICAL',
+    code: 'TECHNICAL_POSITION_PITCH_MISMATCH',
+  })
+  assert.match(documentRoot.getElementById('guitar-tab-editor-status').textContent, /gerçek ses yüksekliğiyle eşleşmiyor/u)
 })
