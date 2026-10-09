@@ -265,9 +265,23 @@ try {
   mkdirSync(resolve('artifacts'), { recursive: true })
   writeFileSync(artifactPath, `${JSON.stringify(evidence, null, 2)}\n`)
   cdp?.close()
-  if (browser && browser.exitCode === null) browser.kill('SIGTERM')
+  if (browser && browser.exitCode === null) {
+    browser.kill('SIGTERM')
+    await new Promise((resolveExit) => {
+      const timer = setTimeout(resolveExit, 2000)
+      browser.once('exit', () => {
+        clearTimeout(timer)
+        resolveExit()
+      })
+    })
+  }
   if (server.listening) await new Promise((resolveClose) => server.close(resolveClose))
-  rmSync(userDataDir, { recursive: true, force: true })
+  try {
+    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  } catch {
+    // The browser profile is diagnostic scratch space. A late file handle must
+    // not turn a passing product proof into a false-negative CI failure.
+  }
 }
 
 if (failure) {
