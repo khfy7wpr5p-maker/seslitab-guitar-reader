@@ -112,6 +112,7 @@ test('GTAB-09C delegates keyboard authoring and synchronizes only proven source-
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => ({ id: 'renderer' }), renderScore: async () => ({ renderEpoch: 'r1' }), clearScore: async () => true,
     extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
+    prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => canonicalNotes,
     clearHighlights: async () => { observations.clears = (observations.clears ?? 0) + 1 },
     moveCursor: async (_host, target) => { observations.cursor = target },
@@ -141,6 +142,7 @@ test('GTAB-10C exposes clickable fret positions and commits them to the active s
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => null,
     extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
+    prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => [],
   }
 
@@ -243,6 +245,7 @@ test('GTAB-10C uses distinct strings while clicking through a simultaneous chord
   const adapters = {
     loadEditorRuntime: async () => editorRuntime, loadScoreRuntime: async () => null,
     extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 3 }] }] }] }),
+    prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => [],
   }
 
@@ -276,6 +279,7 @@ test('GTAB-09D exports a new validated MusicXML only after all assignments are c
     loadEditorRuntime: async () => editorRuntime,
     loadScoreRuntime: async () => null,
     extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
+    prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => [],
     async prepareScoreUpload(input) {
       observations.scoreUploadInput = input
