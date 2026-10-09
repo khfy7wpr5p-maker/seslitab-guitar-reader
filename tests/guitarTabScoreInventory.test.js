@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { SmoosicTestDOMParser } from './support/smoosicXmlDom.js'
-import { extractGuitarTabScoreInventory } from '../src/services/guitarTabScoreInventory.js'
+import { SmoosicTestDOMParser, SmoosicTestXMLSerializer } from './support/smoosicXmlDom.js'
+import {
+  extractGuitarTabScoreInventory,
+  prepareGuitarTabEditorSourceXml,
+} from '../src/services/guitarTabScoreInventory.js'
 
 const parserOptions = Object.freeze({ DOMParserCtor: SmoosicTestDOMParser })
 
@@ -110,24 +113,32 @@ test('fails closed on duplicate or contradictory part identity', () => {
   )
 })
 
-test('does not synthesize target candidates from rests or missing staff voice evidence', () => {
+test('uses implicit first staff and voice for ordinary single-voice MusicXML notes', () => {
   const restOnly = `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/><duration>1</duration><voice>1</voice><staff>1</staff></note></measure></part></score-partwise>`
   assert.deepEqual(
     extractGuitarTabScoreInventory(restOnly, parserOptions).parts[0].staves,
     [],
   )
 
-  const missingStaff = SINGLE_XML.replace('<staff>1</staff>', '')
+  const missingAssignments = SINGLE_XML.replace('<staff>1</staff>', '').replace('<voice>1</voice>', '')
   assert.deepEqual(
-    extractGuitarTabScoreInventory(missingStaff, parserOptions).parts[0].staves,
-    [],
+    extractGuitarTabScoreInventory(missingAssignments, parserOptions).parts[0].staves,
+    [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
   )
+})
 
-  const missingVoice = SINGLE_XML.replace('<voice>1</voice>', '')
-  assert.deepEqual(
-    extractGuitarTabScoreInventory(missingVoice, parserOptions).parts[0].staves,
-    [],
-  )
+test('prepares an editor-only XML view with implicit staff and voice while preserving source bytes', () => {
+  const source = SINGLE_XML.replace('<staff>1</staff>', '').replace('<voice>1</voice>', '')
+  const editorXml = prepareGuitarTabEditorSourceXml(source, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 }, {
+    DOMParserCtor: SmoosicTestDOMParser,
+    XMLSerializerCtor: SmoosicTestXMLSerializer,
+  })
+
+  assert.notEqual(editorXml, source)
+  assert.match(editorXml, /<voice>1<\/voice>/u)
+  assert.match(editorXml, /<staff>1<\/staff>/u)
+  assert.equal(source.includes('<voice>'), false)
+  assert.equal(source.includes('<staff>'), false)
 })
 
 test('does not coerce malformed or non-numeric staff and voice identities', () => {

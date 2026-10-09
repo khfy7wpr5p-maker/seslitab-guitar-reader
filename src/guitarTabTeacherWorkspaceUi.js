@@ -12,12 +12,17 @@ import {
 } from './services/scoreRendererConsumer.js'
 import { prepareTeacherAssignmentScoreUpload } from './services/teacherAssignmentComposerScoreUpload.js'
 import { readMusicXmlSourceFile, validateMusicXmlFile } from './services/musicXmlFile.js'
-import { extractGuitarTabScoreInventory } from './services/guitarTabScoreInventory.js'
+import {
+  extractGuitarTabScoreInventory,
+  prepareGuitarTabEditorSourceXml,
+} from './services/guitarTabScoreInventory.js'
 import { resolveGuitarTabTargetSelection, selectCanonicalNotesForGuitarTabTarget } from './services/guitarTabTargetSelection.js'
 
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
 const STRING_LABELS = Object.freeze(['1 · E4', '2 · B3', '3 · G3', '4 · D3', '5 · A2', '6 · E2'])
+const FRET_COUNT = 21
+const STANDARD_TUNING_MIDI = Object.freeze([64, 59, 55, 50, 45, 40])
 const EDITOR_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Enter', 'Delete', 'Backspace', 'Escape'])
 const GUITAR_TAB_MUSICXML_MIME = 'application/vnd.recordare.musicxml+xml'
 
@@ -152,6 +157,7 @@ const defaultAdapters = Object.freeze({
   validateMusicXmlFile,
   readMusicXmlSourceFile,
   extractScoreInventory: extractGuitarTabScoreInventory,
+  prepareEditorSourceXml: prepareGuitarTabEditorSourceXml,
 })
 
 function normalizeAdapters(adapters = {}) {
@@ -170,6 +176,7 @@ function normalizeAdapters(adapters = {}) {
     validateMusicXmlFile: adapters.validateMusicXmlFile ?? defaultAdapters.validateMusicXmlFile,
     readMusicXmlSourceFile: adapters.readMusicXmlSourceFile ?? defaultAdapters.readMusicXmlSourceFile,
     extractScoreInventory: adapters.extractScoreInventory ?? defaultAdapters.extractScoreInventory,
+    prepareEditorSourceXml: adapters.prepareEditorSourceXml ?? defaultAdapters.prepareEditorSourceXml,
   }
 }
 
@@ -212,6 +219,12 @@ function currentControllerState(state) {
 function currentGroupEventIds(state, controllerState) {
   const group = state?.sourceSession?.groups?.find?.((item) => item.groupId === controllerState?.currentGroupId)
   return new Set(group?.sourceEventIds ?? [])
+}
+
+function currentEventMidi(state, controllerState) {
+  const event = state?.sourceSession?.events?.find?.((item) => item.sourceEventId === controllerState?.currentEventId)
+  const midi = event?.pitch?.midi
+  return Number.isInteger(midi) ? midi : null
 }
 
 function canExportState(state) {
@@ -275,11 +288,15 @@ async function activateTarget(root, state, selectedRegion) {
     catch { selectedCanonicalNotes = Object.freeze([]) }
   }
   let sourceSession
-  try { sourceSession = state.editorRuntime.createSourceSession(state.sourceXml, { targetSelection: selectedRegion }) }
+  try {
+    const editorSourceXml = state.adapters.prepareEditorSourceXml(state.sourceXml, selectedRegion)
+    sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, { targetSelection: selectedRegion })
+  }
   catch {
     if (workspaceStates.get(root) === invalidatedState) {
       renderTargetOptions(root, invalidatedState)
       setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
+      setEditorStatus(root, 'Bu MusicXML editör tarafından açılamadı. Dosyanın nota verisini kontrol edin.', 'unsupported')
       await synchronizeAuthoringSelection(root, invalidatedState)
     }
     return false
@@ -303,6 +320,10 @@ async function activateTarget(root, state, selectedRegion) {
   workspaceStates.set(root, nextState)
   renderTargetOptions(root, nextState)
   renderAuthoringSurface(root, nextState)
+  if (!authoring) {
+    setStatus(root, 'MusicXML nota hedefleri bulundu ancak TAB editör oturumu oluşturulamadı.', 'unsupported')
+    setEditorStatus(root, 'Bu nota bölgesi için düzenlenebilir TAB oturumu oluşturulamadı.', 'unsupported')
+  }
   if (nextState.rendererRuntime) await synchronizeAuthoringSelection(root, nextState)
   if (workspaceStates.get(root) !== nextState) return false
   setStatus(root, `${nextState.sourceName} yüklendi. Nota ve seçili TAB çalışma alanı hazır.`, 'ready')
@@ -321,6 +342,9 @@ async function handleTargetChange(root, encodedRegion) {
       await synchronizeAuthoringSelection(root, nextState)
       if (workspaceStates.get(root) === nextState) {
         setStatus(root, state.canonicalTabRegions.length ? 'TAB hedefi seçilmedi; dışa aktarma devre dışı.' : 'Bu MusicXML içinde kullanılabilir TAB bölgesi yok.', 'target-required')
+        setEditorStatus(root, state.canonicalTabRegions.length
+          ? 'Düzenlemeye devam etmek için TAB hedef bölgesini seçin.'
+          : 'Bu MusicXML içinde TAB’a aktarılabilecek nota bulunamadı.', 'target-required')
       }
     }
     return false
@@ -341,6 +365,39 @@ function renderEmptySixStrings(root) {
   updateExportButton(root, workspaceStates.get(root))
 }
 
+async function assignFretboardPosition(root, string, fret) {
+  const state = workspaceStates.get(root)
+  const controller = state?.keyboardController
+  if (!controller || !state?.tabDocument) return false
+
+  try {
+    let controllerState = controller.getState()
+    controller.handleKey({ key: 'Escape' })
+    controllerState = controller.getState()
+    while (controllerState.selectedString < string) {
+      controller.handleKey({ key: 'ArrowDown' })
+      controllerState = controller.getState()
+    }
+    while (controllerState.selectedString > string) {
+      controller.handleKey({ key: 'ArrowUp' })
+      controllerState = controller.getState()
+    }
+    for (const digit of String(fret)) controller.handleKey({ key: digit })
+
+    const advancesWithinChord = controllerState.noteCount > 1
+      && controllerState.noteIndex < controllerState.noteCount - 1
+    controller.handleKey({ key: advancesWithinChord ? 'Tab' : 'Enter' })
+    renderAuthoringSurface(root, state)
+    root?.getElementById?.('guitar-tab-editor-surface')?.focus?.()
+    await synchronizeAuthoringSelection(root, state)
+    return true
+  } catch (error) {
+    renderAuthoringSurface(root, state)
+    setEditorStatus(root, assignmentErrorMessage(error), 'assignment-error')
+    return false
+  }
+}
+
 function renderAuthoringSurface(root, state) {
   const surface = root?.getElementById?.('guitar-tab-editor-surface')
   const controllerState = currentControllerState(state)
@@ -355,6 +412,10 @@ function renderAuthoringSurface(root, state) {
   try { assignments = state.tabDocument.listAssignments?.() ?? [] } catch { assignments = [] }
   const groupIds = currentGroupEventIds(state, controllerState)
   const placements = assignments.filter((item) => groupIds.has(item.sourceEventId))
+  const currentMidi = currentEventMidi(state, controllerState)
+  const occupiedStrings = new Set(placements
+    .filter((item) => item.sourceEventId !== controllerState.currentEventId)
+    .map((item) => item.string))
   let rows
   try {
     rows = state.editorRuntime.createFixedSixStringRows({ activeString: controllerState.selectedString, placements })
@@ -367,23 +428,62 @@ function renderAuthoringSurface(root, state) {
 
   if (typeof surface.replaceChildren === 'function') surface.replaceChildren()
   else surface.textContent = ''
+  const header = createElement(root, 'div', { className: 'guitar-tab-fretboard-header' })
+  header.setAttribute('role', 'row')
+  header.appendChild(createElement(root, 'span', { className: 'guitar-tab-fretboard-string-heading', textContent: 'Tel' }))
+  for (let fret = 0; fret < FRET_COUNT; fret += 1) {
+    header.appendChild(createElement(root, 'span', { className: 'guitar-tab-fret-number', textContent: String(fret) }))
+  }
+  surface.appendChild(header)
+
   for (const rowModel of rows) {
     const suffix = rowModel.fret === null ? '' : ` · perde ${rowModel.fret}`
     const row = createElement(root, 'div', {
       className: `guitar-tab-string-row${rowModel.active ? ' active' : ''}${rowModel.fret === null ? '' : ' assigned'}`,
-      textContent: `${STRING_LABELS[rowModel.string - 1] ?? `${rowModel.string} · ${rowModel.label}`}${suffix}`,
+      textContent: '',
     })
+    row.setAttribute('role', 'row')
     row.dataset.string = String(rowModel.string)
     if (rowModel.sourceEventId) row.dataset.sourceEventId = rowModel.sourceEventId
     if (rowModel.active) row.setAttribute('aria-current', 'true')
+    row.appendChild(createElement(root, 'span', {
+      className: 'guitar-tab-fretboard-string-label',
+      textContent: `${STRING_LABELS[rowModel.string - 1] ?? `${rowModel.string} · ${rowModel.label}`}${suffix}`,
+    }))
+    for (let fret = 0; fret < FRET_COUNT; fret += 1) {
+      const position = createElement(root, 'button', {
+        className: `guitar-tab-fret-position${rowModel.fret === fret ? ' assigned' : ''}${rowModel.active ? ' active-string' : ''}`,
+        textContent: rowModel.fret === fret ? String(fret) : '',
+      })
+      position.type = 'button'
+      position.tabIndex = -1
+      position.dataset.string = String(rowModel.string)
+      position.dataset.fret = String(fret)
+      position.setAttribute('aria-label', `Tel ${rowModel.string}, perde ${fret}`)
+      position.setAttribute('aria-pressed', rowModel.fret === fret ? 'true' : 'false')
+      const stringAvailable = !occupiedStrings.has(rowModel.string)
+      const pitchMatches = currentMidi === null
+        || STANDARD_TUNING_MIDI[rowModel.string - 1] + fret === currentMidi
+      position.disabled = !pitchMatches || !stringAvailable
+      position.setAttribute('aria-disabled', pitchMatches && stringAvailable ? 'false' : 'true')
+      if (!pitchMatches || !stringAvailable) position.className += ' unavailable'
+      position.addEventListener?.('click', async () => {
+        if (!pitchMatches || !stringAvailable) return
+        await assignFretboardPosition(root, rowModel.string, fret)
+      })
+      row.appendChild(position)
+    }
     surface.appendChild(row)
   }
 
   const fretText = controllerState.fretBuffer ? controllerState.fretBuffer : '—'
+  const playablePositions = currentMidi === null || STANDARD_TUNING_MIDI.some((openMidi) => currentMidi >= openMidi && currentMidi <= openMidi + FRET_COUNT - 1)
   setEditorStatus(
     root,
-    `Aktif nota: ${controllerState.currentEventId} · Tel ${controllerState.selectedString} · Perde ${fretText}`,
-    'ready',
+    playablePositions
+      ? `Aktif nota: ${controllerState.currentEventId} · Tel ${controllerState.selectedString} · Perde ${fretText}. Uygun noktaya dokunun veya tıklayın.`
+      : `Aktif nota: ${controllerState.currentEventId}. Nota standart akortta ilk 21 perde içinde bulunmuyor.`,
+    playablePositions ? 'ready' : 'unplayable-note',
   )
   updateExportButton(root, state)
   return true
@@ -619,7 +719,10 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
 
   let payload
   try { payload = await readSource(source, options, normalized) } catch {
-    if (workspaceStates.get(root)?.generation === generation) setStatus(root, 'MusicXML dosyası okunamadı.', 'invalid')
+    if (workspaceStates.get(root)?.generation === generation) {
+      setStatus(root, 'MusicXML dosyası okunamadı.', 'invalid')
+      setEditorStatus(root, 'Dosya okunamadı. MusicXML dosyasını yeniden seçin.', 'invalid')
+    }
     return Object.freeze({ ok: false, reason: 'SOURCE_READ_FAILED' })
   }
 
@@ -655,6 +758,7 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     if (workspaceStates.get(root)?.generation === generation) {
       renderEmptySixStrings(root)
       setStatus(root, 'MusicXML hedefleri güvenli biçimde çıkarılamadı.', 'unsupported')
+      setEditorStatus(root, 'Bu MusicXML dosyasından güvenli nota hedefleri çıkarılamadı.', 'unsupported')
     }
     return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
   }
@@ -662,6 +766,7 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
     if (workspaceStates.get(root)?.generation === generation) {
       renderEmptySixStrings(root)
       setStatus(root, 'MusicXML hedefleri güvenli biçimde çıkarılamadı.', 'unsupported')
+      setEditorStatus(root, 'Bu MusicXML dosyasından güvenli nota hedefleri çıkarılamadı.', 'unsupported')
     }
     return Object.freeze({ ok: false, reason: 'SOURCE_UNSUPPORTED' })
   }
@@ -707,6 +812,9 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   }
   else {
     renderEmptySixStrings(root)
+    setEditorStatus(root, canonicalTabRegions.length
+      ? 'Birden fazla nota bölgesi var. Düzenlemek için TAB hedef bölgesini seçin.'
+      : 'Bu MusicXML içinde TAB’a aktarılabilecek nota bulunamadı.', 'target-required')
     setStatus(root, canonicalTabRegions.length
       ? 'MusicXML yüklendi; TAB hedefini seçin. Belirsiz hedef otomatik seçilmedi.'
       : 'Bu MusicXML içinde kullanılabilir TAB bölgesi yok.', 'target-required')
@@ -737,9 +845,14 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   const currentState = workspaceStates.get(root)
   currentState.rendererRuntime = rendererRuntime
   if (currentState.selectedRegion) await synchronizeAuthoringSelection(root, currentState)
-  else setStatus(root, canonicalTabRegions.length
-    ? 'Nota görünümü hazır. TAB için hedef bölge seçin.'
-    : 'Nota görünümü hazır; kullanılabilir TAB bölgesi yok.', 'target-required')
+  else {
+    setEditorStatus(root, canonicalTabRegions.length
+      ? 'Nota görünümü hazır. Düzenlemek için TAB hedef bölgesini seçin.'
+      : 'Nota görünümü hazır; bu dosyada TAB’a aktarılabilecek nota bulunamadı.', 'target-required')
+    setStatus(root, canonicalTabRegions.length
+      ? 'Nota görünümü hazır. TAB için hedef bölge seçin.'
+      : 'Nota görünümü hazır; kullanılabilir TAB bölgesi yok.', 'target-required')
+  }
   return Object.freeze({ ok: true, sourceSession: currentState.sourceSession, rendererAvailable: true })
 }
 
@@ -822,7 +935,8 @@ export function ensureGuitarTabTeacherWorkspace(root, panel) {
   editorStatus.setAttribute('role', 'status'); editorStatus.setAttribute('aria-live', 'polite'); editorStatus.dataset.state = 'empty'
   editorRegion.appendChild(editorStatus)
   const editorSurface = createElement(root, 'div', { id: 'guitar-tab-editor-surface', className: 'guitar-tab-editor-surface' })
-  editorSurface.setAttribute('aria-label', 'Altı telli gitar TAB çalışma alanı')
+  editorSurface.setAttribute('aria-label', 'Altı telli gitar klavyesi; etkin nota için uygun tel ve perde noktalarını seçin')
+  editorSurface.setAttribute('role', 'group')
   editorSurface.setAttribute('tabindex', '0')
   editorRegion.appendChild(editorSurface)
   workspace.appendChild(editorRegion)

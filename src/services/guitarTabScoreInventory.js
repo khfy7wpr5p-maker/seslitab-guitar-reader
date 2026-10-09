@@ -52,6 +52,18 @@ function nonNegativeIntegerText(node) {
     : null
 }
 
+function hasPitchedNoteMissingTargetIdentity(musicXml) {
+  const notes = String(musicXml).matchAll(/<(?:[\w.-]+:)?note(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?note\s*>/gu)
+  for (const match of notes) {
+    const body = match[1]
+    const hasPitch = /<(?:[\w.-]+:)?pitch(?:\s|>)/u.test(body)
+    const hasStaff = /<(?:[\w.-]+:)?staff(?:\s|>)/u.test(body)
+    const hasVoice = /<(?:[\w.-]+:)?voice(?:\s|>)/u.test(body)
+    if (hasPitch && (!hasStaff || !hasVoice)) return true
+  }
+  return false
+}
+
 function parseDocument(musicXml, DOMParserCtor) {
   const inspection = inspectMusicXml(musicXml)
   if (!inspection.ok) {
@@ -82,7 +94,7 @@ function parseDocument(musicXml, DOMParserCtor) {
   if (localName(root) !== 'score-partwise') {
     fail('score-partwise-required')
   }
-  return root
+  return documentNode
 }
 
 function exactPartEvidence(root) {
@@ -138,10 +150,10 @@ function buildPartInventory(partEvidence, bodyPart) {
 
     const staffNodes = directChildren(note, 'staff')
     const voiceNodes = directChildren(note, 'voice')
-    if (staffNodes.length !== 1 || voiceNodes.length !== 1) continue
+    if (staffNodes.length > 1 || voiceNodes.length > 1) continue
 
-    const staff = positiveIntegerText(staffNodes[0])
-    const voice = nonNegativeIntegerText(voiceNodes[0])
+    const staff = staffNodes.length === 0 ? 1 : positiveIntegerText(staffNodes[0])
+    const voice = voiceNodes.length === 0 ? 1 : nonNegativeIntegerText(voiceNodes[0])
     if (staff === null || voice === null) continue
 
     let staffRecord = staffMap.get(staff)
@@ -189,7 +201,8 @@ export function extractGuitarTabScoreInventory(
   musicXml,
   { DOMParserCtor = globalThis.DOMParser } = {},
 ) {
-  const root = parseDocument(musicXml, DOMParserCtor)
+  const documentNode = parseDocument(musicXml, DOMParserCtor)
+  const root = documentNode.documentElement
   const { listed, bodyParts } = exactPartEvidence(root)
   const parts = listed.map((partEvidence, index) =>
     buildPartInventory(partEvidence, bodyParts[index]))
@@ -197,4 +210,54 @@ export function extractGuitarTabScoreInventory(
   return Object.freeze({
     parts: Object.freeze(parts),
   })
+}
+
+export function prepareGuitarTabEditorSourceXml(
+  musicXml,
+  targetSelection,
+  { DOMParserCtor = globalThis.DOMParser, XMLSerializerCtor = globalThis.XMLSerializer } = {},
+) {
+  if (typeof musicXml !== 'string') fail('source-invalid')
+  if (!targetSelection || typeof targetSelection !== 'object') fail('target-selection-invalid')
+  if (!hasPitchedNoteMissingTargetIdentity(musicXml)) return musicXml
+  const documentNode = parseDocument(musicXml, DOMParserCtor)
+  const root = documentNode.documentElement
+  const { listed, bodyParts } = exactPartEvidence(root)
+  const partIndex = targetSelection.partIndex
+  if (!Number.isSafeInteger(partIndex) || partIndex < 0 || listed[partIndex]?.partId !== targetSelection.partId) {
+    fail('target-selection-mismatch')
+  }
+
+  let changed = false
+  for (const note of descendants(bodyParts[partIndex], 'note')) {
+    if (directChildren(note, 'pitch').length !== 1) continue
+    const staffNodes = directChildren(note, 'staff')
+    const voiceNodes = directChildren(note, 'voice')
+    if (staffNodes.length > 1 || voiceNodes.length > 1) continue
+
+    if (staffNodes.length === 0) {
+      const staff = documentNode.createElementNS?.(note.namespaceURI ?? root.namespaceURI ?? null, 'staff')
+        ?? documentNode.createElement?.('staff')
+      if (!staff) fail('staff-default-unavailable')
+      staff.textContent = '1'
+      note.appendChild(staff)
+      changed = true
+    }
+    if (voiceNodes.length === 0) {
+      const voice = documentNode.createElementNS?.(note.namespaceURI ?? root.namespaceURI ?? null, 'voice')
+        ?? documentNode.createElement?.('voice')
+      if (!voice) fail('voice-default-unavailable')
+      voice.textContent = '1'
+      note.appendChild(voice)
+      changed = true
+    }
+  }
+
+  if (!changed) return musicXml
+  if (typeof XMLSerializerCtor !== 'function') fail('xml-serializer-unavailable')
+  try {
+    return new XMLSerializerCtor().serializeToString(documentNode)
+  } catch {
+    fail('serialize-failed')
+  }
 }
