@@ -84,6 +84,36 @@ function integerText(node, code, { min = null, max = null } = {}) {
   return value
 }
 
+function signedIntegerText(node, code) {
+  const value = textOf(node)
+  if (!/^-?(0|[1-9][0-9]*)$/u.test(value)) fail(code)
+  const number = Number(value)
+  if (!Number.isSafeInteger(number)) fail(code)
+  return number
+}
+
+function transposeSemitones(attributes, currentValue, label) {
+  if (!attributes) return currentValue
+  const transposeNodes = directChildren(attributes, 'transpose')
+  if (transposeNodes.length === 0) return currentValue
+  if (transposeNodes.length !== 1) fail(`${label}-transpose-ambiguous`)
+
+  const transpose = transposeNodes[0]
+  if (transpose.getAttribute?.('number') !== null) fail(`${label}-transpose-number-unsupported`)
+  if (directChild(transpose, 'double')) fail(`${label}-transpose-double-unsupported`)
+
+  const chromaticNode = directChild(transpose, 'chromatic')
+  if (!chromaticNode) fail(`${label}-transpose-chromatic-required`)
+  const chromatic = signedIntegerText(chromaticNode, `${label}-transpose-chromatic-invalid`)
+  const octaveNode = directChild(transpose, 'octave-change')
+  const octaveChange = octaveNode
+    ? signedIntegerText(octaveNode, `${label}-transpose-octave-invalid`)
+    : 0
+  const semitones = chromatic + (12 * octaveChange)
+  if (!Number.isSafeInteger(semitones)) fail(`${label}-transpose-range-invalid`)
+  return semitones
+}
+
 function parseSafeDocument(xml, label) {
   if (!hasText(xml)) fail(`${label}-empty`)
   const inspection = inspectMusicXml(xml)
@@ -226,6 +256,7 @@ function parseTimeline(root, label, targetSelection = null) {
 
   const events = []
   let currentDivisions = null
+  let currentTransposeSemitones = 0
 
   measures.forEach((measure, measureIndex) => {
     const attributes = directChild(measure, 'attributes')
@@ -237,6 +268,7 @@ function parseTimeline(root, label, targetSelection = null) {
         { min: 1 },
       )
     }
+    currentTransposeSemitones = transposeSemitones(attributes, currentTransposeSemitones, label)
     if (!Number.isInteger(currentDivisions) || currentDivisions <= 0) {
       fail(`${label}-divisions-required`)
     }
@@ -302,6 +334,10 @@ function parseTimeline(root, label, targetSelection = null) {
       const pitch = parsePitch(child)
 
       if (pitch && !isRest) {
+        const soundingPitchMidi = pitch.midi + currentTransposeSemitones
+        if (!Number.isSafeInteger(soundingPitchMidi) || soundingPitchMidi < 0 || soundingPitchMidi > 127) {
+          fail(`${label}-sounding-pitch-midi-invalid`)
+        }
         const ties = tieFlags(child)
         events.push(Object.freeze({
           measureIndex,
@@ -311,6 +347,7 @@ function parseTimeline(root, label, targetSelection = null) {
           voice,
           staff,
           pitchMidi: pitch.midi,
+          soundingPitchMidi,
           tieStart: ties.tieStart,
           tieStop: ties.tieStop,
           technical: technicalPosition(child),
@@ -427,7 +464,7 @@ function assertPhysicalTab(events) {
     const openMidi = EDITOR_STANDARD_TUNING_MIDI[event.technical.string]
     if (
       !Number.isInteger(openMidi)
-      || openMidi + event.technical.fret !== event.pitchMidi
+      || openMidi + event.technical.fret !== event.soundingPitchMidi
     ) {
       fail('technical-position-pitch-mismatch')
     }
