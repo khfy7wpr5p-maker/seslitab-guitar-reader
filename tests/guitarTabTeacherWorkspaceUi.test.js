@@ -175,6 +175,7 @@ function successfulAdapters(observations = {}) {
     extractScoreInventory: () => ({ parts: [{
       partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
     }] }),
+    prepareEditorSourceXml: (xml) => xml,
     parseCanonicalNotes: () => [{ partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 }],
     loadEditorRuntime: async () => ({
       createSourceSession(xml, options) {
