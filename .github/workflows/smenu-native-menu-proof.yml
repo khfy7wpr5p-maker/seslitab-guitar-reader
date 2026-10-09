@@ -34,13 +34,18 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+      - name: Capture installed Smoosic reflection contract
+        run: node scripts/inspectSmoosic1044Reflection.js
+
       - name: Verify native Smoosic menus in real browser
         run: node scripts/verifySmoosicNativeMenusBrowser.js
 
-      - name: Upload SMENU browser evidence
+      - name: Upload SMENU evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smenu-native-menu-browser
-          path: artifacts/smenu-native-menu-browser.json
+          name: smenu-native-menu-evidence
+          path: |
+            artifacts/smenu-native-menu-browser.json
+            artifacts/smenu-smoosic-reflection-contract.json
           if-no-files-found: warn
