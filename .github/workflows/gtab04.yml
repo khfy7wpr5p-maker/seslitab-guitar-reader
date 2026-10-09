@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      GTAB_EDITOR_SHA: 28ac378babde8d35e9213648cc6e16429e9a7fd7
+      GTAB_EDITOR_SHA: b7f4008ecdb0b74eead5869015099f4d734e234e
       STUDENT_APP_SHA: 5f7d1d5a1b70616e599dec21ac384649d4803fcd
 
     steps:
@@ -53,6 +53,12 @@ jobs:
           GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
           STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
         run: node scripts/verifyGtab04EditorStudentContract.js
+
+      - name: Verify GTAB-OCTAVE-01 written-to-sounding guitar contract
+        working-directory: teacher
+        env:
+          GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
+        run: node --test tests/gtabOctave01ExactRuntime.test.js
 
       - name: Verify GTAB-09D combined export fixtures through Student contract
         working-directory: teacher

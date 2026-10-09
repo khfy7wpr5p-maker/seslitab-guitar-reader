@@ -1,6 +1,7 @@
 import { parseMusicXml } from '../musicXmlParser.js'
 import { prepareEditorGuitarTabHandoff } from './services/editorGuitarTabHandoff.js'
 import { loadGuitarTabEditorRuntime } from './services/guitarTabEditorRuntimeLoader.js'
+import { resolveGuitarTabEventMidi } from './services/guitarTabPitchPolicy.js'
 import { createGuitarTabRendererTargetResolver } from './services/guitarTabSourceIdentity.js'
 import {
   clearScoreHighlights,
@@ -223,8 +224,7 @@ function currentGroupEventIds(state, controllerState) {
 
 function currentEventMidi(state, controllerState) {
   const event = state?.sourceSession?.events?.find?.((item) => item.sourceEventId === controllerState?.currentEventId)
-  const midi = event?.pitch?.midi
-  return Number.isInteger(midi) ? midi : null
+  return resolveGuitarTabEventMidi(event)
 }
 
 function canExportState(state) {
@@ -290,7 +290,10 @@ async function activateTarget(root, state, selectedRegion) {
   let sourceSession
   try {
     const editorSourceXml = state.adapters.prepareEditorSourceXml(state.sourceXml, selectedRegion)
-    sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, { targetSelection: selectedRegion })
+    sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, {
+      targetSelection: selectedRegion,
+      guitarOctaveTransposition: true,
+    })
   }
   catch {
     if (workspaceStates.get(root) === invalidatedState) {
