@@ -274,7 +274,7 @@ test('GTAB-10B targeted handoff ignores unsupported notes outside the selected v
     guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
     draftId: 'draft-target-filter',
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 2 },
-  }), /unpitched-unsupported/u)
+  }), /target-voice-mismatch/u)
   await assert.rejects(prepareEditorGuitarTabHandoff({
     scoreUpload,
     guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
