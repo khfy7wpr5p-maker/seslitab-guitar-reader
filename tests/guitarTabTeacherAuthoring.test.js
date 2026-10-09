@@ -6,6 +6,8 @@ import {
   getGuitarTabTeacherWorkspaceState,
   loadGuitarTabTeacherSource,
 } from '../src/guitarTabTeacherWorkspaceUi.js'
+import { SmoosicTestDOMParser, SmoosicTestXMLSerializer } from './support/smoosicXmlDom.js'
+import { extractGuitarTabScoreInventory, prepareGuitarTabEditorSourceXml } from '../src/services/guitarTabScoreInventory.js'
 
 class Element {
   constructor(root, tagName) {
@@ -36,8 +38,8 @@ function root() {
 
 function sourceSession() {
   const events = [
-    { sourceEventId: 'e1', groupId: 'g1', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 0, divisions: 1, sourceOrder: 0 },
-    { sourceEventId: 'e2', groupId: 'g2', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 1, divisions: 1, sourceOrder: 1 },
+    { sourceEventId: 'e1', groupId: 'g1', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 0, divisions: 1, sourceOrder: 0, pitch: { midi: 66 } },
+    { sourceEventId: 'e2', groupId: 'g2', partId: 'P1', partIndex: 0, measureIndex: 0, staff: '1', voice: '1', onsetDivisions: 1, divisions: 1, sourceOrder: 1, pitch: { midi: 65 } },
   ]
   return Object.freeze({
     sessionId: 'source:test', sourceFingerprint: 'fp', events: Object.freeze(events),
@@ -130,6 +132,137 @@ test('GTAB-09C delegates keyboard authoring and synchronizes only proven source-
   assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).assignmentCount, 1)
   assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).currentEventId, 'e2')
   assert.deepEqual(observations.highlight, { partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 1 })
+})
+
+test('GTAB-10C exposes clickable fret positions and commits them to the active source note', async () => {
+  const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
+  const session = sourceSession(); const observations = {}; const editorRuntime = runtime(session, observations)
+  const adapters = {
+    loadEditorRuntime: async () => editorRuntime,
+    loadScoreRuntime: async () => null,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }] }] }),
+    parseCanonicalNotes: () => [],
+  }
+
+  const loaded = await loadGuitarTabTeacherSource(documentRoot, '<score-partwise/>', adapters)
+  assert.equal(loaded.ok, true)
+  const cells = documentRoot.elements.filter((element) => String(element.className).split(/\s+/u).includes('guitar-tab-fret-position'))
+  assert.equal(cells.length, 6 * 21)
+  const target = cells.find((element) => element.dataset.string === '2' && element.dataset.fret === '7')
+  assert.ok(target)
+  assert.equal(target.disabled, false)
+  assert.equal(cells.find((element) => element.dataset.string === '2' && element.dataset.fret === '3').disabled, true)
+  await target.listeners.get('click')[0]({ currentTarget: target })
+
+  assert.deepEqual(observations.document.getAssignment('e1'), { string: 2, fret: 7 })
+  assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).assignmentCount, 1)
+  assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).currentEventId, 'e2')
+})
+
+test('GTAB-10C sends an editor-only defaulted view when pitched MusicXML notes omit staff and voice', async () => {
+  const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
+  const sourceXml = '<score-partwise><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note></measure></part></score-partwise>'
+  const session = sourceSession(); const observations = {}; const baseRuntime = runtime(session, observations)
+  const editorRuntime = {
+    ...baseRuntime,
+    createSourceSession(editorXml, options) {
+      observations.editorXml = editorXml
+      observations.targetSelection = options.targetSelection
+      return session
+    },
+  }
+  const result = await loadGuitarTabTeacherSource(documentRoot, sourceXml, {
+    loadEditorRuntime: async () => editorRuntime,
+    loadScoreRuntime: async () => null,
+    extractScoreInventory: (xml) => extractGuitarTabScoreInventory(xml, { DOMParserCtor: SmoosicTestDOMParser }),
+    prepareEditorSourceXml: (xml, target) => prepareGuitarTabEditorSourceXml(xml, target, {
+      DOMParserCtor: SmoosicTestDOMParser, XMLSerializerCtor: SmoosicTestXMLSerializer,
+    }),
+    parseCanonicalNotes: () => [],
+  })
+
+  assert.equal(result.ok, true)
+  assert.match(observations.editorXml, /<voice>1<\/voice>/u)
+  assert.match(observations.editorXml, /<staff>1<\/staff>/u)
+  assert.equal(sourceXml.includes('<voice>'), false)
+  assert.equal(sourceXml.includes('<staff>'), false)
+  assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+})
+
+test('GTAB-10C uses distinct strings while clicking through a simultaneous chord', async () => {
+  const documentRoot = root(); const panel = documentRoot.createElement('div'); ensureGuitarTabTeacherWorkspace(documentRoot, panel)
+  const events = [
+    { sourceEventId: 'c1', groupId: 'chord', pitch: { midi: 64 } },
+    { sourceEventId: 'c2', groupId: 'chord', pitch: { midi: 67 } },
+    { sourceEventId: 'n3', groupId: 'next', pitch: { midi: 69 } },
+  ]
+  const session = {
+    sessionId: 'chord-session', sourceFingerprint: 'chord-fingerprint', events,
+    groups: [{ groupId: 'chord', sourceEventIds: ['c1', 'c2'] }, { groupId: 'next', sourceEventIds: ['n3'] }],
+  }
+  const assignments = new Map()
+  const document = {
+    getAssignment: (id) => assignments.get(id) ?? null,
+    assignPosition: (id, position) => assignments.set(id, { ...position }),
+    clearPosition: (id) => assignments.delete(id),
+    listAssignments: () => [...assignments].map(([sourceEventId, position]) => ({ sourceEventId, ...position })),
+    canExport: () => assignments.size === events.length,
+    undo() {}, redo() {},
+  }
+  let groupIndex = 0; let noteIndex = 0; let selectedString = 1; let fretBuffer = ''
+  const controller = {
+    getState() {
+      const group = session.groups[groupIndex]
+      return { groupIndex, groupCount: session.groups.length, noteIndex, noteCount: group.sourceEventIds.length, selectedString, fretBuffer, currentGroupId: group.groupId, currentEventId: group.sourceEventIds[noteIndex] }
+    },
+    handleKey({ key }) {
+      if (key === 'Escape') fretBuffer = ''
+      else if (key === 'ArrowDown') selectedString += 1
+      else if (key === 'ArrowUp') selectedString -= 1
+      else if (/^\d$/u.test(key)) fretBuffer += key
+      else if (key === 'Tab') { assignments.set(controller.getState().currentEventId, { string: selectedString, fret: Number(fretBuffer) }); fretBuffer = ''; noteIndex += 1 }
+      else if (key === 'Enter') {
+        assignments.set(controller.getState().currentEventId, { string: selectedString, fret: Number(fretBuffer) }); fretBuffer = ''
+        if (groupIndex < session.groups.length - 1) { groupIndex += 1; noteIndex = 0; selectedString = 1 }
+      }
+      return controller.getState()
+    },
+  }
+  const editorRuntime = {
+    createSourceSession: () => session,
+    createTabAssignmentDocument: () => document,
+    createKeyboardController: () => controller,
+    createFixedSixStringRows({ activeString, placements }) {
+      return Array.from({ length: 6 }, (_, index) => {
+        const string = index + 1; const placement = placements.find((item) => item.string === string)
+        return { string, label: ['e', 'B', 'G', 'D', 'A', 'E'][index], active: string === activeString, fret: placement?.fret ?? null, sourceEventId: placement?.sourceEventId ?? null }
+      })
+    },
+    serializeGuitarTabMusicXml: () => '<score-partwise/>',
+  }
+  const adapters = {
+    loadEditorRuntime: async () => editorRuntime, loadScoreRuntime: async () => null,
+    extractScoreInventory: () => ({ parts: [{ partId: 'P1', partIndex: 0, name: 'Guitar', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 3 }] }] }] }),
+    parseCanonicalNotes: () => [],
+  }
+
+  assert.equal((await loadGuitarTabTeacherSource(documentRoot, '<score-partwise/>', adapters)).ok, true)
+  const clickCell = async (string, fret) => {
+    const cell = documentRoot.elements.findLast((element) => String(element.className).split(/\s+/u).includes('guitar-tab-fret-position') && element.dataset.string === String(string) && element.dataset.fret === String(fret))
+    assert.ok(cell)
+    assert.equal(cell.disabled, false)
+    await cell.listeners.get('click')[0]({ currentTarget: cell })
+  }
+  await clickCell(1, 0)
+  assert.deepEqual(document.getAssignment('c1'), { string: 1, fret: 0 })
+  const occupied = documentRoot.elements.findLast((element) => String(element.className).split(/\s+/u).includes('guitar-tab-fret-position') && element.dataset.string === '1' && element.dataset.fret === '3')
+  assert.equal(occupied.disabled, true)
+  await clickCell(2, 8)
+  assert.deepEqual(document.getAssignment('c2'), { string: 2, fret: 8 })
+  assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).currentEventId, 'n3')
+  await clickCell(1, 5)
+  assert.deepEqual(document.getAssignment('n3'), { string: 1, fret: 5 })
+  assert.equal(getGuitarTabTeacherWorkspaceState(documentRoot).exportReady, true)
 })
 
 test('GTAB-09D exports a new validated MusicXML only after all assignments are complete and preserves exact source bytes', async () => {

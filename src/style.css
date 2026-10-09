@@ -88,6 +88,26 @@ body {
 .tab-textarea:focus { outline: none; border-color: var(--primary-500); background: white; }
 .tab-actions { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
 
+/* Guitar TAB fretboard editor */
+.guitar-tab-editor-surface { overflow-x: auto; padding: 0.25rem 0 0.75rem; }
+.guitar-tab-fretboard-header, .guitar-tab-string-row {
+  display: grid;
+  grid-template-columns: 7.5rem repeat(21, minmax(2rem, 1fr));
+  min-width: 820px;
+  align-items: stretch;
+}
+.guitar-tab-fretboard-header { color: var(--neutral-500); font-size: 0.75rem; font-weight: 700; text-align: center; }
+.guitar-tab-fretboard-string-heading, .guitar-tab-fret-number { padding: 0.35rem 0; }
+.guitar-tab-string-row { min-height: 2.5rem; border-top: 1px solid var(--neutral-300); position: relative; }
+.guitar-tab-string-row::after { content: ''; position: absolute; z-index: 0; left: 7.5rem; right: 0; top: 50%; height: 1px; background: var(--neutral-300); pointer-events: none; }
+.guitar-tab-fretboard-string-label { position: relative; z-index: 1; display: flex; align-items: center; padding: 0.35rem 0.5rem; color: var(--neutral-700); font-size: 0.8rem; font-weight: 650; white-space: nowrap; }
+.guitar-tab-fret-position { position: relative; z-index: 1; min-width: 2rem; min-height: 2.4rem; border: 0; border-right: 1px solid var(--neutral-200); background: transparent; color: var(--neutral-700); cursor: pointer; font: inherit; }
+.guitar-tab-fret-position:disabled { cursor: not-allowed; opacity: 0.35; }
+.guitar-tab-fret-position:hover, .guitar-tab-fret-position:focus-visible { outline: 2px solid var(--primary-500); outline-offset: -2px; background: var(--primary-50); }
+.guitar-tab-fret-position.assigned { align-self: center; justify-self: center; width: 1.65rem; height: 1.65rem; min-height: 1.65rem; border: 0; border-radius: 50%; background: var(--primary-600); color: white; font-size: 0.75rem; font-weight: 700; }
+.guitar-tab-string-row.active .guitar-tab-fretboard-string-label { color: var(--primary-700); }
+.guitar-tab-string-row.active:not(.assigned) .guitar-tab-fret-position:hover { background: var(--primary-100); }
+
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.625rem 1.5rem; border: none; border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all var(--transition); font-family: inherit; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
