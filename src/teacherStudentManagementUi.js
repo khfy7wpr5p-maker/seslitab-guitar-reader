@@ -1,3 +1,7 @@
+if (typeof globalThis.document !== 'undefined') {
+  void import('./teacherStudentManagementUi.css')
+}
+
 let managementMountSequence = 0
 
 function requiredController(controller) {
