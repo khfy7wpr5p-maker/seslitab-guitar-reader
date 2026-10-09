@@ -219,34 +219,33 @@ test('GTAB-10B accepts canonical voice zero in a targeted handoff', async () => 
   assert.equal(result.targetSelection.voice, 0)
 })
 
-test('GTAB-10B requires explicit canonical staff and voice for targeted source notes', async () => {
+test('GTAB-10B accepts safe implicit Staff 1 and Voice 1 for targeted source notes', async () => {
   const events = [{ id: 'n1', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
-  const scoreUpload = await preparedScore(events, 'draft-identity')
-  const missingStaff = sourceScore(events, 1).replace(/<staff>1<\/staff>/gu, '')
-  await assert.rejects(
-    prepareEditorGuitarTabHandoff({
-      scoreUpload,
-      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
-      draftId: 'draft-identity',
-      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
-    }),
-    /target-identity-required/u,
-  )
+  const missingStaffScore = sourceScore(events, 1).replace(/<staff>1<\/staff>/gu, '')
+  const uploadWithoutStaff = await prepareTeacherAssignmentScoreUpload({
+    musicXml: missingStaffScore, teacherId: 'teacher-a', draftId: 'draft-no-staff',
+    now: () => '2026-10-04T10:00:00Z',
+  })
+  const withoutStaff = await prepareEditorGuitarTabHandoff({
+    scoreUpload: uploadWithoutStaff,
+    guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+    draftId: 'draft-no-staff',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+  })
+  assert.equal(withoutStaff.pitchedEventCount, 1)
 
   const missingVoiceScore = sourceScore(events, 1).replace(/<voice>1<\/voice>/gu, '')
   const uploadWithoutVoice = await prepareTeacherAssignmentScoreUpload({
     musicXml: missingVoiceScore, teacherId: 'teacher-a', draftId: 'draft-no-voice',
     now: () => '2026-10-04T10:00:00Z',
   })
-  await assert.rejects(
-    prepareEditorGuitarTabHandoff({
-      scoreUpload: uploadWithoutVoice,
-      guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
-      draftId: 'draft-no-voice',
-      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
-    }),
-    /target-identity-required/u,
-  )
+  const withoutVoice = await prepareEditorGuitarTabHandoff({
+    scoreUpload: uploadWithoutVoice,
+    guitarTabMusicXml: editorTab(events, { n1: { string: 2, fret: 1 } }),
+    draftId: 'draft-no-voice',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+  })
+  assert.equal(withoutVoice.pitchedEventCount, 1)
 })
 
 test('GTAB-10B targeted handoff ignores unsupported notes outside the selected voice', async () => {
