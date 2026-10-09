@@ -33,6 +33,7 @@ if (typeof WebSocket !== 'function') {
 }
 
 for (const required of [
+  resolve(distRoot, 'index.html'),
   resolve(distRoot, 'smoosic-editor', 'index.html'),
   resolve(distRoot, 'smoosic-editor', 'build', 'mobile.js'),
 ]) {
@@ -41,6 +42,25 @@ for (const required of [
     process.exit(1)
   }
 }
+
+const fixtureXml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>`
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -87,19 +107,20 @@ function createStaticServer() {
   })
 }
 
-async function waitFor(predicate, { timeoutMs = 30000, intervalMs = 150, label = 'condition' } = {}) {
+async function waitFor(predicate, { timeoutMs = 60000, intervalMs = 150, label = 'condition' } = {}) {
   const started = Date.now()
   let lastError = null
+  let lastValue = null
   while (Date.now() - started < timeoutMs) {
     try {
-      const result = await predicate()
-      if (result) return result
+      lastValue = await predicate()
+      if (lastValue) return lastValue
     } catch (error) {
       lastError = error
     }
     await delay(intervalMs)
   }
-  throw new Error(`Timed out waiting for ${label}${lastError ? `: ${lastError.message}` : ''}`)
+  throw new Error(`Timed out waiting for ${label}${lastError ? `: ${lastError.message}` : lastValue ? ` (last=${String(lastValue)})` : ''}`)
 }
 
 class CdpConnection {
@@ -124,7 +145,7 @@ class CdpConnection {
       }, { once: true })
     })
     this.socket.addEventListener('message', (event) => {
-      const payload = JSON.parse(event.data)
+      const payload = JSON.parse(String(event.data))
       if (!payload.id) return
       const pending = this.pending.get(payload.id)
       if (!pending) return
@@ -159,12 +180,23 @@ async function evaluate(cdp, expression) {
   return result.result?.value
 }
 
+function uploadExpression(xml, fileName) {
+  return `(() => {
+    const input = document.getElementById('musicxml-file-input')
+    if (!input) return false
+    const file = new File([${JSON.stringify(xml)}], ${JSON.stringify(fileName)}, {
+      type: 'application/vnd.recordare.musicxml+xml',
+    })
+    const transfer = new DataTransfer()
+    transfer.items.add(file)
+    input.files = transfer.files
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    return true
+  })()`
+}
+
 async function clickAt(cdp, x, y) {
-  await cdp.send('Input.dispatchMouseEvent', {
-    type: 'mouseMoved',
-    x,
-    y,
-  })
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mousePressed',
     x,
@@ -183,89 +215,100 @@ async function clickAt(cdp, x, y) {
   })
 }
 
-async function clickSelector(cdp, selector) {
+async function clickFrameControl(cdp, id) {
   const point = await evaluate(cdp, `(() => {
-    const element = document.querySelector(${JSON.stringify(selector)})
-    if (!element) return null
+    const frame = document.getElementById('smoosic-editor-frame')
+    const doc = frame?.contentDocument
+    const element = doc?.getElementById(${JSON.stringify(id)})
+    if (!frame || !doc || !element) return null
+    const frameRect = frame.getBoundingClientRect()
     const rect = element.getBoundingClientRect()
-    const x = rect.left + rect.width / 2
-    const y = rect.top + rect.height / 2
-    const hit = document.elementFromPoint(x, y)
+    const childX = rect.left + rect.width / 2
+    const childY = rect.top + rect.height / 2
+    const x = frameRect.left + childX
+    const y = frameRect.top + childY
+    const childHit = doc.elementFromPoint(childX, childY)
+    const hostHit = document.elementFromPoint(x, y)
     return {
       x,
       y,
-      rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-      hitId: hit?.id || null,
-      hitClass: hit?.className || null,
-      targetHit: Boolean(hit && (hit === element || element.contains(hit))),
+      frameRect: { left: frameRect.left, top: frameRect.top, width: frameRect.width, height: frameRect.height },
+      controlRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      childHitId: childHit?.id || null,
+      childHitClass: childHit?.className || null,
+      childTargetHit: Boolean(childHit && (childHit === element || element.contains(childHit))),
+      hostHitId: hostHit?.id || null,
+      hostHitTag: hostHit?.tagName || null,
+      hostFrameHit: hostHit === frame,
     }
   })()`)
-  if (!point) throw new Error(`Missing native control ${selector}`)
+  if (!point) throw new Error(`Missing native Smoosic control #${id}`)
   await clickAt(cdp, point.x, point.y)
   return point
 }
 
-async function navigateEditor(cdp, editorUrl) {
-  await cdp.send('Page.navigate', { url: editorUrl })
-  await waitFor(
-    async () => evaluate(cdp, `document.readyState === 'complete'`),
-    { label: 'Smoosic document load' },
-  )
-  await waitFor(
-    async () => evaluate(cdp, `(() => {
-      const status = document.querySelector('#poc-status')?.textContent || ''
-      return status.includes('Editör hazır') &&
-        Boolean(document.querySelector('#fileMenu')) &&
-        Boolean(document.querySelector('#scoreMenu')) &&
-        Boolean(document.querySelector('#noteMenu')) &&
-        Boolean(document.querySelector('#playButton2'))
-    })()`),
-    { timeoutMs: 45000, label: 'Smoosic native controls ready' },
-  )
-}
-
-async function inspectRuntime(cdp) {
+async function captureEditorState(cdp) {
   return evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame')
+    const doc = frame?.contentDocument
+    const win = frame?.contentWindow
     const names = ['SuiFileMenu', 'SuiScoreMenu', 'SuiNoteMenu', 'DisplaySettings']
-    const smo = globalThis.Smo
+    const smo = win?.Smo
     const constructors = Object.fromEntries(names.map((name) => [name, typeof smo?.[name]]))
+    const controls = {}
+    for (const id of ['fileMenu', 'scoreMenu', 'noteMenu', 'playButton2']) {
+      const element = doc?.getElementById(id)
+      if (!element) {
+        controls[id] = null
+        continue
+      }
+      const rect = element.getBoundingClientRect()
+      const style = win.getComputedStyle(element)
+      const x = rect.left + rect.width / 2
+      const y = rect.top + rect.height / 2
+      const hit = doc.elementFromPoint(x, y)
+      controls[id] = {
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        display: style.display,
+        visibility: style.visibility,
+        pointerEvents: style.pointerEvents,
+        hitId: hit?.id || null,
+        hitClass: hit?.className || null,
+        targetHit: Boolean(hit && (hit === element || element.contains(hit))),
+      }
+    }
     return {
-      status: document.querySelector('#poc-status')?.textContent || '',
-      innerWidth: window.innerWidth,
-      innerHeight: window.innerHeight,
+      hostReady: Boolean(frame && doc && win),
+      hostInnerWidth: window.innerWidth,
+      hostInnerHeight: window.innerHeight,
+      frameSrc: frame?.getAttribute('src') || null,
+      frameRect: frame ? (() => {
+        const rect = frame.getBoundingClientRect()
+        return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+      })() : null,
+      frameStatus: doc?.getElementById('poc-status')?.textContent || null,
+      frameInnerWidth: win?.innerWidth ?? null,
+      frameInnerHeight: win?.innerHeight ?? null,
       smoGlobalType: typeof smo,
       constructors,
-      controls: Object.fromEntries(['fileMenu', 'scoreMenu', 'noteMenu', 'playButton2'].map((id) => {
-        const element = document.getElementById(id)
-        if (!element) return [id, null]
-        const rect = element.getBoundingClientRect()
-        const style = getComputedStyle(element)
-        const x = rect.left + rect.width / 2
-        const y = rect.top + rect.height / 2
-        const hit = document.elementFromPoint(x, y)
-        return [id, {
-          rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-          display: style.display,
-          visibility: style.visibility,
-          pointerEvents: style.pointerEvents,
-          hitId: hit?.id || null,
-          hitClass: hit?.className || null,
-          targetHit: Boolean(hit && (hit === element || element.contains(hit))),
-        }]
-      })),
+      controls,
     }
   })()`)
 }
 
 async function inspectMenu(cdp) {
   return evaluate(cdp, `(() => {
-    const menus = Array.from(document.querySelectorAll('.menuElement'))
+    const frame = document.getElementById('smoosic-editor-frame')
+    const doc = frame?.contentDocument
+    const win = frame?.contentWindow
+    if (!frame || !doc || !win) return { functional: false, reason: 'missing-frame' }
+    const menus = Array.from(doc.querySelectorAll('.menuElement'))
     const menu = menus.find((candidate) => {
       const rect = candidate.getBoundingClientRect()
-      const style = getComputedStyle(candidate)
+      const style = win.getComputedStyle(candidate)
       return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
     }) || menus.at(-1) || null
-    const container = menu?.closest('.menuContainer') || document.querySelector('.menuContainer')
+    const container = menu?.closest('.menuContainer') || doc.querySelector('.menuContainer')
     const rectOf = (element) => {
       if (!element) return null
       const rect = element.getBoundingClientRect()
@@ -273,7 +316,7 @@ async function inspectMenu(cdp) {
     }
     const styleOf = (element) => {
       if (!element) return null
-      const style = getComputedStyle(element)
+      const style = win.getComputedStyle(element)
       return {
         display: style.display,
         visibility: style.visibility,
@@ -287,19 +330,19 @@ async function inspectMenu(cdp) {
     const options = menu ? Array.from(menu.querySelectorAll('.menuOption')) : []
     const visibleOptions = options.filter((option) => {
       const rect = option.getBoundingClientRect()
-      const style = getComputedStyle(option)
+      const style = win.getComputedStyle(option)
       return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
     })
     const first = visibleOptions[0] || null
     let firstHit = null
     if (first) {
       const rect = first.getBoundingClientRect()
-      const x = rect.left + Math.min(rect.width / 2, Math.max(2, rect.width - 2))
-      const y = rect.top + Math.min(rect.height / 2, Math.max(2, rect.height - 2))
-      const hit = document.elementFromPoint(x, y)
+      const childX = rect.left + Math.min(rect.width / 2, Math.max(2, rect.width - 2))
+      const childY = rect.top + Math.min(rect.height / 2, Math.max(2, rect.height - 2))
+      const hit = doc.elementFromPoint(childX, childY)
       firstHit = {
-        x,
-        y,
+        childX,
+        childY,
         hitId: hit?.id || null,
         hitClass: hit?.className || null,
         optionHit: Boolean(hit && (hit === first || first.contains(hit))),
@@ -334,6 +377,49 @@ async function inspectMenu(cdp) {
   })()`)
 }
 
+async function openProductionEditor(cdp, appUrl, fileName) {
+  await cdp.send('Page.navigate', { url: appUrl })
+  await waitFor(
+    async () => evaluate(cdp, `document.readyState === 'complete' && !!document.getElementById('musicxml-tab-btn') && !!document.getElementById('smoosic-tab-btn')`),
+    { timeoutMs: 60000, label: 'SesliTab shell' },
+  )
+  await evaluate(cdp, `document.getElementById('musicxml-tab-btn').click(); true`)
+  const uploaded = await evaluate(cdp, uploadExpression(fixtureXml, fileName))
+  if (!uploaded) throw new Error('MusicXML test fixture input is missing')
+  await waitFor(
+    async () => evaluate(cdp, `document.getElementById('musicxml-open-btn')?.disabled === false`),
+    { label: 'MusicXML selection' },
+  )
+  await evaluate(cdp, `document.getElementById('musicxml-open-btn').click(); true`)
+  await waitFor(
+    async () => evaluate(cdp, `String(document.getElementById('xml-output')?.textContent || '').includes('<step>C</step>')`),
+    { timeoutMs: 60000, label: 'MusicXML parse' },
+  )
+  await evaluate(cdp, `document.getElementById('smoosic-tab-btn').click(); true`)
+  await waitFor(
+    async () => evaluate(cdp, `!!document.getElementById('smoosic-editor-frame')?.contentDocument?.getElementById('poc-status')`),
+    { timeoutMs: 60000, label: 'Smoosic iframe document' },
+  )
+  const handoffState = await waitFor(
+    async () => evaluate(cdp, `(() => {
+      const doc = document.getElementById('smoosic-editor-frame')?.contentDocument
+      const status = String(doc?.getElementById('poc-status')?.textContent || '')
+      if (status.startsWith('Başlatma hatası:') || status.startsWith('Hata:') || status.startsWith('XML hatası:')) return 'ERROR:' + status
+      if (status.startsWith('Yüklendi:') && status.includes(${JSON.stringify(fileName)})) return 'READY:' + status
+      return ''
+    })()`),
+    { timeoutMs: 120000, label: 'MusicXML handoff to Smoosic' },
+  )
+  if (String(handoffState).startsWith('ERROR:')) throw new Error(String(handoffState))
+  await waitFor(
+    async () => evaluate(cdp, `(() => {
+      const doc = document.getElementById('smoosic-editor-frame')?.contentDocument
+      return !!doc?.getElementById('fileMenu') && !!doc?.getElementById('scoreMenu') && !!doc?.getElementById('noteMenu') && !!doc?.getElementById('playButton2')
+    })()`),
+    { timeoutMs: 30000, label: 'native Smoosic controls after production handoff' },
+  )
+}
+
 const server = createStaticServer()
 const userDataDir = mkdtempSync(resolve(tmpdir(), 'seslitab-smenu-chrome-'))
 const remoteDebuggingPort = 9337
@@ -347,6 +433,7 @@ const diagnostics = {
   viewport: { width: 1130, height: 900 },
   runtime: null,
   menus: {},
+  precondition: null,
 }
 
 try {
@@ -355,14 +442,14 @@ try {
     server.listen(0, '127.0.0.1', resolveListen)
   })
   const address = server.address()
-  const origin = `http://127.0.0.1:${address.port}`
-  const editorUrl = `${origin}/smoosic-editor/index.html`
+  const appUrl = `http://127.0.0.1:${address.port}/index.html`
 
   browser = spawn(chrome, [
     '--headless=new',
     '--no-sandbox',
     '--disable-gpu',
     '--disable-dev-shm-usage',
+    '--autoplay-policy=no-user-gesture-required',
     `--remote-debugging-port=${remoteDebuggingPort}`,
     `--user-data-dir=${userDataDir}`,
     '--window-size=1130,900',
@@ -381,7 +468,6 @@ try {
   await cdp.open()
   await cdp.send('Page.enable')
   await cdp.send('Runtime.enable')
-  await cdp.send('DOM.enable')
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width: 1130,
     height: 900,
@@ -389,21 +475,21 @@ try {
     mobile: false,
   })
 
-  await navigateEditor(cdp, editorUrl)
-  diagnostics.runtime = await inspectRuntime(cdp)
+  await openProductionEditor(cdp, appUrl, 'smenu-runtime.musicxml')
+  diagnostics.runtime = await captureEditorState(cdp)
 
-  for (const menu of [
-    ['file', '#fileMenu'],
-    ['score', '#scoreMenu'],
-    ['notes', '#noteMenu'],
+  for (const [name, id] of [
+    ['file', 'fileMenu'],
+    ['score', 'scoreMenu'],
+    ['notes', 'noteMenu'],
   ]) {
-    const [name, selector] = menu
-    await navigateEditor(cdp, editorUrl)
-    const before = await inspectRuntime(cdp)
-    const click = await clickSelector(cdp, selector)
+    const fileName = `smenu-${name}.musicxml`
+    await openProductionEditor(cdp, appUrl, fileName)
+    const before = await captureEditorState(cdp)
+    const click = await clickFrameControl(cdp, id)
     await delay(500)
     const result = await inspectMenu(cdp)
-    diagnostics.menus[name] = { selector, before, click, result }
+    diagnostics.menus[name] = { id, before, click, result }
   }
 
   const failedMenus = Object.entries(diagnostics.menus)
@@ -414,6 +500,13 @@ try {
   }
 } catch (error) {
   failure = error
+  if (cdp) {
+    try {
+      diagnostics.precondition = await captureEditorState(cdp)
+    } catch (captureError) {
+      diagnostics.precondition = { captureError: captureError?.message || String(captureError) }
+    }
+  }
   diagnostics.failure = {
     message: error?.message || String(error),
     stack: error?.stack || null,
@@ -424,7 +517,7 @@ try {
   writeFileSync(artifactPath, `${JSON.stringify(diagnostics, null, 2)}\n`)
   cdp?.close()
   if (browser && browser.exitCode === null) browser.kill('SIGTERM')
-  await new Promise((resolveClose) => server.close(resolveClose))
+  if (server.listening) await new Promise((resolveClose) => server.close(resolveClose))
   rmSync(userDataDir, { recursive: true, force: true })
 }
 
