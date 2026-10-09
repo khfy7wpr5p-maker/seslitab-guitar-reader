@@ -1,3 +1,5 @@
+let managementMountSequence = 0
+
 function requiredController(controller) {
   for (const method of [
     'getViewModel',
@@ -34,6 +36,13 @@ function safeRows(viewModel) {
     : []
 }
 
+function toggleDisclosure(button, panel) {
+  const expanded = button.getAttribute('aria-expanded') === 'true'
+  const nextExpanded = !expanded
+  button.setAttribute('aria-expanded', String(nextExpanded))
+  panel.hidden = !nextExpanded
+}
+
 export function mountTeacherStudentManagementUi({
   root = globalThis.document,
   host,
@@ -47,12 +56,14 @@ export function mountTeacherStudentManagementUi({
   }
 
   const trustedController = requiredController(controller)
+  const mountId = ++managementMountSequence
   let destroyed = false
 
   function render(message = '') {
     if (destroyed) return
 
     const viewModel = trustedController.getViewModel()
+    const rows = safeRows(viewModel)
     const section = root.createElement('section')
     section.className = 'teacher-student-management'
     section.setAttribute(
@@ -61,7 +72,7 @@ export function mountTeacherStudentManagementUi({
     )
 
     section.appendChild(
-      textNode(root, 'h2', 'Öğrenci Yönetimi'),
+      textNode(root, 'h2', `Öğrenci Yönetimi · ${rows.length}`),
     )
     section.appendChild(
       textNode(
@@ -72,62 +83,20 @@ export function mountTeacherStudentManagementUi({
       ),
     )
 
-    const form = root.createElement('form')
-    form.className = 'teacher-student-management__invite-form'
-
-    const emailLabel = textNode(
-      root,
-      'label',
-      'Öğrenci e-postası',
-    )
-    const email = root.createElement('input')
-    email.name = 'email'
-    email.type = 'email'
-    email.required = true
-    email.setAttribute('autocomplete', 'email')
-    emailLabel.appendChild(email)
-
-    const nameLabel = textNode(
-      root,
-      'label',
-      'Ad / takma ad',
-    )
-    const displayName = root.createElement('input')
-    displayName.name = 'displayNameOrNickname'
-    displayName.type = 'text'
-    displayName.required = true
-    displayName.setAttribute('autocomplete', 'name')
-    nameLabel.appendChild(displayName)
-
-    const submit = textNode(
-      root,
-      'button',
-      'Davet Oluştur',
-      'btn btn-primary',
-    )
-    submit.type = 'submit'
-
-    form.appendChild(emailLabel)
-    form.appendChild(nameLabel)
-    form.appendChild(submit)
-
-    form.addEventListener('submit', async (event) => {
-      event?.preventDefault?.()
-      try {
-        await trustedController.createInvitation({
-          email: email.value,
-          displayNameOrNickname: displayName.value,
-        })
-        render('Davet bağlantısı hazır.')
-      } catch {
-        render('Davet oluşturulamadı.')
-      }
-    })
-
-    section.appendChild(form)
-
     const actions = root.createElement('div')
     actions.className = 'teacher-student-management__actions'
+
+    const invitePanelId = `teacher-student-invite-panel-${mountId}`
+    const inviteToggle = textNode(
+      root,
+      'button',
+      '+ Öğrenci Davet Et',
+      'btn btn-primary teacher-student-management__invite-toggle',
+    )
+    inviteToggle.type = 'button'
+    inviteToggle.setAttribute('aria-expanded', 'false')
+    inviteToggle.setAttribute('aria-controls', invitePanelId)
+    actions.appendChild(inviteToggle)
 
     const refresh = textNode(
       root,
@@ -167,6 +136,66 @@ export function mountTeacherStudentManagementUi({
 
     section.appendChild(actions)
 
+    const form = root.createElement('form')
+    form.id = invitePanelId
+    form.className = 'teacher-student-management__invite-form'
+    form.hidden = true
+
+    const emailLabel = textNode(
+      root,
+      'label',
+      'Öğrenci e-postası',
+    )
+    const email = root.createElement('input')
+    email.name = 'email'
+    email.type = 'email'
+    email.required = true
+    email.setAttribute('autocomplete', 'email')
+    emailLabel.appendChild(email)
+
+    const nameLabel = textNode(
+      root,
+      'label',
+      'Ad / takma ad',
+    )
+    const displayName = root.createElement('input')
+    displayName.name = 'displayNameOrNickname'
+    displayName.type = 'text'
+    displayName.required = true
+    displayName.setAttribute('autocomplete', 'name')
+    nameLabel.appendChild(displayName)
+
+    const submit = textNode(
+      root,
+      'button',
+      'Davet Oluştur',
+      'btn btn-primary',
+    )
+    submit.type = 'submit'
+
+    form.appendChild(emailLabel)
+    form.appendChild(nameLabel)
+    form.appendChild(submit)
+
+    inviteToggle.addEventListener('click', () => {
+      toggleDisclosure(inviteToggle, form)
+    })
+
+    form.addEventListener('submit', async (event) => {
+      event?.preventDefault?.()
+      try {
+        await trustedController.createInvitation({
+          email: email.value,
+          displayNameOrNickname: displayName.value,
+        })
+        render('Davet bağlantısı hazır.')
+      } catch {
+        render('Davet oluşturulamadı.')
+      }
+    })
+
+    section.appendChild(form)
+
     const status = textNode(
       root,
       'p',
@@ -180,49 +209,58 @@ export function mountTeacherStudentManagementUi({
     const list = root.createElement('div')
     list.className = 'teacher-student-management__list'
 
-    for (const row of safeRows(viewModel)) {
+    rows.forEach((row, index) => {
       const article = root.createElement('article')
       article.className = 'teacher-student-management__row'
 
-      article.appendChild(
-        textNode(
-          root,
-          'h3',
-          metadataText(row?.displayNameOrNickname),
-        ),
+      const detailsId = `teacher-student-details-${mountId}-${index}`
+      const summary = textNode(
+        root,
+        'button',
+        `${metadataText(row?.displayNameOrNickname)} · ${metadataText(row?.state)} · ${metadataText(row?.presenceState)}`,
+        'teacher-student-management__row-summary',
       )
-      article.appendChild(
+      summary.type = 'button'
+      summary.setAttribute('aria-expanded', 'false')
+      summary.setAttribute('aria-controls', detailsId)
+      article.appendChild(summary)
+
+      const details = root.createElement('div')
+      details.id = detailsId
+      details.className = 'teacher-student-management__row-details'
+      details.hidden = true
+      details.appendChild(
         textNode(root, 'p', `Durum: ${metadataText(row?.state)}`),
       )
-      article.appendChild(
+      details.appendChild(
         textNode(
           root,
           'p',
           `Bağlantı: ${metadataText(row?.presenceState)}`,
         ),
       )
-      article.appendChild(
+      details.appendChild(
         textNode(
           root,
           'p',
           `${Number.isSafeInteger(row?.totalSessions) ? row.totalSessions : 0} oturum`,
         ),
       )
-      article.appendChild(
+      details.appendChild(
         textNode(
           root,
           'p',
           `Son çevrimiçi: ${metadataText(row?.lastOnlineAt)}`,
         ),
       )
-      article.appendChild(
+      details.appendChild(
         textNode(
           root,
           'p',
           `Son oturum: ${metadataText(row?.lastSessionAt)}`,
         ),
       )
-      article.appendChild(
+      details.appendChild(
         textNode(
           root,
           'p',
@@ -248,13 +286,18 @@ export function mountTeacherStudentManagementUi({
             render('Davet iptal edilemedi.')
           }
         })
-        article.appendChild(revoke)
+        details.appendChild(revoke)
       }
 
-      list.appendChild(article)
-    }
+      summary.addEventListener('click', () => {
+        toggleDisclosure(summary, details)
+      })
 
-    if (safeRows(viewModel).length === 0) {
+      article.appendChild(details)
+      list.appendChild(article)
+    })
+
+    if (rows.length === 0) {
       list.appendChild(
         textNode(
           root,
