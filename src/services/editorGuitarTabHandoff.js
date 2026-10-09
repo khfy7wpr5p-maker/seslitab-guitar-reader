@@ -45,11 +45,23 @@ async function sha256Utf8(value) {
   return hexFromBuffer(digest)
 }
 
-function throwValidatorFailure(result) {
+function publicValidatorFailureCode(result) {
   const code = String(result?.code ?? 'VALIDATION_FAILED')
-    .toLowerCase()
-    .replaceAll('_', '-')
-  fail(code, {
+  if (
+    code === 'PART_IDENTITY_MISMATCH'
+    || code === 'PART_IDENTITY_DUPLICATE'
+    || code.startsWith('PART_ID_INVALID_')
+  ) return 'score-part-identity-mismatch'
+  if (
+    code === 'NOTE_IDENTITY_AMBIGUOUS'
+    || code === 'STAFF_IDENTITY_AMBIGUOUS'
+    || code === 'VOICE_IDENTITY_AMBIGUOUS'
+  ) return 'target-identity-ambiguous'
+  return code.toLowerCase().replaceAll('_', '-')
+}
+
+function throwValidatorFailure(result) {
+  fail(publicValidatorFailureCode(result), {
     category: result?.category ?? 'RUNTIME',
     validatorCode: result?.code ?? 'VALIDATION_FAILED',
   })
