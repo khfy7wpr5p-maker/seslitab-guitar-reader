@@ -55,16 +55,20 @@ const TAB = `<?xml version="1.0" encoding="UTF-8"?>
   </part>
 </score-partwise>`
 
-test('GTAB-OCTAVE-02 validates physical TAB against sounding pitch for a selected staff in a 3-staff source', async () => {
-  const scoreUpload = await prepareTeacherAssignmentScoreUpload({
-    musicXml: SOURCE,
+async function scoreUpload(musicXml, draftId) {
+  return prepareTeacherAssignmentScoreUpload({
+    musicXml,
     teacherId: 'teacher-a',
-    draftId: 'three-staff-octave',
+    draftId,
     now: () => '2026-10-09T11:00:00Z',
   })
+}
+
+test('GTAB-OCTAVE-02 validates physical TAB against sounding pitch for a selected staff in a 3-staff source', async () => {
+  const upload = await scoreUpload(SOURCE, 'three-staff-octave')
 
   const result = await prepareEditorGuitarTabHandoff({
-    scoreUpload,
+    scoreUpload: upload,
     guitarTabMusicXml: TAB,
     draftId: 'three-staff-octave',
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
@@ -72,4 +76,40 @@ test('GTAB-OCTAVE-02 validates physical TAB against sounding pitch for a selecte
 
   assert.equal(result.pitchedEventCount, 1)
   assert.deepEqual(result.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+})
+
+test('GTAB-OCTAVE-02 rejects a concert-pitch fingering when octave transposition is declared', async () => {
+  const upload = await scoreUpload(SOURCE, 'wrong-octave-position')
+  const wrongTab = TAB.replace('<string>3</string><fret>2</fret>', '<string>1</string><fret>5</fret>')
+
+  await assert.rejects(
+    prepareEditorGuitarTabHandoff({
+      scoreUpload: upload,
+      guitarTabMusicXml: wrongTab,
+      draftId: 'wrong-octave-position',
+      targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    }),
+    /technical-position-pitch-mismatch/u,
+  )
+})
+
+test('GTAB-OCTAVE-02 keeps first-measure transpose active in later measures', async () => {
+  const sourceTwoMeasures = SOURCE.replace(
+    '    </measure>\n  </part>',
+    '    </measure>\n    <measure number="2"><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note></measure>\n  </part>',
+  )
+  const tabTwoMeasures = TAB.replace(
+    '    </measure>\n  </part>',
+    '    </measure>\n    <measure number="2"><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note><backup><duration>1</duration></backup><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note></measure>\n  </part>',
+  )
+  const upload = await scoreUpload(sourceTwoMeasures, 'persistent-octave')
+
+  const result = await prepareEditorGuitarTabHandoff({
+    scoreUpload: upload,
+    guitarTabMusicXml: tabTwoMeasures,
+    draftId: 'persistent-octave',
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+  })
+
+  assert.equal(result.pitchedEventCount, 2)
 })
