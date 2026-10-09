@@ -1,0 +1,126 @@
+.teacher-student-management {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.75rem 0;
+}
+
+.teacher-student-management h2,
+.teacher-student-management p {
+  margin: 0;
+}
+
+.teacher-student-management__intro,
+.teacher-student-management__status {
+  color: var(--neutral-600);
+  font-size: 0.875rem;
+}
+
+.teacher-student-management__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.teacher-student-management__invite-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--neutral-50);
+}
+
+.teacher-student-management__invite-form[hidden],
+.teacher-student-management__row-details[hidden] {
+  display: none;
+}
+
+.teacher-student-management__invite-form label {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+  color: var(--neutral-700);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.teacher-student-management__invite-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--neutral-800);
+  font: inherit;
+}
+
+.teacher-student-management__invite-form input:focus {
+  outline: 2px solid var(--primary-100);
+  border-color: var(--primary-500);
+}
+
+.teacher-student-management__list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.teacher-student-management__row {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+  background: white;
+}
+
+.teacher-student-management__row-summary {
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: 0;
+  background: transparent;
+  color: var(--neutral-800);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.teacher-student-management__row-summary:hover,
+.teacher-student-management__row-summary:focus-visible {
+  background: var(--neutral-50);
+}
+
+.teacher-student-management__row-summary:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: -2px;
+}
+
+.teacher-student-management__row-details {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0 0.875rem 0.875rem;
+  color: var(--neutral-600);
+  font-size: 0.875rem;
+}
+
+.teacher-student-management__row-details .btn {
+  width: fit-content;
+  margin-top: 0.25rem;
+}
+
+@media (min-width: 720px) {
+  .teacher-student-management__invite-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
+  }
+
+  .teacher-student-management__invite-form .btn {
+    min-height: 42px;
+  }
+}
