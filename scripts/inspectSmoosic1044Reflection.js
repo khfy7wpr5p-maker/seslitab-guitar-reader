@@ -11,6 +11,11 @@ const needles = [
   'SuiScoreMenu',
   'SuiNoteMenu',
   'DisplaySettings',
+  'menuElement dropdown-menu',
+  'resolveTopRightAnchor',
+  'menuPosition',
+  'createMenu creating',
+  "createTopDomContainer('.menuContainer')",
 ]
 
 if (!existsSync(packageRoot)) {
@@ -40,9 +45,9 @@ for (const path of files) {
   for (const needle of needles) {
     let index = source.indexOf(needle)
     let countForNeedle = 0
-    while (index >= 0 && countForNeedle < 30) {
-      const start = Math.max(0, index - 360)
-      const end = Math.min(source.length, index + needle.length + 620)
+    while (index >= 0 && countForNeedle < 12) {
+      const start = Math.max(0, index - 520)
+      const end = Math.min(source.length, index + needle.length + 900)
       hits.push({
         needle,
         path: relative(packageRoot, path),
@@ -71,8 +76,13 @@ writeFileSync(artifactPath, `${JSON.stringify(evidence, null, 2)}\n`)
 
 console.log(`Installed Smoosic: ${packageJson.name}@${packageJson.version}`)
 for (const needle of needles) console.log(`${needle} hits: ${counts[needle]}`)
-for (const hit of hits.filter((entry) => entry.needle === 'SmoDynamicCtor').slice(0, 12)) {
-  console.log(`${hit.path}: ${hit.excerpt}`)
+for (const hit of hits.filter((entry) => entry.path === packageJson.main && [
+  'menuElement dropdown-menu',
+  'resolveTopRightAnchor',
+  'menuPosition',
+  'createMenu creating',
+].includes(entry.needle))) {
+  console.log(`${hit.needle} :: ${hit.path}: ${hit.excerpt}`)
 }
 console.log(`Evidence: ${artifactPath}`)
 
