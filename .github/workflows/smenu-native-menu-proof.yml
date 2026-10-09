@@ -38,7 +38,7 @@ jobs:
         run: node scripts/inspectSmoosic1044Reflection.js
 
       - name: Verify native Smoosic menus in real browser
-        run: node scripts/verifySmoosicNativeMenusBrowser.js
+        run: node scripts/verifySmoosicNativeMenusBrowserV2.js
 
       - name: Upload SMENU evidence
         if: always()
@@ -46,6 +46,6 @@ jobs:
         with:
           name: smenu-native-menu-evidence
           path: |
-            artifacts/smenu-native-menu-browser.json
+            artifacts/smenu-native-menu-browser-v2.json
             artifacts/smenu-smoosic-reflection-contract.json
           if-no-files-found: warn
