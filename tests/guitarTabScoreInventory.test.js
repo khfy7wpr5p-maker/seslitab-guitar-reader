@@ -48,37 +48,15 @@ test('extracts exact source-order Part Staff Voice inventory from pitched eviden
   assert.deepEqual(inventory, {
     parts: [
       {
-        partId: 'P1',
-        partIndex: 0,
-        name: 'Piano',
+        partId: 'P1', partIndex: 0, name: 'Piano',
         staves: [
-          {
-            staff: 1,
-            voices: [
-              { voice: 1, pitchedEventCount: 4 },
-              { voice: 2, pitchedEventCount: 2 },
-            ],
-          },
-          {
-            staff: 2,
-            voices: [
-              { voice: 1, pitchedEventCount: 4 },
-            ],
-          },
+          { staff: 1, voices: [{ voice: 1, pitchedEventCount: 4 }, { voice: 2, pitchedEventCount: 2 }] },
+          { staff: 2, voices: [{ voice: 1, pitchedEventCount: 4 }] },
         ],
       },
       {
-        partId: 'P2',
-        partIndex: 1,
-        name: 'Violin',
-        staves: [
-          {
-            staff: 1,
-            voices: [
-              { voice: 1, pitchedEventCount: 2 },
-            ],
-          },
-        ],
+        partId: 'P2', partIndex: 1, name: 'Violin',
+        staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 2 }] }],
       },
     ],
   })
@@ -90,9 +68,7 @@ test('extracts exact source-order Part Staff Voice inventory from pitched eviden
 test('keeps a one-part one-staff one-voice inventory exact', () => {
   const inventory = extractGuitarTabScoreInventory(SINGLE_XML, parserOptions)
   assert.deepEqual(inventory.parts, [{
-    partId: 'P1',
-    partIndex: 0,
-    name: 'Violin',
+    partId: 'P1', partIndex: 0, name: 'Violin',
     staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }],
   }])
 })
@@ -101,24 +77,15 @@ test('fails closed on duplicate or contradictory part identity', () => {
   const duplicate = PIANO_AND_VIOLIN_XML
     .replace('<score-part id="P2">', '<score-part id="P1">')
     .replace('<part id="P2">', '<part id="P1">')
-  assert.throws(
-    () => extractGuitarTabScoreInventory(duplicate, parserOptions),
-    /duplicate.*part|part.*duplicate/i,
-  )
+  assert.throws(() => extractGuitarTabScoreInventory(duplicate, parserOptions), /duplicate.*part|part.*duplicate/i)
 
   const bodyMismatch = PIANO_AND_VIOLIN_XML.replace('<part id="P2">', '<part id="P9">')
-  assert.throws(
-    () => extractGuitarTabScoreInventory(bodyMismatch, parserOptions),
-    /part.*mismatch|body.*part|part-list/i,
-  )
+  assert.throws(() => extractGuitarTabScoreInventory(bodyMismatch, parserOptions), /part.*mismatch|body.*part|part-list/i)
 })
 
-test('uses implicit first staff and voice for ordinary single-voice MusicXML notes', () => {
+test('uses implicit first staff and voice only when single-candidate evidence is safe', () => {
   const restOnly = `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/><duration>1</duration><voice>1</voice><staff>1</staff></note></measure></part></score-partwise>`
-  assert.deepEqual(
-    extractGuitarTabScoreInventory(restOnly, parserOptions).parts[0].staves,
-    [],
-  )
+  assert.deepEqual(extractGuitarTabScoreInventory(restOnly, parserOptions).parts[0].staves, [])
 
   const missingAssignments = SINGLE_XML.replace('<staff>1</staff>', '').replace('<voice>1</voice>', '')
   assert.deepEqual(
@@ -141,18 +108,12 @@ test('prepares an editor-only XML view with implicit staff and voice while prese
   assert.equal(source.includes('<staff>'), false)
 })
 
-test('does not coerce malformed or non-numeric staff and voice identities', () => {
+test('fails closed on malformed or non-numeric staff and voice identities', () => {
   const badStaff = SINGLE_XML.replace('<staff>1</staff>', '<staff>upper</staff>')
-  assert.deepEqual(
-    extractGuitarTabScoreInventory(badStaff, parserOptions).parts[0].staves,
-    [],
-  )
+  assert.throws(() => extractGuitarTabScoreInventory(badStaff, parserOptions), /staff/i)
 
   const badVoice = SINGLE_XML.replace('<voice>1</voice>', '<voice>melody</voice>')
-  assert.deepEqual(
-    extractGuitarTabScoreInventory(badVoice, parserOptions).parts[0].staves,
-    [],
-  )
+  assert.throws(() => extractGuitarTabScoreInventory(badVoice, parserOptions), /voice/i)
 })
 
 test('part display name whitespace falls back to stable partId without rejecting the score', () => {
@@ -160,15 +121,9 @@ test('part display name whitespace falls back to stable partId without rejecting
   assert.equal(extractGuitarTabScoreInventory(empty, parserOptions).parts[0].name, 'P1')
 })
 
-test('does not advertise leading-zero staff or voice identities as canonical targets', () => {
+test('fails closed on leading-zero staff or voice identities', () => {
   const leadingZeroStaff = SINGLE_XML.replace('<staff>1</staff>', '<staff>01</staff>')
   const leadingZeroVoice = SINGLE_XML.replace('<voice>1</voice>', '<voice>01</voice>')
-  assert.deepEqual(
-    extractGuitarTabScoreInventory(leadingZeroStaff, parserOptions).parts[0].staves,
-    [],
-  )
-  assert.deepEqual(
-    extractGuitarTabScoreInventory(leadingZeroVoice, parserOptions).parts[0].staves,
-    [],
-  )
+  assert.throws(() => extractGuitarTabScoreInventory(leadingZeroStaff, parserOptions), /staff/i)
+  assert.throws(() => extractGuitarTabScoreInventory(leadingZeroVoice, parserOptions), /voice/i)
 })
