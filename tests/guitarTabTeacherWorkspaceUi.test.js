@@ -640,6 +640,8 @@ test('GTAB-10B rejects inventory extraction failures before source-session or re
   assert.equal(observations.renderCalls, 0)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).rendererAvailable, false)
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
+  assert.notEqual(root.getElementById('guitar-tab-editor-status').dataset.state, 'loading')
+  assert.doesNotMatch(root.getElementById('guitar-tab-editor-status').textContent, /hazırlanıyor/u)
 })
 
 test('GTAB-10B leaves the target unset and disables TAB export when inventory has no eligible regions', async () => {
@@ -657,6 +659,8 @@ test('GTAB-10B leaves the target unset and disables TAB export when inventory ha
   assert.equal(root.getElementById('guitar-tab-export').disabled, true)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
   assert.match(root.getElementById('guitar-tab-source-status').textContent, /kullanılabilir TAB bölgesi yok/u)
+  assert.match(root.getElementById('guitar-tab-editor-status').textContent, /TAB’a aktarılabilecek nota bulunamadı/u)
+  assert.notEqual(root.getElementById('guitar-tab-editor-status').dataset.state, 'loading')
 })
 
 test('GTAB-10B rejects an invalid file before the reader can access its contents', async () => {
@@ -676,6 +680,8 @@ test('GTAB-10B rejects an invalid file before the reader can access its contents
 
   assert.deepEqual(result, { ok: false, reason: 'SOURCE_READ_FAILED' })
   assert.deepEqual(order, ['validate'])
+  assert.notEqual(root.getElementById('guitar-tab-editor-status').dataset.state, 'loading')
+  assert.match(root.getElementById('guitar-tab-editor-status').textContent, /Dosya okunamadı/u)
 })
 
 test('GTAB-09B keeps source session and six-string editor available when notation rendering fails', async () => {
