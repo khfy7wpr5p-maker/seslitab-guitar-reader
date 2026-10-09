@@ -1,0 +1,46 @@
+name: SMENU native menu proof
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smenu-native-menu-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-menu-proof:
+    name: Native File Score Notes proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Verify native Smoosic menus in real browser
+        run: node scripts/verifySmoosicNativeMenusBrowser.js
+
+      - name: Upload SMENU browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smenu-native-menu-browser
+          path: artifacts/smenu-native-menu-browser.json
+          if-no-files-found: warn
