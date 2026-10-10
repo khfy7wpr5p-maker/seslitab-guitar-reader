@@ -247,6 +247,14 @@ const S15_TWO_NOTE_XML = S15_SOURCE_XML.replace(
   '</note></measure>',
   '</note><note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>',
 )
+const SES221_SOURCE_XML = readFileSync(
+  new URL('./fixtures/ses-221/audiveris-octave-clef.musicxml', import.meta.url),
+  'utf8',
+)
+const SES221_SMOOSIC_4096_XML = readFileSync(
+  new URL('./fixtures/ses-221/smoosic-4096-octave-clef.musicxml', import.meta.url),
+  'utf8',
+)
 
 function staleSourceHost({
   sourceXml = '',
@@ -264,6 +272,7 @@ function staleSourceHost({
     postMessageCount: 0,
     correctionOverlayMessages: [],
     importRevisions: [],
+    importedMusicXml: [],
     defaultView: {
       crypto: secureIds ? { randomUUID: () => 's15-test-id' } : {},
       location: { origin: 'https://seslitab.test' },
@@ -307,7 +316,13 @@ function staleSourceHost({
         }
         element.contentDocument = { getElementById(id) { return id === 'poc-status' ? editorStatus : (id === 'mobile-xml-input' ? editorInput : null) } }
         element.contentWindow = {
-          File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
+          File: class {
+            constructor(parts, name) {
+              this.parts = parts
+              this.name = name
+              root.importedMusicXml.push(parts[0])
+            }
+          },
           Event: class { constructor(type) { this.type = type } },
           postMessage(message) {
             if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
@@ -612,9 +627,17 @@ async function runHostWritebackCandidate(candidateXml, sourceXml = S15_SOURCE_XM
   ensureSmoosicEditorTab(root)
   root.getElementById('smoosic-tab-btn').click()
   root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  root.getElementById('smoosic-apply-btn').click()
-  await settleWriteback()
+  const status = root.getElementById('smoosic-editor-host-status')
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    if (root.importedMusicXml.length > 0 && status.dataset.kind === 'ready') break
+  }
+  const applyButton = root.getElementById('smoosic-apply-btn')
+  applyButton.click()
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    if (root.postMessageCount > 0 && applyButton.disabled === false) break
+  }
   clearPackage3Notes()
   globalThis.document = previousDocument
   return options.returnRoot ? root : root.getElementById('smoosic-editor-host-status').textContent
@@ -649,6 +672,27 @@ test('S15 forwards certified padding and the exact pending revision into canonic
   assert.match(root.xmlOutput.textContent, /<forward><duration>2<\/duration><voice>1<\/voice><\/forward>/)
   assert.equal(parseMusicXmlToNotes(root.xmlOutput.textContent).notes[0].step, 'G')
   assert.equal(root.postMessageCount, 1)
+})
+
+test('SES-221 host round-trip restores canonical octave clef while preserving a teacher pitch edit', async () => {
+  const root = await runHostWritebackCandidate(SES221_SMOOSIC_4096_XML, SES221_SOURCE_XML, {
+    publish: true,
+    returnRoot: true,
+  })
+
+  assert.match(root.importedMusicXml[0], /<step>C<\/step><alter>1<\/alter><octave>5<\/octave>/)
+  assert.doesNotMatch(root.importedMusicXml[0], /clef-octave-change/)
+  assert.equal(root.postMessageCount, 1)
+  assert.match(root.getElementById('smoosic-editor-host-status').textContent, /Yeni sürüm doğrulandı/)
+  assert.match(root.xmlOutput.textContent, /<step>D<\/step><alter>1<\/alter><octave>4<\/octave>/)
+  assert.match(root.xmlOutput.textContent, /<clef-octave-change>-1<\/clef-octave-change>/)
+  assert.match(root.xmlOutput.textContent, /<duration>2<\/duration>/)
+  assert.match(root.xmlOutput.textContent, /<type>half<\/type><tie type="start"\/>/)
+  const finalNotes = parseMusicXmlToNotes(root.xmlOutput.textContent).notes
+  assert.deepEqual(finalNotes.map((note) => note.startBeat), [0, 2])
+  assert.deepEqual(finalNotes.map((note) => note.beats), [2, 2])
+  assert.equal(finalNotes[0].tieStart, true)
+  assert.equal(finalNotes[1].tieStop, true)
 })
 
 test('S15 preserves canonical state for no-change, unsupported, and invalid candidates', async () => {
