@@ -429,6 +429,41 @@ describe('createCanonicalMusicXmlBridgeNote', () => {
   )
 
   test(
+    'preserves source-derived sounding pitch metadata for downstream guitar resolution',
+    () => {
+      const source =
+        technicalGuitarSource({
+          midi: 61,
+          soundingPitchMidi: 49,
+          sourceTranspositionSemitones: -12,
+        })
+
+      const note =
+        createCanonicalMusicXmlBridgeNote(
+          source,
+        )
+
+      assert.equal(note.midi, 61)
+      assert.equal(
+        note.soundingPitchMidi,
+        49,
+      )
+      assert.equal(
+        note.sourceTranspositionSemitones,
+        -12,
+      )
+      assert.equal(
+        note._raw.soundingPitchMidi,
+        49,
+      )
+      assert.equal(
+        note._raw.sourceTranspositionSemitones,
+        -12,
+      )
+    },
+  )
+
+  test(
     'verifies rests without inventing pitch',
     () => {
       const source =

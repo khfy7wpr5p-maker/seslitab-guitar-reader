@@ -324,6 +324,12 @@ export function createNote(data = {}) {
     accidentalLabel: '',                                         // Accidentals Türkçe adı (auto)
     frequency: data.frequency ?? null,                          // Frekans (Hz)
     midi: data.midi ?? null,                                     // MIDI note number
+    ...(Object.prototype.hasOwnProperty.call(data, 'soundingPitchMidi')
+      ? { soundingPitchMidi: data.soundingPitchMidi }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(data, 'sourceTranspositionSemitones')
+      ? { sourceTranspositionSemitones: data.sourceTranspositionSemitones }
+      : {}),
 
     // --- Guitar Position ---
     stringNumber: data.stringNumber ?? 0,                       // Tel numarası (1-6, e=1, E=6)

@@ -37,8 +37,8 @@ function note(overrides = {}) {
     midi: 60,
     frequency: 261.6255653005986,
     noteName: 'Do',
-    string: 'A',
-    fret: 3,
+    string: 'B',
+    fret: 1,
     tieStart: false,
     tieStop: false,
     tieContinue: false,
@@ -46,9 +46,9 @@ function note(overrides = {}) {
   }
 }
 
-function workspace() {
+function workspace(noteOverrides = {}) {
   return createTeacherWorkspace({
-    content: [note()],
+    content: [note(noteOverrides)],
     actorId: 'teacher-stage-f',
     sourceId: 'source-stage-f',
     automaticRevisionId: 'automatic-stage-f',
@@ -92,8 +92,8 @@ test('Stage F canonicalization keeps teacher pitch intent separate and derives c
   assert.equal(result.revision.content[0].step, 'D')
   assert.equal(result.revision.content[0].midi, 62)
   assert.equal(result.revision.content[0].noteName, 'Re')
-  assert.equal(result.revision.content[0].string, 'A')
-  assert.equal(result.revision.content[0].fret, 5)
+  assert.equal(result.revision.content[0].string, 'B')
+  assert.equal(result.revision.content[0].fret, 3)
   assert.ok(Math.abs(result.revision.content[0].frequency - 293.6647679174076) < 1e-9)
   assert.deepEqual(
     result.auditEvent.operations.map((operation) => operation.path[1]).sort(),
@@ -101,10 +101,26 @@ test('Stage F canonicalization keeps teacher pitch intent separate and derives c
   )
   assert.equal(sourceSnapshot.step, 'C')
   assert.equal(sourceSnapshot.midi, 60)
-  assert.equal(sourceSnapshot.fret, 3)
+  assert.equal(sourceSnapshot.fret, 1)
   assert.equal(isStageFCanonicalizationEvidence(result.evidence), true)
   assert.equal(result.evidence.baseRevisionId, corrected.history.revisions.at(-1).revisionId)
   assert.equal(result.evidence.resultRevisionId, result.revision.revisionId)
+})
+
+test('SES-220 Stage F preserves explicit source transpose without a hidden octave shift', () => {
+  const root = workspace({
+    step: 'C', alter: 1, octave: 4, midi: 61,
+    string: 'A', fret: 4,
+    sourceTranspositionSemitones: -12,
+    soundingPitchMidi: 49,
+  })
+  const corrected = correct(root, '0:step', 'D', '1')
+  const result = canonicalize(corrected)
+
+  assert.equal(result.revision.content[0].midi, 63)
+  assert.equal(result.revision.content[0].fret, 6)
+  assert.equal(result.revision.content[0].sourceTranspositionSemitones, -12)
+  assert.equal(result.revision.content[0].soundingPitchMidi, 51)
 })
 
 test('Stage F canonicalization derives duration metadata without guessing timeline onset', () => {

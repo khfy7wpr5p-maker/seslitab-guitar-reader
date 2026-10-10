@@ -3,14 +3,15 @@ import test from 'node:test'
 
 import { resolveGuitarTabEventMidi } from '../src/services/guitarTabPitchPolicy.js'
 
-test('GTAB-OCTAVE-01 prefers guitar sounding MIDI over written source MIDI', () => {
+test('SES-220 prefers source-derived sounding MIDI over written and deprecated guitar MIDI', () => {
   assert.equal(resolveGuitarTabEventMidi({
-    pitch: { midi: 69 },
-    guitarSoundingMidi: 57,
-  }), 57)
+    pitch: { midi: 61 },
+    soundingPitchMidi: 61,
+    guitarSoundingMidi: 49,
+  }), 61)
 })
 
-test('GTAB-OCTAVE-01 preserves legacy written MIDI fallback for non-transposing fixtures', () => {
-  assert.equal(resolveGuitarTabEventMidi({ pitch: { midi: 69 } }), 69)
+test('SES-220 ignores deprecated guitar MIDI and preserves written MIDI fallback', () => {
+  assert.equal(resolveGuitarTabEventMidi({ pitch: { midi: 61 }, guitarSoundingMidi: 49 }), 61)
   assert.equal(resolveGuitarTabEventMidi(null), null)
 })
