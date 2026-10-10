@@ -45,6 +45,23 @@ test('accepts exact written A4 while validating physical A3 string 3 fret 2', ()
   assert.equal(scoreXml, source())
 })
 
+test('SES-220 clef octave context keeps C-sharp 4 physical string 2 fret 2', () => {
+  const scoreXml = source().replace(
+    '<divisions>1</divisions>',
+    '<divisions>1</divisions><clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
+  ).replaceAll('<step>A</step><octave>4</octave>', '<step>C</step><alter>1</alter><octave>4</octave>')
+  const tabXml = tab({ string: 2, fret: 2 })
+    .replace('<transpose><diatonic>0</diatonic><chromatic>0</chromatic><octave-change>-1</octave-change></transpose>', '')
+    .replaceAll('<step>A</step><octave>4</octave>', '<step>C</step><alter>1</alter><octave>4</octave>')
+
+  assert.equal(validate(scoreXml, tabXml).ok, true)
+  const wrong = tabXml.replace('<string>2</string><fret>2</fret>', '<string>5</string><fret>4</fret>')
+  assert.deepEqual(
+    (({ ok, category, code }) => ({ ok, category, code }))(validate(scoreXml, wrong)),
+    { ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH' },
+  )
+})
+
 test('rejects a physically wrong octave/string position with PHYSICAL code', () => {
   const result = validate(source(), tab({ string: 1, fret: 5 }))
   assert.deepEqual({ ok: result.ok, category: result.category, code: result.code }, {

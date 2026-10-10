@@ -2,12 +2,47 @@
 // Returns notes in the format expected by SesliTab.
 
 import {
-  STRING_NAMES, STRING_NUMBER,
-  noteFrequency, noteName, durationLabel, durationBeats,
-  beatsToDurationId, noteToMidi, midiToFrequency,
+  noteName,
+  beatsToDurationId, midiToFrequency,
+  midiToNoteName,
 } from './noteTheory.js'
 
 import { inspectMusicXml } from './musicXmlSecurity.js'
+import { resolveGuitarPhysicalPitch } from './guitarPhysicalPitch.js'
+
+function parseSignedIntegerElement(parent, name, fallback = null) {
+  const element = parent?.querySelector?.(name)
+  if (!element) return fallback
+  const text = String(element.textContent ?? '').trim()
+  if (!/^-?(0|[1-9][0-9]*)$/u.test(text)) throw new Error(`Invalid MusicXML ${name}.`)
+  const value = Number(text)
+  if (!Number.isSafeInteger(value)) throw new Error(`Invalid MusicXML ${name}.`)
+  return value
+}
+
+function updateSourceTransposition(attributes, state) {
+  if (!attributes) return
+  const seen = new Set()
+  for (const transpose of attributes.querySelectorAll('transpose')) {
+    if (transpose.querySelector('double')) throw new Error('Doubled transposition is unsupported.')
+    const rawNumber = transpose.getAttribute('number')
+    const key = rawNumber === null ? 'default' : `staff:${rawNumber}`
+    if (seen.has(key)) throw new Error('Ambiguous MusicXML transpose context.')
+    seen.add(key)
+    const chromatic = parseSignedIntegerElement(transpose, 'chromatic')
+    if (chromatic === null) throw new Error('MusicXML transpose requires chromatic.')
+    const octaveChange = parseSignedIntegerElement(transpose, 'octave-change', 0)
+    const semitones = chromatic + (12 * octaveChange)
+    if (!Number.isSafeInteger(semitones)) throw new Error('Invalid MusicXML transpose context.')
+    if (rawNumber === null) {
+      state.default = semitones
+      state.defaultExplicit = true
+      continue
+    }
+    if (!/^[1-9][0-9]*$/u.test(rawNumber)) throw new Error('Invalid MusicXML transpose staff number.')
+    state.byStaff.set(Number(rawNumber), semitones)
+  }
+}
 
 // Parse MusicXML string and return array of notes
 // Returns: { notes: [...], error?: string }
@@ -44,6 +79,7 @@ export function parseMusicXml(musicXmlString) {
       let currentDivisions = null
       let pitchedNoteCount = 0
       let restCount = 0
+      const sourceTransposition = { default: 0, defaultExplicit: false, byStaff: new Map() }
 
       for (let measureIndex = 0; measureIndex < measures.length; measureIndex++) {
         const measure = measures[measureIndex]
@@ -52,15 +88,22 @@ export function parseMusicXml(musicXmlString) {
 // Do not depend on descendant-selector support: the minimal Node
         // DOMParser used by the test suite supports element lookups but not
         // compound CSS selectors.
-        const divisionsEl = measure.querySelector('attributes')?.querySelector('divisions')
+        const attributesEl = measure.querySelector('attributes')
+        const divisionsEl = attributesEl?.querySelector('divisions')
         if (divisionsEl) {
           currentDivisions = parseInt(divisionsEl.textContent, 10) || currentDivisions
         }
+        updateSourceTransposition(attributesEl, sourceTransposition)
         const measureNotes = parseMeasure(measure, measureNumber, currentDivisions, {
           partId,
           partIndex,
           measureIndex,
           measureKey,
+          resolveSourceTranspositionSemitones(staff) {
+            return sourceTransposition.byStaff.has(staff)
+              ? { semitones: sourceTransposition.byStaff.get(staff), explicit: true }
+              : { semitones: sourceTransposition.default, explicit: sourceTransposition.defaultExplicit }
+          },
         })
         for (const note of measureNotes) {
           if (note.isRest) restCount++
@@ -146,6 +189,7 @@ function parseMeasure(measureEl, measureNumber, divisions, context = {}) {
 
 // Parse a single note element
 function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
+  const { resolveSourceTranspositionSemitones, ...noteContext } = context
   const durationEl = noteEl.querySelector('duration')
   const durationValue = durationEl ? parseInt(durationEl.textContent, 10) : null
   const isGrace = noteEl.querySelector('grace') !== null
@@ -198,7 +242,7 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
       isGrace,
       isChordNote,
       measure,
-      ...context,
+      ...noteContext,
       startBeat,
       duration: beatsToDurationId(isGrace ? dottedBeats : beats),
       beats,
@@ -232,7 +276,10 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
   let stringNum = 1
   let fret = 0
 
-  let playbackMidi = null
+  const writtenMidi = ((octave + 1) * 12) + ({ C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[step] ?? NaN) + alter
+  const transpositionContext = resolveSourceTranspositionSemitones?.(staff) ?? { semitones: 0, explicit: false }
+  const sourceTranspositionSemitones = transpositionContext.semitones
+  const physicalPitch = resolveGuitarPhysicalPitch({ writtenMidi, sourceTranspositionSemitones })
 
   if (technical) {
     const stringEl = technical.querySelector('string')
@@ -241,10 +288,9 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
     if (fretEl) fret = parseInt(fretEl.textContent, 10) || 0
   } else {
     // Calculate string/fret from pitch if technical not present
-    const result = pitchToGuitarPosition(step, alter, octave)
+    const result = pitchToGuitarPosition(step, alter, octave, sourceTranspositionSemitones)
     stringNum = result.string
     fret = result.fret
-    playbackMidi = result.playbackMidi
   }
 
   // Get duration
@@ -261,13 +307,13 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
   const durationId = beatsToDurationId(isGrace ? dottedBeats : beats)
 
   // Map string number to letter
-  const stringLetter = getStringLetter(stringNum)
-  const noteNameVal = noteName(stringLetter, fret)
+  const stringLetter = Number.isInteger(stringNum) ? getStringLetter(stringNum) : ''
+  const noteNameVal = stringLetter ? noteName(stringLetter, fret) : midiToNoteName(physicalPitch.soundingPitchMidi)
 
   // Calculate frequency: use the original written-pitch MIDI (not the
   // octave-lowered mapping MIDI) so playback pitch is preserved.
-  const midiVal = playbackMidi !== null ? playbackMidi : noteToMidi(stringLetter, fret)
-  const freq = playbackMidi !== null ? midiToFrequency(playbackMidi) : noteFrequency(stringLetter, fret)
+  const midiVal = writtenMidi
+  const freq = midiToFrequency(writtenMidi)
 
   // Determine tie continuation (start but not stop = pure start;
   // stop but not start = pure stop; both = start+stop in same note)
@@ -275,7 +321,7 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
 
   return {
     measure,
-    ...context,
+    ...noteContext,
     isGrace,
     isChordNote,
     string: stringLetter,
@@ -283,6 +329,10 @@ function parseNote(noteEl, measure, startBeat, divisions, context = {}) {
     noteName: noteNameVal,
     frequency: freq,
     midi: midiVal,
+    ...(transpositionContext.explicit ? {
+      soundingPitchMidi: physicalPitch.soundingPitchMidi,
+      sourceTranspositionSemitones,
+    } : {}),
     duration: durationId,
     beats,
     durationValue,
@@ -370,22 +420,22 @@ function applyDots(beats, dotCount) {
 function getStringLetter(stringNum) {
   // MusicXML convention: string 1 = highest (e)
   const letters = ['e', 'B', 'G', 'D', 'A', 'E']
-  return letters[stringNum - 1] || 'e'
+  return letters[stringNum - 1] || ''
 }
 
-// Convert pitch to approximate guitar position.
-// Guitar notation sounds one octave lower than written, so the
-// mapping pitch is playbackMidi - 12.  The original playbackMidi is
-// returned alongside so the caller can compute the correct sounding
-// frequency without overwriting the display string/fret.
+// Convert source-derived physical pitch to an approximate guitar position.
+// Only explicit MusicXML transpose metadata can change written pitch here;
+// clef notation and instrument-name heuristics have no pitch authority.
 // Returns { string: letter, fret: number, playbackMidi: number }
-function pitchToGuitarPosition(step, alter, octave) {
+function pitchToGuitarPosition(step, alter, octave, sourceTranspositionSemitones = 0) {
   // MIDI note calculation from written pitch
   const stepToMidi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
   const playbackMidi = (octave + 1) * 12 + stepToMidi[step] + alter
 
-  // Mapping pitch: one octave lower for guitar string/fret selection
-  const mappingMidi = playbackMidi - 12
+  const mappingMidi = resolveGuitarPhysicalPitch({
+    writtenMidi: playbackMidi,
+    sourceTranspositionSemitones,
+  }).soundingPitchMidi
 
   // Standard guitar tuning MIDI notes for open strings
   // e=64, B=59, G=55, D=50, A=45, E=40
@@ -394,8 +444,8 @@ function pitchToGuitarPosition(step, alter, octave) {
 
   // Find the best string/fret combination
   // Prefer lower frets (easier to play)
-  let bestString = 1
-  let bestFret = 0
+  let bestString = null
+  let bestFret = null
   let minFret = Infinity
 
   for (let i = 0; i < 6; i++) {
@@ -466,6 +516,7 @@ export function parseMusicXmlWithStructure(musicXmlString) {
       let currentDivisions = null
       let pitchedNoteCount = 0
       let restCount = 0
+      const sourceTransposition = { default: 0, defaultExplicit: false, byStaff: new Map() }
 
       for (let measureIndex = 0; measureIndex < measures.length; measureIndex++) {
         const measure = measures[measureIndex]
@@ -477,10 +528,19 @@ export function parseMusicXmlWithStructure(musicXmlString) {
           measureIndex,
           measureKey,
         }
+        const noteContext = {
+          ...measureContext,
+          resolveSourceTranspositionSemitones(staff) {
+            return sourceTransposition.byStaff.has(staff)
+              ? { semitones: sourceTransposition.byStaff.get(staff), explicit: true }
+              : { semitones: sourceTransposition.default, explicit: sourceTransposition.defaultExplicit }
+          },
+        }
 
         // ── Divisions ──
         const attrsEl = measure.querySelector('attributes')
         if (attrsEl) {
+          updateSourceTransposition(attrsEl, sourceTransposition)
           const divEl = attrsEl.querySelector('divisions')
           if (divEl) {
             currentDivisions = parseInt(divEl.textContent, 10) || currentDivisions
@@ -542,7 +602,7 @@ export function parseMusicXmlWithStructure(musicXmlString) {
         for (const child of measureChildren) {
           const tag = child.tagName || child.tag
           if (tag === 'note') {
-            const noteData = parseNote(child, measureNumber, 0, currentDivisions, measureContext)
+            const noteData = parseNote(child, measureNumber, 0, currentDivisions, noteContext)
             if (noteData) {
               notes.push(noteData)
               if (noteData.isRest) restCount++

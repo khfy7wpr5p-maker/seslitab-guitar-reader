@@ -96,10 +96,10 @@ test('Package 4D renders a 4C monophonic projection as deterministic six-line AS
   assert.equal(result.noteCount, 2)
   assert.equal(result.measureCount, 1)
   assert.equal(result.text, [
-    'e|--------|',
+    'e|-0---1--|',
     'B|--------|',
     'G|--------|',
-    'D|-2---3--|',
+    'D|--------|',
     'A|--------|',
     'E|--------|',
   ].join('\n'))
@@ -144,7 +144,7 @@ test('Package 4D renders rests as empty fixed-width slots without inventing fret
 
   assert.equal(result.state, BASIC_GUITAR_TAB_RENDER_STATE.RENDERED)
   assert.equal(result.measures[0].eventCount, 2)
-  assert.equal(result.text.split('\n')[3], 'D|-----2--|')
+  assert.equal(result.text.split('\n')[0], 'e|-----0--|')
   assert.equal(result.rhythmEncoded, false)
 })
 
@@ -171,7 +171,7 @@ test('Package 4D keeps grace and tie semantics outside ASCII instead of inventin
 
 test('Package 4D refuses non-projected 4C results and never emits partial TAB', () => {
   const projection = projectCanonicalNotesToBasicGuitarTab([
-    makeCanonicalNote({ step: 'E', octave: 2 }),
+    makeCanonicalNote({ step: 'E', octave: 1 }),
   ])
 
   const result = renderBasicGuitarTabProjection(projection)

@@ -6,8 +6,8 @@ import {
 import {
   BASIC_GUITAR_MAX_FRET,
   BASIC_GUITAR_TUNING,
-  BASIC_GUITAR_WRITTEN_TRANSPOSITION,
 } from '../../guitarPositionResolver.js'
+import { resolveGuitarPhysicalPitch } from '../../guitarPhysicalPitch.js'
 import {
   applyTeacherCorrectionWithExpectation,
   TEACHER_CONCURRENCY_STATUS,
@@ -33,6 +33,7 @@ const MECHANICAL_FIELDS = new Set([
   'frequency',
   'noteName',
   'fret',
+  'soundingPitchMidi',
   'beats',
   'duration',
   'dotCount',
@@ -162,13 +163,22 @@ function resolveSameStringFret({ rootNote, resolvedPitch, noteIndex }) {
     throw new Error(`Stage F canonicalization cannot verify source pitch at note ${noteIndex}.`)
   }
 
-  const sourceMappingMidi = rootPitch.midi + BASIC_GUITAR_WRITTEN_TRANSPOSITION
+  const sourcePhysicalPitch = resolveGuitarPhysicalPitch({
+    writtenMidi: rootPitch.midi,
+    sourceTranspositionSemitones: rootNote.sourceTranspositionSemitones ?? 0,
+    soundingPitchMidi: rootNote.soundingPitchMidi,
+  })
+  const sourceMappingMidi = sourcePhysicalPitch.soundingPitchMidi
   const expectedSourceFret = sourceMappingMidi - tuning.openMidi
   if (!Number.isInteger(expectedSourceFret) || expectedSourceFret !== sourceFret) {
     throw new Error(`Stage F canonicalization refuses inconsistent source guitar position at note ${noteIndex}.`)
   }
 
-  const correctedMappingMidi = resolvedPitch.midi + BASIC_GUITAR_WRITTEN_TRANSPOSITION
+  const correctedPhysicalPitch = resolveGuitarPhysicalPitch({
+    writtenMidi: resolvedPitch.midi,
+    sourceTranspositionSemitones: sourcePhysicalPitch.sourceTranspositionSemitones,
+  })
+  const correctedMappingMidi = correctedPhysicalPitch.soundingPitchMidi
   const correctedFret = correctedMappingMidi - tuning.openMidi
   if (
     !Number.isInteger(correctedFret) ||
@@ -207,6 +217,20 @@ function appendPitchDerivations({ operations, rootNote, note, noteIndex, operati
   pushOperation(operations, noteIndex, 'midi', note.midi, resolved.midi, operationIdPrefix)
   pushOperation(operations, noteIndex, 'frequency', note.frequency, resolved.frequency, operationIdPrefix)
   pushOperation(operations, noteIndex, 'noteName', note.noteName, resolved.noteName, operationIdPrefix)
+  if (Object.prototype.hasOwnProperty.call(note, 'soundingPitchMidi')) {
+    const physicalPitch = resolveGuitarPhysicalPitch({
+      writtenMidi: resolved.midi,
+      sourceTranspositionSemitones: rootNote.sourceTranspositionSemitones ?? 0,
+    })
+    pushOperation(
+      operations,
+      noteIndex,
+      'soundingPitchMidi',
+      note.soundingPitchMidi,
+      physicalPitch.soundingPitchMidi,
+      operationIdPrefix,
+    )
+  }
 
   if (
     typeof note.string === 'string' &&

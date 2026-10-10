@@ -2,97 +2,97 @@
   {
     "measure": 1,
     "pitch": "E4",
-    "string": 4,
-    "fret": 2
+    "string": 1,
+    "fret": 0
   },
   {
     "measure": 1,
     "pitch": "F4",
-    "string": 4,
-    "fret": 3
+    "string": 1,
+    "fret": 1
   },
   {
     "measure": 1,
     "pitch": "G4",
-    "string": 3,
-    "fret": 0
+    "string": 1,
+    "fret": 3
   },
   {
     "measure": 1,
     "pitch": "A4",
-    "string": 3,
-    "fret": 2
+    "string": 1,
+    "fret": 5
   },
   {
     "measure": 2,
     "pitch": "B4",
-    "string": 2,
-    "fret": 0
+    "string": 1,
+    "fret": 7
   },
   {
     "measure": 2,
     "pitch": "C5",
-    "string": 2,
-    "fret": 1
+    "string": 1,
+    "fret": 8
   },
   {
     "measure": 2,
     "pitch": "D5",
-    "string": 2,
-    "fret": 3
+    "string": 1,
+    "fret": 10
   },
   {
     "measure": 2,
     "pitch": "E5",
     "string": 1,
-    "fret": 0
+    "fret": 12
   },
   {
     "measure": 3,
     "pitch": "E5",
     "string": 1,
-    "fret": 0
+    "fret": 12
   },
   {
     "measure": 3,
     "pitch": "D5",
-    "string": 2,
-    "fret": 3
+    "string": 1,
+    "fret": 10
   },
   {
     "measure": 3,
     "pitch": "C5",
-    "string": 2,
-    "fret": 1
+    "string": 1,
+    "fret": 8
   },
   {
     "measure": 3,
     "pitch": "B4",
-    "string": 2,
-    "fret": 0
+    "string": 1,
+    "fret": 7
   },
   {
     "measure": 4,
     "pitch": "A4",
-    "string": 3,
-    "fret": 2
+    "string": 1,
+    "fret": 5
   },
   {
     "measure": 4,
     "pitch": "G4",
-    "string": 3,
-    "fret": 0
+    "string": 1,
+    "fret": 3
   },
   {
     "measure": 4,
     "pitch": "F4",
-    "string": 4,
-    "fret": 3
+    "string": 1,
+    "fret": 1
   },
   {
     "measure": 4,
     "pitch": "E4",
-    "string": 4,
-    "fret": 2
+    "string": 1,
+    "fret": 0
   }
 ]

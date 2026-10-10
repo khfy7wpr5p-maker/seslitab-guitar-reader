@@ -38,30 +38,30 @@ test('Package 4B policy identity and provenance are explicit generated-basic cla
   assert.equal(BASIC_GUITAR_POSITION_PROVENANCE, 'generated-basic')
 })
 
-test('Package 4B written E4 deterministically selects D string fret 2 from all physical candidates', () => {
+test('SES-220 plain written E4 deterministically selects first string open', () => {
   const result = selectBasicCanonicalGuitarPosition(makeCanonicalNote({ step: 'E', octave: 4 }))
 
   assert.equal(result.state, BASIC_GUITAR_POSITION_SELECTION_STATE.SELECTED)
   assert.equal(result.policyId, 'lowest-fret-v1')
   assert.equal(result.provenance, 'generated-basic')
   assert.equal(result.sourceFingeringClaimed, false)
-  assert.equal(result.candidateCount, 3)
+  assert.equal(result.candidateCount, 6)
   assert.deepEqual(result.position, {
-    stringNumber: 4,
-    stringLetter: 'D',
-    fret: 2,
-    soundingMidi: 52,
+    stringNumber: 1,
+    stringLetter: 'e',
+    fret: 0,
+    soundingMidi: 64,
     writtenMidi: 64,
   })
 })
 
-test('Package 4B written E5 selects first-string open E under lowest-fret-v1', () => {
+test('Package 4B written E5 selects first-string fret 12 under lowest-fret-v1', () => {
   const result = selectBasicCanonicalGuitarPosition(makeCanonicalNote({ step: 'E', octave: 5 }))
 
   assert.equal(result.state, BASIC_GUITAR_POSITION_SELECTION_STATE.SELECTED)
-  assert.equal(result.candidateCount, 6)
+  assert.equal(result.candidateCount, 3)
   assert.equal(result.position.stringNumber, 1)
-  assert.equal(result.position.fret, 0)
+  assert.equal(result.position.fret, 12)
 })
 
 test('Package 4B does not represent generated policy as source technical fingering even if canonical note carries string/fret fields', () => {
@@ -76,8 +76,8 @@ test('Package 4B does not represent generated policy as source technical fingeri
   assert.equal(result.state, BASIC_GUITAR_POSITION_SELECTION_STATE.SELECTED)
   assert.equal(result.provenance, 'generated-basic')
   assert.equal(result.sourceFingeringClaimed, false)
-  assert.equal(result.position.stringNumber, 4)
-  assert.equal(result.position.fret, 2)
+  assert.equal(result.position.stringNumber, 1)
+  assert.equal(result.position.fret, 0)
 })
 
 test('Package 4B rests remain rests and never receive a generated position', () => {
@@ -94,7 +94,7 @@ test('Package 4B rests remain rests and never receive a generated position', () 
 })
 
 test('Package 4B out-of-range pitch remains unplayable instead of falling back to e0', () => {
-  const result = selectBasicCanonicalGuitarPosition(makeCanonicalNote({ step: 'E', octave: 2 }))
+  const result = selectBasicCanonicalGuitarPosition(makeCanonicalNote({ step: 'E', octave: 1 }))
 
   assert.equal(result.state, BASIC_GUITAR_POSITION_SELECTION_STATE.UNPLAYABLE)
   assert.equal(result.position, null)
