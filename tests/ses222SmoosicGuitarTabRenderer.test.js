@@ -7,6 +7,10 @@ const browserProof = await readFile(
   new URL('../scripts/verifySes222SmoosicGuitarTabRendererBrowser.js', import.meta.url),
   'utf8',
 )
+const browserFixtureServer = await readFile(
+  new URL('./support/browserFixture.js', import.meta.url),
+  'utf8',
+)
 
 test('SES-222 real-browser proof runs only after pinned runtime preparation', () => {
   const build = ci.indexOf('run: npm run build')
@@ -26,4 +30,8 @@ test('SES-222 browser gate requires root-cause, renderer, authoring, and pitch e
   ]) {
     assert.match(browserProof, new RegExp(marker))
   }
+})
+
+test('real-browser fixture server serves pinned runtime modules as JavaScript', () => {
+  assert.match(browserFixtureServer, /'\.mjs': 'text\/javascript'/u)
 })
