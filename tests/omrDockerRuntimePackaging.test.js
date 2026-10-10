@@ -70,3 +70,32 @@ test('SES-150 OMR Docker build fails early on Secure Delivery resolution drift',
     )
   }
 })
+
+test('SES-216 OMR Docker image packages the bounded Chord Board catalog runtime asset', () => {
+  const dockerfile = readFileSync(DOCKERFILE_PATH, 'utf8')
+
+  assert.match(
+    dockerfile,
+    /COPY\s+src\/data\/chordBoardCatalogSnapshotV1\.json\s+\.\/src\/data\/chordBoardCatalogSnapshotV1\.json/,
+    'OMR Docker image must copy only the pinned Chord Board catalog JSON into its expected runtime path',
+  )
+  assert.doesNotMatch(
+    dockerfile,
+    /COPY\s+src\/data\/\s+/,
+    'OMR Docker image must not broaden packaging to the full src/data tree',
+  )
+  assert.doesNotMatch(
+    dockerfile,
+    /COPY\s+\.\s+\./,
+    'OMR Docker image must not copy the entire repository',
+  )
+})
+
+test('SES-216 OMR Docker build fails early on Chord Board catalog resolution drift', () => {
+  const dockerfile = readFileSync(DOCKERFILE_PATH, 'utf8')
+
+  assert.ok(
+    dockerfile.includes("import('./src/services/chordBoardCatalog.js')"),
+    'Docker build smoke must resolve the real Chord Board catalog import chain inside the final runtime image',
+  )
+})
