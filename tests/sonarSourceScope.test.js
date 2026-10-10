@@ -40,14 +40,20 @@ function productCallers(args) {
 }
 import { analysisType } from '../scripts/sonarSourceInventory.mjs'
 
-test('only audited CI browser proofs and their test-only helpers are classified as tests', () => {
+test('only audited CI proof scripts and their test-only helpers are classified as tests', () => {
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
+  const smenu = readFileSync('.github/workflows/smenu-native-menu-proof.yml', 'utf8')
   const proofs = [...new Set([...ci.matchAll(/node (scripts\/verify\w*Browser\.js)/g)].map((match) => match[1]))]
+  const smenuProofs = [
+    'scripts/inspectSmoosic1044Reflection.js',
+    'scripts/verifySmoosicNativeMenuLayoutBrowserV3.js',
+  ]
+  for (const path of smenuProofs) assert.ok(smenu.includes(`node ${path}`), path)
   const approved = [...proofs, 'scripts/s14CdpProofHarness.js', 'scripts/ses153BrowserProofSession.js',
-    'scripts/ceBridgeFixtureTransport.js'].sort()
+    'scripts/ceBridgeFixtureTransport.js', ...smenuProofs].sort()
   const actual = /^sonar\.test\.inclusions=(.*)$/m.exec(config)[1].split(',').filter((path) => path.startsWith('scripts/')).sort()
   assert.deepEqual(actual, approved)
-  assert.equal(actual.length, 21)
+  assert.equal(actual.length, 23)
   for (const path of approved) {
     assert.equal(analysisType(path, config), 'test', path)
     const callers = productCallers( ['grep', '-l', '-F', path.split('/').at(-1), '--',
