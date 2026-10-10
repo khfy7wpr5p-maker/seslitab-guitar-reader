@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Audiveris</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4096</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>D</step><alter>1</alter><octave>5</octave></pitch>
+        <duration>8192</duration><voice>1</voice><staff>1</staff><type>half</type><tie type="start"/>
+      </note>
+      <note>
+        <pitch><step>D</step><alter>1</alter><octave>5</octave></pitch>
+        <duration>8192</duration><voice>1</voice><staff>1</staff><type>half</type><tie type="stop"/>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
