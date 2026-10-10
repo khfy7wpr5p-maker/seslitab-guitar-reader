@@ -68,13 +68,13 @@
       const rawRejectedAtOsmdInput = rawFailure?.includes('The document which was provided is invalid') === true
 
       ensureGuitarTabTeacherWorkspace(document, host)
-      frame.id = 'guitar-tab-score-runtime-frame'
-      document.getElementById('guitar-tab-score-surface').replaceChildren(frame)
       const result = await loadGuitarTabTeacherSource(document, musicxml, {
         async loadEditorRuntime() { return globalThis.STGuitarTabEditorRuntime },
         async loadScoreRuntime() { return scoreRuntime },
       }, { filename: 'accepted-smoosic-revision.musicxml' })
       const state = getGuitarTabTeacherWorkspaceState(document)
+      const runtimeSurvivedLoad = frame.isConnected
+        && resolveStScoreRuntime(frame.contentWindow) === scoreRuntime
       const positions = [...document.querySelectorAll('.guitar-tab-fret-position')]
       const string2Fret2 = positions.find((item) => item.dataset.string === '2' && item.dataset.fret === '2')
       const string5Fret4 = positions.find((item) => item.dataset.string === '5' && item.dataset.fret === '4')
@@ -85,6 +85,7 @@
       const authoringAvailable = result.ok === true
         && result.rendererAvailable === true
         && state.authoringAvailable === true
+        && runtimeSurvivedLoad
         && state.sourceSession?.events?.some?.((event) => event.pitch?.midi === 61)
       const canonicalPitchPolicy = string2Fret2?.disabled === false && string5Fret4?.disabled === true
       const rendered = frame.contentDocument?.querySelector('svg') !== null

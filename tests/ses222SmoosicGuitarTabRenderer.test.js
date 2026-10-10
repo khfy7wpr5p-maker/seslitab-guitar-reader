@@ -7,6 +7,10 @@ const browserProof = await readFile(
   new URL('../scripts/verifySes222SmoosicGuitarTabRendererBrowser.js', import.meta.url),
   'utf8',
 )
+const browserFixture = await readFile(
+  new URL('./fixtures/ses-222-smoosic-gtab-renderer-browser-proof.html', import.meta.url),
+  'utf8',
+)
 const browserFixtureServer = await readFile(
   new URL('./support/browserFixture.js', import.meta.url),
   'utf8',
@@ -34,4 +38,9 @@ test('SES-222 browser gate requires root-cause, renderer, authoring, and pitch e
 
 test('real-browser fixture server serves pinned runtime modules as JavaScript', () => {
   assert.match(browserFixtureServer, /'\.mjs': 'text\/javascript'/u)
+})
+
+test('SES-222 proof keeps its preloaded runtime outside prior-render cleanup', () => {
+  assert.doesNotMatch(browserFixture, /frame\.id\s*=\s*['"]guitar-tab-score-runtime-frame/u)
+  assert.match(browserFixture, /frame\.isConnected/u)
 })
