@@ -74,6 +74,9 @@ jobs:
       - name: Verify Guitar TAB Editor runtime is shipped
         run: node scripts/verifyGuitarTabEditorRuntimeBuild.js
 
+      - name: Verify SES-222 accepted Smoosic revision in Guitar TAB renderer
+        run: node scripts/verifySes222SmoosicGuitarTabRendererBrowser.js
+
       - name: Verify S16 build composition identity
         run: node scripts/verifyS16BuildCompositionManifest.js
 

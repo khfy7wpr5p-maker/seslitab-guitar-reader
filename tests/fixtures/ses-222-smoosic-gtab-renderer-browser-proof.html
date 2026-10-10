@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>SES-222 Smoosic Guitar TAB renderer browser proof</title>
+  <style>
+    body { margin: 0; }
+    #score-runtime { width: 960px; height: 520px; border: 0; }
+  </style>
+</head>
+<body>
+  <pre id="proof">RUNNING</pre>
+  <iframe id="score-runtime" title="ST score runtime" src="../../public/st-score-runtime/index.html"></iframe>
+  <div id="guitar-tab-proof-host"></div>
+  <script src="../../public/st-guitar-tab-editor-runtime/st-guitar-tab-editor.runtime.js"></script>
+  <script type="module">
+    import {
+      ensureGuitarTabTeacherWorkspace,
+      getGuitarTabTeacherWorkspaceState,
+      loadGuitarTabTeacherSource,
+    } from '../../src/guitarTabTeacherWorkspaceUi.js'
+    import { resolveStScoreRuntime } from '../../src/services/scoreRendererConsumer.js'
+
+    const proof = document.getElementById('proof')
+    const frame = document.getElementById('score-runtime')
+    const host = document.getElementById('guitar-tab-proof-host')
+
+    function waitForRuntime() {
+      return new Promise((resolve, reject) => {
+        const deadline = Date.now() + 10000
+        const poll = () => {
+          const runtime = resolveStScoreRuntime(frame.contentWindow)
+          if (runtime) { resolve(runtime); return }
+          if (Date.now() >= deadline) { reject(new Error('score runtime timeout')); return }
+          setTimeout(poll, 25)
+        }
+        poll()
+      })
+    }
+
+    function realmPayload(runtimeWindow, musicxml) {
+      return runtimeWindow.JSON.parse(JSON.stringify({
+        contractVersion: '0.2.0',
+        musicxml,
+        pageMode: 'continuous',
+        autoResize: false,
+        drawTitle: false,
+        drawComposer: false,
+        ticket: '221',
+      }))
+    }
+
+    try {
+      const fixtureXml = await (await fetch('./ses-222/accepted-smoosic-revision.musicxml')).text()
+      const musicxml = fixtureXml.replace(
+        '</score-partwise>',
+        `<!--${'smoosic-export'.repeat(300)}--></score-partwise>`,
+      )
+      if (musicxml.startsWith('<?xml')) throw new Error('fixture unexpectedly has XML declaration')
+      if (musicxml.length < 2084) throw new Error('fixture must exercise OSMD long-string input detection')
+      const scoreRuntime = await waitForRuntime()
+      let rawFailure = null
+      try {
+        await scoreRuntime.renderMusicXml(realmPayload(frame.contentWindow, musicxml))
+      } catch (error) {
+        rawFailure = String(error?.message ?? error)
+      }
+      const rawRejectedAtOsmdInput = rawFailure?.includes('The document which was provided is invalid') === true
+
+      ensureGuitarTabTeacherWorkspace(document, host)
+      const result = await loadGuitarTabTeacherSource(document, musicxml, {
+        async loadEditorRuntime() { return globalThis.STGuitarTabEditorRuntime },
+        async loadScoreRuntime() { return scoreRuntime },
+      }, { filename: 'accepted-smoosic-revision.musicxml' })
+      const state = getGuitarTabTeacherWorkspaceState(document)
+      const runtimeSurvivedLoad = frame.isConnected
+        && resolveStScoreRuntime(frame.contentWindow) === scoreRuntime
+      const positions = [...document.querySelectorAll('.guitar-tab-fret-position')]
+      const string2Fret2 = positions.find((item) => item.dataset.string === '2' && item.dataset.fret === '2')
+      const string5Fret4 = positions.find((item) => item.dataset.string === '5' && item.dataset.fret === '4')
+      const sourceShapePreserved = musicxml.includes('<divisions>4096</divisions>')
+        && musicxml.includes('<mode/>')
+        && musicxml.includes('<per-minute/>')
+        && musicxml.includes('<clef-octave-change>-1</clef-octave-change>')
+      const authoringAvailable = result.ok === true
+        && result.rendererAvailable === true
+        && state.authoringAvailable === true
+        && runtimeSurvivedLoad
+        && state.sourceSession?.events?.some?.((event) => event.pitch?.midi === 61)
+      const canonicalPitchPolicy = string2Fret2?.disabled === false && string5Fret4?.disabled === true
+      const rendered = frame.contentDocument?.querySelector('svg') !== null
+
+      document.body.dataset.rawOsmdRejectionPass = String(rawRejectedAtOsmdInput)
+      document.body.dataset.acceptedRevisionPass = String(authoringAvailable)
+      document.body.dataset.rendererCompatibilityPass = String(rendered && sourceShapePreserved)
+      document.body.dataset.canonicalPitchPass = String(canonicalPitchPolicy)
+      document.body.dataset.rawRendererFailure = rawFailure ?? 'none'
+      if (!rawRejectedAtOsmdInput || !authoringAvailable || !rendered || !sourceShapePreserved || !canonicalPitchPolicy) {
+        throw new Error('SES-222 browser assertions failed')
+      }
+      proof.textContent = 'PASS'
+    } catch (error) {
+      document.body.dataset.error = String(error?.stack ?? error)
+      proof.textContent = 'FAIL'
+    }
+  </script>
+</body>
+</html>

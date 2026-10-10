@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 
 import {
   SCORE_RENDER_DIAGNOSTIC,
@@ -98,13 +99,69 @@ test('renderScoreView records exact current renderEpoch/source correlation', asy
   assert.deepEqual(getCurrentScoreRenderEvidence(host), { renderEpoch: 'render-1', sourceId: 'workstation:42' })
   assert.deepEqual(captured, {
     contractVersion: '0.2.0',
-    musicxml,
+    musicxml: `<?xml version="1.0" encoding="UTF-8"?>\n${musicxml}`,
     pageMode: 'page',
     autoResize: false,
     drawTitle: false,
     drawComposer: false,
     ticket: '42',
   })
+})
+
+test('SES-222 derives an XML-declared renderer copy without changing accepted Smoosic MusicXML', async () => {
+  const musicxml = await readFile(
+    new URL('./fixtures/ses-222/accepted-smoosic-revision.musicxml', import.meta.url),
+    'utf8',
+  )
+  const exactSource = `${musicxml}`
+  let captured = null
+  const host = {
+    async renderMusicXml(payload) {
+      captured = payload
+      return { renderEpoch: 'ses-222-render', sourceId: 'workstation:ses-222' }
+    },
+  }
+
+  await renderScoreView(host, musicxml, { ticket: '222' })
+
+  assert.equal(musicxml, exactSource)
+  assert.equal(musicxml.startsWith('<?xml'), false)
+  assert.match(captured.musicxml, /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<score-partwise/u)
+  assert.equal(captured.musicxml.endsWith(musicxml), true)
+  assert.match(captured.musicxml, /<divisions>4096<\/divisions>/u)
+  assert.match(captured.musicxml, /<mode\/>/u)
+  assert.match(captured.musicxml, /<per-minute\/>/u)
+  assert.match(captured.musicxml, /<clef-octave-change>-1<\/clef-octave-change>/u)
+})
+
+test('SES-222 preserves declared renderer XML while removing only leading whitespace', async () => {
+  const musicxml = '  \n<?xml version="1.0"?><score-partwise version="3.1"/>'
+  let captured = null
+  const host = {
+    async renderMusicXml(payload) {
+      captured = payload
+      return { renderEpoch: 'ses-222-declared' }
+    },
+  }
+
+  await renderScoreView(host, musicxml, { ticket: '223' })
+
+  assert.equal(captured.musicxml, '<?xml version="1.0"?><score-partwise version="3.1"/>')
+})
+
+test('SES-222 leaves non-score-partwise renderer input unchanged', async () => {
+  const musicxml = '<opus><score href="movement.musicxml"/></opus>'
+  let captured = null
+  const host = {
+    async renderMusicXml(payload) {
+      captured = payload
+      return { renderEpoch: 'ses-222-opus' }
+    },
+  }
+
+  await renderScoreView(host, musicxml, { ticket: '224' })
+
+  assert.equal(captured.musicxml, musicxml)
 })
 
 test('renderScoreView fails closed if successful renderer result lacks freshness evidence', async () => {
