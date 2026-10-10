@@ -134,6 +134,36 @@ test('SES-222 derives an XML-declared renderer copy without changing accepted Sm
   assert.match(captured.musicxml, /<clef-octave-change>-1<\/clef-octave-change>/u)
 })
 
+test('SES-222 preserves declared renderer XML while removing only leading whitespace', async () => {
+  const musicxml = '  \n<?xml version="1.0"?><score-partwise version="3.1"/>'
+  let captured = null
+  const host = {
+    async renderMusicXml(payload) {
+      captured = payload
+      return { renderEpoch: 'ses-222-declared' }
+    },
+  }
+
+  await renderScoreView(host, musicxml, { ticket: '223' })
+
+  assert.equal(captured.musicxml, '<?xml version="1.0"?><score-partwise version="3.1"/>')
+})
+
+test('SES-222 leaves non-score-partwise renderer input unchanged', async () => {
+  const musicxml = '<opus><score href="movement.musicxml"/></opus>'
+  let captured = null
+  const host = {
+    async renderMusicXml(payload) {
+      captured = payload
+      return { renderEpoch: 'ses-222-opus' }
+    },
+  }
+
+  await renderScoreView(host, musicxml, { ticket: '224' })
+
+  assert.equal(captured.musicxml, musicxml)
+})
+
 test('renderScoreView fails closed if successful renderer result lacks freshness evidence', async () => {
   const host = { async renderMusicXml() { return { ok: true } } }
   await assert.rejects(() => renderScoreView(host, '<score-partwise/>'), /renderEpoch\/source evidence/)

@@ -18,7 +18,7 @@ const browserFixtureServer = await readFile(
 
 test('SES-222 real-browser proof runs only after pinned runtime preparation', () => {
   const build = ci.indexOf('run: npm run build')
-  const runtime = ci.indexOf('run: npm run test:ses222-browser')
+  const runtime = ci.indexOf('run: node scripts/verifySes222SmoosicGuitarTabRendererBrowser.js')
 
   assert.notEqual(build, -1)
   assert.notEqual(runtime, -1)
