@@ -57,9 +57,6 @@ jobs:
       - name: Verify GTAB-10B multipart target selection in real browser
         run: npm run test:gtab10b-browser
 
-      - name: Verify SES-222 accepted Smoosic revision in Guitar TAB renderer
-        run: npm run test:ses222-browser
-
       - name: Verify GTAB-VALIDATOR-01 unified export validation in real browser
         run: npm run test:gtab-validator-browser
 
@@ -76,6 +73,9 @@ jobs:
 
       - name: Verify Guitar TAB Editor runtime is shipped
         run: node scripts/verifyGuitarTabEditorRuntimeBuild.js
+
+      - name: Verify SES-222 accepted Smoosic revision in Guitar TAB renderer
+        run: npm run test:ses222-browser
 
       - name: Verify S16 build composition identity
         run: node scripts/verifyS16BuildCompositionManifest.js
