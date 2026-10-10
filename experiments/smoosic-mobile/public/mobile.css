@@ -5,6 +5,16 @@ html, body {
   overscroll-behavior: none;
 }
 
+/* smoosic@1.0.44 ships a legacy compiled menu manager in build/smoosic.js.
+   It positions .menuElement with absolute left/top coordinates inside a
+   zero-sized .menuContainer appended at the end of body.  Keep this repair
+   scoped to that legacy menu element: make its coordinates viewport-relative
+   and give its percentage-independent height constraint a real viewport. */
+.menuContainer > .menuElement {
+  position: fixed !important;
+  max-height: calc(100dvh - 80px) !important;
+}
+
 #poc-status {
   position: fixed;
   top: env(safe-area-inset-top, 0px);
