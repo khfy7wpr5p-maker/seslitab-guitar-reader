@@ -197,10 +197,9 @@ await test(
         "teacher-delivered SCORE must render",
       );
       await page
-        .getByRole("region", {
-          name: "Nota",
-          exact: true,
-        })
+        .locator(
+          '#st-score-root[role="region"][aria-label="Nota"]',
+        )
         .waitFor();
       assert.equal(
         await page
@@ -250,10 +249,9 @@ await test(
         "teacher-delivered TAB must render",
       );
       await page
-        .getByRole("region", {
-          name: "TAB",
-          exact: true,
-        })
+        .locator(
+          '#st-score-root[role="region"][aria-label="TAB"]',
+        )
         .waitFor();
       const tabTexts = (
         await page
@@ -374,10 +372,9 @@ await test(
         "score-only assignment must still render notation",
       );
       await page
-        .getByRole("region", {
-          name: "Nota",
-          exact: true,
-        })
+        .locator(
+          '#st-score-root[role="region"][aria-label="Nota"]',
+        )
         .waitFor();
       assert.equal(
         await page
