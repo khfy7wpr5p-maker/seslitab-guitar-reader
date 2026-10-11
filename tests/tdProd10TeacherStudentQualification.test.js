@@ -57,6 +57,58 @@ test('SES-122 builds exact delivered SCORE + CHORD_BOARD output for one authoriz
   )
 })
 
+test('SES-224 qualifies C-sharp notation, exact TAB fingering, playback pitch, and score-only compatibility', async () => {
+  const fixture =
+    await buildTdProd10QualificationFixture()
+  const scoreXml =
+    fixture.score.package.content.score.data
+  const tabXml =
+    fixture.score.package.content.guitarTab.data
+
+  assert.match(
+    scoreXml,
+    /<software>Smoosic<\/software>/,
+  )
+  assert.match(
+    scoreXml,
+    /<clef-octave-change>-1<\/clef-octave-change>/,
+  )
+  assert.match(
+    scoreXml,
+    /<pitch>\s*<step>C<\/step>\s*<alter>1<\/alter>\s*<octave>4<\/octave>\s*<\/pitch>/,
+  )
+  assert.match(
+    tabXml,
+    /<pitch>\s*<step>C<\/step>\s*<alter>1<\/alter>\s*<octave>4<\/octave>\s*<\/pitch>[\s\S]*?<technical>\s*<string>2<\/string>\s*<fret>2<\/fret>/,
+  )
+  assert.deepEqual(
+    fixture.qualification,
+    {
+      expectedFirstPitch: {
+        step: 'C',
+        alter: 1,
+        octave: 4,
+        midi: 61,
+      },
+      rejectedFirstMidi: [49, 73],
+      expectedFirstTabPosition: {
+        string: 2,
+        fret: 2,
+      },
+    },
+  )
+  assert.equal(
+    fixture.scoreOnly.package.content
+      .guitarTab,
+    null,
+  )
+  assert.equal(
+    fixture.scoreOnly.package.content
+      .score.data,
+    scoreXml,
+  )
+})
+
 test('SES-122 qualification proves fail-closed negative and retry invariants without production mutation', async () => {
   const fixture =
     await buildTdProd10QualificationFixture()
