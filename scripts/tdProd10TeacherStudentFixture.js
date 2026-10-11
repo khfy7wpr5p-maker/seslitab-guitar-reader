@@ -69,7 +69,7 @@ globalThis.XMLSerializer =
   globalThis.XMLSerializer ?? SmoosicTestXMLSerializer
 
 export const TD_PROD_10_STUDENT_APP_SHA =
-  'b59bcb6dc5525f035515ab358734ebbe5a277fbb'
+  '70042d2314c005e71de80094363ba66faa795456'
 
 const TEACHER_ID = 'td-prod-10-teacher-a'
 const TEACHER_SUBJECT = 'td-prod-10-uid-teacher'
