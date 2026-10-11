@@ -347,19 +347,11 @@ await test(
           exact: true,
         })
         .click();
-      const scoreOnlyCard =
-        page
-          .locator(
-            "article.assignment-card-score",
-          )
-          .filter({
-            hasText:
-              TD_PROD_10_FIXTURE
-                .scoreOnly.package.title,
-          });
-      await scoreOnlyCard
+      await page
         .getByRole("button", {
-          name: "Çalışmayı Aç",
+          name:
+            TD_PROD_10_FIXTURE
+              .scoreOnly.package.title,
           exact: true,
         })
         .click();

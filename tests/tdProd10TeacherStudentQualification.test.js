@@ -164,3 +164,22 @@ test('SES-122 CI pins exact Student App revision and qualifies Chromium + WebKit
     /render\.com|SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION:\s*true/,
   )
 })
+
+test('SES-224 opens the score-only assignment through the current Student work-title control', async () => {
+  const browserSpec = await readFile(
+    new URL(
+      '../qualification/td-prod-10/student-app-e2e.spec.mjs',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+
+  assert.doesNotMatch(
+    browserSpec,
+    /article\.assignment-card-score|name:\s*["']Çalışmayı Aç["']/,
+  )
+  assert.match(
+    browserSpec,
+    /name:\s*TD_PROD_10_FIXTURE\s*\.scoreOnly\.package\.title/,
+  )
+})
