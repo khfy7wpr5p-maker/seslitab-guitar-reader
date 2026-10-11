@@ -34,6 +34,13 @@ function itemForAssignment(assignmentId) {
   ) {
     return TD_PROD_10_FIXTURE.chord.item;
   }
+  if (
+    assignmentId ===
+    TD_PROD_10_FIXTURE.scoreOnly
+      .assignmentId
+  ) {
+    return TD_PROD_10_FIXTURE.scoreOnly.item;
+  }
   return null;
 }
 
@@ -71,9 +78,39 @@ export function createTdProd10OnlineReadService() {
       );
     },
 
-    async listAssignments() {
+    async listAssignments({
+      session,
+      state,
+    } = {}) {
       requireOnline();
-      return Object.freeze([]);
+      requireStudent(session);
+      return Object.freeze(
+        state === undefined ||
+        state === "ACTIVE"
+          ? [
+              Object.freeze({
+                assignmentId:
+                  TD_PROD_10_FIXTURE
+                    .scoreOnly
+                    .assignmentId,
+                practiceType: "SCORE",
+                state: "ACTIVE",
+                title:
+                  TD_PROD_10_FIXTURE
+                    .scoreOnly.package
+                    .title,
+                teacherNote:
+                  TD_PROD_10_FIXTURE
+                    .scoreOnly.package
+                    .practice
+                    ?.teacherNote ?? "",
+                assignedAt:
+                  TD_PROD_10_FIXTURE
+                    .piece.assignedAt,
+              }),
+            ]
+          : [],
+      );
     },
 
     async getAssignment({
@@ -110,15 +147,14 @@ export function createTdProd10OnlineReadService() {
     } = {}) {
       requireOnline();
       requireStudent(session);
-      if (
-        assignmentId !==
-        TD_PROD_10_FIXTURE.score.assignmentId
-      ) {
+      const item =
+        itemForAssignment(assignmentId);
+      if (item?.practiceType !== "SCORE") {
         throw new Error(
           "TD-PROD-10 SCORE unavailable",
         );
       }
-      return TD_PROD_10_FIXTURE.score.item;
+      return item;
     },
 
     async getChordBoardPracticeItem({

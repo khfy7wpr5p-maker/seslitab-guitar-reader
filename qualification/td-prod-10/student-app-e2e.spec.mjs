@@ -110,7 +110,7 @@ async function assertNoAuthorityLeakage(page) {
 }
 
 await test(
-  "SES-122 teacher-delivered SCORE + CHORD_BOARD survives real Student App online/offline journey",
+  "SES-224 qualifies Smoosic SCORE + TAB in the real Student App without production changes",
   { timeout: 120_000 },
   async () => {
     const browserName =
@@ -196,6 +196,44 @@ await test(
         true,
         "teacher-delivered SCORE must render",
       );
+      await page
+        .locator(
+          '#st-score-root[role="region"][aria-label="Nota"]',
+        )
+        .waitFor();
+      assert.equal(
+        await page
+          .getByRole("tab", {
+            name: "Nota",
+            exact: true,
+          })
+          .getAttribute("aria-selected"),
+        "true",
+      );
+      await page
+        .getByRole("button", {
+          name: "Dinle",
+          exact: true,
+        })
+        .waitFor();
+
+      const playbackEvidence =
+        await page.evaluate(
+          () =>
+            globalThis
+              .__SES_224_QUALIFICATION__
+              ?.playback ?? null,
+        );
+      assert.deepEqual(
+        playbackEvidence,
+        {
+          firstMidi: 61,
+          sourceExact: true,
+          scoreOnlyFirstMidi: 61,
+          scoreOnlyHasTab: false,
+        },
+        "C-sharp must resolve as written C-sharp 4 / MIDI 61, never C-sharp 3 or C-sharp 5",
+      );
 
       await page
         .getByRole("tab", {
@@ -210,6 +248,10 @@ await test(
         true,
         "teacher-delivered TAB must render",
       );
+      const tabRegionLabel =
+        await page
+          .locator("#st-score-root")
+          .getAttribute("aria-label");
       const tabTexts = (
         await page
           .locator(
@@ -219,8 +261,10 @@ await test(
       )
         .map((value) => value.trim())
         .filter(Boolean);
-      assert.ok(tabTexts.includes("7"));
-      assert.ok(tabTexts.includes("12"));
+      assert.ok(tabTexts.includes("2"));
+      assert.ok(tabTexts.includes("3"));
+      assert.ok(tabTexts.includes("0"));
+      assert.ok(tabTexts.includes("1"));
 
       await page
         .getByRole("tab", {
@@ -296,6 +340,55 @@ await test(
         "TAB must remain usable after reconnect",
       );
       await assertNoAuthorityLeakage(page);
+
+      await page
+        .getByRole("button", {
+          name: "← Geri",
+          exact: true,
+        })
+        .click();
+      await page
+        .getByRole("button", {
+          name:
+            TD_PROD_10_FIXTURE
+              .scoreOnly.package.title,
+          exact: true,
+        })
+        .click();
+      assert.equal(
+        await eventually(
+          () => visibleScoreSvg(page),
+        ),
+        true,
+        "score-only assignment must still render notation",
+      );
+      await page
+        .locator(
+          '#st-score-root[role="region"][aria-label="Nota"]',
+        )
+        .waitFor();
+      assert.equal(
+        await page
+          .getByRole("tab", {
+            name: "TAB",
+            exact: true,
+          })
+          .count(),
+        0,
+        "score-only assignment must not gain a TAB view",
+      );
+      await page
+        .getByRole("button", {
+          name: "Dinle",
+          exact: true,
+        })
+        .waitFor();
+      await assertNoAuthorityLeakage(page);
+      assert.equal(
+        tabRegionLabel,
+        "TAB",
+        "selected TAB content must be announced as TAB, not notation",
+      );
       assert.deepEqual(pageErrors, []);
     } finally {
       await context

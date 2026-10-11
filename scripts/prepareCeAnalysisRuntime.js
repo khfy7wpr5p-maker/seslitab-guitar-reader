@@ -16,6 +16,13 @@ export const CE_ANALYSIS_RUNTIME_GLOBAL = 'STOmrCorrectionAnalysisRuntime'
 export const CE_ANALYSIS_ARTIFACT_SHA256 = '2fb9762d05d6164f9a595736adc58fed08a7b40733b969cd54bd7db41bbb41aa'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+export const CE_ANALYSIS_PREBUILT_RUNTIME_ROOT = path.join(
+  repoRoot,
+  'runtime-pins',
+  'st-omr-correction-engine',
+  CE_ANALYSIS_REVISION,
+  'browser-analysis',
+)
 const buildRoot = path.join(repoRoot, '.ce-analysis-runtime-build')
 const checkoutRoot = path.join(buildRoot, 'engine')
 const spec = Object.freeze({
@@ -26,6 +33,7 @@ const spec = Object.freeze({
   buildRoot,
   checkoutRoot,
   generatedRuntimeRoot: path.join(checkoutRoot, 'dist', 'browser-analysis'),
+  prebuiltRuntimeRoot: CE_ANALYSIS_PREBUILT_RUNTIME_ROOT,
   publicRuntimeRoot: path.join(repoRoot, 'public', 'st-omr-correction-analysis-runtime'),
   buildScript: 'build:ce-analysis-browser',
   artifactName: 'ce-analysis-browser-runtime.js',

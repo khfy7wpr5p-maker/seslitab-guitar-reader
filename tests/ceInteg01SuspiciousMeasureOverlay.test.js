@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import {
   SCORE_RENDERER_REVISION,
@@ -63,6 +64,20 @@ test('CE analysis runtime has a separate exact-source-bound preparation lane', a
   assert.equal(preparer.CE_ANALYSIS_RUNTIME_VERSION, '1.0.0')
   assert.equal(preparer.CE_ANALYSIS_RUNTIME_GLOBAL, 'STOmrCorrectionAnalysisRuntime')
   assert.equal(preparer.CE_ANALYSIS_ARTIFACT_SHA256, '2fb9762d05d6164f9a595736adc58fed08a7b40733b969cd54bd7db41bbb41aa')
+  assert.equal(
+    preparer.CE_ANALYSIS_PREBUILT_RUNTIME_ROOT,
+    fileURLToPath(new URL(
+      '../runtime-pins/st-omr-correction-engine/bdaeb1e6fec8aee27d1cc72347f5be735af3cf30/browser-analysis',
+      import.meta.url,
+    )),
+  )
+  assert.equal(
+    existsSync(new URL(
+      '../runtime-pins/st-omr-correction-engine/bdaeb1e6fec8aee27d1cc72347f5be735af3cf30/browser-analysis/ce-analysis-browser-runtime.js',
+      import.meta.url,
+    )),
+    true,
+  )
 
   const manifest = {
     contract: preparer.CE_ANALYSIS_BROWSER_CONTRACT,
@@ -184,6 +199,74 @@ test('shared pinned runtime preparer is deterministic, verifies bytes, writes pr
   await assert.rejects(() => preparePinnedRuntime(spec, { io: failingIo }), /digest does not match/i)
   assert.ok(calls.filter((entry) => entry[0] === 'rm' && entry[1] === spec.buildRoot).length >= 3)
   await assert.rejects(() => preparePinnedRuntime(null, { io }), /spec is invalid/i)
+})
+
+test('shared pinned runtime preparer accepts a reviewed prebuilt runtime without network commands', async () => {
+  const artifact = Buffer.from('reviewed-prebuilt-runtime')
+  const digest = createHash('sha256').update(artifact).digest('hex')
+  const prebuiltRuntimeRoot = '/repo/runtime-pins/test-runtime'
+  const spec = {
+    label: 'Test prebuilt browser',
+    repository: 'https://example.invalid/private-repo.git',
+    revision: 'b'.repeat(40),
+    repoRoot: '/repo',
+    buildRoot: '/repo/.build',
+    checkoutRoot: '/repo/.build/engine',
+    generatedRuntimeRoot: '/repo/.build/engine/dist/browser',
+    prebuiltRuntimeRoot,
+    publicRuntimeRoot: '/repo/public/runtime',
+    buildScript: 'build:browser',
+    artifactName: 'runtime.js',
+    manifestName: 'runtime.manifest.json',
+    provenanceName: 'provenance.json',
+    contract: 'TEST_PREBUILT_CONTRACT',
+    contractVersion: '1.0.0',
+    runtimeVersion: '1.0.0',
+    global: 'TestPrebuiltRuntime',
+    sourceRevisionField: 'engineSourceRevision',
+    provenanceRevisionField: 'engineSourceRevision',
+    reviewedArtifactSha256: digest,
+    forbiddenFlags: ['networkCapable'],
+  }
+  const manifest = {
+    contract: spec.contract,
+    contractVersion: spec.contractVersion,
+    runtimeVersion: spec.runtimeVersion,
+    engineSourceRevision: spec.revision,
+    artifact: spec.artifactName,
+    format: 'iife',
+    target: 'es2022',
+    global: spec.global,
+    externalImports: 0,
+    networkCapable: false,
+    bytes: artifact.byteLength,
+    sha256: digest,
+  }
+  const calls = []
+  const io = {
+    async rm(...args) { calls.push(['rm', ...args]) },
+    async mkdir(...args) { calls.push(['mkdir', ...args]) },
+    async cp(...args) { calls.push(['cp', ...args]) },
+    async readFile(filePath) {
+      calls.push(['readFile', filePath])
+      assert.equal(filePath.startsWith(`${prebuiltRuntimeRoot}/`), true)
+      return filePath.endsWith(spec.manifestName)
+        ? Buffer.from(JSON.stringify(manifest))
+        : artifact
+    },
+    async writeFile(...args) { calls.push(['writeFile', ...args]) },
+    run() { throw new Error('prebuilt runtime must not execute git or npm') },
+  }
+
+  const result = await preparePinnedRuntime(spec, { io })
+
+  assert.equal(result.artifactSha256, digest)
+  assert.equal(
+    calls.some((entry) => entry[0] === 'cp'
+      && entry[1] === prebuiltRuntimeRoot
+      && entry[2] === spec.publicRuntimeRoot),
+    true,
+  )
 })
 
 test('CE analysis consumer validates shadow-only source identity and authority', async () => {

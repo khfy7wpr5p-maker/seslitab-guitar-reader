@@ -16,6 +16,13 @@ export const CE_STRUCT_RUNTIME_GLOBAL = 'STOmrCorrectionCeStructRuntime'
 export const CE_STRUCT_ARTIFACT_SHA256 = 'b58df06f9f25ce61ed0ab6939238951cfdf9288912dddf9139b15bf6a9bb72e6'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+export const CE_STRUCT_PREBUILT_RUNTIME_ROOT = path.join(
+  repoRoot,
+  'runtime-pins',
+  'st-omr-correction-engine',
+  CE_STRUCT_REVISION,
+  'browser',
+)
 const buildRoot = path.join(repoRoot, '.ce-struct-runtime-build')
 const checkoutRoot = path.join(buildRoot, 'engine')
 const spec = Object.freeze({
@@ -26,6 +33,7 @@ const spec = Object.freeze({
   buildRoot,
   checkoutRoot,
   generatedRuntimeRoot: path.join(checkoutRoot, 'dist', 'browser'),
+  prebuiltRuntimeRoot: CE_STRUCT_PREBUILT_RUNTIME_ROOT,
   publicRuntimeRoot: path.join(repoRoot, 'public', 'st-omr-correction-engine-runtime'),
   buildScript: 'build:ce-struct-browser',
   artifactName: 'ce-struct-browser-runtime.js',

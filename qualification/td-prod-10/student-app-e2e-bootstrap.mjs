@@ -52,6 +52,9 @@ import {
   tdProd10CredentialsMatch,
   tdProd10Student,
 } from "./td-prod-10-e2e-fixture-adapter.mjs";
+import {
+  TD_PROD_10_FIXTURE,
+} from "./td-prod-10-generated-fixture.mjs";
 
 const root = document.querySelector("#app");
 if (root === null) {
@@ -93,6 +96,45 @@ const notationAdapter =
   });
 const playbackPlanResolver =
   createPlaybackPlanResolver();
+const playbackContext =
+  playbackPlanResolver.resolvePackageContext(
+    TD_PROD_10_FIXTURE.score.package,
+  );
+const scoreOnlyPlaybackContext =
+  playbackPlanResolver.resolvePackageContext(
+    TD_PROD_10_FIXTURE.scoreOnly.package,
+  );
+const firstPlaybackNote =
+  playbackContext?.plan?.notes?.[0] ?? null;
+
+Object.defineProperty(
+  globalThis,
+  "__SES_224_QUALIFICATION__",
+  {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: Object.freeze({
+      playback: Object.freeze({
+        firstMidi:
+          firstPlaybackNote?.midi ?? null,
+        sourceExact:
+          playbackContext?.timingProvenance
+            ?.kind === "EXACT_SCORE_SOURCE" &&
+          playbackContext.timingProvenance
+            .musicXml ===
+            TD_PROD_10_FIXTURE.score
+              .package.content.score.data,
+        scoreOnlyFirstMidi:
+          scoreOnlyPlaybackContext?.plan
+            ?.notes?.[0]?.midi ?? null,
+        scoreOnlyHasTab:
+          TD_PROD_10_FIXTURE.scoreOnly
+            .package.content.guitarTab !== null,
+      }),
+    }),
+  },
+);
 const sampleBank =
   createPianoSampleBank({
     manifestUrl:

@@ -8,12 +8,19 @@ const patterns = exclusionPatterns(config)
 test('generated npm locks are excluded at root and nested paths without hiding manifests or source JSON', () => {
   assert.equal(sourceIncluded('package-lock.json', patterns), false)
   assert.equal(sourceIncluded('experiments/smoosic-mobile/package-lock.json', patterns), false)
+  assert.equal(
+    sourceIncluded(
+      'runtime-pins/st-omr-correction-engine/revision/browser/runtime.js',
+      patterns,
+    ),
+    false,
+  )
   for (const path of ['package.json', 'experiments/smoosic-mobile/package.json', 'firebase.json',
     'firestore.indexes.json', 'src/data/chordBoardCatalogSnapshotV1.json', 'docs/new-code.json',
     'scripts/sonarDiagnostics.mjs', 'experiments/smoosic-mobile/src/index.js', '.github/workflows/ci.yml']) {
     assert.equal(sourceIncluded(path, patterns), true, path)
   }
-  assert.match(config, /^sonar\.tests=tests,browser-tests,scripts$/m)
+  assert.match(config, /^sonar\.tests=tests,browser-tests,scripts,qualification$/m)
   assert.match(config, /^sonar\.javascript\.lcov\.reportPaths=coverage\/lcov.info,coverage\/gtab10c-integration\/lcov.info$/m)
   assert.match(config, /^sonar\.python\.coverage\.reportPaths=coverage\/gtab10c-python.xml$/m)
 })
@@ -65,6 +72,17 @@ test('only audited CI proof scripts and their test-only helpers are classified a
     'scripts/verifyS16DeployedCompositionBrowser.js', 'scripts/prepareSmoosicEditor.js',
     'scripts/verifyScoreRuntimeBrowser.js', 'src/data/chordBoardCatalogSnapshotV1.json']) {
     assert.equal(analysisType(path, config), 'source', path)
+  }
+})
+
+test('qualification browser harnesses are classified as test code', () => {
+  for (const path of [
+    'qualification/smpb-02/student-playback-contract.test.mjs',
+    'qualification/td-prod-10/student-app-e2e.spec.mjs',
+    'qualification/td-prod-10/student-app-e2e-bootstrap.mjs',
+    'qualification/td-prod-10/student-app-e2e-fixture-adapter.mjs',
+  ]) {
+    assert.equal(analysisType(path, config), 'test', path)
   }
 })
 
