@@ -90,7 +90,7 @@ jobs:
 
       - name: Build exact production bundle
         working-directory: teacher
-        run: npm run build
+        run: env -u GITHUB_SHA npm run build
 
       - name: Verify Smoosic Guitar TAB in a real browser
         working-directory: teacher

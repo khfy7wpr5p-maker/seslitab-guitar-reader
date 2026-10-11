@@ -130,6 +130,10 @@ test('SES-225 workflow pins every cross-app dependency and runs required release
     workflow,
     /env -u GITHUB_SHA[\s\S]*GTAB10C_SESILITAB_SHA="\$SES225_TEACHER_SHA"/u,
   )
+  assert.match(
+    workflow,
+    /name: Build exact production bundle[\s\S]*run: env -u GITHUB_SHA npm run build/u,
+  )
   assert.doesNotMatch(workflow, /render\.com|firebase deploy|SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION:\s*true/u)
 
   const crossAppProof = await readFile(
