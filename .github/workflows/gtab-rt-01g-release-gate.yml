@@ -82,10 +82,11 @@ jobs:
         env:
           GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
           SEMANTIC_ENGINE_ROOT: ${{ github.workspace }}/semantic-engine
-          GITHUB_SHA: ${{ env.SES225_TEACHER_SHA }}
         run: |
-          export GTAB10C_PYTHON="$pythonLocation/bin/python"
-          node scripts/verifyGtab10cSemanticParity.js
+          env -u GITHUB_SHA \
+            GTAB10C_SESILITAB_SHA="$SES225_TEACHER_SHA" \
+            GTAB10C_PYTHON="$pythonLocation/bin/python" \
+            node scripts/verifyGtab10cSemanticParity.js
 
       - name: Build exact production bundle
         working-directory: teacher

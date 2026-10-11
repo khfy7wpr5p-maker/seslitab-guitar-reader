@@ -126,6 +126,10 @@ test('SES-225 workflow pins every cross-app dependency and runs required release
   assert.match(workflow, /verifyGtabRt01gCrossAppRelease\.js/u)
   assert.match(workflow, /verifyGtab10cSemanticParity\.js/u)
   assert.match(workflow, /verifySes222SmoosicGuitarTabRendererBrowser\.js/u)
+  assert.match(
+    workflow,
+    /env -u GITHUB_SHA[\s\S]*GTAB10C_SESILITAB_SHA="\$SES225_TEACHER_SHA"/u,
+  )
   assert.doesNotMatch(workflow, /render\.com|firebase deploy|SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION:\s*true/u)
 
   const crossAppProof = await readFile(
