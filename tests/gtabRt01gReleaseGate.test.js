@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 
 const releaseGate = await import(
   '../scripts/gtabRt01gReleaseGate.js'
+).catch(() => ({}))
+const studentRendererIntegrity = await import(
+  '../scripts/studentRendererRuntimeIntegrity.js'
 ).catch(() => ({}))
 
 const REVISIONS = Object.freeze({
@@ -58,6 +69,8 @@ function validEvidence() {
       studentContract: 'PASS',
       studentWorkspace: 'PASS',
       studentPlayback: 'PASS',
+      studentRendererArtifact: 'PASS',
+      studentRendererRender: 'PASS',
     },
   }
 }
@@ -99,6 +112,9 @@ test('SES-225 fails closed for revision, lineage, pair, pitch, or gate drift', (
     (evidence) => {
       evidence.checks.studentWorkspace = 'FAIL'
     },
+    (evidence) => {
+      evidence.checks.studentRendererRender = 'FAIL'
+    },
   ]
 
   for (const mutate of mutations) {
@@ -107,6 +123,78 @@ test('SES-225 fails closed for revision, lineage, pair, pitch, or gate drift', (
     const report = qualify(evidence)
     assert.equal(report.status, 'FAIL')
     assert.ok(report.diagnostics.length > 0)
+  }
+})
+
+test('SES-225 verifies every pinned Student renderer artifact byte and digest', async () => {
+  assert.equal(
+    typeof studentRendererIntegrity.verifyStudentRendererRuntimeIntegrity,
+    'function',
+    'Student renderer integrity verifier is required',
+  )
+
+  const runtimeRoot = await mkdtemp(
+    path.join(tmpdir(), 'ses225-student-renderer-'),
+  )
+  const expectedRendererRevision = 'e'.repeat(40)
+  const nested = path.join(runtimeRoot, 'nested')
+  const indexBytes = Buffer.from('<html>runtime</html>\n')
+  const runtimeBytes = Buffer.from('export const value = 1\n')
+
+  try {
+    await mkdir(nested, { recursive: true })
+    await writeFile(path.join(runtimeRoot, 'index.html'), indexBytes)
+    await writeFile(path.join(nested, 'runtime.js'), runtimeBytes)
+    await writeFile(
+      path.join(runtimeRoot, 'runtime-manifest.json'),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        rendererSourceRevision: expectedRendererRevision,
+        scoreRendererContractVersion: '0.2.0',
+        runtimeTarget: 'browser',
+        files: [
+          {
+            path: 'index.html',
+            bytes: indexBytes.byteLength,
+            sha256: sha256(indexBytes),
+          },
+          {
+            path: 'nested/runtime.js',
+            bytes: runtimeBytes.byteLength,
+            sha256: sha256(runtimeBytes),
+          },
+        ],
+      }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const summary =
+      await studentRendererIntegrity.verifyStudentRendererRuntimeIntegrity({
+        runtimeRoot,
+        expectedRendererRevision,
+        expectedContractVersion: '0.2.0',
+      })
+    assert.deepEqual(summary, {
+      rendererSourceRevision: expectedRendererRevision,
+      scoreRendererContractVersion: '0.2.0',
+      verifiedFiles: 2,
+    })
+
+    await writeFile(
+      path.join(nested, 'runtime.js'),
+      Buffer.from('export const value = 2\n'),
+    )
+    await assert.rejects(
+      () =>
+        studentRendererIntegrity.verifyStudentRendererRuntimeIntegrity({
+          runtimeRoot,
+          expectedRendererRevision,
+          expectedContractVersion: '0.2.0',
+        }),
+      /sha256 mismatch.*nested\/runtime\.js/iu,
+    )
+  } finally {
+    await rm(runtimeRoot, { recursive: true, force: true })
   }
 })
 
@@ -126,6 +214,11 @@ test('SES-225 workflow pins every cross-app dependency and runs required release
   assert.match(workflow, /verifyGtabRt01gCrossAppRelease\.js/u)
   assert.match(workflow, /verifyGtab10cSemanticParity\.js/u)
   assert.match(workflow, /verifySes222SmoosicGuitarTabRendererBrowser\.js/u)
+  assert.match(workflow, /verifyGtabRt01gStudentRendererBrowser\.js/u)
+  assert.match(
+    workflow,
+    /Verify pinned Student renderer against delivered package[\s\S]*STUDENT_APP_ROOT:/u,
+  )
   assert.match(
     workflow,
     /env -u GITHUB_SHA[\s\S]*GTAB10C_SESILITAB_SHA="\$SES225_TEACHER_SHA"/u,
@@ -146,5 +239,29 @@ test('SES-225 workflow pins every cross-app dependency and runs required release
   assert.match(
     crossAppProof,
     /vendor\/st-score-runtime\/runtime-manifest\.json/u,
+  )
+  assert.match(
+    crossAppProof,
+    /verifyStudentRendererRuntimeIntegrity/u,
+  )
+  assert.match(
+    crossAppProof,
+    /release-evidence\.pending\.json/u,
+  )
+  assert.match(
+    crossAppProof,
+    /student-score\.musicxml/u,
+  )
+  assert.match(
+    crossAppProof,
+    /student-guitar-tab\.musicxml/u,
+  )
+  assert.match(
+    crossAppProof,
+    /studentRendererArtifact:\s*'PASS'/u,
+  )
+  assert.match(
+    crossAppProof,
+    /studentRendererRender:\s*'PENDING'/u,
   )
 })
