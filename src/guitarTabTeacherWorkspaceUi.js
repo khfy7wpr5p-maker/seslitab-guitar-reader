@@ -784,7 +784,14 @@ export async function exportGuitarTabTeacherWorkspaceMusicXml(root, adapters = {
   if (workspaceStates.get(root) !== state) return Object.freeze({ ok: false, reason: 'STALE_TARGET' })
   setExportValidation(state)
   setEditorStatus(root, 'TAB MusicXML doğrulandı ve dışa aktarıldı.', 'export-ready')
-  return Object.freeze({ ok: true, musicXml, filename, handoff })
+  return Object.freeze({
+    ok: true,
+    musicXml,
+    filename,
+    scoreUpload,
+    guitarTabUpload: handoff,
+    handoff,
+  })
 }
 
 export async function resetGuitarTabTeacherWorkspace(root, adapters = {}) {

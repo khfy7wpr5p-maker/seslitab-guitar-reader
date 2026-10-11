@@ -53,6 +53,40 @@ const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </measure></part>
 </score-partwise>`
 
+const FINAL_SMOOSIC_SCORE_XML = SCORE_XML
+  .replace(
+    '<score-partwise version="4.0">',
+    '<score-partwise version="4.0"><identification><encoding><software>Smoosic</software></encoding></identification>',
+  )
+  .replace(
+    '<divisions>1</divisions>',
+    '<divisions>4096</divisions><clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
+  )
+  .replaceAll('<duration>1</duration>', '<duration>4096</duration>')
+  .replaceAll('<voice>1</voice><type>', '<voice>1</voice><staff>1</staff><type>')
+  .replace(
+    '<pitch><step>C</step><octave>4</octave></pitch>',
+    '<pitch><step>C</step><alter>1</alter><octave>4</octave></pitch>',
+  )
+
+const FINAL_SMOOSIC_TAB_XML = TAB_XML
+  .replace(
+    '<score-partwise version="4.0">',
+    '<score-partwise version="4.0"><identification><encoding><software>Smoosic</software></encoding></identification>',
+  )
+  .replace('<divisions>1</divisions>', '<divisions>4096</divisions>')
+  .replaceAll('<duration>1</duration>', '<duration>4096</duration>')
+  .replace('<backup><duration>4</duration></backup>', '<backup><duration>16384</duration></backup>')
+  .replaceAll(
+    '<pitch><step>C</step><octave>4</octave></pitch>',
+    '<pitch><step>C</step><alter>1</alter><octave>4</octave></pitch>',
+  )
+  .replace(
+    '<clef number="1"><sign>G</sign><line>2</line></clef>',
+    '<clef number="1"><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
+  )
+  .replace('<string>2</string><fret>1</fret>', '<string>2</string><fret>2</fret>')
+
 const MULTIPART_SCORE_XML = SCORE_XML
   .replace('</part-list>', '<score-part id="P2"><part-name>Second Guitar</part-name></score-part></part-list>')
   .replace('  </measure></part>\n</score-partwise>', '  </measure></part>\n  <part id="P2"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note><note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note><note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note></measure></part>\n</score-partwise>')
@@ -187,6 +221,54 @@ test('GTAB-04 composer delivers exact validated TAB bytes inside SCORE package',
   assert.equal(pkg.content.guitarTab.format, 'musicxml')
   assert.equal(pkg.content.guitarTab.data, TAB_XML)
   assert.match(pkg.content.guitarTab.data, /<string>2<\/string><fret>1<\/fret>/u)
+})
+
+test('SES-223 delivers the exact final Smoosic SCORE/TAB pair and rejects a stale Audiveris SCORE', async () => {
+  const exact = harness()
+  const finalScoreUpload = await exact.service.prepareScoreUpload({
+    musicXml: FINAL_SMOOSIC_SCORE_XML,
+    draftId: 'draft-final-revision',
+  })
+  const finalGuitarTabUpload = await exact.service.prepareGuitarTabUpload({
+    scoreUpload: finalScoreUpload,
+    guitarTabMusicXml: FINAL_SMOOSIC_TAB_XML,
+    draftId: 'draft-final-revision',
+  })
+
+  const result = await exact.service.send({
+    draftId: 'draft-final-revision',
+    studentIds: ['student-a'],
+    title: 'Final Smoosic TAB',
+    scoreUpload: finalScoreUpload,
+    guitarTabUpload: finalGuitarTabUpload,
+    chordSnapshots: [],
+  })
+
+  assert.equal(result.ok, true)
+  const delivered = exact.calls.prepared[0][0].package
+  assert.equal(delivered.content.score.data, finalScoreUpload.musicXml)
+  assert.equal(delivered.content.guitarTab.data, FINAL_SMOOSIC_TAB_XML)
+  assert.match(delivered.content.score.data, /<clef-octave-change>-1<\/clef-octave-change>/u)
+  assert.match(delivered.content.score.data, /<step>C<\/step><alter>1<\/alter><octave>4<\/octave>/u)
+  assert.match(delivered.content.guitarTab.data, /<string>2<\/string><fret>2<\/fret>/u)
+
+  const stale = harness()
+  const staleScoreUpload = await stale.service.prepareScoreUpload({
+    musicXml: SCORE_XML,
+    draftId: 'draft-final-revision',
+  })
+  await assert.rejects(
+    stale.service.send({
+      draftId: 'draft-final-revision',
+      studentIds: ['student-a'],
+      title: 'Stale mixed pair',
+      scoreUpload: staleScoreUpload,
+      guitarTabUpload: finalGuitarTabUpload,
+      chordSnapshots: [],
+    }),
+    /guitar-tab-authority-mismatch/u,
+  )
+  assert.equal(stale.calls.prepared.length, 0)
 })
 
 test('GTAB-04 composer keeps SCORE-only assignment behavior with null guitarTab', async () => {
