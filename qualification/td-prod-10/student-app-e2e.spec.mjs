@@ -343,7 +343,7 @@ await test(
 
       await page
         .getByRole("button", {
-          name: "Benim Çalışmalarım",
+          name: "← Geri",
           exact: true,
         })
         .click();
