@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import {
   mkdir,
   readFile,
+  rm,
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
@@ -27,6 +28,9 @@ import {
 import {
   qualifyGtabRt01gReleaseEvidence,
 } from './gtabRt01gReleaseGate.js'
+import {
+  verifyStudentRendererRuntimeIntegrity,
+} from './studentRendererRuntimeIntegrity.js'
 
 const EXPECTED = Object.freeze({
   editor:
@@ -38,6 +42,7 @@ const EXPECTED = Object.freeze({
   studentRenderer:
     '13aa0843158257a207afe062879743d58048cc6d',
 })
+const EXPECTED_STUDENT_RENDERER_CONTRACT = '0.2.0'
 
 const root = path.resolve(
   fileURLToPath(new URL('..', import.meta.url)),
@@ -175,15 +180,18 @@ globalThis.DOMParser = SmoosicTestDOMParser
 globalThis.XMLSerializer =
   SmoosicTestXMLSerializer
 
-const studentRendererManifest = JSON.parse(
-  await readFile(
-    path.join(
+const studentRendererIntegrity =
+  await verifyStudentRendererRuntimeIntegrity({
+    runtimeRoot: path.join(
       studentRoot,
-      'vendor/st-score-runtime/runtime-manifest.json',
+      'vendor',
+      'st-score-runtime',
     ),
-    'utf8',
-  ),
-)
+    expectedRendererRevision:
+      EXPECTED.studentRenderer,
+    expectedContractVersion:
+      EXPECTED_STUDENT_RENDERER_CONTRACT,
+  })
 const revisions = Object.freeze({
   teacher: gitHead(root),
   editor: gitHead(editorRoot),
@@ -191,7 +199,7 @@ const revisions = Object.freeze({
   semanticEngine:
     gitHead(semanticEngineRoot),
   studentRenderer:
-    studentRendererManifest
+    studentRendererIntegrity
       .rendererSourceRevision,
 })
 const expectedRevisions = Object.freeze({
@@ -455,14 +463,22 @@ const evidence = {
     studentContract: 'PASS',
     studentWorkspace: 'PASS',
     studentPlayback: 'PASS',
+    studentRendererArtifact: 'PASS',
+    studentRendererRender: 'PENDING',
   },
 }
-const report =
+const pendingReport =
   qualifyGtabRt01gReleaseEvidence(evidence)
-assert.equal(
-  report.status,
-  'PASS',
-  JSON.stringify(report.diagnostics),
+assert.equal(pendingReport.status, 'FAIL')
+assert.deepEqual(
+  pendingReport.diagnostics,
+  [
+    {
+      code: 'REQUIRED_CHECK_FAILED',
+      field: 'studentRendererRender',
+    },
+  ],
+  'Only the real Student renderer browser proof may finalize SES-225.',
 )
 
 const artifactRoot = path.join(
@@ -473,21 +489,48 @@ const artifactRoot = path.join(
 await mkdir(artifactRoot, {
   recursive: true,
 })
+await rm(
+  path.join(artifactRoot, 'release-evidence.json'),
+  { force: true },
+)
+await writeFile(
+  path.join(artifactRoot, 'student-score.musicxml'),
+  pkg.content.score.data,
+  'utf8',
+)
 await writeFile(
   path.join(
     artifactRoot,
-    'release-evidence.json',
+    'student-guitar-tab.musicxml',
+  ),
+  pkg.content.guitarTab.data,
+  'utf8',
+)
+await writeFile(
+  path.join(
+    artifactRoot,
+    'release-evidence.pending.json',
   ),
   `${JSON.stringify({
-    ...report,
+    schema:
+      'gtab-rt-01g-release-evidence-pending-v1',
+    status: 'PENDING_STUDENT_RENDERER',
+    diagnostics: pendingReport.diagnostics,
+    revisions: evidence.revisions,
+    expectedRevisions:
+      evidence.expectedRevisions,
     source: evidence.source,
     finalPair: evidence.finalPair,
     music: evidence.music,
     checks: evidence.checks,
+    studentRenderer: {
+      ...studentRendererIntegrity,
+      render: 'PENDING',
+    },
   }, null, 2)}\n`,
   'utf8',
 )
 
 console.log(
-  'SES-225 cross-app exact-head release evidence PASS',
+  'SES-225 cross-app exact-head preflight ready; pinned Student renderer browser proof required.',
 )
