@@ -96,6 +96,12 @@ jobs:
         working-directory: teacher
         run: node scripts/verifySes222SmoosicGuitarTabRendererBrowser.js
 
+      - name: Verify pinned Student renderer against delivered package
+        working-directory: teacher
+        env:
+          STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
+        run: node scripts/verifyGtabRt01gStudentRendererBrowser.js
+
       - name: Upload SES-225 release evidence
         if: always()
         uses: actions/upload-artifact@v4
