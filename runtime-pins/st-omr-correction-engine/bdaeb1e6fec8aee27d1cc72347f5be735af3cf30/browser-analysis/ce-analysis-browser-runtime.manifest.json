@@ -1,0 +1,29 @@
+{
+  "contract": "ST_OMR_CORRECTION_ENGINE_ANALYSIS_BROWSER",
+  "contractVersion": "1.0.0",
+  "runtimeVersion": "1.0.0",
+  "engineSourceRevision": "bdaeb1e6fec8aee27d1cc72347f5be735af3cf30",
+  "bundler": {
+    "package": "esbuild",
+    "version": "0.28.2",
+    "license": "MIT"
+  },
+  "hashProvider": {
+    "package": "@noble/hashes",
+    "version": "2.4.0",
+    "license": "MIT"
+  },
+  "artifact": "ce-analysis-browser-runtime.js",
+  "format": "iife",
+  "target": "es2022",
+  "global": "STOmrCorrectionAnalysisRuntime",
+  "externalImports": 0,
+  "networkCapable": false,
+  "persistenceCapable": false,
+  "authenticationAuthority": false,
+  "automaticApplyAuthority": false,
+  "learningAuthority": false,
+  "musicXmlWriteBackAuthority": false,
+  "bytes": 104847,
+  "sha256": "2fb9762d05d6164f9a595736adc58fed08a7b40733b969cd54bd7db41bbb41aa"
+}

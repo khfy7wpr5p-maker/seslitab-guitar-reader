@@ -1,0 +1,31 @@
+{
+  "contract": "ST_OMR_CORRECTION_ENGINE_CE_STRUCT_BROWSER",
+  "contractVersion": "1.0.0",
+  "runtimeVersion": "1.0.0",
+  "engineSourceRevision": "7550e77b3ddff55e63e714b2dbc2b450b69771dc",
+  "bundler": {
+    "package": "esbuild",
+    "version": "0.28.2",
+    "license": "MIT"
+  },
+  "hashProvider": {
+    "package": "@noble/hashes",
+    "version": "2.4.0",
+    "license": "MIT"
+  },
+  "artifact": "ce-struct-browser-runtime.js",
+  "format": "iife",
+  "target": "es2022",
+  "global": "STOmrCorrectionCeStructRuntime",
+  "externalImports": 0,
+  "networkCapable": false,
+  "persistenceCapable": false,
+  "authenticationAuthority": false,
+  "automaticApplyAuthority": false,
+  "finalTeacherApprovalAuthority": false,
+  "studentShareAuthority": false,
+  "learningAuthority": false,
+  "musicXmlWriteBackAuthority": false,
+  "bytes": 37282,
+  "sha256": "b58df06f9f25ce61ed0ab6939238951cfdf9288912dddf9139b15bf6a9bb72e6"
+}

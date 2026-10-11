@@ -18,6 +18,20 @@ test('CE-STRUCT runtime pin and manifest verifier preserve the reviewed boundary
   assert.equal(runtime.CE_STRUCT_RUNTIME_VERSION, '1.0.0')
   assert.equal(runtime.CE_STRUCT_RUNTIME_GLOBAL, 'STOmrCorrectionCeStructRuntime')
   assert.equal(runtime.CE_STRUCT_ARTIFACT_SHA256, 'b58df06f9f25ce61ed0ab6939238951cfdf9288912dddf9139b15bf6a9bb72e6')
+  assert.equal(
+    runtime.CE_STRUCT_PREBUILT_RUNTIME_ROOT,
+    fileURLToPath(new URL(
+      '../runtime-pins/st-omr-correction-engine/7550e77b3ddff55e63e714b2dbc2b450b69771dc/browser',
+      import.meta.url,
+    )),
+  )
+  assert.equal(
+    existsSync(new URL(
+      '../runtime-pins/st-omr-correction-engine/7550e77b3ddff55e63e714b2dbc2b450b69771dc/browser/ce-struct-browser-runtime.js',
+      import.meta.url,
+    )),
+    true,
+  )
 
   const artifact = Buffer.from('globalThis.STOmrCorrectionCeStructRuntime={};')
   const manifest = {

@@ -38,6 +38,12 @@ function assertSpec(spec) {
   if (!Array.isArray(spec.forbiddenFlags)) {
     throw new TypeError('Pinned runtime forbidden flags are invalid.')
   }
+  if (
+    spec.prebuiltRuntimeRoot !== undefined
+    && (typeof spec.prebuiltRuntimeRoot !== 'string' || !spec.prebuiltRuntimeRoot)
+  ) {
+    throw new TypeError('Pinned runtime prebuilt root is invalid.')
+  }
   return spec
 }
 
@@ -107,22 +113,26 @@ export async function preparePinnedRuntime(rawSpec, { io = defaultIo } = {}) {
   const spec = assertSpec(rawSpec)
   await io.rm(spec.buildRoot, { recursive: true, force: true })
   await io.rm(spec.publicRuntimeRoot, { recursive: true, force: true })
-  await io.mkdir(spec.buildRoot, { recursive: true })
 
   try {
-    io.run('git', ['init', spec.checkoutRoot], spec.repoRoot)
-    io.run('git', ['remote', 'add', 'origin', spec.repository], spec.checkoutRoot)
-    io.run('git', ['fetch', '--depth=1', 'origin', spec.revision], spec.checkoutRoot)
-    io.run('git', ['checkout', '--detach', 'FETCH_HEAD'], spec.checkoutRoot)
-    io.run(
-      'npm',
-      ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'],
-      spec.checkoutRoot,
-    )
-    io.run('npm', ['run', spec.buildScript], spec.checkoutRoot)
+    let runtimeRoot = spec.prebuiltRuntimeRoot
+    if (runtimeRoot === undefined) {
+      await io.mkdir(spec.buildRoot, { recursive: true })
+      io.run('git', ['init', spec.checkoutRoot], spec.repoRoot)
+      io.run('git', ['remote', 'add', 'origin', spec.repository], spec.checkoutRoot)
+      io.run('git', ['fetch', '--depth=1', 'origin', spec.revision], spec.checkoutRoot)
+      io.run('git', ['checkout', '--detach', 'FETCH_HEAD'], spec.checkoutRoot)
+      io.run(
+        'npm',
+        ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'],
+        spec.checkoutRoot,
+      )
+      io.run('npm', ['run', spec.buildScript], spec.checkoutRoot)
+      runtimeRoot = spec.generatedRuntimeRoot
+    }
 
-    const manifestPath = path.join(spec.generatedRuntimeRoot, spec.manifestName)
-    const artifactPath = path.join(spec.generatedRuntimeRoot, spec.artifactName)
+    const manifestPath = path.join(runtimeRoot, spec.manifestName)
+    const artifactPath = path.join(runtimeRoot, spec.artifactName)
     const manifestBytes = await io.readFile(manifestPath)
     const manifest = verifyPinnedRuntimeManifest(JSON.parse(manifestBytes.toString('utf8')), spec)
     const artifact = await io.readFile(artifactPath)
@@ -132,7 +142,7 @@ export async function preparePinnedRuntime(rawSpec, { io = defaultIo } = {}) {
     }
 
     await io.mkdir(path.dirname(spec.publicRuntimeRoot), { recursive: true })
-    await io.cp(spec.generatedRuntimeRoot, spec.publicRuntimeRoot, { recursive: true, force: true })
+    await io.cp(runtimeRoot, spec.publicRuntimeRoot, { recursive: true, force: true })
 
     const provenance = Object.freeze({
       schemaVersion: 1,

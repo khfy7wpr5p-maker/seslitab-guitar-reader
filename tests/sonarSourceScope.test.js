@@ -8,6 +8,13 @@ const patterns = exclusionPatterns(config)
 test('generated npm locks are excluded at root and nested paths without hiding manifests or source JSON', () => {
   assert.equal(sourceIncluded('package-lock.json', patterns), false)
   assert.equal(sourceIncluded('experiments/smoosic-mobile/package-lock.json', patterns), false)
+  assert.equal(
+    sourceIncluded(
+      'runtime-pins/st-omr-correction-engine/revision/browser/runtime.js',
+      patterns,
+    ),
+    false,
+  )
   for (const path of ['package.json', 'experiments/smoosic-mobile/package.json', 'firebase.json',
     'firestore.indexes.json', 'src/data/chordBoardCatalogSnapshotV1.json', 'docs/new-code.json',
     'scripts/sonarDiagnostics.mjs', 'experiments/smoosic-mobile/src/index.js', '.github/workflows/ci.yml']) {
