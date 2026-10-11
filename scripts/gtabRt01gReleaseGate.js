@@ -18,6 +18,8 @@ const CHECK_FIELDS = Object.freeze([
   'studentContract',
   'studentWorkspace',
   'studentPlayback',
+  'studentRendererArtifact',
+  'studentRendererRender',
 ])
 
 function sameSha(values) {
