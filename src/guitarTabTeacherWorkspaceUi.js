@@ -363,7 +363,6 @@ async function activateTarget(root, state, selectedRegion) {
     const editorSourceXml = state.adapters.prepareEditorSourceXml(state.sourceXml, selectedRegion)
     sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, {
       targetSelection: selectedRegion,
-      guitarOctaveTransposition: true,
     })
   }
   catch {

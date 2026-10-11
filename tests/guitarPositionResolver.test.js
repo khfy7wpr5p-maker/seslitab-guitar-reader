@@ -6,7 +6,6 @@ import { createCanonicalNote } from '../canonicalNoteModel.js'
 import {
   BASIC_GUITAR_MAX_FRET,
   BASIC_GUITAR_TUNING,
-  BASIC_GUITAR_WRITTEN_TRANSPOSITION,
   GUITAR_POSITION_CANDIDATE_STATE,
   enumerateCanonicalGuitarPositionCandidates,
 } from '../guitarPositionResolver.js'
@@ -36,7 +35,6 @@ function makeCanonicalNote(overrides = {}) {
 
 test('Package 4A standard tuning contract is immutable and keeps the existing 24-fret boundary', () => {
   assert.equal(BASIC_GUITAR_MAX_FRET, 24)
-  assert.equal(BASIC_GUITAR_WRITTEN_TRANSPOSITION, -12)
   assert.deepEqual(
     BASIC_GUITAR_TUNING.map(({ stringNumber, stringLetter, openMidi }) => ({ stringNumber, stringLetter, openMidi })),
     [
@@ -52,28 +50,13 @@ test('Package 4A standard tuning contract is immutable and keeps the existing 24
   assert.equal(BASIC_GUITAR_TUNING.every(Object.isFrozen), true)
 })
 
-test('Package 4A written E4 preserves the existing octave-transposed guitar mapping candidates', () => {
+test('SES-220 plain written E4 uses its source-derived physical pitch', () => {
   const result = enumerateCanonicalGuitarPositionCandidates(makeCanonicalNote({ step: 'E', octave: 4 }))
 
   assert.equal(result.state, GUITAR_POSITION_CANDIDATE_STATE.CANDIDATES)
   assert.equal(result.writtenMidi, 64)
-  assert.equal(result.mappingMidi, 52)
-  assert.deepEqual(
-    result.candidates.map(({ stringNumber, stringLetter, fret }) => ({ stringNumber, stringLetter, fret })),
-    [
-      { stringNumber: 4, stringLetter: 'D', fret: 2 },
-      { stringNumber: 5, stringLetter: 'A', fret: 7 },
-      { stringNumber: 6, stringLetter: 'E', fret: 12 },
-    ],
-  )
-})
-
-test('Package 4A written E5 includes first-string open E and every basic alternative through fret 24', () => {
-  const result = enumerateCanonicalGuitarPositionCandidates(makeCanonicalNote({ step: 'E', octave: 5 }))
-
-  assert.equal(result.state, GUITAR_POSITION_CANDIDATE_STATE.CANDIDATES)
-  assert.equal(result.writtenMidi, 76)
   assert.equal(result.mappingMidi, 64)
+  assert.equal(result.transpositionSemitones, 0)
   assert.deepEqual(
     result.candidates.map(({ stringNumber, stringLetter, fret }) => ({ stringNumber, stringLetter, fret })),
     [
@@ -87,11 +70,56 @@ test('Package 4A written E5 includes first-string open E and every basic alterna
   )
 })
 
+test('SES-220 written E5 remains E5 without a source transpose', () => {
+  const result = enumerateCanonicalGuitarPositionCandidates(makeCanonicalNote({ step: 'E', octave: 5 }))
+
+  assert.equal(result.state, GUITAR_POSITION_CANDIDATE_STATE.CANDIDATES)
+  assert.equal(result.writtenMidi, 76)
+  assert.equal(result.mappingMidi, 76)
+  assert.deepEqual(
+    result.candidates.map(({ stringNumber, stringLetter, fret }) => ({ stringNumber, stringLetter, fret })),
+    [
+      { stringNumber: 1, stringLetter: 'e', fret: 12 },
+      { stringNumber: 2, stringLetter: 'B', fret: 17 },
+      { stringNumber: 3, stringLetter: 'G', fret: 21 },
+    ],
+  )
+})
+
 test('Package 4A never invents e0 when the written pitch has no basic guitar position', () => {
-  const result = enumerateCanonicalGuitarPositionCandidates(makeCanonicalNote({ step: 'E', octave: 2 }))
+  const result = enumerateCanonicalGuitarPositionCandidates(makeCanonicalNote({ step: 'E', octave: 1 }))
 
   assert.equal(result.state, GUITAR_POSITION_CANDIDATE_STATE.UNPLAYABLE)
   assert.equal(result.reason, 'no-basic-guitar-position')
+  assert.deepEqual(result.candidates, [])
+})
+
+test('SES-220 applies an explicit source transpose exactly once', () => {
+  const note = {
+    ...makeCanonicalNote({ step: 'C', alter: 1, octave: 4 }),
+    sourceTranspositionSemitones: -12,
+    soundingPitchMidi: 49,
+  }
+  const result = enumerateCanonicalGuitarPositionCandidates(note)
+
+  assert.equal(result.mappingMidi, 49)
+  assert.equal(result.transpositionSemitones, -12)
+  assert.deepEqual(
+    result.candidates.map(({ stringNumber, fret }) => ({ stringNumber, fret })),
+    [{ stringNumber: 5, fret: 4 }, { stringNumber: 6, fret: 9 }],
+  )
+})
+
+test('SES-220 rejects sounding pitch that contradicts source transpose', () => {
+  const note = {
+    ...makeCanonicalNote({ step: 'C', alter: 1, octave: 4 }),
+    sourceTranspositionSemitones: -12,
+    soundingPitchMidi: 61,
+  }
+  const result = enumerateCanonicalGuitarPositionCandidates(note)
+
+  assert.equal(result.state, GUITAR_POSITION_CANDIDATE_STATE.INVALID)
+  assert.equal(result.reason, 'invalid-source-transposition')
   assert.deepEqual(result.candidates, [])
 })
 

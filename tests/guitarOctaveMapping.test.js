@@ -99,15 +99,45 @@ function makeNoteXml(step, octave, durationType = 'quarter', alter = 0) {
 </score-partwise>`
 }
 
-describe('Guitar octave mapping: written E4 → fourth string, second fret', () => {
-  test('E4 maps to dördüncü tel ikinci perde', () => {
+function makeCSharpXml(attributes = '') {
+  return `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>4</divisions>${attributes}</attributes><note><pitch><step>C</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><staff>1</staff><type>quarter</type></note></measure></part></score-partwise>`
+}
+
+test('SES-220 parser ignores clef octave context for physical pitch', () => {
+  const xml = makeCSharpXml('<clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>')
+  const result = parseMusicXml(xml)
+
+  assert.equal(result.error, undefined)
+  assert.equal(result.notes[0].midi, 61)
+  assert.equal(result.notes[0].soundingPitchMidi, undefined)
+  assert.equal(result.notes[0].sourceTranspositionSemitones, undefined)
+  assert.equal(result.notes[0].string, 'B')
+  assert.equal(result.notes[0].fret, 2)
+})
+
+test('SES-220 parser applies explicit MusicXML transpose exactly once', () => {
+  const xml = makeCSharpXml('<transpose><diatonic>0</diatonic><chromatic>0</chromatic><octave-change>-1</octave-change></transpose>')
+  const result = parseMusicXml(xml)
+
+  assert.equal(result.error, undefined)
+  assert.equal(result.notes[0].midi, 61)
+  assert.equal(result.notes[0].soundingPitchMidi, 49)
+  assert.equal(result.notes[0].sourceTranspositionSemitones, -12)
+  assert.equal(result.notes[0].string, 'A')
+  assert.equal(result.notes[0].fret, 4)
+})
+
+describe('Source-derived guitar pitch mapping without transpose', () => {
+  test('written E4 maps to first string open', () => {
     const xml = makeNoteXml('E', 4)
     const result = parseMusicXml(xml)
     assert.equal(result.error, undefined)
     assert.equal(result.notes.length, 1)
     const note = result.notes[0]
-    assert.equal(note.string, 'D', 'E4 should map to D string (4th string)')
-    assert.equal(note.fret, 2, 'E4 should map to fret 2 on D string')
+    assert.equal(note.string, 'e')
+    assert.equal(note.fret, 0)
+    assert.equal(note.soundingPitchMidi, undefined)
+    assert.equal(note.sourceTranspositionSemitones, undefined)
   })
 
   test('formatNoteAsHtmlText shows "dördüncü tel ikinci perde, Mi notası"', () => {
@@ -124,19 +154,19 @@ describe('Guitar octave mapping: written E4 → fourth string, second fret', () 
       beats: note.beats,
     })
     const text = formatNoteAsHtmlText(noteObj)
-    assert.equal(text, 'dördüncü tel ikinci perde, Mi notası')
+    assert.equal(text, 'birinci tel açık tel, Mi notası')
   })
 })
 
-describe('Guitar octave mapping: written E5 → first string, open', () => {
-  test('E5 maps to birinci tel açık tel', () => {
+describe('Higher written pitch is not silently lowered', () => {
+  test('E5 maps to first string fret 12', () => {
     const xml = makeNoteXml('E', 5)
     const result = parseMusicXml(xml)
     assert.equal(result.error, undefined)
     assert.equal(result.notes.length, 1)
     const note = result.notes[0]
     assert.equal(note.string, 'e', 'E5 should map to e string (1st string)')
-    assert.equal(note.fret, 0, 'E5 should map to fret 0 (open) on e string')
+    assert.equal(note.fret, 12)
   })
 
   test('formatNoteAsHtmlText shows "birinci tel açık tel, Mi notası"', () => {
@@ -153,7 +183,7 @@ describe('Guitar octave mapping: written E5 → first string, open', () => {
       beats: note.beats,
     })
     const text = formatNoteAsHtmlText(noteObj)
-    assert.equal(text, 'birinci tel açık tel, Mi notası')
+    assert.equal(text, 'birinci tel on ikinci perde, Mi notası')
   })
 })
 
@@ -242,7 +272,7 @@ describe('Rhythmic HTML still uses simplified visible format', () => {
       duration: note.duration, beats: note.beats,
     })
     const text = formatNoteAsHtmlText(noteObj)
-    assert.equal(text, 'dördüncü tel ikinci perde, Mi notası')
+    assert.equal(text, 'birinci tel açık tel, Mi notası')
     assert.doesNotMatch(text, /vuruş/, 'simplified format should not contain beat text')
     assert.doesNotMatch(text, /nota,/, 'simplified format should not contain duration label')
   })
@@ -259,6 +289,6 @@ describe('Turkish TTS spoken text uses simplified output', () => {
       duration: n.duration, beats: n.beats, measureNumber: n.measure,
     }))
     const spoken = generateTurkishRhythmicSpokenText(notes)
-    assert.equal(spoken, 'dördüncü tel ikinci perde, Mi notası.')
+    assert.equal(spoken, 'birinci tel açık tel, Mi notası.')
   })
 })

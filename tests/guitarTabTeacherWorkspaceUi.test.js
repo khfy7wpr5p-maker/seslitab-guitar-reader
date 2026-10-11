@@ -181,6 +181,7 @@ function successfulAdapters(observations = {}) {
     loadEditorRuntime: async () => ({
       createSourceSession(xml, options) {
         observations.editorXml = xml
+        observations.editorOptions = options
         observations.targetSelection = options?.targetSelection
         return sourceSession(observations.sessionId ?? 'source-1')
       },
@@ -243,6 +244,9 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.equal(result.ok, true)
   assert.equal(result.rendererAvailable, true)
   assert.equal(observations.editorXml, exactXml)
+  assert.deepEqual(observations.editorOptions, {
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+  })
   assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
   assert.equal(observations.renderXml, exactXml)
   assert.equal(observations.rendererRuntime.id, 'renderer')
@@ -258,6 +262,50 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.deepEqual(state.selectedRegion, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
   assert.equal(state.rendererAvailable, true)
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'ready')
+})
+
+test('SES-220 enables only source-derived physical positions in the teacher fretboard', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      return {
+        events: [{
+          sourceEventId: 'c-sharp-4', partId: 'P1', partIndex: 0, measureIndex: 0,
+          voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0,
+          pitch: { step: 'C', alter: 1, octave: 4, midi: 61 },
+          soundingPitchMidi: 61,
+          guitarSoundingMidi: 49,
+        }],
+        groups: [{ groupId: 'group', sourceEventIds: ['c-sharp-4'] }],
+      }
+    },
+    createTabAssignmentDocument: () => ({ canExport: () => false, listAssignments: () => [] }),
+    createKeyboardController: () => ({
+      getState: () => ({
+        currentEventId: 'c-sharp-4', currentGroupId: 'group', selectedString: 2,
+        fretBuffer: '', noteCount: 1, noteIndex: 0,
+      }),
+      handleKey() {},
+    }),
+    createFixedSixStringRows: () => [1, 2, 3, 4, 5, 6].map((string) => ({
+      string, label: String(string), active: string === 2, fret: null, sourceEventId: null,
+    })),
+  })
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'clef-octave.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.equal(result.ok, true)
+  const positions = root.querySelectorAll('.guitar-tab-fret-position')
+  const string2Fret2 = positions.find((item) => item.dataset.string === '2' && item.dataset.fret === '2')
+  const string5Fret4 = positions.find((item) => item.dataset.string === '5' && item.dataset.fret === '4')
+  assert.equal(string2Fret2.disabled, false)
+  assert.equal(string2Fret2.getAttribute('aria-disabled'), 'false')
+  assert.equal(string5Fret4.disabled, true)
+  assert.equal(string5Fret4.getAttribute('aria-disabled'), 'true')
 })
 
 test('GTAB-10B offers canonical multipart targets and rebuilds the target-bound source session on change', async () => {

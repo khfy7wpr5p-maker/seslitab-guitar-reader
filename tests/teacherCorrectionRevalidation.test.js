@@ -82,10 +82,10 @@ function verifiedState() {
 }
 
 const NOTE_FIXTURES = Object.freeze([
-  Object.freeze({ step: 'C', noteName: 'Do', midi: 60, stringLetter: 'A', stringNumber: 5, fret: 3 }),
-  Object.freeze({ step: 'D', noteName: 'Re', midi: 62, stringLetter: 'D', stringNumber: 4, fret: 0 }),
-  Object.freeze({ step: 'E', noteName: 'Mi', midi: 64, stringLetter: 'D', stringNumber: 4, fret: 2 }),
-  Object.freeze({ step: 'F', noteName: 'Fa', midi: 65, stringLetter: 'D', stringNumber: 4, fret: 3 }),
+  Object.freeze({ step: 'C', noteName: 'Do', midi: 60, stringLetter: 'B', stringNumber: 2, fret: 1 }),
+  Object.freeze({ step: 'D', noteName: 'Re', midi: 62, stringLetter: 'B', stringNumber: 2, fret: 3 }),
+  Object.freeze({ step: 'E', noteName: 'Mi', midi: 64, stringLetter: 'e', stringNumber: 1, fret: 0 }),
+  Object.freeze({ step: 'F', noteName: 'Fa', midi: 65, stringLetter: 'e', stringNumber: 1, fret: 1 }),
 ])
 
 function sourceNotes() {
@@ -189,7 +189,7 @@ function correctFirstNoteToCSharp(context, ids = {}) {
       { path: [0, 'noteName'], value: 'Do#' },
       { path: [0, 'midi'], value: 61 },
       { path: [0, 'frequency'], value: midiToFrequency(61) },
-      { path: [0, 'fret'], value: 4 },
+      { path: [0, 'fret'], value: 2 },
     ],
   })
 }
@@ -316,7 +316,7 @@ describe('Package 12-T3 bounded teacher-corrected revalidation provenance', () =
         { path: [2, 'noteName'], value: 'Fa' },
         { path: [2, 'midi'], value: 65 },
         { path: [2, 'frequency'], value: midiToFrequency(65) },
-        { path: [2, 'fret'], value: 3 },
+        { path: [2, 'fret'], value: 1 },
       ],
     })
     const evidence = revalidation(context)
