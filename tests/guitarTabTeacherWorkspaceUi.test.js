@@ -968,3 +968,60 @@ test('GTAB-10B stale renderer rejection cannot return a newer source session', a
   assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceSession, currentSession)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).sourceName, 'second.musicxml')
 })
+
+test('SES-223 export returns the exact final SCORE upload with its validated TAB handoff', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const finalScoreXml = '<score-partwise>final-smoosic-revision</score-partwise>'
+  const finalTabXml = '<score-partwise>validated-final-tab</score-partwise>'
+  const scoreUpload = Object.freeze({
+    draftId: 'final-revision-session',
+    musicXml: finalScoreXml,
+    musicXmlFingerprint: 'a'.repeat(64),
+  })
+  const guitarTabUpload = Object.freeze({
+    draftId: 'final-revision-session',
+    scoreMusicXmlFingerprint: scoreUpload.musicXmlFingerprint,
+    guitarTabMusicXml: finalTabXml,
+  })
+  const adapters = successfulAdapters()
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      return {
+        sessionId: 'final-revision-session',
+        events: [{ sourceEventId: 'note', partId: 'P1', partIndex: 0, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }],
+        groups: [{ groupId: 'group', sourceEventIds: ['note'] }],
+      }
+    },
+    createTabAssignmentDocument: () => ({ canExport: () => true, listAssignments: () => [] }),
+    createKeyboardController: () => ({
+      getState: () => ({ currentEventId: 'note', currentGroupId: 'group', selectedString: 2, fretBuffer: '2' }),
+      handleKey() {},
+    }),
+    createFixedSixStringRows: () => [],
+    serializeGuitarTabMusicXml: () => finalTabXml,
+  })
+  adapters.prepareScoreUpload = async (input) => {
+    assert.equal(input.musicXml, finalScoreXml)
+    assert.equal(input.draftId, 'final-revision-session')
+    return scoreUpload
+  }
+  adapters.prepareHandoff = async (input) => {
+    assert.equal(input.scoreUpload, scoreUpload)
+    assert.equal(input.guitarTabMusicXml, finalTabXml)
+    return guitarTabUpload
+  }
+  adapters.downloadText = async () => true
+
+  await loadGuitarTabTeacherSource(root, finalScoreXml, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  await select.listeners.get('change')[0]()
+
+  const result = await exportGuitarTabTeacherWorkspaceMusicXml(root)
+
+  assert.equal(result.ok, true)
+  assert.equal(result.scoreUpload, scoreUpload)
+  assert.equal(result.guitarTabUpload, guitarTabUpload)
+  assert.equal(result.handoff, guitarTabUpload)
+})
