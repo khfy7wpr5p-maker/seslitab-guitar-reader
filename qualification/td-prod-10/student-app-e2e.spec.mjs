@@ -248,11 +248,10 @@ await test(
         true,
         "teacher-delivered TAB must render",
       );
-      await page
-        .locator(
-          '#st-score-root[role="region"][aria-label="TAB"]',
-        )
-        .waitFor();
+      const tabRegionLabel =
+        await page
+          .locator("#st-score-root")
+          .getAttribute("aria-label");
       const tabTexts = (
         await page
           .locator(
@@ -393,6 +392,11 @@ await test(
         })
         .waitFor();
       await assertNoAuthorityLeakage(page);
+      assert.equal(
+        tabRegionLabel,
+        "TAB",
+        "selected TAB content must be announced as TAB, not notation",
+      );
       assert.deepEqual(pageErrors, []);
     } finally {
       await context
