@@ -53,7 +53,7 @@ test('only audited CI proof scripts and their test-only helpers are classified a
     'scripts/ceBridgeFixtureTransport.js', ...smenuProofs].sort()
   const actual = /^sonar\.test\.inclusions=(.*)$/m.exec(config)[1].split(',').filter((path) => path.startsWith('scripts/')).sort()
   assert.deepEqual(actual, approved)
-  assert.equal(actual.length, 23)
+  assert.equal(actual.length, 24)
   for (const path of approved) {
     assert.equal(analysisType(path, config), 'test', path)
     const callers = productCallers( ['grep', '-l', '-F', path.split('/').at(-1), '--',

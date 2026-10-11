@@ -83,7 +83,7 @@ export async function runBrowserFixture(chrome, fixturePath, viewport) {
     if (!target.startsWith(root + sep)) { response.writeHead(403).end(); return }
     try {
       const bytes = readFileSync(target)
-      const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' }
+      const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json' }
       response.writeHead(200, { 'content-type': mime[extname(target)] ?? 'application/octet-stream' }).end(bytes)
     } catch { response.writeHead(404).end() }
   })
