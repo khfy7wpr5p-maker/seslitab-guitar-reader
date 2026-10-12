@@ -36,3 +36,18 @@ jobs:
       - name: Teacher authoring
         continue-on-error: true
         run: node --test tests/guitarTabTeacherAuthoring.test.js
+      - name: Capture full-suite TAP output
+        run: |
+          set +e
+          npm test > ses227-full-suite.log 2>&1
+          status=$?
+          printf '%s\n' "$status" > ses227-full-suite.exit
+          exit 0
+      - name: Upload full-suite diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses227-full-suite-${{ github.sha }}
+          path: |
+            ses227-full-suite.log
+            ses227-full-suite.exit
+          if-no-files-found: error
