@@ -115,7 +115,6 @@ export async function prepareEditorGuitarTabHandoff({
         scoreMusicXmlFingerprint: scoreUpload.musicXmlFingerprint,
         guitarTabMusicXmlFingerprint,
         targetSelection: normalizedTargetSelection,
-        guitarPitchPolicy: normalizedGuitarPitchPolicy,
       }))
 
   return Object.freeze({
@@ -124,7 +123,6 @@ export async function prepareEditorGuitarTabHandoff({
     scoreMusicXmlFingerprint: scoreUpload.musicXmlFingerprint,
     guitarTabMusicXmlFingerprint,
     guitarTabMusicXml,
-    guitarPitchPolicy: normalizedGuitarPitchPolicy,
     pitchedEventCount: validation.facts.scoreEventCount,
     ...(normalizedTargetSelection === null
       ? {}
