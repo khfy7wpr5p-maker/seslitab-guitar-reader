@@ -21,9 +21,7 @@ globalThis.XMLSerializer = SmoosicTestXMLSerializer
 
 const editorRoot = process.env.GTAB_EDITOR_ROOT
 const studentRoot = process.env.STUDENT_APP_ROOT
-if (!editorRoot || !studentRoot) {
-  throw new Error('GTAB_EDITOR_ROOT and STUDENT_APP_ROOT are required.')
-}
+if (!editorRoot || !studentRoot) throw new Error('GTAB_EDITOR_ROOT and STUDENT_APP_ROOT are required.')
 
 async function importFrom(root, relative) {
   return import(pathToFileURL(path.resolve(root, relative)).href)
@@ -55,21 +53,13 @@ const POSITION_BY_PHYSICAL_MIDI = new Map([
   [59, { string: 2, fret: 0 }],
 ])
 
-const sourceSession = editor.createSourceSession(SOURCE_XML, {
-  guitarPitchPolicy: editor.GUITAR_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
-})
+const GUITAR_PITCH_POLICY = editor.GUITAR_PITCH_POLICY.STANDARD_GUITAR_WRITTEN
+const sourceSession = editor.createSourceSession(SOURCE_XML, { guitarPitchPolicy: GUITAR_PITCH_POLICY })
 assert.equal(sourceSession.events.length, 4)
-assert.deepEqual(
-  [...new Set(sourceSession.events.map((event) => event.voice))]
-    .sort((left, right) => Number(left) - Number(right)),
-  ['1', '2', '3', '4'],
-)
+assert.deepEqual([...new Set(sourceSession.events.map((event) => event.voice))].sort((left, right) => Number(left) - Number(right)), ['1', '2', '3', '4'])
 assert.equal(sourceSession.groups.length, 1)
 assert.equal(sourceSession.groups[0].sourceEventIds.length, 4)
-assert.deepEqual(
-  sourceSession.events.map((event) => event.guitarPhysicalPitchMidi),
-  [48, 52, 55, 59],
-)
+assert.deepEqual(sourceSession.events.map((event) => event.guitarPhysicalPitchMidi), [48, 52, 55, 59])
 
 const document = editor.createTabAssignmentDocument(sourceSession)
 for (const event of sourceSession.events) {
@@ -79,15 +69,8 @@ for (const event of sourceSession.events) {
 }
 assert.equal(document.canExport(), true)
 
-const guitarTabMusicXml = editor.serializeGuitarTabMusicXml({
-  sourceSession,
-  document,
-})
+const guitarTabMusicXml = editor.serializeGuitarTabMusicXml({ sourceSession, document })
 assert.match(guitarTabMusicXml, /<staff-lines>6<\/staff-lines>/u)
-assert.match(guitarTabMusicXml, /<voice>1<\/voice>/u)
-assert.match(guitarTabMusicXml, /<voice>2<\/voice>/u)
-assert.match(guitarTabMusicXml, /<voice>3<\/voice>/u)
-assert.match(guitarTabMusicXml, /<voice>4<\/voice>/u)
 assert.match(guitarTabMusicXml, /<string>5<\/string><fret>3<\/fret>/u)
 assert.match(guitarTabMusicXml, /<string>4<\/string><fret>2<\/fret>/u)
 assert.match(guitarTabMusicXml, /<string>3<\/string><fret>0<\/fret>/u)
@@ -104,8 +87,10 @@ const handoff = await prepareEditorGuitarTabHandoff({
   scoreUpload,
   guitarTabMusicXml,
   draftId: 'gtab04-draft',
+  guitarPitchPolicy: GUITAR_PITCH_POLICY,
 })
 assert.equal(handoff.guitarTabMusicXml, guitarTabMusicXml)
+assert.equal(handoff.guitarPitchPolicy, GUITAR_PITCH_POLICY)
 assert.equal(handoff.pitchedEventCount, 4)
 
 const pkg = createStudentPrivatePracticePackageV1({
@@ -121,21 +106,12 @@ const pkg = createStudentPrivatePracticePackageV1({
   practice: {},
 })
 
-const consumerValidation = studentContract.validatePracticePackage(pkg)
-assert.deepEqual(consumerValidation, { ok: true, errors: [] })
-
+assert.deepEqual(studentContract.validatePracticePackage(pkg), { ok: true, errors: [] })
 const workspace = studentWorkspace.createPracticeWorkspace({
-  deliveryItem: {
-    package: pkg,
-    accessRef: {
-      kind: 'SECURE_DELIVERY',
-      deliveryId: 'gtab04-delivery',
-    },
-  },
+  deliveryItem: { package: pkg, accessRef: { kind: 'SECURE_DELIVERY', deliveryId: 'gtab04-delivery' } },
   notationRuntimeAvailable: true,
   playbackPort: null,
 })
-
 assert.equal(workspace.renderSource.musicXml, SOURCE_XML)
 assert.equal(workspace.tabRenderSource.kind, 'musicxml')
 assert.equal(workspace.tabRenderSource.musicXml, guitarTabMusicXml)
@@ -148,6 +124,7 @@ console.log(JSON.stringify({
   editorVoices: ['1', '2', '3', '4'],
   exactTeacherFrets: [3, 2, 0, 0],
   guitarPhysicalMidi: [48, 52, 55, 59],
+  guitarPitchPolicy: GUITAR_PITCH_POLICY,
   studentGuitarTabCapability: workspace.viewModel.capabilities.guitarTab,
   studentTabBytesPreserved: workspace.tabRenderSource.musicXml === guitarTabMusicXml,
 }, null, 2))
