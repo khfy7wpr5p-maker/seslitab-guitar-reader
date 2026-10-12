@@ -28,7 +28,7 @@ test('actual pinned oracle graph retains original identities and rejects corrupt
   assert.equal(oracle.readViews.derived.policy, 'gtab10c-note-id-part-lane-read-view-v3')
   for (const note of oracle.derivedSnapshot.notes) {
     assert.ok(note.staff === 1 || note.staff === 2)
-    assert.equal(note.voice, note.staff === 1 ? 1 : 2)
+    assert.equal(note.voice, note.staff === 1 ? 1 : 5)
     const row = oracle.readViews.derived.mapping.find(row => row.readViewId === note.source_id)
     assert.equal(note.part_id, row.partId)
     assert.equal(note.staff, row.originalStaff)
