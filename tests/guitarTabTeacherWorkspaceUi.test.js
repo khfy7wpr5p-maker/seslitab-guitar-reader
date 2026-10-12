@@ -246,6 +246,7 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.equal(observations.editorXml, exactXml)
   assert.deepEqual(observations.editorOptions, {
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    guitarPitchPolicy: 'standard-guitar-written',
   })
   assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
   assert.equal(observations.renderXml, exactXml)
