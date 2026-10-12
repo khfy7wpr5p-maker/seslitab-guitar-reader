@@ -50,7 +50,7 @@ const TAB = `<?xml version="1.0" encoding="UTF-8"?>
       </attributes>
       <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
       <backup><duration>1</duration></backup>
-      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
     </measure>
   </part>
 </score-partwise>`
@@ -100,7 +100,7 @@ test('GTAB-OCTAVE-02 keeps first-measure transpose active in later measures', as
   )
   const tabTwoMeasures = TAB.replace(
     '    </measure>\n  </part>',
-    '    </measure>\n    <measure number="2"><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note><backup><duration>1</duration></backup><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note></measure>\n  </part>',
+    '    </measure>\n    <measure number="2"><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note><backup><duration>1</duration></backup><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note></measure>\n  </part>',
   )
   const upload = await scoreUpload(sourceTwoMeasures, 'persistent-octave')
 
