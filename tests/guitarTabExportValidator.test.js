@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { SmoosicTestDOMParser } from './support/smoosicXmlDom.js'
 import { validateGuitarTabExport } from '../src/services/guitarTabExportValidator.js'
+import { GUITAR_TAB_PITCH_POLICY } from '../src/services/guitarTabPitchPolicy.js'
 
 const TARGET = Object.freeze({ partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
 
@@ -31,13 +32,29 @@ function tab({ string = 3, fret = 2, technical = null, secondChord = '', transpo
     </measure></part></score-partwise>`
 }
 
-function validate(scoreMusicXml, guitarTabMusicXml, targetSelection = TARGET) {
-  return validateGuitarTabExport({ scoreMusicXml, guitarTabMusicXml, targetSelection, DOMParserCtor: SmoosicTestDOMParser })
+function validate(
+  scoreMusicXml,
+  guitarTabMusicXml,
+  targetSelection = TARGET,
+  guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING,
+) {
+  return validateGuitarTabExport({
+    scoreMusicXml,
+    guitarTabMusicXml,
+    targetSelection,
+    guitarPitchPolicy,
+    DOMParserCtor: SmoosicTestDOMParser,
+  })
 }
 
 test('SES-227 accepts plain written A4 with physical A3 string 3 fret 2 without synthetic transpose', () => {
   const scoreXml = source()
-  const result = validate(scoreXml, tab())
+  const result = validate(
+    scoreXml,
+    tab(),
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
   assert.equal(result.ok, true)
   assert.equal(result.category, null)
   assert.equal(result.code, null)
@@ -45,7 +62,7 @@ test('SES-227 accepts plain written A4 with physical A3 string 3 fret 2 without 
   assert.equal(scoreXml, source())
 })
 
-test('SES-220 clef octave context keeps C-sharp 4 physical string 2 fret 2', () => {
+test('SES-220 source-sounding policy preserves C-sharp 4 despite octave clef notation context', () => {
   const scoreXml = source().replace(
     '<divisions>1</divisions>',
     '<divisions>1</divisions><clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
@@ -61,18 +78,28 @@ test('SES-220 clef octave context keeps C-sharp 4 physical string 2 fret 2', () 
   )
 })
 
-test('SES-227 explicit source transpose is applied once before the guitar target octave', () => {
+test('SES-227 standard-guitar-written target remains based on written pitch when source transpose exists', () => {
   const scoreXml = source().replace(
     '<divisions>1</divisions>',
     '<divisions>1</divisions><transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose>',
   )
   const transpose = '<transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose>'
-  const tabXml = tab({ string: 3, fret: 0, transpose })
+  const tabXml = tab({ string: 3, fret: 2, transpose })
 
-  assert.equal(validate(scoreXml, tabXml).ok, true)
-  const wrong = tabXml.replace('<string>3</string><fret>0</fret>', '<string>1</string><fret>3</fret>')
+  assert.equal(validate(
+    scoreXml,
+    tabXml,
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  ).ok, true)
+  const wrong = tabXml.replace('<string>3</string><fret>2</fret>', '<string>3</string><fret>0</fret>')
   assert.deepEqual(
-    (({ ok, category, code }) => ({ ok, category, code }))(validate(scoreXml, wrong)),
+    (({ ok, category, code }) => ({ ok, category, code }))(validate(
+      scoreXml,
+      wrong,
+      TARGET,
+      GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+    )),
     { ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH' },
   )
 })
@@ -83,11 +110,21 @@ test('SES-227 preserves trusted source technical position instead of re-fingerin
   const tabXml = tab({ string: 1, fret: 0 })
     .replaceAll('<step>A</step><octave>4</octave>', '<step>E</step><octave>4</octave>')
 
-  assert.equal(validate(scoreXml, tabXml).ok, true)
+  assert.equal(validate(
+    scoreXml,
+    tabXml,
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  ).ok, true)
 })
 
 test('rejects a physically wrong octave/string position with PHYSICAL code', () => {
-  const result = validate(source(), tab({ string: 1, fret: 5 }))
+  const result = validate(
+    source(),
+    tab({ string: 1, fret: 5 }),
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
   assert.deepEqual({ ok: result.ok, category: result.category, code: result.code }, {
     ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH',
   })
@@ -122,8 +159,22 @@ test('rejects stale Part Staff Voice target identity', () => {
 
 test('rejects written pitch drift even if TAB physical position could be playable', () => {
   const changed = tab().replaceAll('<step>A</step><octave>4</octave>', '<step>G</step><octave>4</octave>')
-  const result = validate(source(), changed)
+  const result = validate(source(), changed, TARGET, GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN)
   assert.equal(result.ok, false)
   assert.equal(result.category, 'SEMANTIC')
   assert.match(result.code, /SEMANTIC_MISMATCH/u)
+})
+
+test('rejects an unknown guitar pitch policy fail-closed', () => {
+  const result = validateGuitarTabExport({
+    scoreMusicXml: source(),
+    guitarTabMusicXml: tab(),
+    targetSelection: TARGET,
+    guitarPitchPolicy: 'guess-from-filename',
+    DOMParserCtor: SmoosicTestDOMParser,
+  })
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'PHYSICAL', code: 'GUITAR_PITCH_POLICY_INVALID' },
+  )
 })
