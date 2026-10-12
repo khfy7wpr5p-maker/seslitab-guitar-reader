@@ -50,4 +50,6 @@ jobs:
           path: |
             ses227-full-suite.log
             ses227-full-suite.exit
+            tests/guitarTabEditorRuntimeBinding.test.js
+            tests/guitarTabTeacherWorkspaceUi.test.js
           if-no-files-found: error
