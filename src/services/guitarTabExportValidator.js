@@ -304,12 +304,51 @@ function semanticKey(event) {
   ].join('|')
 }
 
+function semanticKeyWithoutVoice(event) {
+  return [
+    event.measureIndex,
+    fractionKey(event.onset, event.divisions),
+    fractionKey(event.duration, event.divisions),
+    event.pitch.step,
+    event.pitch.alter,
+    event.pitch.octave,
+    event.tieStart ? 1 : 0,
+    event.tieStop ? 1 : 0,
+  ].join('|')
+}
+
 function assertSemanticParity(expected, actual, code) {
   if (expected.length !== actual.length) fail('SEMANTIC', code)
   const expectedKeys = expected.map(semanticKey).sort()
   const actualKeys = actual.map(semanticKey).sort()
   for (let index = 0; index < expectedKeys.length; index += 1) {
     if (expectedKeys[index] !== actualKeys[index]) fail('SEMANTIC', code)
+  }
+}
+
+function voiceGroupSignatures(events) {
+  const byVoice = new Map()
+  for (const event of events) {
+    const group = byVoice.get(event.voice) ?? []
+    group.push(semanticKeyWithoutVoice(event))
+    byVoice.set(event.voice, group)
+  }
+  return [...byVoice.values()]
+    .map((group) => group.sort().join('\u0000'))
+    .sort()
+}
+
+function assertTabVoiceParity(notationEvents, tabEvents) {
+  const notationVoices = new Set(notationEvents.map((event) => event.voice))
+  const tabVoices = new Set(tabEvents.map((event) => event.voice))
+  if ([...tabVoices].some((voice) => notationVoices.has(voice))) {
+    fail('TAB_SHAPE', 'TAB_VOICE_NAMESPACE_COLLISION')
+  }
+  const expectedGroups = voiceGroupSignatures(notationEvents)
+  const actualGroups = voiceGroupSignatures(tabEvents)
+  if (expectedGroups.length !== actualGroups.length) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
+  for (let index = 0; index < expectedGroups.length; index += 1) {
+    if (expectedGroups[index] !== actualGroups[index]) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
   }
 }
 
@@ -397,7 +436,7 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, D
   const staff1 = tabEvents.filter((event) => event.staff === 1)
   const staff2 = tabEvents.filter((event) => event.staff === 2)
   assertSemanticParity(scoreEvents, staff1, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH')
-  assertSemanticParity(staff1, staff2, 'TAB_STAFF_SEMANTIC_MISMATCH')
+  assertTabVoiceParity(staff1, staff2)
   assertPhysicalTab(staff2)
 
   return Object.freeze({
