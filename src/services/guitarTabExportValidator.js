@@ -344,6 +344,9 @@ function assertTabVoiceParity(notationEvents, tabEvents) {
   if ([...tabVoices].some((voice) => notationVoices.has(voice))) {
     fail('TAB_SHAPE', 'TAB_VOICE_NAMESPACE_COLLISION')
   }
+  if ([...tabVoices].some((voice) => !Number.isSafeInteger(Number(voice)) || Number(voice) < 5)) {
+    fail('TAB_SHAPE', 'TAB_VOICE_STAFF_RANGE_INVALID')
+  }
   const expectedGroups = voiceGroupSignatures(notationEvents)
   const actualGroups = voiceGroupSignatures(tabEvents)
   if (expectedGroups.length !== actualGroups.length) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
