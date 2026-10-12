@@ -83,7 +83,19 @@ function sourceScore(events, staff = null) {
 
 function editorTab(events, technicalById, { staffLines = 6 } = {}) {
   const staff1 = voiceTracks(events, 1)
-  const staff2 = voiceTracks(events, 2, technicalById)
+  const sourceVoices = [...new Set(events.map((event) => event.voice))]
+    .sort((left, right) => Number(left) - Number(right))
+  let nextVoice = Math.max(5, Math.max(0, ...sourceVoices.map(Number)) + 1)
+  const tabVoiceBySource = new Map(sourceVoices.map((voice) => {
+    const tabVoice = String(nextVoice)
+    nextVoice += 1
+    return [voice, tabVoice]
+  }))
+  const staff2 = voiceTracks(
+    events.map((event) => ({ ...event, voice: tabVoiceBySource.get(event.voice) })),
+    2,
+    technicalById,
+  )
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>

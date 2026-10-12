@@ -7,7 +7,7 @@ export const GTAB10C_PINNED_SEMANTIC_ENGINE_COMMIT = 'ef305f45ff90d940ac6c51a0c4
 export const GTAB10C_PINNED_SNAPSHOT_SCHEMA = 'st-semantic-snapshot-v1'
 export const GTAB10C_PINNED_PARTITURA_VERSION = '1.9.0'
 // This is the exact upstream revision used to build the editor runtime pinned by SesliTab.
-export const GTAB10C_PINNED_EDITOR_COMMIT = '4eb479bc84b12c6deefb289d03c933ce9980bc9f'
+export const GTAB10C_PINNED_EDITOR_COMMIT = 'd56029cdac2cecc34aaa29916827e165e2bd8c34'
 
 const STANDARD_TUNING_MIDI = Object.freeze({ 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 })
 const MAX_FRET = 20
@@ -70,6 +70,23 @@ function semanticNote(note) {
 function eventKey(note) {
   return [note.measure_index, note.onset_div, note.duration_div, note.voice, note.pitch_midi,
     note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
+}
+
+function eventKeyWithoutVoice(note) {
+  return [note.measure_index, note.onset_div, note.duration_div, note.pitch_midi,
+    note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
+}
+
+function voiceGroupSignatures(notes) {
+  const groups = new Map()
+  for (const note of notes) {
+    const group = groups.get(note.voice) ?? []
+    group.push(eventKeyWithoutVoice(note))
+    groups.set(note.voice, group)
+  }
+  return [...groups.values()]
+    .map((group) => group.sort((left, right) => left.localeCompare(right, 'en')).join('\u0000'))
+    .sort((left, right) => left.localeCompare(right, 'en'))
 }
 
 function groupKey(note, omittedField) {
@@ -145,10 +162,11 @@ function validTieGraph(notes) {
   return true
 }
 
-function tieEdges(notes) {
+function tieEdges(notes, includeVoice = true) {
   const byId = new Map(notes.map((note) => [note.source_id, note]))
+  const keyOf = includeVoice ? eventKey : eventKeyWithoutVoice
   return notes.filter((note) => note.tie_next !== null).map((note) =>
-    `${eventKey(note)}>${byId.has(note.tie_next) ? eventKey(byId.get(note.tie_next)) : 'UNRESOLVED'}`
+    `${keyOf(note)}>${byId.has(note.tie_next) ? keyOf(byId.get(note.tie_next)) : 'UNRESOLVED'}`
   ).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
@@ -427,8 +445,17 @@ export function qualifyGtab10cSemanticParity(input = {}) {
 
   if (tabNotes.length !== notationNotes.length) {
     output.push({ code: tabNotes.length < notationNotes.length ? 'NOTE_MISSING' : 'NOTE_EXTRA', side: 'TAB' })
-  } else if (notationNotes.some((note) => !tabNotes.some((candidate) => eventKey(candidate) === eventKey(note)))) {
+  } else {
+    const notationVoices = new Set(notationNotes.map((note) => note.voice))
+    if (tabNotes.some((note) => notationVoices.has(note.voice))) {
+      output.push({ code: 'TAB_VOICE_NAMESPACE_COLLISION' })
+    }
+    if (tabNotes.some((note) => !Number.isSafeInteger(Number(note.voice)) || Number(note.voice) < 5)) {
+      output.push({ code: 'TAB_VOICE_STAFF_RANGE_INVALID' })
+    }
+    if (!sameRows(voiceGroupSignatures(notationNotes), voiceGroupSignatures(tabNotes))) {
     output.push({ code: 'TAB_EVENT_MISMATCH' })
+    }
   }
   const positions = input.tabPositions
   if (!Array.isArray(positions) || positions.length !== tabNotes.length) {
@@ -455,6 +482,7 @@ export function qualifyGtab10cSemanticParity(input = {}) {
 
   if (unverifiedContexts.length) return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'UNVERIFIED_CONTEXT' }, provenance, unverifiedContexts)
   if (!validTieGraph(sourceNotes) || !validTieGraph(notationNotes) || !validTieGraph(tabNotes) ||
-      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes)) || !sameRows(tieEdges(notationNotes), tieEdges(tabNotes))) output.push({ code: 'TIE_MISMATCH' })
+      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes))
+      || !sameRows(tieEdges(notationNotes, false), tieEdges(tabNotes, false))) output.push({ code: 'TIE_MISMATCH' })
   return freezeReport(output.length === 0 ? 'PASS' : 'DIAGNOSTIC', output, provenance, unverifiedContexts)
 }
