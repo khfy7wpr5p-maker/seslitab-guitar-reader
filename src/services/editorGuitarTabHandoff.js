@@ -4,6 +4,7 @@ import {
   validateGuitarTabExport,
 } from './guitarTabExportValidator.js'
 import { normalizeGuitarTabTargetSelection } from './guitarTabCanonicalIdentity.js'
+import { GUITAR_TAB_PITCH_POLICY } from './guitarTabPitchPolicy.js'
 
 export const EDITOR_GUITAR_TAB_HANDOFF_SCHEMA_VERSION = '1.0.0'
 export const EDITOR_GUITAR_TAB_MAX_FRET = GUITAR_TAB_MAX_FRET
@@ -72,6 +73,7 @@ export async function prepareEditorGuitarTabHandoff({
   guitarTabMusicXml,
   draftId,
   targetSelection = null,
+  guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING,
 } = {}) {
   if (!isRecord(scoreUpload)) fail('score-upload-required')
   if (!hasText(draftId)) fail('draft-id-required')
@@ -88,6 +90,7 @@ export async function prepareEditorGuitarTabHandoff({
     scoreMusicXml: scoreUpload.musicXml,
     guitarTabMusicXml,
     targetSelection: normalizedTargetSelection,
+    guitarPitchPolicy,
   })
   if (!validation.ok) throwValidatorFailure(validation)
 
