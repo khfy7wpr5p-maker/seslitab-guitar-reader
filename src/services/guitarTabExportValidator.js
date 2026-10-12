@@ -276,7 +276,7 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, g
   assertPhysicalTab(scoreEvents, staff2, normalizedGuitarPitchPolicy)
   return Object.freeze({ ok: true, category: null, code: null, facts: Object.freeze({ scoreEventCount: scoreEvents.length, notationEventCount: staff1.length, tabEventCount: staff2.length, targetSelection: selectedTarget, guitarPitchPolicy: normalizedGuitarPitchPolicy }) })
 }
-export function validateGuitarTabExport({ scoreMusicXml, guitarTabMusicXml, targetSelection = null, guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING, DOMParserCtor = globalThis.DOMParser } = {}) {
+export function validateGuitarTabExport({ scoreMusicXml, guitarTabMusicXml, targetSelection = null, guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN, DOMParserCtor = globalThis.DOMParser } = {}) {
   try { return validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, guitarPitchPolicy, DOMParserCtor }) }
   catch (error) { const category = typeof error?.category === 'string' ? error.category : 'RUNTIME'; const code = typeof error?.code === 'string' ? error.code : 'VALIDATION_EXCEPTION'; return Object.freeze({ ok: false, category, code }) }
 }
