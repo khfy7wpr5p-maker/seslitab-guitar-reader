@@ -85,7 +85,7 @@ function editorTab(events, technicalById, { staffLines = 6 } = {}) {
   const staff1 = voiceTracks(events, 1)
   const sourceVoices = [...new Set(events.map((event) => event.voice))]
     .sort((left, right) => Number(left) - Number(right))
-  let nextVoice = Math.max(0, ...sourceVoices.map(Number)) + 1
+  let nextVoice = Math.max(5, Math.max(0, ...sourceVoices.map(Number)) + 1)
   const tabVoiceBySource = new Map(sourceVoices.map((voice) => {
     const tabVoice = String(nextVoice)
     nextVoice += 1
