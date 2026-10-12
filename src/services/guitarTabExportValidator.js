@@ -3,6 +3,10 @@ import {
   analyzeGuitarTabCanonicalIdentity,
   resolveGuitarTabCanonicalTarget,
 } from './guitarTabCanonicalIdentity.js'
+import {
+  GUITAR_TAB_PITCH_POLICY,
+  normalizeGuitarTabPitchPolicy,
+} from './guitarTabPitchPolicy.js'
 
 export const GUITAR_TAB_MAX_FRET = 20
 export const GUITAR_TAB_STANDARD_TUNING_MIDI = Object.freeze({
@@ -389,8 +393,12 @@ function positionMidi(technical) {
   return openMidi + technical.fret
 }
 
-function expectedGuitarPhysicalMidi(sourceEvent) {
+function expectedGuitarPhysicalMidi(sourceEvent, guitarPitchPolicy) {
   if (sourceEvent.technical) return positionMidi(sourceEvent.technical)
+  if (guitarPitchPolicy === GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING) return sourceEvent.soundingPitchMidi
+  if (guitarPitchPolicy !== GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN) {
+    fail('PHYSICAL', 'GUITAR_PITCH_POLICY_UNSUPPORTED')
+  }
   if (sourceEvent.clefOctaveChange === -1) return sourceEvent.soundingPitchMidi
   if (sourceEvent.clefOctaveChange !== 0) fail('PHYSICAL', 'CLEF_OCTAVE_CONTEXT_UNSUPPORTED')
   const physicalMidi = sourceEvent.soundingPitchMidi - 12
@@ -400,12 +408,12 @@ function expectedGuitarPhysicalMidi(sourceEvent) {
   return physicalMidi
 }
 
-function physicalAuthorityBySemanticKey(sourceEvents) {
+function physicalAuthorityBySemanticKey(sourceEvents, guitarPitchPolicy) {
   const buckets = new Map()
   for (const event of sourceEvents) {
     const key = semanticKey(event)
     const values = buckets.get(key) ?? []
-    values.push(expectedGuitarPhysicalMidi(event))
+    values.push(expectedGuitarPhysicalMidi(event, guitarPitchPolicy))
     buckets.set(key, values)
   }
   const authority = new Map()
@@ -417,9 +425,9 @@ function physicalAuthorityBySemanticKey(sourceEvents) {
   return authority
 }
 
-function assertPhysicalTab(sourceEvents, staff2Events) {
+function assertPhysicalTab(sourceEvents, staff2Events, guitarPitchPolicy) {
   if (staff2Events.length === 0) fail('PHYSICAL', 'TAB_STAFF2_PITCHED_NOTE_REQUIRED')
-  const sourceAuthority = physicalAuthorityBySemanticKey(sourceEvents)
+  const sourceAuthority = physicalAuthorityBySemanticKey(sourceEvents, guitarPitchPolicy)
   const groups = new Map()
   for (const event of staff2Events) {
     if (!event.technical) fail('PHYSICAL', 'TECHNICAL_STRING_FRET_REQUIRED')
@@ -439,7 +447,7 @@ function assertPhysicalTab(sourceEvents, staff2Events) {
   }
 }
 
-function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, DOMParserCtor }) {
+function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, guitarPitchPolicy, DOMParserCtor }) {
   const scoreRoot = parseSafeRoot(scoreMusicXml, 'SCORE', DOMParserCtor)
   const tabRoot = parseSafeRoot(guitarTabMusicXml, 'TAB', DOMParserCtor)
   const scoreAnalysis = analyzeGuitarTabCanonicalIdentity(scoreRoot)
@@ -464,7 +472,7 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, D
   const staff2 = tabEvents.filter((event) => event.staff === 2)
   assertSemanticParity(scoreEvents, staff1, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH')
   assertSemanticParity(staff1, staff2, 'TAB_STAFF_SEMANTIC_MISMATCH')
-  assertPhysicalTab(scoreEvents, staff2)
+  assertPhysicalTab(scoreEvents, staff2, guitarPitchPolicy)
 
   return Object.freeze({
     ok: true,
@@ -475,6 +483,7 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, D
       notationEventCount: staff1.length,
       tabEventCount: staff2.length,
       targetSelection: selectedTarget,
+      guitarPitchPolicy,
     }),
   })
 }
@@ -483,10 +492,23 @@ export function validateGuitarTabExport({
   scoreMusicXml,
   guitarTabMusicXml,
   targetSelection = null,
+  guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING,
   DOMParserCtor = globalThis.DOMParser,
 } = {}) {
   try {
-    return validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, DOMParserCtor })
+    let normalizedGuitarPitchPolicy
+    try {
+      normalizedGuitarPitchPolicy = normalizeGuitarTabPitchPolicy(guitarPitchPolicy)
+    } catch {
+      fail('PHYSICAL', 'GUITAR_PITCH_POLICY_UNSUPPORTED')
+    }
+    return validateInternal({
+      scoreMusicXml,
+      guitarTabMusicXml,
+      targetSelection,
+      guitarPitchPolicy: normalizedGuitarPitchPolicy,
+      DOMParserCtor,
+    })
   } catch (error) {
     const category = typeof error?.category === 'string' ? error.category : 'RUNTIME'
     const code = typeof error?.code === 'string' ? error.code : 'VALIDATION_EXCEPTION'
