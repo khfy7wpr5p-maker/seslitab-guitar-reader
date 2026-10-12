@@ -72,6 +72,23 @@ function eventKey(note) {
     note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
 }
 
+function eventKeyWithoutVoice(note) {
+  return [note.measure_index, note.onset_div, note.duration_div, note.pitch_midi,
+    note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
+}
+
+function voiceGroupSignatures(notes) {
+  const groups = new Map()
+  for (const note of notes) {
+    const group = groups.get(note.voice) ?? []
+    group.push(eventKeyWithoutVoice(note))
+    groups.set(note.voice, group)
+  }
+  return [...groups.values()]
+    .map((group) => group.sort((left, right) => left.localeCompare(right, 'en')).join('\u0000'))
+    .sort((left, right) => left.localeCompare(right, 'en'))
+}
+
 function groupKey(note, omittedField) {
   const fields = ['measure_index', 'onset_div', 'duration_div', 'voice', 'pitch_midi', 'tie_prev', 'tie_next']
   return fields.filter((field) => field !== omittedField).map((field) => {
@@ -145,10 +162,11 @@ function validTieGraph(notes) {
   return true
 }
 
-function tieEdges(notes) {
+function tieEdges(notes, includeVoice = true) {
   const byId = new Map(notes.map((note) => [note.source_id, note]))
+  const keyOf = includeVoice ? eventKey : eventKeyWithoutVoice
   return notes.filter((note) => note.tie_next !== null).map((note) =>
-    `${eventKey(note)}>${byId.has(note.tie_next) ? eventKey(byId.get(note.tie_next)) : 'UNRESOLVED'}`
+    `${keyOf(note)}>${byId.has(note.tie_next) ? keyOf(byId.get(note.tie_next)) : 'UNRESOLVED'}`
   ).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
@@ -427,8 +445,14 @@ export function qualifyGtab10cSemanticParity(input = {}) {
 
   if (tabNotes.length !== notationNotes.length) {
     output.push({ code: tabNotes.length < notationNotes.length ? 'NOTE_MISSING' : 'NOTE_EXTRA', side: 'TAB' })
-  } else if (notationNotes.some((note) => !tabNotes.some((candidate) => eventKey(candidate) === eventKey(note)))) {
+  } else {
+    const notationVoices = new Set(notationNotes.map((note) => note.voice))
+    if (tabNotes.some((note) => notationVoices.has(note.voice))) {
+      output.push({ code: 'TAB_VOICE_NAMESPACE_COLLISION' })
+    }
+    if (!sameRows(voiceGroupSignatures(notationNotes), voiceGroupSignatures(tabNotes))) {
     output.push({ code: 'TAB_EVENT_MISMATCH' })
+    }
   }
   const positions = input.tabPositions
   if (!Array.isArray(positions) || positions.length !== tabNotes.length) {
@@ -455,6 +479,7 @@ export function qualifyGtab10cSemanticParity(input = {}) {
 
   if (unverifiedContexts.length) return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'UNVERIFIED_CONTEXT' }, provenance, unverifiedContexts)
   if (!validTieGraph(sourceNotes) || !validTieGraph(notationNotes) || !validTieGraph(tabNotes) ||
-      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes)) || !sameRows(tieEdges(notationNotes), tieEdges(tabNotes))) output.push({ code: 'TIE_MISMATCH' })
+      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes))
+      || !sameRows(tieEdges(notationNotes, false), tieEdges(tabNotes, false))) output.push({ code: 'TIE_MISMATCH' })
   return freezeReport(output.length === 0 ? 'PASS' : 'DIAGNOSTIC', output, provenance, unverifiedContexts)
 }
