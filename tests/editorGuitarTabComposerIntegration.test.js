@@ -46,10 +46,10 @@ const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
     <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
     <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
     <backup><duration>4</duration></backup>
-    <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>2</staff><notations><technical><string>2</string><fret>1</fret></technical></notations></note>
-    <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>2</staff><notations><technical><string>2</string><fret>3</fret></technical></notations></note>
-    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>2</staff><notations><technical><string>1</string><fret>0</fret></technical></notations></note>
-    <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>2</staff><notations><technical><string>1</string><fret>1</fret></technical></notations></note>
+    <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff><notations><technical><string>2</string><fret>1</fret></technical></notations></note>
+    <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff><notations><technical><string>2</string><fret>3</fret></technical></notations></note>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff><notations><technical><string>1</string><fret>0</fret></technical></notations></note>
+    <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><staff>2</staff><notations><technical><string>1</string><fret>1</fret></technical></notations></note>
   </measure></part>
 </score-partwise>`
 
