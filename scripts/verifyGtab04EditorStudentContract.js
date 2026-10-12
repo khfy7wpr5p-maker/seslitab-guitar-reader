@@ -48,14 +48,16 @@ const SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </measure></part>
 </score-partwise>`
 
-const POSITION_BY_MIDI = new Map([
-  [60, { string: 2, fret: 1 }],
-  [64, { string: 1, fret: 0 }],
-  [67, { string: 4, fret: 17 }],
-  [71, { string: 3, fret: 16 }],
+const POSITION_BY_PHYSICAL_MIDI = new Map([
+  [48, { string: 5, fret: 3 }],
+  [52, { string: 4, fret: 2 }],
+  [55, { string: 3, fret: 0 }],
+  [59, { string: 2, fret: 0 }],
 ])
 
-const sourceSession = editor.createSourceSession(SOURCE_XML)
+const sourceSession = editor.createSourceSession(SOURCE_XML, {
+  guitarPitchPolicy: editor.GUITAR_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+})
 assert.equal(sourceSession.events.length, 4)
 assert.deepEqual(
   [...new Set(sourceSession.events.map((event) => event.voice))]
@@ -64,11 +66,15 @@ assert.deepEqual(
 )
 assert.equal(sourceSession.groups.length, 1)
 assert.equal(sourceSession.groups[0].sourceEventIds.length, 4)
+assert.deepEqual(
+  sourceSession.events.map((event) => event.guitarPhysicalPitchMidi),
+  [48, 52, 55, 59],
+)
 
 const document = editor.createTabAssignmentDocument(sourceSession)
 for (const event of sourceSession.events) {
-  const position = POSITION_BY_MIDI.get(event.pitch.midi)
-  assert.ok(position, `qualification position missing for MIDI ${event.pitch.midi}`)
+  const position = POSITION_BY_PHYSICAL_MIDI.get(event.guitarPhysicalPitchMidi)
+  assert.ok(position, `qualification position missing for guitar physical MIDI ${event.guitarPhysicalPitchMidi}`)
   document.assignPosition(event.sourceEventId, position)
 }
 assert.equal(document.canExport(), true)
@@ -82,8 +88,10 @@ assert.match(guitarTabMusicXml, /<voice>1<\/voice>/u)
 assert.match(guitarTabMusicXml, /<voice>2<\/voice>/u)
 assert.match(guitarTabMusicXml, /<voice>3<\/voice>/u)
 assert.match(guitarTabMusicXml, /<voice>4<\/voice>/u)
-assert.match(guitarTabMusicXml, /<fret>17<\/fret>/u)
-assert.match(guitarTabMusicXml, /<fret>16<\/fret>/u)
+assert.match(guitarTabMusicXml, /<string>5<\/string><fret>3<\/fret>/u)
+assert.match(guitarTabMusicXml, /<string>4<\/string><fret>2<\/fret>/u)
+assert.match(guitarTabMusicXml, /<string>3<\/string><fret>0<\/fret>/u)
+assert.match(guitarTabMusicXml, /<string>2<\/string><fret>0<\/fret>/u)
 
 const scoreUpload = await prepareTeacherAssignmentScoreUpload({
   musicXml: SOURCE_XML,
@@ -138,7 +146,8 @@ console.log(JSON.stringify({
   ok: true,
   editorEventCount: sourceSession.events.length,
   editorVoices: ['1', '2', '3', '4'],
-  exactTeacherFrets: [1, 0, 17, 16],
+  exactTeacherFrets: [3, 2, 0, 0],
+  guitarPhysicalMidi: [48, 52, 55, 59],
   studentGuitarTabCapability: workspace.viewModel.capabilities.guitarTab,
   studentTabBytesPreserved: workspace.tabRenderSource.musicXml === guitarTabMusicXml,
 }, null, 2))
