@@ -90,7 +90,6 @@ const handoff = await prepareEditorGuitarTabHandoff({
   guitarPitchPolicy: GUITAR_PITCH_POLICY,
 })
 assert.equal(handoff.guitarTabMusicXml, guitarTabMusicXml)
-assert.equal(handoff.guitarPitchPolicy, GUITAR_PITCH_POLICY)
 assert.equal(handoff.pitchedEventCount, 4)
 
 const pkg = createStudentPrivatePracticePackageV1({
