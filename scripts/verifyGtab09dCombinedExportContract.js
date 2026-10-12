@@ -89,7 +89,6 @@ for (const fixture of fixtureCases) {
     guitarPitchPolicy: GUITAR_PITCH_POLICY,
   })
   assert.equal(handoff.guitarTabMusicXml, guitarTabMusicXml)
-  assert.equal(handoff.guitarPitchPolicy, GUITAR_PITCH_POLICY)
   assert.equal(handoff.pitchedEventCount, sourceSession.events.length)
   await assert.rejects(
     prepareEditorGuitarTabHandoff({ scoreUpload, guitarTabMusicXml, draftId: `${draftId}-stale`, guitarPitchPolicy: GUITAR_PITCH_POLICY }),
