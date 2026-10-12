@@ -43,7 +43,7 @@ function tabXml({ string = 2, fret = 1, duplicateTechnical = false } = {}) {
       </attributes>
       <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
       <backup><duration>1</duration></backup>
-      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>2</staff>${technical}</note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>2</staff>${technical}</note>
     </measure>
   </part>
 </score-partwise>`
