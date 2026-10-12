@@ -334,8 +334,8 @@ function voiceGroupSignatures(events) {
     byVoice.set(event.voice, group)
   }
   return [...byVoice.values()]
-    .map((group) => group.sort().join('\u0000'))
-    .sort()
+    .map((group) => group.sort((left, right) => left.localeCompare(right, 'en')).join('\u0000'))
+    .sort((left, right) => left.localeCompare(right, 'en'))
 }
 
 function assertTabVoiceParity(notationEvents, tabEvents) {
