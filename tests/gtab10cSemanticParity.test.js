@@ -83,8 +83,8 @@ function input(overrides = {}) {
   const postNotes = [
     note({ source_id: 'renamed-a', staff: 1 }),
     note({ source_id: 'renamed-b', measure_index: 1, pitch_midi: 65, onset_div: 4, staff: 1 }),
-    note({ source_id: 'tab-a', staff: 2, voice: 4 }),
-    note({ source_id: 'tab-b', measure_index: 1, pitch_midi: 65, onset_div: 4, staff: 2, voice: 4 }),
+    note({ source_id: 'tab-a', staff: 2, voice: 5 }),
+    note({ source_id: 'tab-b', measure_index: 1, pitch_midi: 65, onset_div: 4, staff: 2, voice: 5 }),
   ]
   const value = {
     fixtureId: 'f-sharp-natural-meter-change',
@@ -107,8 +107,8 @@ function input(overrides = {}) {
       targetSelection,
     },
     tabPositions: [
-      { measure_index: 0, pitch_midi: 66, onset_div: 0, duration_div: 4, voice: 4, string: 1, fret: 2 },
-      { measure_index: 1, pitch_midi: 65, onset_div: 4, duration_div: 4, voice: 4, string: 1, fret: 1 },
+      { measure_index: 0, pitch_midi: 66, onset_div: 0, duration_div: 4, voice: 5, string: 1, fret: 2 },
+      { measure_index: 1, pitch_midi: 65, onset_div: 4, duration_div: 4, voice: 5, string: 1, fret: 1 },
     ],
     ...overrides,
   }
@@ -147,6 +147,18 @@ test('GTAB-10C rejects a notation and TAB cross-staff voice collision', () => {
 
   assert.equal(report.status, 'DIAGNOSTIC')
   assert.ok(report.diagnostics.some((item) => item.code === 'TAB_VOICE_NAMESPACE_COLLISION'))
+})
+
+test('GTAB-10C rejects a disjoint TAB voice outside the renderer second-staff range', () => {
+  const value = input()
+  for (const entry of value.derivedSnapshot.notes.filter((candidate) => candidate.staff === 2)) {
+    entry.voice = 4
+  }
+  for (const position of value.tabPositions) position.voice = 4
+  const report = qualifyBoundArtifact(value)
+
+  assert.equal(report.status, 'DIAGNOSTIC')
+  assert.ok(report.diagnostics.some((item) => item.code === 'TAB_VOICE_STAFF_RANGE_INVALID'))
 })
 
 test('GTAB-10C rejects stale source bytes before semantic comparison', () => {
