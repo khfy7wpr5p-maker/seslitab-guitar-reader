@@ -10,7 +10,7 @@ function source(note = '<note><pitch><step>A</step><octave>4</octave></pitch><du
   return `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes>${note}</measure></part></score-partwise>`
 }
 
-function tab({ string = 3, fret = 2, technical = null, secondChord = '', tabVoice = 2 } = {}) {
+function tab({ string = 3, fret = 2, technical = null, secondChord = '', tabVoice = 5 } = {}) {
   const tech = technical ?? `<notations><technical><string>${string}</string><fret>${fret}</fret></technical></notations>`
   return `<?xml version="1.0"?><score-partwise version="4.0">
     <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
@@ -51,6 +51,15 @@ test('rejects a notation and TAB cross-staff voice collision', () => {
     ok: false,
     category: 'TAB_SHAPE',
     code: 'TAB_VOICE_NAMESPACE_COLLISION',
+  })
+})
+
+test('rejects a disjoint TAB voice outside the renderer second-staff range', () => {
+  const result = validate(source(), tab({ tabVoice: 2 }))
+  assert.deepEqual({ ok: result.ok, category: result.category, code: result.code }, {
+    ok: false,
+    category: 'TAB_SHAPE',
+    code: 'TAB_VOICE_STAFF_RANGE_INVALID',
   })
 })
 
