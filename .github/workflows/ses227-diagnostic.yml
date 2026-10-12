@@ -1,0 +1,38 @@
+name: SES-227 Focused Diagnostics
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Guitar TAB export validator
+        continue-on-error: true
+        run: node --test tests/guitarTabExportValidator.test.js
+      - name: SES-227 export pitch policy
+        continue-on-error: true
+        run: node --test tests/ses227ExportPitchPolicy.test.js
+      - name: SES-227 pitch policy
+        continue-on-error: true
+        run: node --test tests/ses227GuitarPitchPolicy.test.js
+      - name: Runtime binding
+        continue-on-error: true
+        run: node --test tests/guitarTabEditorRuntimeBinding.test.js
+      - name: Teacher workspace shell
+        continue-on-error: true
+        run: node --test tests/guitarTabTeacherWorkspaceUi.test.js
+      - name: Teacher authoring
+        continue-on-error: true
+        run: node --test tests/guitarTabTeacherAuthoring.test.js
