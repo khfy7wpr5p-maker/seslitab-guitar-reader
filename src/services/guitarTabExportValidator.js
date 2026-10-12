@@ -187,6 +187,32 @@ function updateTransposeState(attributes, state) {
   }
 }
 
+function parseClefOctaveChange(clef) {
+  const changes = directChildren(clef, 'clef-octave-change')
+  if (changes.length > 1) fail('SEMANTIC', 'CLEF_OCTAVE_AMBIGUOUS')
+  return changes.length === 1 ? signedIntegerNode(changes[0], 'SEMANTIC', 'CLEF_OCTAVE_INVALID') : 0
+}
+
+function updateClefState(attributes, state) {
+  if (!attributes) return
+  const seen = new Set()
+  for (const clef of directChildren(attributes, 'clef')) {
+    const rawNumber = clef.getAttribute?.('number')
+    const key = rawNumber === null ? 'default' : `staff:${rawNumber}`
+    if (seen.has(key)) fail('SEMANTIC', 'CLEF_AMBIGUOUS')
+    seen.add(key)
+    const value = parseClefOctaveChange(clef)
+    if (rawNumber === null) {
+      state.default = value
+    } else {
+      if (!/^[1-9][0-9]*$/u.test(rawNumber)) fail('SEMANTIC', 'CLEF_NUMBER_INVALID')
+      const staff = Number(rawNumber)
+      if (!Number.isSafeInteger(staff)) fail('SEMANTIC', 'CLEF_NUMBER_INVALID')
+      state.byStaff.set(staff, value)
+    }
+  }
+}
+
 function noteIdentity(note) {
   const voices = directChildren(note, 'voice')
   const staves = directChildren(note, 'staff')
@@ -202,6 +228,7 @@ function parsePartTimeline(part, { targetSelection = null } = {}) {
   const events = []
   let currentDivisions = null
   const transposeState = { default: 0, byStaff: new Map() }
+  const clefState = { default: 0, byStaff: new Map() }
 
   measures.forEach((measure, measureIndex) => {
     const attributesNodes = directChildren(measure, 'attributes')
@@ -212,7 +239,10 @@ function parsePartTimeline(part, { targetSelection = null } = {}) {
       currentDivisions = integerNode(divisionsNodes[0], 'SEMANTIC', 'DIVISIONS_INVALID', { min: 1, allowZero: false })
     }
     if (!Number.isInteger(currentDivisions) || currentDivisions <= 0) fail('SEMANTIC', 'DIVISIONS_REQUIRED')
-    for (const attributes of attributesNodes) updateTransposeState(attributes, transposeState)
+    for (const attributes of attributesNodes) {
+      updateTransposeState(attributes, transposeState)
+      updateClefState(attributes, clefState)
+    }
 
     let cursor = 0
     let lastNonChordOnset = null
@@ -263,6 +293,7 @@ function parsePartTimeline(part, { targetSelection = null } = {}) {
             staff,
             pitch,
             soundingPitchMidi,
+            clefOctaveChange: clefState.byStaff.get(staff) ?? clefState.default,
             tieStart: ties.tieStart,
             tieStop: ties.tieStop,
             technical: parseTechnical(child),
@@ -352,13 +383,48 @@ function assertTabShape(root) {
   return parts[0]
 }
 
-function assertPhysicalTab(staff2Events) {
+function positionMidi(technical) {
+  const openMidi = GUITAR_TAB_STANDARD_TUNING_MIDI[technical?.string]
+  if (!Number.isInteger(openMidi) || !Number.isSafeInteger(technical?.fret)) fail('PHYSICAL', 'TECHNICAL_POSITION_PITCH_MISMATCH')
+  return openMidi + technical.fret
+}
+
+function expectedGuitarPhysicalMidi(sourceEvent) {
+  if (sourceEvent.technical) return positionMidi(sourceEvent.technical)
+  if (sourceEvent.clefOctaveChange === -1) return sourceEvent.soundingPitchMidi
+  if (sourceEvent.clefOctaveChange !== 0) fail('PHYSICAL', 'CLEF_OCTAVE_CONTEXT_UNSUPPORTED')
+  const physicalMidi = sourceEvent.soundingPitchMidi - 12
+  if (!Number.isSafeInteger(physicalMidi) || physicalMidi < 0 || physicalMidi > 127) {
+    fail('PHYSICAL', 'GUITAR_PHYSICAL_PITCH_INVALID')
+  }
+  return physicalMidi
+}
+
+function physicalAuthorityBySemanticKey(sourceEvents) {
+  const buckets = new Map()
+  for (const event of sourceEvents) {
+    const key = semanticKey(event)
+    const values = buckets.get(key) ?? []
+    values.push(expectedGuitarPhysicalMidi(event))
+    buckets.set(key, values)
+  }
+  const authority = new Map()
+  for (const [key, values] of buckets) {
+    const unique = new Set(values)
+    if (unique.size !== 1) fail('PHYSICAL', 'SOURCE_PHYSICAL_AUTHORITY_AMBIGUOUS')
+    authority.set(key, values[0])
+  }
+  return authority
+}
+
+function assertPhysicalTab(sourceEvents, staff2Events) {
   if (staff2Events.length === 0) fail('PHYSICAL', 'TAB_STAFF2_PITCHED_NOTE_REQUIRED')
+  const sourceAuthority = physicalAuthorityBySemanticKey(sourceEvents)
   const groups = new Map()
   for (const event of staff2Events) {
     if (!event.technical) fail('PHYSICAL', 'TECHNICAL_STRING_FRET_REQUIRED')
-    const openMidi = GUITAR_TAB_STANDARD_TUNING_MIDI[event.technical.string]
-    if (!Number.isInteger(openMidi) || openMidi + event.technical.fret !== event.soundingPitchMidi) {
+    const expectedMidi = sourceAuthority.get(semanticKey(event))
+    if (!Number.isSafeInteger(expectedMidi) || positionMidi(event.technical) !== expectedMidi) {
       fail('PHYSICAL', 'TECHNICAL_POSITION_PITCH_MISMATCH')
     }
     const key = `${event.measureIndex}|${fractionKey(event.onset, event.divisions)}`
@@ -398,7 +464,7 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, D
   const staff2 = tabEvents.filter((event) => event.staff === 2)
   assertSemanticParity(scoreEvents, staff1, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH')
   assertSemanticParity(staff1, staff2, 'TAB_STAFF_SEMANTIC_MISMATCH')
-  assertPhysicalTab(staff2)
+  assertPhysicalTab(scoreEvents, staff2)
 
   return Object.freeze({
     ok: true,
