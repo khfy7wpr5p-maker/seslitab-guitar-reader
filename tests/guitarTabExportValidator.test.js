@@ -10,7 +10,7 @@ function source(note = '<note><pitch><step>A</step><octave>4</octave></pitch><du
   return `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes>${note}</measure></part></score-partwise>`
 }
 
-function tab({ string = 3, fret = 2, technical = null, secondChord = '' } = {}) {
+function tab({ string = 3, fret = 2, technical = null, secondChord = '', transpose = '' } = {}) {
   const tech = technical ?? `<notations><technical><string>${string}</string><fret>${fret}</fret></technical></notations>`
   return `<?xml version="1.0"?><score-partwise version="4.0">
     <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
@@ -23,7 +23,7 @@ function tab({ string = 3, fret = 2, technical = null, secondChord = '' } = {}) 
         <staff-tuning line="4"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
         <staff-tuning line="5"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
         <staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>
-      </staff-details><transpose><diatonic>0</diatonic><chromatic>0</chromatic><octave-change>-1</octave-change></transpose>
+      </staff-details>${transpose}
     </attributes>
     <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>${secondChord}
     <backup><duration>1</duration></backup>
@@ -35,7 +35,7 @@ function validate(scoreMusicXml, guitarTabMusicXml, targetSelection = TARGET) {
   return validateGuitarTabExport({ scoreMusicXml, guitarTabMusicXml, targetSelection, DOMParserCtor: SmoosicTestDOMParser })
 }
 
-test('accepts exact written A4 while validating physical A3 string 3 fret 2', () => {
+test('SES-227 accepts plain written A4 with physical A3 string 3 fret 2 without synthetic transpose', () => {
   const scoreXml = source()
   const result = validate(scoreXml, tab())
   assert.equal(result.ok, true)
@@ -51,7 +51,6 @@ test('SES-220 clef octave context keeps C-sharp 4 physical string 2 fret 2', () 
     '<divisions>1</divisions><clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
   ).replaceAll('<step>A</step><octave>4</octave>', '<step>C</step><alter>1</alter><octave>4</octave>')
   const tabXml = tab({ string: 2, fret: 2 })
-    .replace('<transpose><diatonic>0</diatonic><chromatic>0</chromatic><octave-change>-1</octave-change></transpose>', '')
     .replaceAll('<step>A</step><octave>4</octave>', '<step>C</step><alter>1</alter><octave>4</octave>')
 
   assert.equal(validate(scoreXml, tabXml).ok, true)
@@ -60,6 +59,31 @@ test('SES-220 clef octave context keeps C-sharp 4 physical string 2 fret 2', () 
     (({ ok, category, code }) => ({ ok, category, code }))(validate(scoreXml, wrong)),
     { ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH' },
   )
+})
+
+test('SES-227 explicit source transpose is applied once before the guitar target octave', () => {
+  const scoreXml = source().replace(
+    '<divisions>1</divisions>',
+    '<divisions>1</divisions><transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose>',
+  )
+  const transpose = '<transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose>'
+  const tabXml = tab({ string: 3, fret: 0, transpose })
+
+  assert.equal(validate(scoreXml, tabXml).ok, true)
+  const wrong = tabXml.replace('<string>3</string><fret>0</fret>', '<string>1</string><fret>3</fret>')
+  assert.deepEqual(
+    (({ ok, category, code }) => ({ ok, category, code }))(validate(scoreXml, wrong)),
+    { ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH' },
+  )
+})
+
+test('SES-227 preserves trusted source technical position instead of re-fingering it', () => {
+  const technical = '<notations><technical><string>1</string><fret>0</fret></technical></notations>'
+  const scoreXml = source(`<note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff>${technical}</note>`)
+  const tabXml = tab({ string: 1, fret: 0 })
+    .replaceAll('<step>A</step><octave>4</octave>', '<step>E</step><octave>4</octave>')
+
+  assert.equal(validate(scoreXml, tabXml).ok, true)
 })
 
 test('rejects a physically wrong octave/string position with PHYSICAL code', () => {
