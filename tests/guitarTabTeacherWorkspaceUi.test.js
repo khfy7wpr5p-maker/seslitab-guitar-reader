@@ -246,6 +246,7 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.equal(observations.editorXml, exactXml)
   assert.deepEqual(observations.editorOptions, {
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    guitarPitchPolicy: 'standard-guitar-written',
   })
   assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
   assert.equal(observations.renderXml, exactXml)
@@ -264,19 +265,22 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'ready')
 })
 
-test('SES-220 enables only source-derived physical positions in the teacher fretboard', async () => {
+test('SES-220 auto-preserves source-sounding pitch for explicit octave-clef notation', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
   const adapters = successfulAdapters()
+  const observedPolicies = []
   adapters.loadEditorRuntime = async () => ({
-    createSourceSession() {
+    createSourceSession(xml, options) {
+      observedPolicies.push(options.guitarPitchPolicy)
       return {
         events: [{
           sourceEventId: 'c-sharp-4', partId: 'P1', partIndex: 0, measureIndex: 0,
           voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0,
           pitch: { step: 'C', alter: 1, octave: 4, midi: 61 },
           soundingPitchMidi: 61,
-          guitarSoundingMidi: 49,
+          sourceClefOctaveChange: -1,
+          guitarPhysicalPitchMidi: options.guitarPitchPolicy === 'source-sounding' ? 61 : 49,
         }],
         groups: [{ groupId: 'group', sourceEventIds: ['c-sharp-4'] }],
       }
@@ -299,6 +303,8 @@ test('SES-220 enables only source-derived physical positions in the teacher fret
   }, adapters)
 
   assert.equal(result.ok, true)
+  assert.deepEqual(observedPolicies, ['standard-guitar-written', 'source-sounding'])
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).guitarPitchPolicy, 'source-sounding')
   const positions = root.querySelectorAll('.guitar-tab-fret-position')
   const string2Fret2 = positions.find((item) => item.dataset.string === '2' && item.dataset.fret === '2')
   const string5Fret4 = positions.find((item) => item.dataset.string === '5' && item.dataset.fret === '4')
@@ -306,6 +312,55 @@ test('SES-220 enables only source-derived physical positions in the teacher fret
   assert.equal(string2Fret2.getAttribute('aria-disabled'), 'false')
   assert.equal(string5Fret4.disabled, true)
   assert.equal(string5Fret4.getAttribute('aria-disabled'), 'true')
+})
+
+test('SES-227 normal notation resolves written A4 to physical A3 string 3 fret 2', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  const observedPolicies = []
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession(xml, options) {
+      observedPolicies.push(options.guitarPitchPolicy)
+      return {
+        events: [{
+          sourceEventId: 'a-4', partId: 'P1', partIndex: 0, measureIndex: 0,
+          voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0,
+          pitch: { step: 'A', alter: 0, octave: 4, midi: 69 },
+          soundingPitchMidi: 69,
+          sourceClefOctaveChange: 0,
+          guitarPhysicalPitchMidi: options.guitarPitchPolicy === 'standard-guitar-written' ? 57 : 69,
+        }],
+        groups: [{ groupId: 'group', sourceEventIds: ['a-4'] }],
+      }
+    },
+    createTabAssignmentDocument: () => ({ canExport: () => false, listAssignments: () => [] }),
+    createKeyboardController: () => ({
+      getState: () => ({
+        currentEventId: 'a-4', currentGroupId: 'group', selectedString: 3,
+        fretBuffer: '', noteCount: 1, noteIndex: 0,
+      }),
+      handleKey() {},
+    }),
+    createFixedSixStringRows: () => [1, 2, 3, 4, 5, 6].map((string) => ({
+      string, label: String(string), active: string === 3, fret: null, sourceEventId: null,
+    })),
+  })
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'violin-source.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(observedPolicies, ['standard-guitar-written'])
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).guitarPitchPolicy, 'standard-guitar-written')
+  const positions = root.querySelectorAll('.guitar-tab-fret-position')
+  const string3Fret2 = positions.find((item) => item.dataset.string === '3' && item.dataset.fret === '2')
+  const string1Fret5 = positions.find((item) => item.dataset.string === '1' && item.dataset.fret === '5')
+  assert.equal(string3Fret2.disabled, false)
+  assert.equal(string3Fret2.getAttribute('aria-disabled'), 'false')
+  assert.equal(string1Fret5.disabled, true)
+  assert.equal(string1Fret5.getAttribute('aria-disabled'), 'true')
 })
 
 test('GTAB-10B offers canonical multipart targets and rebuilds the target-bound source session on change', async () => {
