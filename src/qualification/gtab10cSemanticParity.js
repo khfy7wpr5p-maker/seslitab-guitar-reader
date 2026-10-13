@@ -77,16 +77,27 @@ function eventKeyWithoutVoice(note) {
     note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
 }
 
-function voiceGroupSignatures(notes) {
-  const groups = new Map()
-  for (const note of notes) {
-    const group = groups.get(note.voice) ?? []
-    group.push(eventKeyWithoutVoice(note))
-    groups.set(note.voice, group)
+function voiceSort(left, right) {
+  const leftNumber = Number(left), rightNumber = Number(right)
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber
+  return String(left).localeCompare(String(right))
+}
+
+function createTabVoiceMap(notes) {
+  const sourceVoices = [...new Set(notes.map((note) => note.voice))].sort(voiceSort)
+  const occupiedVoices = new Set(sourceVoices
+    .map((voice) => Number.parseInt(String(voice), 10))
+    .filter((voice) => Number.isSafeInteger(voice) && voice >= 0))
+  const tabVoiceBySource = new Map()
+  let nextVoice = 5
+  for (const sourceVoice of sourceVoices) {
+    while (occupiedVoices.has(nextVoice)) nextVoice += 1
+    if (!Number.isSafeInteger(nextVoice)) return null
+    tabVoiceBySource.set(sourceVoice, nextVoice)
+    occupiedVoices.add(nextVoice)
+    nextVoice += 1
   }
-  return [...groups.values()]
-    .map((group) => group.sort((left, right) => left.localeCompare(right, 'en')).join('\u0000'))
-    .sort((left, right) => left.localeCompare(right, 'en'))
+  return tabVoiceBySource
 }
 
 function groupKey(note, omittedField) {
@@ -449,7 +460,12 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     const notationVoices = new Set(notationNotes.map((note) => note.voice))
     if (tabNotes.some((note) => notationVoices.has(note.voice))) output.push({ code: 'TAB_VOICE_NAMESPACE_COLLISION' })
     if (tabNotes.some((note) => !Number.isSafeInteger(Number(note.voice)) || Number(note.voice) < 5)) output.push({ code: 'TAB_VOICE_STAFF_RANGE_INVALID' })
-    if (!sameRows(voiceGroupSignatures(notationNotes), voiceGroupSignatures(tabNotes))) output.push({ code: 'TAB_EVENT_MISMATCH' })
+    const tabVoiceBySource = createTabVoiceMap(notationNotes)
+    const expectedTabKeys = tabVoiceBySource === null ? [] : notationNotes
+      .map((note) => eventKey({ ...note, voice: tabVoiceBySource.get(note.voice) }))
+      .sort((left, right) => left.localeCompare(right, 'en'))
+    const actualTabKeys = tabNotes.map(eventKey).sort((left, right) => left.localeCompare(right, 'en'))
+    if (tabVoiceBySource === null || !sameRows(expectedTabKeys, actualTabKeys)) output.push({ code: 'TAB_EVENT_MISMATCH' })
   }
   const positions = input.tabPositions
   if (!Array.isArray(positions) || positions.length !== tabNotes.length) {

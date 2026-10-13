@@ -136,6 +136,46 @@ test('SES-227 preserves trusted source technical position instead of re-fingerin
   ).ok, true)
 })
 
+test('preserves distinct trusted physical authority across renderer-remapped unison voices', () => {
+  const sourceXml = source(`
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
+    <backup><duration>1</duration></backup>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>1</staff><notations><technical><string>1</string><fret>5</fret></technical></notations></note>
+  `)
+  const tabXml = `<?xml version="1.0"?><score-partwise version="4.0">
+    <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
+    <part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves>
+      <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>TAB</sign><line>5</line></clef>
+      <staff-details number="2"><staff-type>alternate</staff-type><staff-lines>6</staff-lines>
+        <staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
+        <staff-tuning line="2"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
+        <staff-tuning line="3"><tuning-step>D</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
+        <staff-tuning line="4"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
+        <staff-tuning line="5"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
+        <staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>
+      </staff-details>
+    </attributes>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
+    <backup><duration>1</duration></backup>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>1</staff></note>
+    <backup><duration>1</duration></backup>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
+    <backup><duration>1</duration></backup>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>6</voice><staff>2</staff><notations><technical><string>1</string><fret>5</fret></technical></notations></note>
+    </measure></part></score-partwise>`
+
+  const result = validate(
+    sourceXml,
+    tabXml,
+    null,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: true, category: null, code: null },
+  )
+})
+
 test('rejects a physically wrong octave/string position with PHYSICAL code', () => {
   const result = validate(
     source(),

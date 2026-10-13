@@ -161,6 +161,18 @@ test('GTAB-10C rejects a disjoint TAB voice outside the renderer second-staff ra
   assert.ok(report.diagnostics.some((item) => item.code === 'TAB_VOICE_STAFF_RANGE_INVALID'))
 })
 
+test('GTAB-10C rejects a safe but noncanonical Editor voice remap', () => {
+  const value = input()
+  for (const entry of value.derivedSnapshot.notes.filter((candidate) => candidate.staff === 2)) {
+    entry.voice = 6
+  }
+  for (const position of value.tabPositions) position.voice = 6
+  const report = qualifyBoundArtifact(value)
+
+  assert.equal(report.status, 'DIAGNOSTIC')
+  assert.ok(report.diagnostics.some((item) => item.code === 'TAB_EVENT_MISMATCH'))
+})
+
 test('GTAB-10C rejects stale source bytes before semantic comparison', () => {
   const report = qualifyBoundArtifact(input({ sourceBytes: '<score-partwise>changed</score-partwise>' }))
   assert.equal(report.status, 'UNSUPPORTED')
