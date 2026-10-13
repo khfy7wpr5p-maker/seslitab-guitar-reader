@@ -498,7 +498,7 @@ export function createTeacherAssignmentComposerService({
                 ?.guitarTabMusicXml ?? null,
             canonicalEvents:
               verifiedScoreUpload.canonicalEvents,
-            practice: {},
+            practice: { allowTempoChange: true },
           })
 
         scoreByStudent.set(

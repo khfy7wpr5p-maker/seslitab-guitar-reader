@@ -172,6 +172,34 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
   }
 })
 
+test('SCORE delivery allows the Student tempo control without overriding the score tempo', async () => {
+  const { service, calls } = harness()
+  const scoreUpload = await service.prepareScoreUpload({
+    musicXml: VALID_XML,
+    draftId: 'draft-student-tempo',
+  })
+
+  const result = await service.send({
+    draftId: 'draft-student-tempo',
+    studentIds: ['student-a'],
+    title: 'Tempo Etüdü',
+    teacherNote: '',
+    scoreUpload,
+    chordSnapshots: [],
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(calls.prepare.length, 1)
+  assert.equal(
+    calls.prepare[0][0].package.practice.allowTempoChange,
+    true,
+  )
+  assert.equal(
+    Object.hasOwn(calls.prepare[0][0].package.practice, 'tempoBpm'),
+    false,
+  )
+})
+
 test('SES-141 never reports a failed recipient as sent and does not cross-contaminate the other recipient', async () => {
   const { service, calls } = harness({ failStudent: 'student-b' })
   const scoreUpload = await service.prepareScoreUpload({
