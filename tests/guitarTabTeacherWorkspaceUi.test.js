@@ -303,7 +303,7 @@ test('SES-220 auto-preserves source-sounding pitch for explicit octave-clef nota
   }, adapters)
 
   assert.equal(result.ok, true)
-  assert.deepEqual(observedPolicies, ['source-sounding'])
+  assert.deepEqual(observedPolicies, ['standard-guitar-written', 'source-sounding'])
   assert.equal(getGuitarTabTeacherWorkspaceState(root).guitarPitchPolicy, 'source-sounding')
   const positions = root.querySelectorAll('.guitar-tab-fret-position')
   const string2Fret2 = positions.find((item) => item.dataset.string === '2' && item.dataset.fret === '2')
@@ -352,7 +352,7 @@ test('SES-227 normal notation resolves written A4 to physical A3 string 3 fret 2
   }, adapters)
 
   assert.equal(result.ok, true)
-  assert.deepEqual(observedPolicies, ['source-sounding', 'standard-guitar-written'])
+  assert.deepEqual(observedPolicies, ['standard-guitar-written'])
   assert.equal(getGuitarTabTeacherWorkspaceState(root).guitarPitchPolicy, 'standard-guitar-written')
   const positions = root.querySelectorAll('.guitar-tab-fret-position')
   const string3Fret2 = positions.find((item) => item.dataset.string === '3' && item.dataset.fret === '2')
