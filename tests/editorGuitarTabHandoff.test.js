@@ -83,7 +83,24 @@ function sourceScore(events, staff = null) {
 
 function editorTab(events, technicalById, { staffLines = 6 } = {}) {
   const staff1 = voiceTracks(events, 1)
-  const staff2 = voiceTracks(events, 2, technicalById)
+  const sourceVoices = [...new Set(events.map((event) => event.voice))]
+    .sort((left, right) => Number(left) - Number(right))
+  const reservedVoices = new Set(sourceVoices.map(Number).filter(Number.isSafeInteger))
+  const assignedVoices = new Set()
+  let nextVoice = 5
+  const tabVoiceBySource = new Map(sourceVoices.map((voice) => {
+    while (reservedVoices.has(nextVoice) || assignedVoices.has(nextVoice)) nextVoice += 1
+    if (!Number.isSafeInteger(nextVoice)) throw new RangeError('No renderer-safe TAB voice remains.')
+    const tabVoice = String(nextVoice)
+    assignedVoices.add(nextVoice)
+    nextVoice += 1
+    return [voice, tabVoice]
+  }))
+  const staff2 = voiceTracks(
+    events.map((event) => ({ ...event, voice: tabVoiceBySource.get(event.voice) })),
+    2,
+    technicalById,
+  )
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>

@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      GTAB_EDITOR_SHA: 0b36ecd8443e5ef9e07d2e2b4a8983736978b7bc
+      GTAB_EDITOR_SHA: ba496afe5cb31459f80960a7d4dbd0f96fce8e6d
       STUDENT_APP_SHA: 5f7d1d5a1b70616e599dec21ac384649d4803fcd
 
     steps:

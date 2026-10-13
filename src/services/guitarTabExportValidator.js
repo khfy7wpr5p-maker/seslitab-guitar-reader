@@ -195,6 +195,41 @@ function assertSemanticParity(expected, actual, code) {
   const expectedKeys = expected.map(semanticKey).sort(), actualKeys = actual.map(semanticKey).sort()
   for (let index = 0; index < expectedKeys.length; index += 1) if (expectedKeys[index] !== actualKeys[index]) fail('SEMANTIC', code)
 }
+function voiceSort(left, right) {
+  const leftNumber = Number(left), rightNumber = Number(right)
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber
+  return String(left).localeCompare(String(right))
+}
+function createTabVoiceMap(events) {
+  const sourceVoices = [...new Set(events.map((event) => event.voice))].sort(voiceSort)
+  const occupiedVoices = new Set(sourceVoices
+    .map((voice) => Number.parseInt(String(voice), 10))
+    .filter((voice) => Number.isSafeInteger(voice) && voice >= 0))
+  const tabVoiceBySource = new Map()
+  let nextVoice = 5
+  for (const sourceVoice of sourceVoices) {
+    while (occupiedVoices.has(nextVoice)) nextVoice += 1
+    if (!Number.isSafeInteger(nextVoice)) fail('TAB_SHAPE', 'TAB_VOICE_STAFF_RANGE_INVALID')
+    tabVoiceBySource.set(sourceVoice, String(nextVoice))
+    occupiedVoices.add(nextVoice)
+    nextVoice += 1
+  }
+  return tabVoiceBySource
+}
+function assertTabVoiceParity(notationEvents, tabEvents) {
+  const notationVoices = new Set(notationEvents.map((event) => event.voice))
+  const tabVoices = new Set(tabEvents.map((event) => event.voice))
+  if ([...tabVoices].some((voice) => notationVoices.has(voice))) fail('TAB_SHAPE', 'TAB_VOICE_NAMESPACE_COLLISION')
+  if ([...tabVoices].some((voice) => !Number.isSafeInteger(Number(voice)) || Number(voice) < 5)) fail('TAB_SHAPE', 'TAB_VOICE_STAFF_RANGE_INVALID')
+  const tabVoiceBySource = createTabVoiceMap(notationEvents)
+  const expectedKeys = notationEvents
+    .map((event) => semanticKey({ ...event, voice: tabVoiceBySource.get(event.voice) }))
+    .sort()
+  const actualKeys = tabEvents.map(semanticKey).sort()
+  if (expectedKeys.length !== actualKeys.length) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
+  for (let index = 0; index < expectedKeys.length; index += 1) if (expectedKeys[index] !== actualKeys[index]) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
+  return tabVoiceBySource
+}
 function assertTabShape(root) {
   const parts = directChildren(root, 'part')
   if (parts.length !== 1) fail('TAB_SHAPE', 'TAB_ONE_PART_REQUIRED')
@@ -232,16 +267,21 @@ function expectedGuitarPhysicalMidi(sourceEvent, guitarPitchPolicy) {
   if (!Number.isSafeInteger(physicalMidi) || physicalMidi < 0 || physicalMidi > 127) fail('PHYSICAL', 'GUITAR_PHYSICAL_PITCH_INVALID')
   return physicalMidi
 }
-function physicalAuthorityBySemanticKey(sourceEvents, guitarPitchPolicy) {
+function physicalAuthorityBySemanticKey(sourceEvents, guitarPitchPolicy, tabVoiceBySource) {
   const buckets = new Map()
-  for (const event of sourceEvents) { const key = semanticKey(event), values = buckets.get(key) ?? []; values.push(expectedGuitarPhysicalMidi(event, guitarPitchPolicy)); buckets.set(key, values) }
+  for (const event of sourceEvents) {
+    const tabVoice = tabVoiceBySource.get(event.voice)
+    if (tabVoice === undefined) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
+    const key = semanticKey({ ...event, voice: tabVoice }), values = buckets.get(key) ?? []
+    values.push(expectedGuitarPhysicalMidi(event, guitarPitchPolicy)); buckets.set(key, values)
+  }
   const authority = new Map()
   for (const [key, values] of buckets) { const unique = new Set(values); if (unique.size !== 1) fail('PHYSICAL', 'SOURCE_PHYSICAL_AUTHORITY_AMBIGUOUS'); authority.set(key, values[0]) }
   return authority
 }
-function assertPhysicalTab(sourceEvents, staff2Events, guitarPitchPolicy) {
+function assertPhysicalTab(sourceEvents, staff2Events, guitarPitchPolicy, tabVoiceBySource) {
   if (staff2Events.length === 0) fail('PHYSICAL', 'TAB_STAFF2_PITCHED_NOTE_REQUIRED')
-  const sourceAuthority = physicalAuthorityBySemanticKey(sourceEvents, guitarPitchPolicy), groups = new Map()
+  const sourceAuthority = physicalAuthorityBySemanticKey(sourceEvents, guitarPitchPolicy, tabVoiceBySource), groups = new Map()
   for (const event of staff2Events) {
     if (!event.technical) fail('PHYSICAL', 'TECHNICAL_STRING_FRET_REQUIRED')
     const expectedMidi = sourceAuthority.get(semanticKey(event))
@@ -272,8 +312,8 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, g
   if (scoreEvents.length === 0) fail('IDENTITY', 'TARGET_EMPTY')
   const tabEvents = parsePartTimeline(tabPart), staff1 = tabEvents.filter((event) => event.staff === 1), staff2 = tabEvents.filter((event) => event.staff === 2)
   assertSemanticParity(scoreEvents, staff1, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH')
-  assertSemanticParity(staff1, staff2, 'TAB_STAFF_SEMANTIC_MISMATCH')
-  assertPhysicalTab(scoreEvents, staff2, normalizedGuitarPitchPolicy)
+  const tabVoiceBySource = assertTabVoiceParity(staff1, staff2)
+  assertPhysicalTab(scoreEvents, staff2, normalizedGuitarPitchPolicy, tabVoiceBySource)
   return Object.freeze({ ok: true, category: null, code: null, facts: Object.freeze({ scoreEventCount: scoreEvents.length, notationEventCount: staff1.length, tabEventCount: staff2.length, targetSelection: selectedTarget, guitarPitchPolicy: normalizedGuitarPitchPolicy }) })
 }
 export function validateGuitarTabExport({ scoreMusicXml, guitarTabMusicXml, targetSelection = null, guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING, DOMParserCtor = globalThis.DOMParser } = {}) {
