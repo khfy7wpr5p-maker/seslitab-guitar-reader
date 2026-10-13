@@ -198,7 +198,11 @@ async function readSource(source, options = {}, adapters = normalizeAdapters()) 
   return Object.freeze({ xml: readResult.xmlText, name: readResult.sourceName })
 }
 
-function emptyState(generation = 0, guitarPitchPolicy = DEFAULT_GUITAR_PITCH_POLICY) {
+function emptyState(
+  generation = 0,
+  guitarPitchPolicy = DEFAULT_GUITAR_PITCH_POLICY,
+  guitarPitchPolicyExplicit = false,
+) {
   return {
     generation,
     sourceName: null,
@@ -216,6 +220,7 @@ function emptyState(generation = 0, guitarPitchPolicy = DEFAULT_GUITAR_PITCH_POL
     adapters: null,
     notationSynchronized: false,
     guitarPitchPolicy,
+    guitarPitchPolicyExplicit,
     exportValidationCategory: null,
     exportValidationCode: null,
   }
@@ -337,6 +342,15 @@ function resolveCanonicalRegion(state, encodedRegion) {
   return region ? Object.freeze({ partId: region.partId, partIndex: region.partIndex, staff: region.staff, voice: region.voice }) : null
 }
 
+function resolveAutomaticGuitarPitchPolicy(sourceSession) {
+  const events = sourceSession?.events
+  if (Array.isArray(events) && events.length > 0
+    && events.every((event) => event?.sourceClefOctaveChange === -1)) {
+    return GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING
+  }
+  return DEFAULT_GUITAR_PITCH_POLICY
+}
+
 async function activateTarget(root, state, selectedRegion) {
   if (!state || workspaceStates.get(root)?.generation !== state.generation) return false
   const invalidatedState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false, exportValidationCategory: null, exportValidationCode: null }
@@ -351,12 +365,22 @@ async function activateTarget(root, state, selectedRegion) {
     catch { selectedCanonicalNotes = Object.freeze([]) }
   }
   let sourceSession
+  let effectiveGuitarPitchPolicy = state.guitarPitchPolicy
   try {
     const editorSourceXml = state.adapters.prepareEditorSourceXml(state.sourceXml, selectedRegion)
-    sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, {
+    const sourceSoundingSession = state.editorRuntime.createSourceSession(editorSourceXml, {
       targetSelection: selectedRegion,
-      guitarPitchPolicy: state.guitarPitchPolicy,
+      guitarPitchPolicy: GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING,
     })
+    effectiveGuitarPitchPolicy = state.guitarPitchPolicyExplicit
+      ? state.guitarPitchPolicy
+      : resolveAutomaticGuitarPitchPolicy(sourceSoundingSession)
+    sourceSession = effectiveGuitarPitchPolicy === GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING
+      ? sourceSoundingSession
+      : state.editorRuntime.createSourceSession(editorSourceXml, {
+          targetSelection: selectedRegion,
+          guitarPitchPolicy: effectiveGuitarPitchPolicy,
+        })
   } catch {
     if (workspaceStates.get(root) === invalidatedState) {
       renderTargetOptions(root, invalidatedState)
@@ -373,6 +397,7 @@ async function activateTarget(root, state, selectedRegion) {
     ...state,
     sourceSession,
     selectedRegion,
+    guitarPitchPolicy: effectiveGuitarPitchPolicy,
     selectedRegionSummary: Object.freeze({
       ...selectedRegion,
       partName: state.canonicalTabRegions.find((region) => regionKey(region) === regionKey(selectedRegion))?.partName ?? selectedRegion.partId,
@@ -433,6 +458,7 @@ export async function setGuitarTabTeacherWorkspacePitchPolicy(root, value) {
   const nextState = {
     ...state,
     guitarPitchPolicy,
+    guitarPitchPolicyExplicit: true,
     sourceSession: null,
     selectedRegion: selectedRegion ?? null,
     selectedRegionSummary: null,
@@ -729,13 +755,14 @@ export async function resetGuitarTabTeacherWorkspace(root, adapters = {}) {
 export async function loadGuitarTabTeacherSource(root, source, adapters = {}, options = {}) {
   if (!root || typeof root.getElementById !== 'function') return Object.freeze({ ok: false, reason: 'INVALID_ROOT' })
   const normalized = normalizeAdapters(adapters)
+  const guitarPitchPolicyExplicit = Object.hasOwn(options, 'guitarPitchPolicy')
   let guitarPitchPolicy
   try { guitarPitchPolicy = normalizeGuitarTabPitchPolicy(options.guitarPitchPolicy ?? DEFAULT_GUITAR_PITCH_POLICY) }
   catch { return Object.freeze({ ok: false, reason: 'INVALID_GUITAR_PITCH_POLICY' }) }
   const previous = workspaceStates.get(root)
   const generation = (previous?.generation ?? 0) + 1
   await clearPreviousRender(root, normalized)
-  const loadingState = emptyState(generation, guitarPitchPolicy)
+  const loadingState = emptyState(generation, guitarPitchPolicy, guitarPitchPolicyExplicit)
   workspaceStates.set(root, loadingState)
   renderPitchPolicyOptions(root, loadingState)
   renderTargetOptions(root, loadingState)
@@ -775,7 +802,7 @@ export async function loadGuitarTabTeacherSource(root, source, adapters = {}, op
   const targetResolution = resolveGuitarTabTargetSelection(inventory)
   const selectedRegion = targetResolution.state === 'resolved' ? targetResolution.targetSelection : null
   const parsedScoreSummary = Object.freeze({ partCount: inventory.parts.length, regionCount: canonicalTabRegions.length, pitchedEventCount: canonicalTabRegions.reduce((sum, region) => sum + region.pitchedEventCount, 0) })
-  const pendingState = { ...emptyState(generation, guitarPitchPolicy), sourceName: payload.name, sourceXml: payload.xml, parsedScoreSummary, canonicalTabRegions, selectedRegion, inventory, canonicalNotes, editorRuntime, adapters: normalized }
+  const pendingState = { ...emptyState(generation, guitarPitchPolicy, guitarPitchPolicyExplicit), sourceName: payload.name, sourceXml: payload.xml, parsedScoreSummary, canonicalTabRegions, selectedRegion, inventory, canonicalNotes, editorRuntime, adapters: normalized }
   workspaceStates.set(root, pendingState)
   renderPitchPolicyOptions(root, pendingState)
   renderTargetOptions(root, pendingState)
