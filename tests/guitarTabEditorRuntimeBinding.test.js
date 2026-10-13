@@ -289,6 +289,7 @@ test('GTAB-09A loader shares one pending script load for concurrent callers', as
 
   const [left, right] = await Promise.all([first, second])
   assert.equal(left, runtime)
+  assert.equal(right, runtime)
   assert.equal(appended.length, 1)
 })
 
