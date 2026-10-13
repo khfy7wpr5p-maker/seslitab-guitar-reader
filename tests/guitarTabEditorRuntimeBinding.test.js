@@ -122,7 +122,7 @@ function fakeDocument({ scope = {}, existingScript = null, onAppend = null } = {
 }
 
 test('GTAB-09A Guitar TAB Editor runtime pin is exact reviewed revision', () => {
-  assert.equal(GUITAR_TAB_EDITOR_REVISION, '0b36ecd8443e5ef9e07d2e2b4a8983736978b7bc')
+  assert.equal(GUITAR_TAB_EDITOR_REVISION, '3724bda43f5c11dfece0dfebe3042f144a06048f')
   const manifest = validManifest()
   assert.equal(verifyGuitarTabEditorRuntimeManifest(manifest), manifest)
 })
@@ -289,7 +289,7 @@ test('GTAB-09A loader shares one pending script load for concurrent callers', as
 
   const [left, right] = await Promise.all([first, second])
   assert.equal(left, runtime)
-  assert.equal(right, runtime)
+  assert.equal(appended.length, 1)
 })
 
 test('GTAB-09A loader clears a failed load so the same document can retry', async () => {
