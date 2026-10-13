@@ -122,7 +122,7 @@ function fakeDocument({ scope = {}, existingScript = null, onAppend = null } = {
 }
 
 test('GTAB-09A Guitar TAB Editor runtime pin is exact reviewed revision', () => {
-  assert.equal(GUITAR_TAB_EDITOR_REVISION, '3724bda43f5c11dfece0dfebe3042f144a06048f')
+  assert.equal(GUITAR_TAB_EDITOR_REVISION, 'ba496afe5cb31459f80960a7d4dbd0f96fce8e6d')
   const manifest = validManifest()
   assert.equal(verifyGuitarTabEditorRuntimeManifest(manifest), manifest)
 })

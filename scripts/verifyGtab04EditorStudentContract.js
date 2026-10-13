@@ -75,6 +75,14 @@ assert.match(guitarTabMusicXml, /<string>5<\/string><fret>3<\/fret>/u)
 assert.match(guitarTabMusicXml, /<string>4<\/string><fret>2<\/fret>/u)
 assert.match(guitarTabMusicXml, /<string>3<\/string><fret>0<\/fret>/u)
 assert.match(guitarTabMusicXml, /<string>2<\/string><fret>0<\/fret>/u)
+assert.match(guitarTabMusicXml, /<voice>1<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>2<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>3<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>4<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>5<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>6<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>7<\/voice>/u)
+assert.match(guitarTabMusicXml, /<voice>8<\/voice>/u)
 
 const scoreUpload = await prepareTeacherAssignmentScoreUpload({
   musicXml: SOURCE_XML,
