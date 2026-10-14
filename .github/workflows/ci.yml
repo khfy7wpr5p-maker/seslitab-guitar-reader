@@ -173,7 +173,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STUDENT_APP_SHA: 70042d2314c005e71de80094363ba66faa795456
+      STUDENT_APP_SHA: b084b691820e8a10e2c141857951ce3aa8fc57e6
       RENDERER_SHA: 13aa0843158257a207afe062879743d58048cc6d
 
     strategy:
