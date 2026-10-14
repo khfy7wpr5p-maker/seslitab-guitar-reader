@@ -10,6 +10,7 @@ import {
   getGuitarTabTeacherWorkspaceState,
   loadGuitarTabTeacherSource,
   resetGuitarTabTeacherWorkspace,
+  setGuitarTabTeacherWorkspacePitchPolicy,
 } from '../src/guitarTabTeacherWorkspaceUi.js'
 
 class FakeClassList {
@@ -262,7 +263,7 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   })
   assert.deepEqual(state.selectedRegion, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
   assert.equal(state.rendererAvailable, true)
-  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'ready')
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
 })
 
 test('SES-220 auto-preserves source-sounding pitch for explicit octave-clef notation', async () => {
@@ -826,6 +827,93 @@ test('GTAB-09B fails closed on unsupported source without removing the editor sh
   assert.equal(root.querySelectorAll('.guitar-tab-string-row').length, 6)
 })
 
+test('GTAB-10B preserves the editor rejection code instead of reporting a ready authoring state', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      const error = new Error('grace notes are unsupported in the selected voice')
+      error.code = 'EDITOR_GRACE_NOTE_UNSUPPORTED'
+      throw error
+    },
+  })
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'polyphonic.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+  const state = getGuitarTabTeacherWorkspaceState(root)
+
+  assert.deepEqual(result, { ok: false, reason: 'SOURCE_UNSUPPORTED' })
+  assert.equal(state.authoringErrorCode, 'EDITOR_GRACE_NOTE_UNSUPPORTED')
+  assert.match(state.authoringErrorMessage, /grace notes/u)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
+  assert.match(root.getElementById('guitar-tab-editor-status').textContent, /EDITOR_GRACE_NOTE_UNSUPPORTED/u)
+})
+
+test('GTAB-10B preserves authoring-construction rejection details', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession() {
+      return {
+        events: [{ sourceEventId: 'note-1', partId: 'P1', partIndex: 0, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }],
+        groups: [{ groupId: 'group-1', sourceEventIds: ['note-1'] }],
+      }
+    },
+    createTabAssignmentDocument() {
+      const error = new Error('assignment document rejected the selected target')
+      error.code = 'EDITOR_ASSIGNMENT_REJECTED'
+      throw error
+    },
+    createKeyboardController() {},
+    createFixedSixStringRows() {},
+  })
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'authoring-rejected.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+  const state = getGuitarTabTeacherWorkspaceState(root)
+
+  assert.equal(result.ok, true)
+  assert.equal(state.authoringAvailable, false)
+  assert.equal(state.authoringErrorCode, 'EDITOR_ASSIGNMENT_REJECTED')
+  assert.match(state.authoringErrorMessage, /assignment document rejected/u)
+  assert.equal(root.getElementById('guitar-tab-editor-status').dataset.state, 'unsupported')
+})
+
+test('GTAB-10B does not overwrite an unavailable authoring session with a ready status', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+
+  const result = await loadGuitarTabTeacherSource(root, {
+    name: 'no-authoring.musicxml', text: async () => '<score-partwise/>',
+  }, successfulAdapters())
+
+  assert.equal(result.ok, true)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).authoringAvailable, false)
+  assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'unsupported')
+  assert.doesNotMatch(root.getElementById('guitar-tab-source-status').textContent, /hazır/u)
+})
+
+test('GTAB-10B pitch-policy changes cannot mark an unavailable authoring session ready', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  await loadGuitarTabTeacherSource(root, {
+    name: 'no-authoring.musicxml', text: async () => '<score-partwise/>',
+  }, adapters)
+
+  assert.equal(
+    await setGuitarTabTeacherWorkspacePitchPolicy(root, 'source-sounding'),
+    true,
+  )
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).authoringAvailable, false)
+  assert.equal(root.getElementById('guitar-tab-editor-status').dataset.state, 'unsupported')
+  assert.doesNotMatch(root.getElementById('guitar-tab-editor-status').textContent, /modu değişti/u)
+})
+
 test('GTAB-10C clears the TAB loading message when the shared editor runtime is unavailable', async () => {
   const root = fakeDocument()
   ensureGuitarTabPanel(root)
@@ -949,6 +1037,57 @@ test('GTAB-10B target invalidation clears the previous notation highlight', asyn
   assert.equal(clearCount, clearCountBeforeInvalidation + 1)
   assert.equal(getGuitarTabTeacherWorkspaceState(root).selectedRegion, null)
   assert.equal(root.getElementById('guitar-tab-source-status').dataset.state, 'target-required')
+})
+
+test('GTAB-10B authoring rejection clears the previous target highlight', async () => {
+  const root = fakeDocument()
+  ensureGuitarTabPanel(root)
+  const adapters = successfulAdapters()
+  adapters.extractScoreInventory = () => ({ parts: [
+    { partId: 'P1', partIndex: 0, name: 'First', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+    { partId: 'P2', partIndex: 1, name: 'Second', staves: [{ staff: 1, voices: [{ voice: 1, pitchedEventCount: 1 }] }] },
+  ] })
+  adapters.parseCanonicalNotes = () => [
+    { partId: 'P1', partIndex: 0, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 },
+    { partId: 'P2', partIndex: 1, staff: 1, voice: 1, measureIndex: 0, startBeat: 0 },
+  ]
+  let selectedPartId = null
+  adapters.loadEditorRuntime = async () => ({
+    createSourceSession(_xml, { targetSelection }) {
+      selectedPartId = targetSelection.partId
+      const noteId = `${selectedPartId}-note`
+      return {
+        events: [{ sourceEventId: noteId, partId: selectedPartId, partIndex: targetSelection.partIndex, measureIndex: 0, voice: '1', staff: 1, onsetDivisions: 0, divisions: 1, sourceOrder: 0 }],
+        groups: [{ groupId: `${noteId}-group`, sourceEventIds: [noteId] }],
+      }
+    },
+    createTabAssignmentDocument() {
+      if (selectedPartId === 'P2') throw new Error('second target authoring rejected')
+      return { listAssignments: () => [] }
+    },
+    createKeyboardController: ({ sourceSession }) => ({
+      getState: () => ({ currentEventId: sourceSession.events[0].sourceEventId, currentGroupId: sourceSession.groups[0].groupId, selectedString: 1, fretBuffer: '' }),
+      handleKey() {},
+    }),
+    createFixedSixStringRows: () => [],
+  })
+  let clearCount = 0
+  adapters.clearHighlights = async () => { clearCount += 1; return true }
+  adapters.moveCursor = async () => true
+  adapters.highlightNote = async () => true
+
+  await loadGuitarTabTeacherSource(root, { name: 'two.musicxml', text: async () => '<score-partwise/>' }, adapters)
+  const select = root.getElementById('guitar-tab-target-region')
+  select.value = select.children[1].value
+  await select.listeners.get('change')[0]()
+  const clearCountBeforeFailure = clearCount
+
+  select.value = select.children[2].value
+  await select.listeners.get('change')[0]()
+
+  assert.equal(clearCount, clearCountBeforeFailure + 1)
+  assert.equal(getGuitarTabTeacherWorkspaceState(root).authoringAvailable, false)
+  assert.equal(root.getElementById('guitar-tab-editor-status').dataset.state, 'unsupported')
 })
 test('GTAB-10B target changes cancel an in-flight export before download', async () => {
   const root = fakeDocument()

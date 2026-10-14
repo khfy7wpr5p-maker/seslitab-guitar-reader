@@ -65,6 +65,16 @@ function setEditorStatus(root, text, state = 'ready') {
   if (status.dataset) status.dataset.state = state
 }
 
+function editorFailure(error, fallbackCode) {
+  const code = typeof error?.code === 'string' && error.code.length > 0 && error.code.length <= 128
+    ? error.code
+    : fallbackCode
+  const message = typeof error?.message === 'string' && error.message.length > 0
+    ? error.message.slice(0, 256)
+    : 'Editor çalışma zamanı hedefi reddetti.'
+  return Object.freeze({ code, message })
+}
+
 function clearScoreSurface(root) {
   const surface = root?.getElementById?.('guitar-tab-score-surface')
   if (!surface) return
@@ -223,6 +233,8 @@ function emptyState(
     guitarPitchPolicyExplicit,
     exportValidationCategory: null,
     exportValidationCode: null,
+    authoringErrorCode: null,
+    authoringErrorMessage: null,
   }
 }
 
@@ -353,7 +365,7 @@ function resolveAutomaticGuitarPitchPolicy(sourceSession) {
 
 async function activateTarget(root, state, selectedRegion) {
   if (!state || workspaceStates.get(root)?.generation !== state.generation) return false
-  const invalidatedState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false, exportValidationCategory: null, exportValidationCode: null }
+  const invalidatedState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false, exportValidationCategory: null, exportValidationCode: null, authoringErrorCode: null, authoringErrorMessage: null }
   workspaceStates.set(root, invalidatedState)
   renderTargetOptions(root, invalidatedState)
   renderPitchPolicyOptions(root, invalidatedState)
@@ -384,18 +396,27 @@ async function activateTarget(root, state, selectedRegion) {
         guitarPitchPolicy: effectiveGuitarPitchPolicy,
       })
     }
-  } catch {
+  } catch (error) {
     if (workspaceStates.get(root) === invalidatedState) {
-      renderTargetOptions(root, invalidatedState)
-      renderPitchPolicyOptions(root, invalidatedState)
+      const failure = editorFailure(error, 'EDITOR_SOURCE_SESSION_REJECTED')
+      const failedState = { ...invalidatedState, authoringErrorCode: failure.code, authoringErrorMessage: failure.message }
+      workspaceStates.set(root, failedState)
+      renderTargetOptions(root, failedState)
+      renderPitchPolicyOptions(root, failedState)
       setStatus(root, 'MusicXML güvenli biçimde açılamadı.', 'unsupported')
-      setEditorStatus(root, 'Bu MusicXML editör tarafından açılamadı. Dosyanın nota verisini kontrol edin.', 'unsupported')
-      await synchronizeAuthoringSelection(root, invalidatedState)
+      setEditorStatus(root, `Bu MusicXML editör tarafından açılamadı. ${failure.code}: ${failure.message}`, 'unsupported')
+      await synchronizeAuthoringSelection(root, failedState)
     }
     return false
   }
   if (workspaceStates.get(root)?.generation !== state.generation) return false
-  const authoring = createAuthoringState(state.editorRuntime, sourceSession, selectedCanonicalNotes, canonicalNotes)
+  let authoring = null
+  let authoringFailure = null
+  try {
+    authoring = createAuthoringState(state.editorRuntime, sourceSession, selectedCanonicalNotes, canonicalNotes)
+  } catch (error) {
+    authoringFailure = editorFailure(error, 'EDITOR_AUTHORING_INIT_REJECTED')
+  }
   const nextState = {
     ...state,
     sourceSession,
@@ -412,6 +433,8 @@ async function activateTarget(root, state, selectedRegion) {
     notationSynchronized: false,
     exportValidationCategory: null,
     exportValidationCode: null,
+    authoringErrorCode: authoringFailure?.code ?? null,
+    authoringErrorMessage: authoringFailure?.message ?? null,
   }
   workspaceStates.set(root, nextState)
   renderTargetOptions(root, nextState)
@@ -419,7 +442,16 @@ async function activateTarget(root, state, selectedRegion) {
   renderAuthoringSurface(root, nextState)
   if (!authoring) {
     setStatus(root, 'MusicXML nota hedefleri bulundu ancak TAB editör oturumu oluşturulamadı.', 'unsupported')
-    setEditorStatus(root, 'Bu nota bölgesi için düzenlenebilir TAB oturumu oluşturulamadı.', 'unsupported')
+    setEditorStatus(
+      root,
+      authoringFailure
+        ? `Bu nota bölgesi için düzenlenebilir TAB oturumu oluşturulamadı. ${authoringFailure.code}: ${authoringFailure.message}`
+        : 'Bu nota bölgesi için düzenlenebilir TAB oturumu oluşturulamadı.',
+      'unsupported',
+    )
+    if (nextState.rendererRuntime) await synchronizeAuthoringSelection(root, nextState)
+    if (workspaceStates.get(root) !== nextState) return false
+    return true
   }
   if (nextState.rendererRuntime) await synchronizeAuthoringSelection(root, nextState)
   if (workspaceStates.get(root) !== nextState) return false
@@ -432,7 +464,7 @@ async function handleTargetChange(root, encodedRegion) {
   const selectedRegion = resolveCanonicalRegion(state, encodedRegion)
   if (!selectedRegion) {
     if (state) {
-      const nextState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false, exportValidationCategory: null, exportValidationCode: null }
+      const nextState = { ...state, sourceSession: null, selectedRegion: null, selectedRegionSummary: null, tabDocument: null, keyboardController: null, targetResolver: null, notationSynchronized: false, exportValidationCategory: null, exportValidationCode: null, authoringErrorCode: null, authoringErrorMessage: null }
       workspaceStates.set(root, nextState)
       renderAuthoringSurface(root, nextState)
       renderTargetOptions(root, nextState)
@@ -471,6 +503,8 @@ export async function setGuitarTabTeacherWorkspacePitchPolicy(root, value) {
     notationSynchronized: false,
     exportValidationCategory: null,
     exportValidationCode: null,
+    authoringErrorCode: null,
+    authoringErrorMessage: null,
   }
   workspaceStates.set(root, nextState)
   renderPitchPolicyOptions(root, nextState)
@@ -478,7 +512,10 @@ export async function setGuitarTabTeacherWorkspacePitchPolicy(root, value) {
   renderAuthoringSurface(root, nextState)
   if (!selectedRegion || !state.sourceXml) return true
   const activated = await activateTarget(root, nextState, selectedRegion)
-  if (activated) setEditorStatus(root, 'Gitar ses yüksekliği modu değişti; önceki tel/perde atamaları sıfırlandı.', 'ready')
+  const activatedState = workspaceStates.get(root)
+  if (activated && activatedState?.tabDocument && activatedState?.keyboardController) {
+    setEditorStatus(root, 'Gitar ses yüksekliği modu değişti; önceki tel/perde atamaları sıfırlandı.', 'ready')
+  }
   return activated
 }
 
@@ -581,12 +618,10 @@ function renderAuthoringSurface(root, state) {
 
 function createAuthoringState(editorRuntime, sourceSession, canonicalNotes, rendererCanonicalNotes = canonicalNotes) {
   if (typeof editorRuntime?.createTabAssignmentDocument !== 'function' || typeof editorRuntime?.createKeyboardController !== 'function' || typeof editorRuntime?.createFixedSixStringRows !== 'function' || !sourceSession?.groups?.length) return null
-  try {
-    const tabDocument = editorRuntime.createTabAssignmentDocument(sourceSession)
-    const keyboardController = editorRuntime.createKeyboardController({ sourceSession, document: tabDocument })
-    const targetResolver = createGuitarTabRendererTargetResolver(sourceSession, rendererCanonicalNotes)
-    return { tabDocument, keyboardController, targetResolver }
-  } catch { return null }
+  const tabDocument = editorRuntime.createTabAssignmentDocument(sourceSession)
+  const keyboardController = editorRuntime.createKeyboardController({ sourceSession, document: tabDocument })
+  const targetResolver = createGuitarTabRendererTargetResolver(sourceSession, rendererCanonicalNotes)
+  return { tabDocument, keyboardController, targetResolver }
 }
 
 async function synchronizeAuthoringSelectionNow(root, state) {
@@ -692,6 +727,8 @@ export function getGuitarTabTeacherWorkspaceState(root) {
     notationSynchronized: state.notationSynchronized === true,
     exportValidationCategory: state.exportValidationCategory ?? null,
     exportValidationCode: state.exportValidationCode ?? null,
+    authoringErrorCode: state.authoringErrorCode ?? null,
+    authoringErrorMessage: state.authoringErrorMessage ?? null,
     exportReady,
   })
 }
