@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      STUDENT_APP_SHA: ef9b29bf5da0fafa01c93f08212b34609aff1651
+      STUDENT_APP_SHA: b084b691820e8a10e2c141857951ce3aa8fc57e6
 
     steps:
       - name: Checkout SesliTab exact PR head

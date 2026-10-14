@@ -7,7 +7,7 @@ import {
 } from '../scripts/tdProd10TeacherStudentFixture.js'
 
 const STUDENT_APP_SHA =
-  '70042d2314c005e71de80094363ba66faa795456'
+  'b084b691820e8a10e2c141857951ce3aa8fc57e6'
 
 test('SES-122 builds exact delivered SCORE + CHORD_BOARD output for one authorized student', async () => {
   const fixture =
