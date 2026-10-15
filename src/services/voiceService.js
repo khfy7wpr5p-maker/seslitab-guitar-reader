@@ -283,17 +283,27 @@ export function buildRhythmSchedule(notes, speed = 1, tempo = 120) {
   let cursorSeconds = 0
   let latestEndSeconds = 0
   let index = 0
+  let sourceSearchIndex = 0
+
+  const canonicalIndexFor = (note) => {
+    for (let candidate = sourceSearchIndex; candidate < safeNotes.length; candidate += 1) {
+      if (safeNotes[candidate] !== note) continue
+      sourceSearchIndex = candidate + 1
+      return candidate
+    }
+    return safeNotes.indexOf(note)
+  }
 
   while (index < attacks.length) {
     const first = attacks[index]
-    const group = [{ note: first, index }]
+    const group = [{ note: first, index: canonicalIndexFor(first) }]
     let nextIndex = index + 1
 
     while (nextIndex < attacks.length) {
       const next = attacks[nextIndex]
       const isChordContinuation = next.isChordNote === true || (first.isChord && next.isChord)
       if (!isChordContinuation || !sameOnset(first, next)) break
-      group.push({ note: next, index: nextIndex })
+      group.push({ note: next, index: canonicalIndexFor(next) })
       nextIndex++
     }
 

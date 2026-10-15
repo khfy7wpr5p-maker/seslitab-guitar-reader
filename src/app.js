@@ -45,6 +45,11 @@ import {
   resolveStageHPlaybackRoute,
 } from './services/stageHReviewPlayback.js'
 import { normalizeTabInput } from '../tabParser.js'
+import {
+  beginScorePlaybackHighlight,
+  endScorePlaybackHighlight,
+  syncScorePlaybackNoteHighlight,
+} from './scoreViewUi.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -73,6 +78,7 @@ let selectedMusicXmlFile = null
 let qualityGateActive = false
 let stageHPlaybackRoute = null
 let suppressResultScroll = false
+let activeRhythmHighlightToken = null
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -810,12 +816,20 @@ async function toggleRhythm() {
 
   const tempo = parseFloat($('tempo-slider').value)
   const speed = bpmToSpeed(tempo)
+  const playbackHighlightToken = beginScorePlaybackHighlight(document, parsedNotes)
+  activeRhythmHighlightToken = playbackHighlightToken
 
   await playRhythm(parsedNotes, speed, (note, i) => {
     document.querySelectorAll('.note-card.playing').forEach((c) => c.classList.remove('playing'))
     const card = $(`note-${i}`)
     if (card) card.classList.add('playing')
+    if (playbackHighlightToken) {
+      void syncScorePlaybackNoteHighlight(document, i, playbackHighlightToken)
+    }
   })
+
+  if (playbackHighlightToken) await endScorePlaybackHighlight(document, playbackHighlightToken)
+  if (activeRhythmHighlightToken === playbackHighlightToken) activeRhythmHighlightToken = null
 
   isPlaying = false
   resetRhythmButtons()
@@ -829,6 +843,9 @@ async function toggleRhythm() {
 
 function stopRhythmPlayback() {
   stopRhythm()
+  const playbackHighlightToken = activeRhythmHighlightToken
+  activeRhythmHighlightToken = null
+  if (playbackHighlightToken) void endScorePlaybackHighlight(document, playbackHighlightToken)
   isPlaying = false
   resetRhythmButtons()
   if (stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW) {

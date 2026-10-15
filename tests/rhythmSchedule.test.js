@@ -41,6 +41,16 @@ describe('Rhythm playback schedule', () => {
     assert.equal(schedule.totalSeconds, 0.5)
   })
 
+  test('callback indices stay canonical when tie continuations are removed from attacks', () => {
+    const tiedStart = note({ step: 'C', tieStart: true })
+    const tiedStop = note({ step: 'C', startBeat: 1, tieStop: true })
+    const following = note({ step: 'D', startBeat: 2 })
+    const schedule = buildRhythmSchedule([tiedStart, tiedStop, following], 1, 120)
+
+    assert.deepEqual(schedule.events.map((event) => event.index), [0, 2])
+    assert.equal(schedule.events[1].note, following)
+  })
+
   test('long scores produce a deterministic plan without pre-creating audio nodes', () => {
     const notes = Array.from({ length: 2000 }, (_, index) =>
       note({

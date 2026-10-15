@@ -380,11 +380,12 @@ async function activateTarget(root, state, selectedRegion) {
   let effectiveGuitarPitchPolicy = state.guitarPitchPolicy
   try {
     const editorSourceXml = state.adapters.prepareEditorSourceXml(state.sourceXml, selectedRegion)
+    const editorTargetSelection = { ...selectedRegion, scope: 'staff' }
     const initialPitchPolicy = state.guitarPitchPolicyExplicit
       ? state.guitarPitchPolicy
       : DEFAULT_GUITAR_PITCH_POLICY
     sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, {
-      targetSelection: selectedRegion,
+      targetSelection: editorTargetSelection,
       guitarPitchPolicy: initialPitchPolicy,
     })
     effectiveGuitarPitchPolicy = state.guitarPitchPolicyExplicit
@@ -392,7 +393,7 @@ async function activateTarget(root, state, selectedRegion) {
       : resolveAutomaticGuitarPitchPolicy(sourceSession)
     if (effectiveGuitarPitchPolicy !== initialPitchPolicy) {
       sourceSession = state.editorRuntime.createSourceSession(editorSourceXml, {
-        targetSelection: selectedRegion,
+        targetSelection: editorTargetSelection,
         guitarPitchPolicy: effectiveGuitarPitchPolicy,
       })
     }
