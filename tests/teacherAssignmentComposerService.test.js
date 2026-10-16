@@ -132,6 +132,7 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
     studentIds: ['student-a', 'student-b'],
     title: 'Etüt 1',
     teacherNote: 'Yavaş çalış.',
+    playbackInstrument: 'VIOLIN',
     scoreUpload,
     chordSnapshots: [
       getChordBoardVoicings('Am')[0],
@@ -158,6 +159,10 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
       prepared[0].assignment.sourceRef.package12Status,
       'teacher_selected_safe_musicxml',
     )
+    assert.equal(
+      prepared[0].package.playbackInstrument,
+      'VIOLIN',
+    )
     assert.match(
       prepared[0].assignment.sourceRef.qualityEvidenceId,
       /^teacher-selected:[0-9a-f]{64}$/,
@@ -170,6 +175,39 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
     assert.equal(calls.pieces[index].studentId, studentId)
     assert.equal(calls.pieces[index].chordAssignmentIds.length, 2)
   }
+})
+
+test('SCORE delivery defaults legacy callers to GRAND_PIANO and rejects unknown instruments', async () => {
+  const { service, calls } = harness()
+  const scoreUpload = await service.prepareScoreUpload({
+    musicXml: VALID_XML,
+    draftId: 'draft-instrument-default',
+  })
+
+  await service.send({
+    draftId: 'draft-instrument-default',
+    studentIds: ['student-a'],
+    title: 'Varsayılan piyano',
+    scoreUpload,
+  })
+  assert.equal(
+    calls.prepare[0][0].package.playbackInstrument,
+    'GRAND_PIANO',
+  )
+
+  await assert.rejects(
+    service.send({
+      draftId: 'draft-instrument-invalid',
+      studentIds: ['student-a'],
+      title: 'Geçersiz ses',
+      scoreUpload: {
+        ...scoreUpload,
+        draftId: 'draft-instrument-invalid',
+      },
+      playbackInstrument: 'RANDOM_INSTRUMENT',
+    }),
+    /playbackInstrument/,
+  )
 })
 
 test('SCORE delivery allows the Student tempo control without overriding the score tempo', async () => {

@@ -8,6 +8,9 @@ import {
 import {
   TEACHER_ASSIGNMENT_DELIVERY_PHASE,
 } from './services/teacherAssignmentDeliveryOrchestrator.js'
+import {
+  STUDENT_PLAYBACK_INSTRUMENT,
+} from './services/studentPracticePackageV1.js'
 
 const CHORD_BOARD_URL =
   'https://khfy7wpr5p-maker.github.io/st-guitar-chord-board/'
@@ -181,6 +184,25 @@ export function mountTeacherAssignmentComposerUi({
   scoreFieldset.appendChild(fileInput)
   scoreFieldset.appendChild(scoreStatus)
 
+  const instrumentLabel = element(root, 'label')
+  instrumentLabel.textContent = 'Çalma enstrümanı'
+  const instrumentSelect = element(root, 'select')
+  instrumentSelect.name = 'playbackInstrument'
+  for (const [value, label] of [
+    [STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO, 'Grand Piyano'],
+    [STUDENT_PLAYBACK_INSTRUMENT.CLASSICAL_GUITAR, 'Klasik Gitar'],
+    [STUDENT_PLAYBACK_INSTRUMENT.VIOLIN, 'Keman'],
+  ]) {
+    const option = element(root, 'option')
+    option.value = value
+    option.textContent = label
+    instrumentSelect.appendChild(option)
+  }
+  instrumentSelect.value =
+    STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO
+  instrumentLabel.appendChild(instrumentSelect)
+  scoreFieldset.appendChild(instrumentLabel)
+
   const chordFieldset = element(root, 'fieldset')
   const chordLegend = element(root, 'legend')
   chordLegend.textContent =
@@ -326,6 +348,8 @@ export function mountTeacherAssignmentComposerUi({
 
     titleInput.value = ''
     noteInput.value = ''
+    instrumentSelect.value =
+      STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO
     fileInput.value = ''
     for (
       const input of roster.querySelectorAll(
@@ -547,6 +571,8 @@ export function mountTeacherAssignmentComposerUi({
               scoreUpload,
               guitarTabUpload: null,
               chordSnapshots: Object.freeze([...selectedSnapshots]),
+              playbackInstrument:
+                instrumentSelect.value,
             }),
           )
           status.textContent = 'Gönderildi.'
@@ -563,6 +589,8 @@ export function mountTeacherAssignmentComposerUi({
               scoreUpload,
               chordSnapshots:
                 selectedSnapshots,
+              playbackInstrument:
+                instrumentSelect.value,
             })
           const exactSuccess =
             isExactDeliverySuccess(result)
