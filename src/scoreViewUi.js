@@ -250,7 +250,7 @@ export function endScorePlaybackHighlight(root, token, runtime = scoreRuntimeHos
     scoreHighlightSelections.delete(root)
     if (scorePlaybackHighlightSessions.has(root)) return false
     if (status?.dataset) status.dataset.playbackNoteSynced = 'false'
-    await syncScoreNoteHighlight(
+    await syncScoreNoteHighlightNow(
       root,
       getPackage3MeasureSnapshot(),
       runtime ?? current.runtime,
@@ -345,10 +345,10 @@ export async function syncScoreMeasureCursor(root, bridgeSnapshot, runtime = sco
   }
 }
 
-export async function syncScoreNoteHighlight(
+async function syncScoreNoteHighlightNow(
   root,
   bridgeSnapshot,
-  runtime = scoreRuntimeHosts.get(root),
+  runtime,
   { isCurrent = () => true } = {},
 ) {
   if (!root || typeof root.getElementById !== 'function' || !runtime) return false
@@ -395,6 +395,21 @@ export async function syncScoreNoteHighlight(
     status.textContent = 'Görsel nota vurgusu uygulanamadı; eski vurgu güvenli şekilde temizlendi.'
     return false
   }
+}
+
+export function syncScoreNoteHighlight(
+  root,
+  bridgeSnapshot,
+  runtime = scoreRuntimeHosts.get(root),
+  { isCurrent = () => true } = {},
+) {
+  if (!root || typeof root.getElementById !== 'function' || !runtime) return Promise.resolve(false)
+  return queueScorePlaybackHighlight(root, async () => {
+    if (scorePlaybackHighlightSessions.has(root)) return false
+    return syncScoreNoteHighlightNow(root, bridgeSnapshot, runtime, {
+      isCurrent: () => isCurrent() && !scorePlaybackHighlightSessions.has(root),
+    })
+  })
 }
 
 export function bindRenderedNoteSelection(root, frame, runtime) {
