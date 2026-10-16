@@ -137,3 +137,23 @@ test('PR362 rejects moving a context element across a note onset', () => {
     { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
   )
 })
+
+test('PR362 preserves ordinary fingering technicals in an unselected part', () => {
+  const declaration = '<score-part id="P2"><part-name>Other</part-name></score-part>'
+  const otherPart = '<part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><notations><technical><fingering>1</fingering></technical></notations></note></measure></part>'
+  const withOtherPart = (xml) => xml
+    .replace('</part-list>', `${declaration}</part-list>`)
+    .replace('</score-partwise>', `${otherPart}</score-partwise>`)
+
+  const result = validate(withOtherPart(sourceXml()), withOtherPart(tabXml()))
+  assert.equal(result.ok, true)
+})
+
+test('PR362 rejects loss of a trailing source forward control', () => {
+  const score = sourceXml().replace('</measure>', '<forward><duration>3</duration></forward></measure>')
+  const result = validate(score, tabXml())
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
