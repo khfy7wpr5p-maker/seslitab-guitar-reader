@@ -85,6 +85,43 @@ test('PR362 restores the cached static score highlight after playback clears the
   }
 })
 
+test('PR362 suppresses static score selection while playback owns the note highlight', async () => {
+  const notes = [note('A'), { ...note('B'), startBeat: 1 }]
+  publishPackage3Notes(notes)
+  assert.equal(selectPackage3MeasureKey('P1:0'), true)
+  assert.equal(selectPackage3NoteIndex(1), true)
+
+  const status = { dataset: {}, textContent: '' }
+  const root = { getElementById: (id) => id === 'score-view-note-sync' ? status : null }
+  const calls = []
+  const runtime = {
+    async clearHighlights() { calls.push('clear') },
+    async highlight(payload) { calls.push(payload) },
+  }
+
+  try {
+    const token = beginScorePlaybackHighlight(root, notes, runtime)
+    assert.equal(await syncScorePlaybackNoteHighlight(root, 0, token, runtime), true)
+    assert.equal(await syncScoreNoteHighlight(root, getPackage3MeasureSnapshot(), runtime), false)
+
+    let highlightCalls = calls.filter((entry) => typeof entry === 'object')
+    assert.equal(highlightCalls.length, 1)
+    assert.deepEqual(highlightCalls[0], {
+      target: { partId: 'P1', measureIndex: 0, noteIndex: 0, voice: 1 },
+      className: 'seslitab-note-focus',
+    })
+
+    assert.equal(await endScorePlaybackHighlight(root, token, runtime), true)
+    highlightCalls = calls.filter((entry) => typeof entry === 'object')
+    assert.deepEqual(highlightCalls.at(-1), {
+      target: { partId: 'P1', measureIndex: 0, noteIndex: 1, voice: 1 },
+      className: 'seslitab-note-focus',
+    })
+  } finally {
+    clearPackage3Notes()
+  }
+})
+
 test('PR362 rejects source measure attribute drift', () => {
   const result = validate(sourceXml({ measureNumber: '1' }), tabXml({ measureNumber: '99' }))
   assert.deepEqual(
