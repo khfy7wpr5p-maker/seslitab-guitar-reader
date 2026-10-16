@@ -145,6 +145,52 @@ function assertContextParity(expectedPart, actualPart, appendedTabStaff) {
     }
   }
 }
+function measureControlKeys(part, { appendedTabStaff = null } = {}) {
+  return directChildren(part, 'measure').map((measure) => {
+    const keys = []
+    let cursor = 0
+    let sourceNoteOrdinal = 0
+    for (const child of elementChildren(measure)) {
+      const tag = localName(child)
+      if (tag === 'note') {
+        const staffNode = directChild(child, 'staff')
+        const staff = staffNode ? textOf(staffNode) : '1'
+        const isAppendedTabNote = appendedTabStaff !== null && staff === String(appendedTabStaff)
+        if (!isAppendedTabNote) {
+          sourceNoteOrdinal += 1
+          if (directChildren(child, 'chord').length === 0) {
+            const durationNode = directChild(child, 'duration')
+            const duration = durationNode ? Number(textOf(durationNode)) : NaN
+            if (Number.isSafeInteger(duration)) cursor += duration
+          }
+        }
+        continue
+      }
+      if (tag !== 'backup' && tag !== 'forward') continue
+      const durationNode = directChild(child, 'duration')
+      const duration = durationNode ? Number(textOf(durationNode)) : NaN
+      keys.push(`${sourceNoteOrdinal}@${cursor}:${canonicalNode(child)}`)
+      if (Number.isSafeInteger(duration)) cursor += tag === 'backup' ? -duration : duration
+    }
+    return keys
+  })
+}
+function assertControlParity(expectedPart, actualPart, appendedTabStaff) {
+  const expected = measureControlKeys(expectedPart)
+  const actual = measureControlKeys(actualPart, { appendedTabStaff })
+  if (expected.length !== actual.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+  for (let measureIndex = 0; measureIndex < expected.length; measureIndex += 1) {
+    const expectedControls = expected[measureIndex]
+    const actualControls = actual[measureIndex]
+    const comparable = appendedTabStaff !== null && actualControls.length === expectedControls.length + 1
+      ? actualControls.slice(0, -1)
+      : actualControls
+    if (comparable.length !== expectedControls.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    for (let index = 0; index < expectedControls.length; index += 1) {
+      if (expectedControls[index] !== comparable[index]) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    }
+  }
+}
 function assertStavesParity(expectedPart, actualPart, appendedTabStaff) {
   const expectedMeasures = directChildren(expectedPart, 'measure')
   const actualMeasures = directChildren(actualPart, 'measure')
@@ -245,6 +291,7 @@ function noteStructureKey(note) {
 }
 function parseTechnical(note) {
   const technicals = descendants(note, 'technical')
+    .filter((technical) => directChildren(technical, 'string').length > 0 || directChildren(technical, 'fret').length > 0)
   if (technicals.length === 0) return null
   if (technicals.length !== 1) fail('PHYSICAL', 'TECHNICAL_EVIDENCE_AMBIGUOUS')
   const strings = directChildren(technicals[0], 'string'), frets = directChildren(technicals[0], 'fret')
@@ -291,7 +338,15 @@ function noteIdentity(note) {
   const staff = staves.length === 0 ? 1 : integerNode(staves[0], 'IDENTITY', 'STAFF_IDENTITY_INVALID', { min: 1, allowZero: false })
   return { voice, staff }
 }
-function parsePartTimeline(part, { targetSelection = null, includeRests = false } = {}) {
+function parsePartTimeline(
+  part,
+  {
+    targetSelection = null,
+    includeRests = false,
+    parseTechnicalEvidence = false,
+    technicalStaff = null,
+  } = {},
+) {
   const measures = directChildren(part, 'measure')
   if (measures.length === 0) fail('SEMANTIC', 'MEASURE_REQUIRED')
   const events = []
@@ -336,7 +391,10 @@ function parsePartTimeline(part, { targetSelection = null, includeRests = false 
           const soundingPitchMidi = pitch.midi + semitones
           if (!Number.isSafeInteger(soundingPitchMidi) || soundingPitchMidi < 0 || soundingPitchMidi > 127) fail('SEMANTIC', 'SOUNDING_PITCH_INVALID')
           const ties = parseTieFlags(child)
-          events.push(Object.freeze({ measureIndex, onset, duration, divisions: currentDivisions, voice, staff, pitch, soundingPitchMidi, tieStart: ties.tieStart, tieStop: ties.tieStop, technical: parseTechnical(child), isRest: false, noteStructure: noteStructureKey(child) }))
+          const technical = parseTechnicalEvidence && (technicalStaff === null || technicalStaff === staff)
+            ? parseTechnical(child)
+            : null
+          events.push(Object.freeze({ measureIndex, onset, duration, divisions: currentDivisions, voice, staff, pitch, soundingPitchMidi, tieStart: ties.tieStart, tieStop: ties.tieStop, technical, isRest: false, noteStructure: noteStructureKey(child) }))
         } else if (isRest && includeRests) {
           events.push(Object.freeze({ measureIndex, onset, duration, divisions: currentDivisions, voice, staff, pitch: null, soundingPitchMidi: null, tieStart: false, tieStop: false, technical: null, isRest: true, noteStructure: noteStructureKey(child) }))
         }
@@ -493,16 +551,26 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, g
   if (tabStaff !== maxDeclaredSourceStaff(scorePart) + 1) fail('TAB_SHAPE', 'TAB_STAVES_INVALID')
   assertStavesParity(scorePart, tabPart, tabStaff)
   for (let index = 0; index < scoreParts.length; index += 1) {
-    assertContextParity(scoreParts[index], tabParts[index], index === targetPartIndex ? tabStaff : null)
+    const appendedTabStaff = index === targetPartIndex ? tabStaff : null
+    assertContextParity(scoreParts[index], tabParts[index], appendedTabStaff)
+    assertControlParity(scoreParts[index], tabParts[index], appendedTabStaff)
     const expected = parsePartTimeline(scoreParts[index], { includeRests: true })
     const actual = parsePartTimeline(tabParts[index], { includeRests: true })
       .filter((event) => index !== targetPartIndex || event.staff !== tabStaff)
     assertSemanticParity(expected, actual, 'SOURCE_SCORE_SEMANTIC_MISMATCH', { includeStaff: true, includeStructure: true })
   }
-  const scoreEvents = parsePartTimeline(scorePart, { targetSelection: staffTarget })
+  const physicalSourceStaff = selectedTarget?.staff ?? 1
+  const scoreEvents = parsePartTimeline(scorePart, {
+    targetSelection: staffTarget,
+    parseTechnicalEvidence: true,
+    technicalStaff: physicalSourceStaff,
+  })
   if (scoreEvents.length === 0) fail('IDENTITY', 'TARGET_EMPTY')
-  const tabEvents = parsePartTimeline(tabPart)
-  const notationEvents = tabEvents.filter((event) => event.staff === (selectedTarget?.staff ?? 1))
+  const tabEvents = parsePartTimeline(tabPart, {
+    parseTechnicalEvidence: true,
+    technicalStaff: tabStaff,
+  })
+  const notationEvents = tabEvents.filter((event) => event.staff === physicalSourceStaff)
   const tabStaffEvents = tabEvents.filter((event) => event.staff === tabStaff)
   assertSemanticParity(scoreEvents, notationEvents, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH', { includeStructure: true })
   const tabVoiceBySource = assertTabVoiceParity(notationEvents, tabStaffEvents)
