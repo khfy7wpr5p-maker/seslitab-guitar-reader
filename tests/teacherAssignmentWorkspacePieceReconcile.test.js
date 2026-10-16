@@ -161,3 +161,52 @@ test('piece repertoire transition updates the cached management snapshot without
 
   handle.destroy()
 })
+
+test('piece revoke removes the cached row without a full Piece refetch', async () => {
+  const { host, calls, handle } = mountHarness()
+  await nextTurn()
+  await openManagement(host)
+
+  const tabs = managementTabs(host)
+  await tabs[1].dispatchEventAsync({ type: 'click' })
+
+  const activeItem = host.querySelector(
+    '.teacher-assignment-workspace__item',
+  )
+  const removeButton = activeItem
+    .querySelectorAll('button')
+    .find((button) => button.textContent === 'Kaldır')
+  assert.ok(removeButton)
+
+  await removeButton.dispatchEventAsync({ type: 'click' })
+  const dialog = host.querySelector('[role="alertdialog"]')
+  assert.ok(dialog)
+  const confirmButton = dialog
+    .querySelectorAll('button')
+    .find((button) => button.textContent === 'Kaldır')
+  assert.ok(confirmButton)
+
+  const piecesBeforeMutation = calls.pieces
+  await confirmButton.dispatchEventAsync({ type: 'click' })
+
+  assert.deepEqual(
+    calls.pieceActions,
+    [['piece-active', 'REVOKE']],
+  )
+  assert.equal(
+    calls.pieces,
+    piecesBeforeMutation,
+    'successful Piece revoke must not refetch the full Piece list',
+  )
+
+  const activeRows = host.querySelectorAll(
+    '.teacher-assignment-workspace__item',
+  )
+  assert.equal(
+    activeRows.some((row) => row.textContent.includes('Aktif Etüt')),
+    false,
+    'the revoked Piece must disappear from local management state',
+  )
+
+  handle.destroy()
+})
