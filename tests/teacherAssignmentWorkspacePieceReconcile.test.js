@@ -159,6 +159,13 @@ test('piece repertoire transition updates the cached management snapshot without
     'the transitioned Piece must move to the Repertuar view from local state',
   )
 
+  await handle.refreshManagement()
+  assert.equal(
+    calls.pieces,
+    piecesBeforeMutation + 1,
+    'an explicit management refresh must return to backend authority',
+  )
+
   handle.destroy()
 })
 
