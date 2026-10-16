@@ -235,20 +235,26 @@ class OraclePathBoundaryTest(unittest.TestCase):
         raw = b'<score-partwise><part id="Scoped"><measure><attributes><key number="1"><fifths>3</fifths></key><key number="2"><fifths>0</fifths></key></attributes></measure></part><part id="Global"><measure><attributes><key><fifths>0</fifths></key></attributes></measure></part><part id="Absent"><measure/></part></score-partwise>'
         root = oracle.safe_root(Path('unused'), raw)
         before = oracle.tostring(root)
-        self.assertEqual(oracle.key_staff_coverage(root), [
-            {'partId': 'Scoped', 'rawKeyStaffNumbers': ['1', '2'], 'staffSpecific': True},
-            {'partId': 'Global', 'rawKeyStaffNumbers': [None], 'staffSpecific': False},
-            {'partId': 'Absent', 'rawKeyStaffNumbers': [], 'staffSpecific': False}])
+        coverage = oracle.key_staff_coverage(root)
+        self.assertEqual([row['partId'] for row in coverage], ['Scoped', 'Global', 'Absent'])
+        self.assertEqual([row['staffSpecific'] for row in coverage], [True, False, False])
+        self.assertEqual([row['number'] for row in coverage[0]['rawKeyContexts']], ['1', '2'])
+        self.assertEqual(coverage[1]['rawKeyContexts'][0]['number'], None)
+        self.assertEqual(coverage[2]['rawKeyContexts'], [])
+        self.assertIn('<fifths>3</fifths>', coverage[0]['rawKeyContexts'][0]['payloadXml'])
         self.assertEqual(oracle.tostring(root), before)
 
     def test_raw_time_staff_inventory_preserves_scope_without_inventing_oracle_staff(self):
         raw = b'<score-partwise><part id="Scoped"><measure><attributes><time number="1"><beats>3</beats><beat-type>4</beat-type></time><time number="2"><beats>4</beats><beat-type>4</beat-type></time></attributes></measure></part><part id="Global"><measure><attributes><time><beats>4</beats><beat-type>4</beat-type></time></attributes></measure></part><part id="Absent"><measure/></part></score-partwise>'
         root = oracle.safe_root(Path('unused'), raw)
         before = oracle.tostring(root)
-        self.assertEqual(oracle.time_staff_coverage(root), [
-            {'partId': 'Scoped', 'rawTimeStaffNumbers': ['1', '2'], 'staffSpecific': True},
-            {'partId': 'Global', 'rawTimeStaffNumbers': [None], 'staffSpecific': False},
-            {'partId': 'Absent', 'rawTimeStaffNumbers': [], 'staffSpecific': False}])
+        coverage = oracle.time_staff_coverage(root)
+        self.assertEqual([row['partId'] for row in coverage], ['Scoped', 'Global', 'Absent'])
+        self.assertEqual([row['staffSpecific'] for row in coverage], [True, False, False])
+        self.assertEqual([row['number'] for row in coverage[0]['rawTimeContexts']], ['1', '2'])
+        self.assertEqual(coverage[1]['rawTimeContexts'][0]['number'], None)
+        self.assertEqual(coverage[2]['rawTimeContexts'], [])
+        self.assertIn('<beats>3</beats>', coverage[0]['rawTimeContexts'][0]['payloadXml'])
         self.assertEqual(oracle.tostring(root), before)
 
     def test_raw_tab_profile_keeps_conflicting_and_late_declarations_without_mutation(self):
