@@ -148,6 +148,12 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
     'input[name="assignmentTitle"]',
   ).value = 'Etüt 1'
 
+  const instrument = host.querySelector(
+    'select[name="playbackInstrument"]',
+  )
+  assert.ok(instrument)
+  instrument.value = 'VIOLIN'
+
   const form =
     host.querySelector('form')
   await form.dispatchEventAsync({
@@ -168,6 +174,10 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
   assert.equal(
     calls.send[0].chordSnapshots.length,
     1,
+  )
+  assert.equal(
+    calls.send[0].playbackInstrument,
+    'VIOLIN',
   )
   assert.equal(
     host.querySelector(

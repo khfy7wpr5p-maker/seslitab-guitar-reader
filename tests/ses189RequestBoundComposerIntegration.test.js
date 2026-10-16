@@ -205,12 +205,19 @@ async function preparedScore() {
   })
 }
 
-function draft({ scoreUpload = null, chordSnapshots = [] } = {}) {
+function draft({
+  scoreUpload = null,
+  chordSnapshots = [],
+  playbackInstrument,
+} = {}) {
   return Object.freeze({
     teacherNote: 'Yavaş çalış.',
     scoreUpload,
     guitarTabUpload: null,
     chordSnapshots: Object.freeze([...chordSnapshots]),
+    ...(playbackInstrument === undefined
+      ? {}
+      : { playbackInstrument }),
   })
 }
 
@@ -220,7 +227,10 @@ test('SES-189 real Composer SCORE-only conversion creates one exact same-student
     providerSubject: 'uid-teacher-a',
     requestId: 'request-a',
     targetState: 'ACTIVE',
-    composerDraft: draft({ scoreUpload: await preparedScore() }),
+    composerDraft: draft({
+      scoreUpload: await preparedScore(),
+      playbackInstrument: 'VIOLIN',
+    }),
   })
 
   assert.equal(result.state, 'CONVERTED')
@@ -228,6 +238,7 @@ test('SES-189 real Composer SCORE-only conversion creates one exact same-student
   assert.equal(calls.pieces[0].studentId, 'student-b')
   assert.match(calls.pieces[0].scoreAssignmentId, /^ses141:ses189:request-a:score-assignment:student-b$/)
   assert.deepEqual(calls.pieces[0].chordAssignmentIds, [])
+  assert.equal(calls.prepared[0][0].package.playbackInstrument, 'VIOLIN')
 })
 
 test('SES-189 real Composer CHORD-only conversion creates one exact same-student Piece', async () => {

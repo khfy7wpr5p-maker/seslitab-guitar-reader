@@ -16,6 +16,7 @@ import {
 } from './scoreAssignmentSourceBinding.js'
 import {
   createStudentPrivatePracticePackageV1,
+  STUDENT_PLAYBACK_INSTRUMENT,
 } from './studentPracticePackageV1.js'
 import {
   createInMemoryTeacherChordBoardAssignmentRepository,
@@ -286,6 +287,8 @@ export function createTeacherAssignmentComposerService({
     scoreUpload = null,
     guitarTabUpload = null,
     chordSnapshots = [],
+    playbackInstrument =
+      STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO,
   } = {}) {
     const normalizedDraftId =
       requiredText(draftId, 'draftId')
@@ -499,6 +502,7 @@ export function createTeacherAssignmentComposerService({
             canonicalEvents:
               verifiedScoreUpload.canonicalEvents,
             practice: { allowTempoChange: true },
+            playbackInstrument,
           })
 
         scoreByStudent.set(

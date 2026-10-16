@@ -73,6 +73,30 @@ test('private SCORE package matches Student App PracticePackage v1 boundary', as
   assert.equal(validateStudentPracticePackageV1(pkg).ok, true)
 })
 
+test('SCORE package carries a validated optional playback instrument while legacy packages remain valid', async () => {
+  const {
+    createStudentPrivatePracticePackageV1,
+    validateStudentPracticePackageV1,
+  } = await loadPackageContract()
+
+  const selected = createStudentPrivatePracticePackageV1(
+    validInput({ playbackInstrument: 'VIOLIN' }),
+  )
+  assert.equal(selected.playbackInstrument, 'VIOLIN')
+  assert.equal(validateStudentPracticePackageV1(selected).ok, true)
+
+  const legacy = createStudentPrivatePracticePackageV1(validInput())
+  assert.equal(Object.hasOwn(legacy, 'playbackInstrument'), false)
+  assert.equal(validateStudentPracticePackageV1(legacy).ok, true)
+
+  assert.throws(
+    () => createStudentPrivatePracticePackageV1(
+      validInput({ playbackInstrument: 'RANDOM_INSTRUMENT' }),
+    ),
+    /playbackInstrument/,
+  )
+})
+
 test('PracticePackage validator rejects teacher-only/OMR fields and invalid private recipient/revision state', async () => {
   const {
     createStudentPrivatePracticePackageV1,

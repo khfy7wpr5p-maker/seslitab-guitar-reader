@@ -15,6 +15,7 @@ const COMPOSER_DRAFT_FIELDS = Object.freeze([
   'scoreUpload',
   'guitarTabUpload',
   'chordSnapshots',
+  'playbackInstrument',
 ])
 
 function assertMethod(value, method, label) {
@@ -270,6 +271,7 @@ export function createRequestBoundAssignmentComposerService({
       scoreUpload,
       guitarTabUpload,
       chordSnapshots,
+      playbackInstrument: draft.playbackInstrument,
     })
     const recipients = delivery?.recipients
     if (
