@@ -143,29 +143,15 @@ def resolve_tab_staff_identity(source_root: ET.Element, derived_root: ET.Element
     for part_id, source_part in source_by_id.items():
         derived_part = derived_by_id[part_id]
         appended_staff = max_source_staff(source_part) + 1
-        tab_clefs = [
-            clef for clef in derived_part.findall('measure/attributes/clef')
-            if (clef.findtext('sign') or '').strip() == 'TAB'
-            and clef.get('number') is not None
-            and positive_staff_number(clef.get('number'), 'TAB clef') == appended_staff
-        ]
-        tab_details = [
-            details for details in derived_part.findall('measure/attributes/staff-details')
-            if details.get('number') is not None
-            and positive_staff_number(details.get('number'), 'TAB staff-details') == appended_staff
-        ]
-        declared_counts = [
-            positive_staff_number(staves.text, 'Derived staves')
-            for staves in derived_part.findall('measure/attributes/staves')
-        ]
-        if not tab_clefs and not tab_details:
-            continue
-        if not tab_clefs or not tab_details or appended_staff not in declared_counts:
-            raise ValueError("Appended TAB staff profile is incomplete or inconsistent.")
-        candidates.add((part_id, appended_staff))
+        derived_note_staffs = {
+            positive_staff_number(note.findtext('staff') or '1', 'Derived note staff')
+            for note in derived_part.findall('measure/note')
+        }
+        if appended_staff in derived_note_staffs:
+            candidates.add((part_id, appended_staff))
 
     if len(candidates) != 1:
-        raise ValueError("Derived export must identify exactly one appended TAB staff.")
+        raise ValueError("Derived export must identify exactly one appended TAB staff lane.")
     return next(iter(candidates))
 
 
