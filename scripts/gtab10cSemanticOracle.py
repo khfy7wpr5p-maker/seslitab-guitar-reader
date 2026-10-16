@@ -123,7 +123,12 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
     notes = snapshot.get("notes")
     if not isinstance(notes, list):
         raise ValueError("Semantic snapshot has no note rows.")
-    remaining = [note for note in notes if isinstance(note, dict) and note.get("staff") == 2]
+    technical_staffs = {int(note.findtext('staff') or '1') for note in root.findall('part/measure/note')
+        if note.find('notations/technical/string') is not None and note.find('notations/technical/fret') is not None}
+    if len(technical_staffs) != 1:
+        raise ValueError("TAB technical data must identify exactly one staff.")
+    tab_staff = next(iter(technical_staffs))
+    remaining = [note for note in notes if isinstance(note, dict) and note.get("staff") == tab_staff]
     positions: list[dict[str, object]] = []
 
     for part_index, xml_part in enumerate(xml_parts):
@@ -180,7 +185,7 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
                     last_non_chord_onset = local_onset
                     cursor += duration
                 staff = int(child.findtext("staff") or "1")
-                if staff != 2:
+                if staff != tab_staff:
                     continue
                 voice = int(child.findtext("voice") or "1")
                 tie_stop, tie_start = note_tie_flags(child)
@@ -192,7 +197,7 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
                     and note.get("onset_div") == onset
                     and note.get("duration_div") == duration
                     and note.get("voice") == voice
-                    and note.get("staff") == 2]
+                    and note.get("staff") == tab_staff]
                 if len(candidates) != 1:
                     raise ValueError("TAB technical data cannot be matched uniquely to a semantic event.")
                 semantic_note = candidates[0]
@@ -343,22 +348,39 @@ def verify_original_bytes(path, original):
         raise ValueError("Original MusicXML bytes changed during oracle execution.")
 
 
-def context_staff_coverage(root, element, number_field):
-    # Original XML identity evidence only: pinned key/time contexts have no staff field.
+def context_staff_coverage(root, element, rows_field):
+    # Bind each raw key/time payload to its exact part, timeline position, order,
+    # and MusicXML staff number. Snapshot parsers intentionally omit the number.
     rows = []
     for part in root.findall('part'):
-        numbers = [context.get('number') for context in part.findall(f'measure/attributes/{element}')]
-        rows.append({"partId": part.get('id'), number_field: numbers,
-            "staffSpecific": any(number is not None for number in numbers)})
+        contexts = []
+        for measure_index, measure in enumerate(part.findall('measure')):
+            onset = 0
+            order = 0
+            for child in measure:
+                if child.tag == 'attributes':
+                    for context in child.findall(element):
+                        contexts.append({"measureIndex": measure_index, "onsetDiv": onset,
+                            "order": order, "number": context.get('number'),
+                            "payloadXml": ET.tostring(context, encoding='unicode')})
+                        order += 1
+                elif child.tag == 'backup':
+                    onset -= int(child.findtext('duration') or '0')
+                elif child.tag == 'forward':
+                    onset += int(child.findtext('duration') or '0')
+                elif child.tag == 'note' and child.find('chord') is None:
+                    onset += int(child.findtext('duration') or '0')
+        rows.append({"partId": part.get('id'), rows_field: contexts,
+            "staffSpecific": any(context["number"] is not None for context in contexts)})
     return rows
 
 
 def key_staff_coverage(root):
-    return context_staff_coverage(root, 'key', 'rawKeyStaffNumbers')
+    return context_staff_coverage(root, 'key', 'rawKeyContexts')
 
 
 def time_staff_coverage(root):
-    return context_staff_coverage(root, 'time', 'rawTimeStaffNumbers')
+    return context_staff_coverage(root, 'time', 'rawTimeContexts')
 
 
 def derived_tab_profile(root):
@@ -390,6 +412,32 @@ def derived_tab_profile(root):
     return {"schema": "gtab10c-derived-tab-profile-v1", "parts": parts}
 
 
+def rest_inventory(root):
+    rows = []
+    for part in root.findall('part'):
+        for measure_index, measure in enumerate(part.findall('measure')):
+            rest_index = 0
+            onset = 0
+            for note in measure:
+                if note.tag == 'backup':
+                    onset -= int(note.findtext('duration') or '0')
+                    continue
+                if note.tag == 'forward':
+                    onset += int(note.findtext('duration') or '0')
+                    continue
+                if note.tag != 'note':
+                    continue
+                rest = note.find('rest')
+                if rest is not None:
+                    rows.append({"partId": part.get('id'), "measureIndex": measure_index,
+                        "restIndex": rest_index, "onsetDiv": onset,
+                        "noteXml": ET.tostring(note, encoding='unicode')})
+                    rest_index += 1
+                if note.find('chord') is None:
+                    onset += int(note.findtext('duration') or '0')
+    return {"schema": "gtab10c-rest-inventory-v1", "rows": rows}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
@@ -411,6 +459,8 @@ def main() -> None:
             raise ValueError("Missing/ambiguous part inventory.")
         return parts
     tab_profile = derived_tab_profile(derived_root)
+    source_staff_profile = derived_tab_profile(source_root)
+    source_staff_profile["schema"] = "gtab10c-source-staff-profile-v1"
     time_coverage = {"schema": "gtab10c-time-staff-coverage-v1",
         "source": time_staff_coverage(source_root), "derived": time_staff_coverage(derived_root)}
     key_coverage = {"schema": "gtab10c-key-staff-coverage-v1",
@@ -444,6 +494,9 @@ def main() -> None:
             "keySignatureCoverage": key_coverage,
             "timeSignatureCoverage": time_coverage,
             "derivedTabProfile": tab_profile,
+            "sourceStaffProfile": source_staff_profile,
+            "sourceRestInventory": rest_inventory(source_root),
+            "derivedRestInventory": rest_inventory(derived_root),
             "sourceParts": source_parts,
             "derivedParts": derived_parts,
             "partituraVersion": importlib.metadata.version("partitura"),
