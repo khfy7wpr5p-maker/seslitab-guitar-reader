@@ -11,6 +11,11 @@ export const STUDENT_PRACTICE_PACKAGE_SCOPE = Object.freeze({
   PUBLIC_POOL: 'public_pool',
   STUDENT_PRIVATE: 'student_private',
 })
+export const STUDENT_PLAYBACK_INSTRUMENT = Object.freeze({
+  GRAND_PIANO: 'GRAND_PIANO',
+  CLASSICAL_GUITAR: 'CLASSICAL_GUITAR',
+  VIOLIN: 'VIOLIN',
+})
 
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'schemaVersion',
@@ -21,6 +26,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'publication',
   'content',
   'practice',
+  'playbackInstrument',
 ])
 
 const INPUT_FIELDS = Object.freeze([
@@ -34,6 +40,7 @@ const INPUT_FIELDS = Object.freeze([
   'guitarTabMusicXml',
   'canonicalEvents',
   'practice',
+  'playbackInstrument',
 ])
 
 function isRecord(value) {
@@ -42,6 +49,17 @@ function isRecord(value) {
 
 function hasText(value) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function normalizePlaybackInstrument(value) {
+  if (
+    !Object.values(STUDENT_PLAYBACK_INSTRUMENT).includes(value)
+  ) {
+    throw new TypeError(
+      'playbackInstrument must be GRAND_PIANO, CLASSICAL_GUITAR or VIOLIN.',
+    )
+  }
+  return value
 }
 
 function cloneFrozenJson(value, ancestors = new Set()) {
@@ -228,6 +246,17 @@ export function validateStudentPracticePackageV1(value) {
     }
   }
 
+  if (
+    value.playbackInstrument !== undefined &&
+    !Object.values(STUDENT_PLAYBACK_INSTRUMENT).includes(
+      value.playbackInstrument,
+    )
+  ) {
+    errors.push(
+      'playbackInstrument must be GRAND_PIANO, CLASSICAL_GUITAR or VIOLIN',
+    )
+  }
+
   return Object.freeze({
     ok: errors.length === 0,
     errors: Object.freeze(errors),
@@ -297,6 +326,14 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
             }),
     }),
     practice: cloneFrozenJson(input.practice ?? {}),
+    ...(input.playbackInstrument === undefined
+      ? {}
+      : {
+          playbackInstrument:
+            normalizePlaybackInstrument(
+              input.playbackInstrument,
+            ),
+        }),
   })
 
   const validation = validateStudentPracticePackageV1(pkg)
