@@ -247,6 +247,7 @@ export function endScorePlaybackHighlight(root, token, runtime = scoreRuntimeHos
     scorePlaybackHighlightSessions.delete(root)
     const status = root.getElementById?.('score-view-note-sync')
     try { await clearScoreHighlights(runtime ?? current.runtime) } catch {}
+    scoreHighlightSelections.delete(root)
     if (scorePlaybackHighlightSessions.has(root)) return false
     if (status?.dataset) status.dataset.playbackNoteSynced = 'false'
     await syncScoreNoteHighlight(
