@@ -145,24 +145,40 @@ function assertContextParity(expectedPart, actualPart, appendedTabStaff) {
     }
   }
 }
-function measureControlKeys(part, { appendedTabStaff = null } = {}) {
+function sourceRegionControlKeys(part, { appendedTabStaff = null } = {}) {
   return directChildren(part, 'measure').map((measure) => {
+    const children = elementChildren(measure)
+    let sourceRegionEnd = children.length
+    if (appendedTabStaff !== null) {
+      const firstTabNoteIndex = children.findIndex((child) => {
+        if (localName(child) !== 'note') return false
+        const staffNode = directChild(child, 'staff')
+        const staff = staffNode ? textOf(staffNode) : '1'
+        return staff === String(appendedTabStaff)
+      })
+      if (firstTabNoteIndex >= 0) {
+        sourceRegionEnd = firstTabNoteIndex
+        for (let index = firstTabNoteIndex; index < children.length; index += 1) {
+          const child = children[index]
+          if (localName(child) !== 'note') continue
+          const staffNode = directChild(child, 'staff')
+          const staff = staffNode ? textOf(staffNode) : '1'
+          if (staff !== String(appendedTabStaff)) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+        }
+      }
+    }
+
     const keys = []
     let cursor = 0
     let sourceNoteOrdinal = 0
-    for (const child of elementChildren(measure)) {
+    for (const child of children.slice(0, sourceRegionEnd)) {
       const tag = localName(child)
       if (tag === 'note') {
-        const staffNode = directChild(child, 'staff')
-        const staff = staffNode ? textOf(staffNode) : '1'
-        const isAppendedTabNote = appendedTabStaff !== null && staff === String(appendedTabStaff)
-        if (!isAppendedTabNote) {
-          sourceNoteOrdinal += 1
-          if (directChildren(child, 'chord').length === 0) {
-            const durationNode = directChild(child, 'duration')
-            const duration = durationNode ? Number(textOf(durationNode)) : NaN
-            if (Number.isSafeInteger(duration)) cursor += duration
-          }
+        sourceNoteOrdinal += 1
+        if (directChildren(child, 'chord').length === 0) {
+          const durationNode = directChild(child, 'duration')
+          const duration = durationNode ? Number(textOf(durationNode)) : NaN
+          if (Number.isSafeInteger(duration)) cursor += duration
         }
         continue
       }
@@ -176,8 +192,8 @@ function measureControlKeys(part, { appendedTabStaff = null } = {}) {
   })
 }
 function assertControlParity(expectedPart, actualPart, appendedTabStaff) {
-  const expected = measureControlKeys(expectedPart)
-  const actual = measureControlKeys(actualPart, { appendedTabStaff })
+  const expected = sourceRegionControlKeys(expectedPart)
+  const actual = sourceRegionControlKeys(actualPart, { appendedTabStaff })
   if (expected.length !== actual.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
   for (let measureIndex = 0; measureIndex < expected.length; measureIndex += 1) {
     const expectedControls = expected[measureIndex]
