@@ -50,6 +50,12 @@ function attributeEntries(node) {
     return []
   }
 }
+function canonicalAttributeKey(node) {
+  return attributeEntries(node)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => `${name}=${value}`)
+    .join(',')
+}
 function canonicalNode(node, { defaultStaffNumber = false } = {}) {
   const tag = localName(node)
   const attributes = new Map(attributeEntries(node))
@@ -65,10 +71,7 @@ function canonicalNode(node, { defaultStaffNumber = false } = {}) {
   return `<${tag}[${attributeKey}]>${contents}</${tag}>`
 }
 function rootMetadataKey(root) {
-  const rootAttributes = attributeEntries(root)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, value]) => `${name}=${value}`)
-    .join(',')
+  const rootAttributes = canonicalAttributeKey(root)
   const children = elementChildren(root)
     .filter((child) => localName(child) !== 'part')
     .map((child) => canonicalNode(child))
@@ -76,38 +79,70 @@ function rootMetadataKey(root) {
   return `${rootAttributes}|${children}`
 }
 function measureContextKeys(part, { appendedTabStaff = null, ignoreStaves = false } = {}) {
-  return directChildren(part, 'measure').map((measure) => elementChildren(measure)
-    .filter((child) => !['note', 'backup', 'forward'].includes(localName(child)))
-    .flatMap((child) => {
-      if (localName(child) !== 'attributes') return [canonicalNode(child)]
-      return elementChildren(child)
-        .filter((attributeChild) => {
-          const tag = localName(attributeChild)
-          if (tag === 'staves' && ignoreStaves) return false
-          if (appendedTabStaff === null) return true
+  return directChildren(part, 'measure').map((measure) => {
+    const keys = [`measure:[${canonicalAttributeKey(measure)}]`]
+    let cursor = 0
+    let sourceNoteOrdinal = 0
+    let contextOrdinal = 0
+
+    const pushContext = (key) => {
+      keys.push(`${sourceNoteOrdinal}@${cursor}@${contextOrdinal}:${key}`)
+      contextOrdinal += 1
+    }
+
+    for (const child of elementChildren(measure)) {
+      const tag = localName(child)
+      if (tag === 'note') {
+        const staffNode = directChild(child, 'staff')
+        const staff = staffNode ? textOf(staffNode) : '1'
+        const isAppendedTabNote = appendedTabStaff !== null && staff === String(appendedTabStaff)
+        if (!isAppendedTabNote) {
+          sourceNoteOrdinal += 1
+          if (directChildren(child, 'chord').length === 0) {
+            const durationNode = directChild(child, 'duration')
+            const duration = durationNode ? Number(textOf(durationNode)) : NaN
+            if (Number.isSafeInteger(duration)) cursor += duration
+          }
+        }
+        continue
+      }
+      if (tag === 'backup' || tag === 'forward') {
+        const durationNode = directChild(child, 'duration')
+        const duration = durationNode ? Number(textOf(durationNode)) : NaN
+        if (Number.isSafeInteger(duration)) cursor += tag === 'backup' ? -duration : duration
+        continue
+      }
+      if (tag !== 'attributes') {
+        pushContext(canonicalNode(child))
+        continue
+      }
+      for (const attributeChild of elementChildren(child)) {
+        const attributeTag = localName(attributeChild)
+        if (attributeTag === 'staves' && ignoreStaves) continue
+        if (appendedTabStaff !== null) {
           const number = attributeChild.getAttribute?.('number')
-          if (number !== String(appendedTabStaff)) return true
-          return tag !== 'clef' && tag !== 'staff-details'
-        })
-        .map((attributeChild) => canonicalNode(attributeChild, {
-          defaultStaffNumber: ['clef', 'staff-details'].includes(localName(attributeChild)),
-        }))
-        .map((key) => `attributes:${key}`)
-    }))
+          if (number === String(appendedTabStaff) && (attributeTag === 'clef' || attributeTag === 'staff-details')) continue
+        }
+        pushContext(`attributes:${canonicalNode(attributeChild, {
+          defaultStaffNumber: ['clef', 'staff-details'].includes(attributeTag),
+        })}`)
+      }
+    }
+    return keys
+  })
 }
 function assertContextParity(expectedPart, actualPart, appendedTabStaff) {
   const ignoreStaves = appendedTabStaff !== null
   const expected = measureContextKeys(expectedPart, { ignoreStaves })
   const actual = measureContextKeys(actualPart, { appendedTabStaff, ignoreStaves })
   if (expected.length !== actual.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
-  for (let index = 0; index < expected.length; index += 1) {
-    const remaining = [...actual[index]]
-    for (const key of expected[index]) {
-      const match = remaining.indexOf(key)
-      if (match < 0) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
-      remaining.splice(match, 1)
+  for (let measureIndex = 0; measureIndex < expected.length; measureIndex += 1) {
+    if (expected[measureIndex].length !== actual[measureIndex].length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    for (let entryIndex = 0; entryIndex < expected[measureIndex].length; entryIndex += 1) {
+      if (expected[measureIndex][entryIndex] !== actual[measureIndex][entryIndex]) {
+        fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+      }
     }
-    if (remaining.length > 0) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
   }
 }
 function assertStavesParity(expectedPart, actualPart, appendedTabStaff) {
