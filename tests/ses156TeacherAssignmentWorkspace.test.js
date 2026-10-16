@@ -277,7 +277,7 @@ test('SES-156 Havuz direct Repertuar conversion uses the same request-bound path
   handle.destroy()
 })
 
-test('SES-156 Piece action refreshes only Piece authority and later tab switches do not refetch', async () => {
+test('SES-156 Piece action reconciles cached Piece authority and later tab switches do not refetch', async () => {
   const { host, calls, handle } = mountHarness()
   await nextTurn()
   await openManagement(host)
@@ -297,7 +297,7 @@ test('SES-156 Piece action refreshes only Piece authority and later tab switches
     calls.pieceActions,
     [['piece-active', 'PLACE_IN_REPERTOIRE']],
   )
-  assert.equal(calls.pieces, piecesBeforeMutation + 1)
+  assert.equal(calls.pieces, piecesBeforeMutation)
   assert.equal(calls.requests, requestsBeforeMutation)
 
   const piecesAfterMutation = calls.pieces
