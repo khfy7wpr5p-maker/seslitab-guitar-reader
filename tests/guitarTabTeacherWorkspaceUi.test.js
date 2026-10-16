@@ -246,10 +246,10 @@ test('GTAB-09B preserves exact source XML and sends the same immutable source to
   assert.equal(result.rendererAvailable, true)
   assert.equal(observations.editorXml, exactXml)
   assert.deepEqual(observations.editorOptions, {
-    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
+    targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1, scope: 'staff' },
     guitarPitchPolicy: 'standard-guitar-written',
   })
-  assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+  assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1, scope: 'staff' })
   assert.equal(observations.renderXml, exactXml)
   assert.equal(observations.rendererRuntime.id, 'renderer')
   assert.equal(observations.renderOptions.pageMode, 'continuous')
@@ -399,16 +399,17 @@ test('GTAB-10B offers canonical multipart targets and rebuilds the target-bound 
   select.value = select.children[1].value
   await select.listeners.get('change')[0]()
   assert.deepEqual(JSON.parse(select.value), { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
-  assert.deepEqual(observedTargets[0], { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+  assert.deepEqual(observedTargets[0], { partId: 'P1', partIndex: 0, staff: 1, voice: 1, scope: 'staff' })
   const firstSession = getGuitarTabTeacherWorkspaceState(root).sourceSession
 
   select.value = select.children[2].value
   await select.listeners.get('change')[0]()
-  assert.deepEqual(observedTargets[1], { partId: 'P2', partIndex: 1, staff: 1, voice: 1 })
+  assert.deepEqual(observedTargets[1], { partId: 'P2', partIndex: 1, staff: 1, voice: 1, scope: 'staff' })
   assert.notEqual(getGuitarTabTeacherWorkspaceState(root).sourceSession, firstSession)
-  assert.deepEqual(getGuitarTabTeacherWorkspaceState(root).selectedRegion, observedTargets[1])
+  const selectedRegion = { partId: 'P2', partIndex: 1, staff: 1, voice: 1 }
+  assert.deepEqual(getGuitarTabTeacherWorkspaceState(root).selectedRegion, selectedRegion)
   assert.deepEqual(getGuitarTabTeacherWorkspaceState(root).selectedRegionSummary, {
-    ...observedTargets[1], partName: 'Gitar', pitchedEventCount: 1,
+    ...selectedRegion, partName: 'Gitar', pitchedEventCount: 1,
   })
 })
 

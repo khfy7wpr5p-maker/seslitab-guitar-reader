@@ -31,6 +31,7 @@ for (const marker of [
   'data-selected-target-pass="true"',
   'data-source-immutable-pass="true"',
   'data-grace-fail-closed-pass="true"',
+  'data-other-voice-fail-closed-pass="true"',
   'data-physical-fail-closed-pass="true"',
 ]) {
   if (!dom.includes(marker)) {

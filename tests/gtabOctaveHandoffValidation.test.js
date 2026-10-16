@@ -29,15 +29,14 @@ const SOURCE = `<?xml version="1.0" encoding="UTF-8"?>
 
 const TAB = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
-  <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
+  <part-list><score-part id="P1"><part-name>Three Staff Source</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
       <attributes>
         <divisions>1</divisions>
-        <staves>2</staves>
-        <clef number="1"><sign>G</sign><line>2</line></clef>
-        <clef number="2"><sign>TAB</sign><line>5</line></clef>
-        <staff-details number="2" show-frets="numbers">
+        <staves>4</staves>
+        <clef number="4"><sign>TAB</sign><line>5</line></clef>
+        <staff-details number="4" show-frets="numbers">
           <staff-type>alternate</staff-type>
           <staff-lines>6</staff-lines>
           <staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
@@ -50,7 +49,11 @@ const TAB = `<?xml version="1.0" encoding="UTF-8"?>
       </attributes>
       <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
       <backup><duration>1</duration></backup>
-      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>2</staff></note>
+      <backup><duration>1</duration></backup>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><staff>3</staff></note>
+      <backup><duration>1</duration></backup>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>4</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
     </measure>
   </part>
 </score-partwise>`
@@ -105,7 +108,7 @@ test('SES-227 keeps standard guitar written pitch policy active in later measure
   )
   const tabTwoMeasures = TAB.replace(
     '    </measure>\n  </part>',
-    '    </measure>\n    <measure number="2"><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note><backup><duration>1</duration></backup><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note></measure>\n  </part>',
+    '    </measure>\n    <measure number="2"><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note><backup><duration>1</duration></backup><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>4</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note></measure>\n  </part>',
   )
   const upload = await scoreUpload(sourceTwoMeasures, 'persistent-octave')
 

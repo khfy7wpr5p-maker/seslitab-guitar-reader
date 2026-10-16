@@ -8,15 +8,15 @@ import { GUITAR_TAB_PITCH_POLICY } from '../src/services/guitarTabPitchPolicy.js
 const TARGET = Object.freeze({ partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
 
 function source(note = '<note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>') {
-  return `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes>${note}</measure></part></score-partwise>`
+  return `<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><clef><sign>G</sign><line>2</line></clef></attributes>${note}</measure></part></score-partwise>`
 }
 
-function tab({ string = 3, fret = 2, technical = null, secondChord = '', transpose = '', tabVoice = 5 } = {}) {
+function tab({ string = 3, fret = 2, technical = null, secondChord = '', transpose = '', tabVoice = 5, notationClef = '<clef number="1"><sign>G</sign><line>2</line></clef>' } = {}) {
   const tech = technical ?? `<notations><technical><string>${string}</string><fret>${fret}</fret></technical></notations>`
   return `<?xml version="1.0"?><score-partwise version="4.0">
-    <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
-    <part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves>
-      <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>TAB</sign><line>5</line></clef>
+    <part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list>
+    <part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves>${transpose}
+      ${notationClef}<clef number="2"><sign>TAB</sign><line>5</line></clef>
       <staff-details number="2"><staff-type>alternate</staff-type><staff-lines>6</staff-lines>
         <staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
         <staff-tuning line="2"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
@@ -24,7 +24,7 @@ function tab({ string = 3, fret = 2, technical = null, secondChord = '', transpo
         <staff-tuning line="4"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
         <staff-tuning line="5"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
         <staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>
-      </staff-details>${transpose}
+      </staff-details>
     </attributes>
     <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>${secondChord}
     <backup><duration>1</duration></backup>
@@ -82,10 +82,14 @@ test('rejects a disjoint TAB voice outside the renderer second-staff range', () 
 
 test('SES-220 source-sounding policy preserves C-sharp 4 despite octave clef notation context', () => {
   const scoreXml = source().replace(
-    '<divisions>1</divisions>',
-    '<divisions>1</divisions><clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
+    '<clef><sign>G</sign><line>2</line></clef>',
+    '<clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
   ).replaceAll('<step>A</step><octave>4</octave>', '<step>C</step><alter>1</alter><octave>4</octave>')
-  const tabXml = tab({ string: 2, fret: 2 })
+  const tabXml = tab({
+    string: 2,
+    fret: 2,
+    notationClef: '<clef number="1"><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
+  })
     .replaceAll('<step>A</step><octave>4</octave>', '<step>C</step><alter>1</alter><octave>4</octave>')
 
   assert.equal(validate(scoreXml, tabXml).ok, true)
@@ -127,6 +131,7 @@ test('SES-227 preserves trusted source technical position instead of re-fingerin
   const scoreXml = source(`<note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff>${technical}</note>`)
   const tabXml = tab({ string: 1, fret: 0 })
     .replaceAll('<step>A</step><octave>4</octave>', '<step>E</step><octave>4</octave>')
+    .replace('</staff></note>', `</staff>${technical}</note>`)
 
   assert.equal(validate(
     scoreXml,
@@ -143,7 +148,7 @@ test('preserves distinct trusted physical authority across renderer-remapped uni
     <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>1</staff><notations><technical><string>1</string><fret>5</fret></technical></notations></note>
   `)
   const tabXml = `<?xml version="1.0"?><score-partwise version="4.0">
-    <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
+    <part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list>
     <part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves>
       <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>TAB</sign><line>5</line></clef>
       <staff-details number="2"><staff-type>alternate</staff-type><staff-lines>6</staff-lines>
@@ -155,9 +160,9 @@ test('preserves distinct trusted physical authority across renderer-remapped uni
         <staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>
       </staff-details>
     </attributes>
-    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
     <backup><duration>1</duration></backup>
-    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>1</staff></note>
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>1</staff><notations><technical><string>1</string><fret>5</fret></technical></notations></note>
     <backup><duration>1</duration></backup>
     <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note>
     <backup><duration>1</duration></backup>
@@ -221,6 +226,130 @@ test('rejects written pitch drift even if TAB physical position could be playabl
   assert.equal(result.ok, false)
   assert.equal(result.category, 'SEMANTIC')
   assert.match(result.code, /SEMANTIC_MISMATCH/u)
+})
+
+test('SES-233 rejects an export that preserves only the selected voice instead of the full target staff', () => {
+  const scoreXml = source(`
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
+    <backup><duration>1</duration></backup>
+    <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><staff>1</staff></note>
+  `)
+  const result = validate(
+    scoreXml,
+    tab(),
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
+
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
+
+test('SES-233 rejects an export that drops source rests even when pitched notes still match', () => {
+  const scoreXml = source(`
+    <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>
+    <note><rest/><duration>1</duration><voice>1</voice><staff>1</staff></note>
+  `)
+  const result = validate(
+    scoreXml,
+    tab(),
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
+
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
+
+test('SES-233 rejects notation exports that drop beam or tuplet semantics', () => {
+  const structuredNote = '<note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>eighth</type><beam number="1">begin</beam><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification><notations><tuplet type="start" number="1"/></notations></note>'
+  const result = validate(
+    source(structuredNote),
+    tab(),
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
+
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
+
+test('SES-233 rejects exports that drop source key, time, clef, direction, or metadata context', () => {
+  const scoreXml = source().replace(
+    '<part-list>',
+    '<movement-title>Preserved title</movement-title><part-list>',
+  ).replace(
+    '<divisions>1</divisions>',
+    '<divisions>1</divisions><key><fifths>2</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time>',
+  ).replace(
+    '<note>',
+    '<direction><direction-type><words>dolce</words></direction-type></direction><note>',
+  )
+
+  const result = validate(
+    scoreXml,
+    tab(),
+    TARGET,
+    GUITAR_TAB_PITCH_POLICY.STANDARD_GUITAR_WRITTEN,
+  )
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
+
+test('SES-233 rejects part-list metadata drift', () => {
+  const changedPartMetadata = tab().replace('<part-name>Source</part-name>', '<part-name>Changed</part-name>')
+  const result = validate(source(), changedPartMetadata)
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
+
+test('SES-233 rejects source-staff count drift and arbitrary source clef additions', () => {
+  const wrongStaffCount = tab().replace('<staves>2</staves>', '<staves>3</staves>')
+  const extraSourceClef = tab().replace(
+    '<clef number="1"><sign>G</sign><line>2</line></clef>',
+    '<clef number="1"><sign>G</sign><line>2</line></clef><clef number="1"><sign>F</sign><line>4</line></clef>',
+  )
+  for (const changed of [wrongStaffCount, extraSourceClef]) {
+    const result = validate(source(), changed)
+    assert.equal(result.ok, false)
+    assert.ok(['SEMANTIC', 'TAB_SHAPE'].includes(result.category))
+    assert.match(result.code, /TAB_(?:STAVES_INVALID|CLEF_REQUIRED)|SOURCE_SCORE_SEMANTIC_MISMATCH/u)
+  }
+})
+
+test('SES-233 rejects a stale later-measure staves declaration', () => {
+  const scoreXml = source().replace(
+    '</part>',
+    '<measure number="2"><attributes><staves>1</staves></attributes><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note></measure></part>',
+  )
+  const tabXml = tab().replace(
+    '</part>',
+    '<measure number="2"><attributes><staves>1</staves></attributes><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note><backup><duration>1</duration></backup><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>5</voice><staff>2</staff><notations><technical><string>3</string><fret>2</fret></technical></notations></note></measure></part>',
+  )
+  const result = validate(scoreXml, tabXml)
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
+})
+
+test('SES-233 rejects arbitrary note-level semantic loss such as lyrics and slurs', () => {
+  const annotated = '<note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><notations><slur type="start" number="1"/></notations><lyric number="1"><text>la</text></lyric></note>'
+  const result = validate(source(annotated), tab())
+  assert.deepEqual(
+    { ok: result.ok, category: result.category, code: result.code },
+    { ok: false, category: 'SEMANTIC', code: 'SOURCE_SCORE_SEMANTIC_MISMATCH' },
+  )
 })
 
 test('rejects an unknown guitar pitch policy fail-closed', () => {

@@ -113,7 +113,54 @@ def note_tie_flags(note: ET.Element) -> tuple[bool, bool]:
     return stops, starts
 
 
-def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, object]]:
+def positive_staff_number(value: str | None, label: str) -> int:
+    text = (value or '').strip()
+    if not text.isdigit() or int(text) < 1:
+        raise ValueError(f"{label} must identify a positive staff number.")
+    return int(text)
+
+
+def max_source_staff(part: ET.Element) -> int:
+    maximum = 1
+    for staves in part.findall('measure/attributes/staves'):
+        maximum = max(maximum, positive_staff_number(staves.text, 'Source staves'))
+    for note in part.findall('measure/note'):
+        maximum = max(maximum, positive_staff_number(note.findtext('staff') or '1', 'Source note staff'))
+    return maximum
+
+
+def resolve_tab_staff_identity(source_root: ET.Element, derived_root: ET.Element) -> tuple[str, int]:
+    source_parts = source_root.findall('part')
+    derived_parts = derived_root.findall('part')
+    source_by_id = {part.get('id'): part for part in source_parts if part.get('id')}
+    derived_by_id = {part.get('id'): part for part in derived_parts if part.get('id')}
+    if len(source_by_id) != len(source_parts) or len(derived_by_id) != len(derived_parts):
+        raise ValueError("Missing/ambiguous part identity while resolving appended TAB staff.")
+    if set(source_by_id) != set(derived_by_id):
+        raise ValueError("Source/derived part inventory differs while resolving appended TAB staff.")
+
+    candidates: set[tuple[str, int]] = set()
+    for part_id, source_part in source_by_id.items():
+        derived_part = derived_by_id[part_id]
+        appended_staff = max_source_staff(source_part) + 1
+        derived_note_staffs = {
+            positive_staff_number(note.findtext('staff') or '1', 'Derived note staff')
+            for note in derived_part.findall('measure/note')
+        }
+        if appended_staff in derived_note_staffs:
+            candidates.add((part_id, appended_staff))
+
+    if len(candidates) != 1:
+        raise ValueError("Derived export must identify exactly one appended TAB staff lane.")
+    return next(iter(candidates))
+
+
+def tab_positions(
+    path: Path,
+    snapshot: dict[str, object],
+    normalization: dict[str, object],
+    tab_identity: tuple[str, int],
+) -> list[dict[str, object]]:
     root = safe_root(path)
     score = partitura.load_musicxml(path, force_note_ids=None)
     xml_parts = root.findall("part")
@@ -123,11 +170,31 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
     notes = snapshot.get("notes")
     if not isinstance(notes, list):
         raise ValueError("Semantic snapshot has no note rows.")
-    remaining = [note for note in notes if isinstance(note, dict) and note.get("staff") == 2]
+    tab_part_id, tab_staff = tab_identity
+    part_mapping = normalization.get('partMapping')
+    if not isinstance(part_mapping, list):
+        raise ValueError("TAB read-view part mapping is missing.")
+    tab_read_parts = {
+        row.get('readViewPartId') for row in part_mapping
+        if isinstance(row, dict)
+        and row.get('originalPartId') == tab_part_id
+        and row.get('originalStaff') == tab_staff
+        and isinstance(row.get('readViewPartId'), str)
+    }
+    if not tab_read_parts:
+        raise ValueError("TAB read view has no projected lane for the appended staff.")
+    remaining = [
+        note for note in notes
+        if isinstance(note, dict)
+        and note.get("part_id") in tab_read_parts
+        and note.get("staff") == tab_staff
+    ]
     positions: list[dict[str, object]] = []
 
     for part_index, xml_part in enumerate(xml_parts):
         part_id = xml_part.get("id")
+        if part_id not in tab_read_parts:
+            continue
         part = score.parts[part_index]
         measures = list(part.measures)
         xml_measures = xml_part.findall("measure")
@@ -180,7 +247,7 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
                     last_non_chord_onset = local_onset
                     cursor += duration
                 staff = int(child.findtext("staff") or "1")
-                if staff != 2:
+                if staff != tab_staff:
                     continue
                 voice = int(child.findtext("voice") or "1")
                 tie_stop, tie_start = note_tie_flags(child)
@@ -192,7 +259,7 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
                     and note.get("onset_div") == onset
                     and note.get("duration_div") == duration
                     and note.get("voice") == voice
-                    and note.get("staff") == 2]
+                    and note.get("staff") == tab_staff]
                 if len(candidates) != 1:
                     raise ValueError("TAB technical data cannot be matched uniquely to a semantic event.")
                 semantic_note = candidates[0]
@@ -343,22 +410,39 @@ def verify_original_bytes(path, original):
         raise ValueError("Original MusicXML bytes changed during oracle execution.")
 
 
-def context_staff_coverage(root, element, number_field):
-    # Original XML identity evidence only: pinned key/time contexts have no staff field.
+def context_staff_coverage(root, element, rows_field):
+    # Bind each raw key/time payload to its exact part, timeline position, order,
+    # and MusicXML staff number. Snapshot parsers intentionally omit the number.
     rows = []
     for part in root.findall('part'):
-        numbers = [context.get('number') for context in part.findall(f'measure/attributes/{element}')]
-        rows.append({"partId": part.get('id'), number_field: numbers,
-            "staffSpecific": any(number is not None for number in numbers)})
+        contexts = []
+        for measure_index, measure in enumerate(part.findall('measure')):
+            onset = 0
+            order = 0
+            for child in measure:
+                if child.tag == 'attributes':
+                    for context in child.findall(element):
+                        contexts.append({"measureIndex": measure_index, "onsetDiv": onset,
+                            "order": order, "number": context.get('number'),
+                            "payloadXml": ET.tostring(context, encoding='unicode')})
+                        order += 1
+                elif child.tag == 'backup':
+                    onset -= int(child.findtext('duration') or '0')
+                elif child.tag == 'forward':
+                    onset += int(child.findtext('duration') or '0')
+                elif child.tag == 'note' and child.find('chord') is None:
+                    onset += int(child.findtext('duration') or '0')
+        rows.append({"partId": part.get('id'), rows_field: contexts,
+            "staffSpecific": any(context["number"] is not None for context in contexts)})
     return rows
 
 
 def key_staff_coverage(root):
-    return context_staff_coverage(root, 'key', 'rawKeyStaffNumbers')
+    return context_staff_coverage(root, 'key', 'rawKeyContexts')
 
 
 def time_staff_coverage(root):
-    return context_staff_coverage(root, 'time', 'rawTimeStaffNumbers')
+    return context_staff_coverage(root, 'time', 'rawTimeContexts')
 
 
 def derived_tab_profile(root):
@@ -390,6 +474,32 @@ def derived_tab_profile(root):
     return {"schema": "gtab10c-derived-tab-profile-v1", "parts": parts}
 
 
+def rest_inventory(root):
+    rows = []
+    for part in root.findall('part'):
+        for measure_index, measure in enumerate(part.findall('measure')):
+            rest_index = 0
+            onset = 0
+            for note in measure:
+                if note.tag == 'backup':
+                    onset -= int(note.findtext('duration') or '0')
+                    continue
+                if note.tag == 'forward':
+                    onset += int(note.findtext('duration') or '0')
+                    continue
+                if note.tag != 'note':
+                    continue
+                rest = note.find('rest')
+                if rest is not None:
+                    rows.append({"partId": part.get('id'), "measureIndex": measure_index,
+                        "restIndex": rest_index, "onsetDiv": onset,
+                        "noteXml": ET.tostring(note, encoding='unicode')})
+                    rest_index += 1
+                if note.find('chord') is None:
+                    onset += int(note.findtext('duration') or '0')
+    return {"schema": "gtab10c-rest-inventory-v1", "rows": rows}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
@@ -410,7 +520,10 @@ def main() -> None:
         if not parts or any(not row["partId"] for row in parts) or len({row["partId"] for row in parts}) != len(parts):
             raise ValueError("Missing/ambiguous part inventory.")
         return parts
+    tab_identity = resolve_tab_staff_identity(source_root, derived_root)
     tab_profile = derived_tab_profile(derived_root)
+    source_staff_profile = derived_tab_profile(source_root)
+    source_staff_profile["schema"] = "gtab10c-source-staff-profile-v1"
     time_coverage = {"schema": "gtab10c-time-staff-coverage-v1",
         "source": time_staff_coverage(source_root), "derived": time_staff_coverage(derived_root)}
     key_coverage = {"schema": "gtab10c-key-staff-coverage-v1",
@@ -426,7 +539,7 @@ def main() -> None:
         views = [source_view, derived_view]
         source_snapshot = snapshot_to_dict(load_musicxml_snapshot(views[0]))
         derived_snapshot = snapshot_to_dict(load_musicxml_snapshot(views[1]))
-        positions = tab_positions(views[1], derived_snapshot)
+        positions = tab_positions(views[1], derived_snapshot, derived_normalization, tab_identity)
         read_view_source_snapshot = deepcopy(source_snapshot)
         read_view_derived_snapshot = deepcopy(derived_snapshot)
         # Only reversible identity projection: never create or alter a tie edge.
@@ -444,6 +557,9 @@ def main() -> None:
             "keySignatureCoverage": key_coverage,
             "timeSignatureCoverage": time_coverage,
             "derivedTabProfile": tab_profile,
+            "sourceStaffProfile": source_staff_profile,
+            "sourceRestInventory": rest_inventory(source_root),
+            "derivedRestInventory": rest_inventory(derived_root),
             "sourceParts": source_parts,
             "derivedParts": derived_parts,
             "partituraVersion": importlib.metadata.version("partitura"),

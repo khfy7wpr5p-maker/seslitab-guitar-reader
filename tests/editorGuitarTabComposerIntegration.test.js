@@ -26,11 +26,10 @@ const SCORE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 
 const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
-  <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
+  <part-list><score-part id="P1"><part-name>Test</part-name></score-part></part-list>
   <part id="P1"><measure number="1">
     <attributes>
       <divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>
-      <clef number="1"><sign>G</sign><line>2</line></clef>
       <clef number="2"><sign>TAB</sign><line>5</line></clef>
       <staff-details number="2" show-frets="numbers"><staff-type>alternate</staff-type><staff-lines>6</staff-lines>
         <staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
@@ -74,16 +73,15 @@ const FINAL_SMOOSIC_TAB_XML = TAB_XML
     '<score-partwise version="4.0">',
     '<score-partwise version="4.0"><identification><encoding><software>Smoosic</software></encoding></identification>',
   )
-  .replace('<divisions>1</divisions>', '<divisions>4096</divisions>')
+  .replace(
+    '<divisions>1</divisions>',
+    '<divisions>4096</divisions><clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
+  )
   .replaceAll('<duration>1</duration>', '<duration>4096</duration>')
   .replace('<backup><duration>4</duration></backup>', '<backup><duration>16384</duration></backup>')
   .replaceAll(
     '<pitch><step>C</step><octave>4</octave></pitch>',
     '<pitch><step>C</step><alter>1</alter><octave>4</octave></pitch>',
-  )
-  .replace(
-    '<clef number="1"><sign>G</sign><line>2</line></clef>',
-    '<clef number="1"><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>',
   )
   .replace('<string>2</string><fret>1</fret>', '<string>2</string><fret>2</fret>')
 
@@ -91,6 +89,15 @@ const MULTIPART_SCORE_XML = SCORE_XML
   .replace('</part-list>', '<score-part id="P2"><part-name>Second Guitar</part-name></score-part></part-list>')
   .replace('  </measure></part>\n</score-partwise>', '  </measure></part>\n  <part id="P2"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note><note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note><note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note><note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff><type>quarter</type></note></measure></part>\n</score-partwise>')
   .replace(/<voice>1<\/voice>(?!<staff>)/gu, '<voice>1</voice><staff>1</staff>')
+
+const MULTIPART_TAB_XML = (() => {
+  const partList = MULTIPART_SCORE_XML.match(/<part-list>[\s\S]*?<\/part-list>/u)?.[0]
+  const firstPart = MULTIPART_SCORE_XML.match(/<part id="P1">[\s\S]*?<\/part>/u)?.[0]
+  const selectedPart = TAB_XML.match(/<part id="P1">[\s\S]*?<\/part>/u)?.[0]
+    ?.replace('<part id="P1">', '<part id="P2">')
+  assert.ok(partList && firstPart && selectedPart)
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0">${partList}${firstPart}${selectedPart}</score-partwise>`
+})()
 
 function harness() {
   const calls = { prepared: [] }
@@ -163,7 +170,7 @@ async function prepare(service, draftId = 'draft-tab', { musicXml = SCORE_XML, t
   })
   const guitarTabUpload = await service.prepareGuitarTabUpload({
     scoreUpload,
-    guitarTabMusicXml: TAB_XML,
+    guitarTabMusicXml: musicXml === MULTIPART_SCORE_XML ? MULTIPART_TAB_XML : TAB_XML,
     draftId,
     targetSelection,
   })
@@ -189,7 +196,7 @@ test('GTAB-10B composer carries and revalidates the exact multipart target tuple
     chordSnapshots: [],
   })
   assert.equal(result.ok, true)
-  assert.equal(calls.prepared[0][0].package.content.guitarTab.data, TAB_XML)
+  assert.equal(calls.prepared[0][0].package.content.guitarTab.data, MULTIPART_TAB_XML)
 
   await assert.rejects(service.send({
     draftId: 'draft-multipart',
@@ -198,7 +205,7 @@ test('GTAB-10B composer carries and revalidates the exact multipart target tuple
     scoreUpload,
     guitarTabUpload: { ...guitarTabUpload, targetSelection: { ...targetSelection, partId: 'P1', partIndex: 0 } },
     chordSnapshots: [],
-  }), /integrity|mismatch/u)
+  }), /integrity|mismatch|staves-invalid/u)
 })
 
 test('GTAB-04 composer delivers exact validated TAB bytes inside SCORE package', async () => {

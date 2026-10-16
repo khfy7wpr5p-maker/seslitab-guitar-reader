@@ -54,8 +54,14 @@ const fixtures = [
     id: 'smoosic-like-multivoice-target',
     path: 'tests/fixtures/gtab10c/smoosic-like-source.musicxml',
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3 },
-    positionByMidi: new Map([[55, { string: 3, fret: 0 }]]),
-    expectedEventCount: 1,
+    editorTargetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3, scope: 'staff' },
+    positionByMidi: new Map([
+      [60, { string: 2, fret: 1 }],
+      [64, { string: 1, fret: 0 }],
+      [55, { string: 3, fret: 0 }],
+      [52, { string: 4, fret: 2 }],
+    ]),
+    expectedEventCount: 4,
   },
   {
     id: 'musescore-like-multipart-meter-tie-accidentals',
@@ -76,8 +82,9 @@ for (const fixture of fixtures) {
   const sourceBytes = await readFile(sourcePath)
   const sourceXml = sourceBytes.toString('utf8')
   const sourceFingerprint = createHash('sha256').update(sourceBytes).digest('hex')
-  const sourceSession = editor.createSourceSession(sourceXml, { targetSelection: fixture.targetSelection })
-  assert.deepEqual(sourceSession.targetSelection, fixture.targetSelection, `${fixture.id}: selected target identity changed.`)
+  const editorTargetSelection = fixture.editorTargetSelection ?? fixture.targetSelection
+  const sourceSession = editor.createSourceSession(sourceXml, { targetSelection: editorTargetSelection })
+  assert.deepEqual(sourceSession.targetSelection, editorTargetSelection, `${fixture.id}: selected target identity changed.`)
   assert.equal(sourceSession.events.length, fixture.expectedEventCount, `${fixture.id}: selected event count changed.`)
 
   const assignmentDocument = editor.createTabAssignmentDocument(sourceSession)

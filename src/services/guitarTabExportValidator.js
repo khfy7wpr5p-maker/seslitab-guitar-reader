@@ -39,6 +39,207 @@ function descendants(node, name) {
   return result
 }
 function textOf(node) { return typeof node?.textContent === 'string' ? node.textContent.trim() : '' }
+function attributeEntries(node) {
+  if (typeof node?.attributes === 'string') {
+    return [...node.attributes.matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/gu)]
+      .map((match) => [match[1], match[2]])
+  }
+  try {
+    return [...(node?.attributes ?? [])].map((attribute) => [attribute.name, attribute.value])
+  } catch {
+    return []
+  }
+}
+function canonicalAttributeKey(node) {
+  return attributeEntries(node)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => `${name}=${value}`)
+    .join(',')
+}
+function canonicalNode(node, { defaultStaffNumber = false } = {}) {
+  const tag = localName(node)
+  const attributes = new Map(attributeEntries(node))
+  if (defaultStaffNumber && !attributes.has('number')) attributes.set('number', '1')
+  const attributeKey = [...attributes.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => `${name}=${value}`)
+    .join(',')
+  const children = elementChildren(node)
+  const contents = children.length > 0
+    ? children.map((child) => canonicalNode(child)).join('')
+    : textOf(node)
+  return `<${tag}[${attributeKey}]>${contents}</${tag}>`
+}
+function rootMetadataKey(root) {
+  const rootAttributes = canonicalAttributeKey(root)
+  const children = elementChildren(root)
+    .filter((child) => localName(child) !== 'part')
+    .map((child) => canonicalNode(child))
+    .join('')
+  return `${rootAttributes}|${children}`
+}
+function measureContextKeys(part, { appendedTabStaff = null, ignoreStaves = false } = {}) {
+  return directChildren(part, 'measure').map((measure) => {
+    const keys = [`measure:[${canonicalAttributeKey(measure)}]`]
+    let cursor = 0
+    let sourceNoteOrdinal = 0
+    let contextOrdinal = 0
+
+    const pushContext = (key) => {
+      keys.push(`${sourceNoteOrdinal}@${cursor}@${contextOrdinal}:${key}`)
+      contextOrdinal += 1
+    }
+
+    for (const child of elementChildren(measure)) {
+      const tag = localName(child)
+      if (tag === 'note') {
+        const staffNode = directChild(child, 'staff')
+        const staff = staffNode ? textOf(staffNode) : '1'
+        const isAppendedTabNote = appendedTabStaff !== null && staff === String(appendedTabStaff)
+        if (!isAppendedTabNote) {
+          sourceNoteOrdinal += 1
+          if (directChildren(child, 'chord').length === 0) {
+            const durationNode = directChild(child, 'duration')
+            const duration = durationNode ? Number(textOf(durationNode)) : NaN
+            if (Number.isSafeInteger(duration)) cursor += duration
+          }
+        }
+        continue
+      }
+      if (tag === 'backup' || tag === 'forward') {
+        const durationNode = directChild(child, 'duration')
+        const duration = durationNode ? Number(textOf(durationNode)) : NaN
+        if (Number.isSafeInteger(duration)) cursor += tag === 'backup' ? -duration : duration
+        continue
+      }
+      if (tag !== 'attributes') {
+        pushContext(canonicalNode(child))
+        continue
+      }
+      for (const attributeChild of elementChildren(child)) {
+        const attributeTag = localName(attributeChild)
+        if (attributeTag === 'staves' && ignoreStaves) continue
+        if (appendedTabStaff !== null) {
+          const number = attributeChild.getAttribute?.('number')
+          if (number === String(appendedTabStaff) && (attributeTag === 'clef' || attributeTag === 'staff-details')) continue
+        }
+        pushContext(`attributes:${canonicalNode(attributeChild, {
+          defaultStaffNumber: ['clef', 'staff-details'].includes(attributeTag),
+        })}`)
+      }
+    }
+    return keys
+  })
+}
+function assertContextParity(expectedPart, actualPart, appendedTabStaff) {
+  const ignoreStaves = appendedTabStaff !== null
+  const expected = measureContextKeys(expectedPart, { ignoreStaves })
+  const actual = measureContextKeys(actualPart, { appendedTabStaff, ignoreStaves })
+  if (expected.length !== actual.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+  for (let measureIndex = 0; measureIndex < expected.length; measureIndex += 1) {
+    if (expected[measureIndex].length !== actual[measureIndex].length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    for (let entryIndex = 0; entryIndex < expected[measureIndex].length; entryIndex += 1) {
+      if (expected[measureIndex][entryIndex] !== actual[measureIndex][entryIndex]) {
+        fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+      }
+    }
+  }
+}
+function sourceRegionControlKeys(part, { appendedTabStaff = null } = {}) {
+  return directChildren(part, 'measure').map((measure) => {
+    const children = elementChildren(measure)
+    let sourceRegionEnd = children.length
+    if (appendedTabStaff !== null) {
+      const firstTabNoteIndex = children.findIndex((child) => {
+        if (localName(child) !== 'note') return false
+        const staffNode = directChild(child, 'staff')
+        const staff = staffNode ? textOf(staffNode) : '1'
+        return staff === String(appendedTabStaff)
+      })
+      if (firstTabNoteIndex >= 0) {
+        sourceRegionEnd = firstTabNoteIndex
+        for (let index = firstTabNoteIndex; index < children.length; index += 1) {
+          const child = children[index]
+          if (localName(child) !== 'note') continue
+          const staffNode = directChild(child, 'staff')
+          const staff = staffNode ? textOf(staffNode) : '1'
+          if (staff !== String(appendedTabStaff)) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+        }
+      }
+    }
+
+    const keys = []
+    let cursor = 0
+    let sourceNoteOrdinal = 0
+    for (const child of children.slice(0, sourceRegionEnd)) {
+      const tag = localName(child)
+      if (tag === 'note') {
+        sourceNoteOrdinal += 1
+        if (directChildren(child, 'chord').length === 0) {
+          const durationNode = directChild(child, 'duration')
+          const duration = durationNode ? Number(textOf(durationNode)) : NaN
+          if (Number.isSafeInteger(duration)) cursor += duration
+        }
+        continue
+      }
+      if (tag !== 'backup' && tag !== 'forward') continue
+      const durationNode = directChild(child, 'duration')
+      const duration = durationNode ? Number(textOf(durationNode)) : NaN
+      keys.push(`${sourceNoteOrdinal}@${cursor}:${canonicalNode(child)}`)
+      if (Number.isSafeInteger(duration)) cursor += tag === 'backup' ? -duration : duration
+    }
+    return keys
+  })
+}
+function assertControlParity(expectedPart, actualPart, appendedTabStaff) {
+  const expected = sourceRegionControlKeys(expectedPart)
+  const actual = sourceRegionControlKeys(actualPart, { appendedTabStaff })
+  if (expected.length !== actual.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+  for (let measureIndex = 0; measureIndex < expected.length; measureIndex += 1) {
+    const expectedControls = expected[measureIndex]
+    const actualControls = actual[measureIndex]
+    const comparable = appendedTabStaff !== null && actualControls.length === expectedControls.length + 1
+      ? actualControls.slice(0, -1)
+      : actualControls
+    if (comparable.length !== expectedControls.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    for (let index = 0; index < expectedControls.length; index += 1) {
+      if (expectedControls[index] !== comparable[index]) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    }
+  }
+}
+function assertStavesParity(expectedPart, actualPart, appendedTabStaff) {
+  const expectedMeasures = directChildren(expectedPart, 'measure')
+  const actualMeasures = directChildren(actualPart, 'measure')
+  if (expectedMeasures.length !== actualMeasures.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+  for (let measureIndex = 0; measureIndex < expectedMeasures.length; measureIndex += 1) {
+    const expected = directChildren(expectedMeasures[measureIndex], 'attributes')
+      .flatMap((attributes) => directChildren(attributes, 'staves'))
+    const actual = directChildren(actualMeasures[measureIndex], 'attributes')
+      .flatMap((attributes) => directChildren(attributes, 'staves'))
+    const expectedCount = measureIndex === 0 && expected.length === 0 ? 1 : expected.length
+    if (actual.length !== expectedCount) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    for (const staves of actual) {
+      if (integerNode(staves, 'SEMANTIC', 'STAVES_INVALID', { min: 1, allowZero: false }) !== appendedTabStaff) {
+        fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+      }
+    }
+  }
+}
+function maxDeclaredSourceStaff(part) {
+  let maximum = 1
+  for (const measure of directChildren(part, 'measure')) {
+    for (const attributes of directChildren(measure, 'attributes')) {
+      for (const staves of directChildren(attributes, 'staves')) {
+        maximum = Math.max(maximum, integerNode(staves, 'SEMANTIC', 'STAVES_INVALID', { min: 1, allowZero: false }))
+      }
+    }
+    for (const note of directChildren(measure, 'note')) {
+      const staff = directChild(note, 'staff')
+      if (staff) maximum = Math.max(maximum, integerNode(staff, 'IDENTITY', 'STAFF_IDENTITY_INVALID', { min: 1, allowZero: false }))
+    }
+  }
+  return maximum
+}
 function integerNode(node, category, code, { min = null, max = null, allowZero = true } = {}) {
   const value = textOf(node)
   const pattern = allowZero ? /^(0|[1-9][0-9]*)$/u : /^[1-9][0-9]*$/u
@@ -89,8 +290,24 @@ function parseTieFlags(note) {
   for (const tied of descendants(note, 'tied')) { const type = tied.getAttribute?.('type'); if (type === 'start') tieStart = true; else if (type === 'stop') tieStop = true; else fail('SEMANTIC', 'TIE_INVALID') }
   return Object.freeze({ tieStart, tieStop })
 }
+function noteStructureKey(note) {
+  const voices = directChildren(note, 'voice')
+  const staves = directChildren(note, 'staff')
+  const voice = voices.length === 0 ? '1' : textOf(voices[0])
+  const staff = staves.length === 0 ? '1' : textOf(staves[0])
+  const attributes = attributeEntries(note)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => `${name}=${value}`)
+    .join(',')
+  const contents = elementChildren(note)
+    .filter((child) => !['voice', 'staff'].includes(localName(child)))
+    .map((child) => canonicalNode(child))
+    .join('')
+  return `<note[${attributes}] voice=${voice} staff=${staff}>${contents}</note>`
+}
 function parseTechnical(note) {
   const technicals = descendants(note, 'technical')
+    .filter((technical) => directChildren(technical, 'string').length > 0 || directChildren(technical, 'fret').length > 0)
   if (technicals.length === 0) return null
   if (technicals.length !== 1) fail('PHYSICAL', 'TECHNICAL_EVIDENCE_AMBIGUOUS')
   const strings = directChildren(technicals[0], 'string'), frets = directChildren(technicals[0], 'fret')
@@ -137,7 +354,15 @@ function noteIdentity(note) {
   const staff = staves.length === 0 ? 1 : integerNode(staves[0], 'IDENTITY', 'STAFF_IDENTITY_INVALID', { min: 1, allowZero: false })
   return { voice, staff }
 }
-function parsePartTimeline(part, { targetSelection = null } = {}) {
+function parsePartTimeline(
+  part,
+  {
+    targetSelection = null,
+    includeRests = false,
+    parseTechnicalEvidence = false,
+    technicalStaff = null,
+  } = {},
+) {
   const measures = directChildren(part, 'measure')
   if (measures.length === 0) fail('SEMANTIC', 'MEASURE_REQUIRED')
   const events = []
@@ -163,7 +388,10 @@ function parsePartTimeline(part, { targetSelection = null } = {}) {
       }
       if (tag !== 'note') continue
       const { voice, staff } = noteIdentity(child)
-      const selected = targetSelection === null || (staff === targetSelection.staff && voice === targetSelection.voice)
+      const selected = targetSelection === null || (
+        staff === targetSelection.staff
+        && (targetSelection.scope === 'staff' || voice === targetSelection.voice)
+      )
       if (directChildren(child, 'grace').length > 0) { if (selected) fail('SEMANTIC', 'GRACE_UNSUPPORTED'); continue }
       const durationNodes = directChildren(child, 'duration')
       if (durationNodes.length !== 1) fail('SEMANTIC', 'NOTE_DURATION_INVALID')
@@ -179,7 +407,12 @@ function parsePartTimeline(part, { targetSelection = null } = {}) {
           const soundingPitchMidi = pitch.midi + semitones
           if (!Number.isSafeInteger(soundingPitchMidi) || soundingPitchMidi < 0 || soundingPitchMidi > 127) fail('SEMANTIC', 'SOUNDING_PITCH_INVALID')
           const ties = parseTieFlags(child)
-          events.push(Object.freeze({ measureIndex, onset, duration, divisions: currentDivisions, voice, staff, pitch, soundingPitchMidi, tieStart: ties.tieStart, tieStop: ties.tieStop, technical: parseTechnical(child) }))
+          const technical = parseTechnicalEvidence && (technicalStaff === null || technicalStaff === staff)
+            ? parseTechnical(child)
+            : null
+          events.push(Object.freeze({ measureIndex, onset, duration, divisions: currentDivisions, voice, staff, pitch, soundingPitchMidi, tieStart: ties.tieStart, tieStop: ties.tieStop, technical, isRest: false, noteStructure: noteStructureKey(child) }))
+        } else if (isRest && includeRests) {
+          events.push(Object.freeze({ measureIndex, onset, duration, divisions: currentDivisions, voice, staff, pitch: null, soundingPitchMidi: null, tieStart: false, tieStop: false, technical: null, isRest: true, noteStructure: noteStructureKey(child) }))
         }
       }
       if (!isChord) { lastNonChordOnset = onset; cursor += duration }
@@ -189,10 +422,20 @@ function parsePartTimeline(part, { targetSelection = null } = {}) {
 }
 function gcd(a, b) { let x = Math.abs(a), y = Math.abs(b); while (y !== 0) [x, y] = [y, x % y]; return x || 1 }
 function fractionKey(value, divisions) { const divisor = gcd(value, divisions); return `${value / divisor}/${divisions / divisor}` }
-function semanticKey(event) { return [event.measureIndex, fractionKey(event.onset, event.divisions), fractionKey(event.duration, event.divisions), event.voice, event.pitch.step, event.pitch.alter, event.pitch.octave, event.tieStart ? 1 : 0, event.tieStop ? 1 : 0].join('|') }
-function assertSemanticParity(expected, actual, code) {
+function semanticKey(event, { includeStructure = false } = {}) {
+  const pitch = event.pitch
+    ? `${event.pitch.step}|${event.pitch.alter}|${event.pitch.octave}`
+    : 'REST'
+  const fields = [event.measureIndex, fractionKey(event.onset, event.divisions), fractionKey(event.duration, event.divisions), event.voice, pitch, event.tieStart ? 1 : 0, event.tieStop ? 1 : 0]
+  if (includeStructure) fields.push(event.noteStructure ?? '')
+  return fields.join('|')
+}
+function assertSemanticParity(expected, actual, code, { includeStaff = false, includeStructure = false } = {}) {
   if (expected.length !== actual.length) fail('SEMANTIC', code)
-  const expectedKeys = expected.map(semanticKey).sort(), actualKeys = actual.map(semanticKey).sort()
+  const keyFor = includeStaff
+    ? (event) => `${event.staff}|${semanticKey(event, { includeStructure })}`
+    : (event) => semanticKey(event, { includeStructure })
+  const expectedKeys = expected.map(keyFor).sort(), actualKeys = actual.map(keyFor).sort()
   for (let index = 0; index < expectedKeys.length; index += 1) if (expectedKeys[index] !== actualKeys[index]) fail('SEMANTIC', code)
 }
 function voiceSort(left, right) {
@@ -230,16 +473,18 @@ function assertTabVoiceParity(notationEvents, tabEvents) {
   for (let index = 0; index < expectedKeys.length; index += 1) if (expectedKeys[index] !== actualKeys[index]) fail('SEMANTIC', 'TAB_STAFF_SEMANTIC_MISMATCH')
   return tabVoiceBySource
 }
-function assertTabShape(root) {
+function assertTabShape(root, targetPartIndex) {
   const parts = directChildren(root, 'part')
-  if (parts.length !== 1) fail('TAB_SHAPE', 'TAB_ONE_PART_REQUIRED')
-  const firstMeasure = directChildren(parts[0], 'measure')[0], attributes = firstMeasure ? directChildren(firstMeasure, 'attributes')[0] : null
+  const part = parts[targetPartIndex]
+  if (!part) fail('IDENTITY', 'TARGET_PART_MISMATCH')
+  const firstMeasure = directChildren(part, 'measure')[0], attributes = firstMeasure ? directChildren(firstMeasure, 'attributes')[0] : null
   if (!attributes) fail('TAB_SHAPE', 'TAB_ATTRIBUTES_REQUIRED')
   const stavesNodes = directChildren(attributes, 'staves')
-  if (stavesNodes.length !== 1 || integerNode(stavesNodes[0], 'TAB_SHAPE', 'TAB_STAVES_INVALID', { min: 2, max: 2, allowZero: false }) !== 2) fail('TAB_SHAPE', 'TAB_TWO_STAFF_SHAPE_REQUIRED')
-  const tabClefs = directChildren(attributes, 'clef').filter((clef) => clef.getAttribute?.('number') === '2')
+  if (stavesNodes.length !== 1) fail('TAB_SHAPE', 'TAB_STAVES_INVALID')
+  const tabStaff = integerNode(stavesNodes[0], 'TAB_SHAPE', 'TAB_STAVES_INVALID', { min: 2, allowZero: false })
+  const tabClefs = directChildren(attributes, 'clef').filter((clef) => clef.getAttribute?.('number') === String(tabStaff))
   if (tabClefs.length !== 1 || textOf(directChild(tabClefs[0], 'sign')) !== 'TAB' || textOf(directChild(tabClefs[0], 'line')) !== '5') fail('TAB_SHAPE', 'TAB_CLEF_REQUIRED')
-  const detailNodes = directChildren(attributes, 'staff-details').filter((entry) => entry.getAttribute?.('number') === '2')
+  const detailNodes = directChildren(attributes, 'staff-details').filter((entry) => entry.getAttribute?.('number') === String(tabStaff))
   if (detailNodes.length !== 1) fail('TAB_SHAPE', 'TAB_STAFF_DETAILS_REQUIRED')
   const lines = directChildren(detailNodes[0], 'staff-lines')
   if (lines.length !== 1 || integerNode(lines[0], 'TAB_SHAPE', 'TAB_STAFF_LINES_INVALID', { min: 6, max: 6, allowZero: false }) !== 6) fail('TAB_SHAPE', 'TAB_SIX_LINE_SHAPE_REQUIRED')
@@ -253,7 +498,7 @@ function assertTabShape(root) {
     const actual = matching[0]
     if (textOf(directChild(actual, 'tuning-step')) !== expected.step || textOf(directChild(actual, 'tuning-octave')) !== String(expected.octave)) fail('TAB_SHAPE', 'TAB_STANDARD_TUNING_REQUIRED')
   }
-  return parts[0]
+  return { part, tabStaff }
 }
 function positionMidi(technical) {
   const openMidi = GUITAR_TAB_STANDARD_TUNING_MIDI[technical?.string]
@@ -308,13 +553,45 @@ function validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, g
     selectedTarget = target.targetSelection
     scorePart = directChildren(scoreRoot, 'part')[target.part.partIndex]
   }
-  const tabPart = assertTabShape(tabRoot), scoreEvents = parsePartTimeline(scorePart, { targetSelection: selectedTarget })
+  if (rootMetadataKey(scoreRoot) !== rootMetadataKey(tabRoot)) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+  const scoreParts = directChildren(scoreRoot, 'part'), tabParts = directChildren(tabRoot, 'part')
+  if (scoreParts.length !== tabParts.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+  for (let index = 0; index < scoreParts.length; index += 1) {
+    if (scoreParts[index].getAttribute?.('id') !== tabParts[index].getAttribute?.('id')) {
+      fail('IDENTITY', 'TARGET_PART_MISMATCH')
+    }
+  }
+  const targetPartIndex = selectedTarget?.partIndex ?? 0
+  const staffTarget = selectedTarget === null ? null : { ...selectedTarget, scope: 'staff' }
+  const { part: tabPart, tabStaff } = assertTabShape(tabRoot, targetPartIndex)
+  if (tabStaff !== maxDeclaredSourceStaff(scorePart) + 1) fail('TAB_SHAPE', 'TAB_STAVES_INVALID')
+  assertStavesParity(scorePart, tabPart, tabStaff)
+  for (let index = 0; index < scoreParts.length; index += 1) {
+    const appendedTabStaff = index === targetPartIndex ? tabStaff : null
+    assertContextParity(scoreParts[index], tabParts[index], appendedTabStaff)
+    assertControlParity(scoreParts[index], tabParts[index], appendedTabStaff)
+    const expected = parsePartTimeline(scoreParts[index], { includeRests: true })
+    const actual = parsePartTimeline(tabParts[index], { includeRests: true })
+      .filter((event) => index !== targetPartIndex || event.staff !== tabStaff)
+    assertSemanticParity(expected, actual, 'SOURCE_SCORE_SEMANTIC_MISMATCH', { includeStaff: true, includeStructure: true })
+  }
+  const physicalSourceStaff = selectedTarget?.staff ?? 1
+  const scoreEvents = parsePartTimeline(scorePart, {
+    targetSelection: staffTarget,
+    parseTechnicalEvidence: true,
+    technicalStaff: physicalSourceStaff,
+  })
   if (scoreEvents.length === 0) fail('IDENTITY', 'TARGET_EMPTY')
-  const tabEvents = parsePartTimeline(tabPart), staff1 = tabEvents.filter((event) => event.staff === 1), staff2 = tabEvents.filter((event) => event.staff === 2)
-  assertSemanticParity(scoreEvents, staff1, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH')
-  const tabVoiceBySource = assertTabVoiceParity(staff1, staff2)
-  assertPhysicalTab(scoreEvents, staff2, normalizedGuitarPitchPolicy, tabVoiceBySource)
-  return Object.freeze({ ok: true, category: null, code: null, facts: Object.freeze({ scoreEventCount: scoreEvents.length, notationEventCount: staff1.length, tabEventCount: staff2.length, targetSelection: selectedTarget, guitarPitchPolicy: normalizedGuitarPitchPolicy }) })
+  const tabEvents = parsePartTimeline(tabPart, {
+    parseTechnicalEvidence: true,
+    technicalStaff: tabStaff,
+  })
+  const notationEvents = tabEvents.filter((event) => event.staff === physicalSourceStaff)
+  const tabStaffEvents = tabEvents.filter((event) => event.staff === tabStaff)
+  assertSemanticParity(scoreEvents, notationEvents, 'SCORE_TAB_STAFF1_SEMANTIC_MISMATCH', { includeStructure: true })
+  const tabVoiceBySource = assertTabVoiceParity(notationEvents, tabStaffEvents)
+  assertPhysicalTab(scoreEvents, tabStaffEvents, normalizedGuitarPitchPolicy, tabVoiceBySource)
+  return Object.freeze({ ok: true, category: null, code: null, facts: Object.freeze({ scoreEventCount: scoreEvents.length, notationEventCount: notationEvents.length, tabEventCount: tabStaffEvents.length, targetSelection: selectedTarget, guitarPitchPolicy: normalizedGuitarPitchPolicy }) })
 }
 export function validateGuitarTabExport({ scoreMusicXml, guitarTabMusicXml, targetSelection = null, guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING, DOMParserCtor = globalThis.DOMParser } = {}) {
   try { return validateInternal({ scoreMusicXml, guitarTabMusicXml, targetSelection, guitarPitchPolicy, DOMParserCtor }) }

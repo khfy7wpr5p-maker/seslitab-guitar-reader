@@ -188,7 +188,7 @@ test('GTAB-10C sends an editor-only defaulted view when pitched MusicXML notes o
   assert.match(observations.editorXml, /<staff>1<\/staff>/u)
   assert.equal(sourceXml.includes('<voice>'), false)
   assert.equal(sourceXml.includes('<staff>'), false)
-  assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+  assert.deepEqual(observations.targetSelection, { partId: 'P1', partIndex: 0, staff: 1, voice: 1, scope: 'staff' })
 })
 
 test('GTAB-10C uses distinct strings while clicking through a simultaneous chord', async () => {

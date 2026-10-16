@@ -24,12 +24,11 @@ function tabXml({ string = 2, fret = 1, duplicateTechnical = false } = {}) {
     : `<notations><technical><string>${string}</string><fret>${fret}</fret></technical></notations>`
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
-  <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
       <attributes>
         <divisions>1</divisions><staves>2</staves>
-        <clef number="1"><sign>G</sign><line>2</line></clef>
         <clef number="2"><sign>TAB</sign><line>5</line></clef>
         <staff-details number="2">
           <staff-lines>6</staff-lines>
@@ -50,8 +49,12 @@ function tabXml({ string = 2, fret = 1, duplicateTechnical = false } = {}) {
 }
 
 const TARGET = Object.freeze({ partId: 'P1', partIndex: 0, staff: 1, voice: 1 })
+const UNPITCHED_NOTE = '<note><unpitched><display-step>C</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><voice>2</voice><staff>1</staff></note>'
+const GRACE_NOTE = '<note><grace/><pitch><step>D</step><octave>4</octave></pitch><voice>3</voice><staff>1</staff></note>'
+const GRACE_SOURCE = SOURCE.replace(UNPITCHED_NOTE, '')
+const SUPPORTED_SOURCE = GRACE_SOURCE.replace(GRACE_NOTE, '')
 
-test('GTAB-VALIDATOR-01 selected voice ignores unsupported events outside target and preserves source bytes', () => {
+test('SES-233 staff-wide validation fails closed on unsupported events in another voice', () => {
   const original = SOURCE
   const result = validateGuitarTabExport({
     scoreMusicXml: SOURCE,
@@ -60,14 +63,13 @@ test('GTAB-VALIDATOR-01 selected voice ignores unsupported events outside target
     DOMParserCtor: SmoosicTestDOMParser,
   })
 
-  assert.equal(result.ok, true)
-  assert.equal(result.facts.scoreEventCount, 1)
+  assert.deepEqual(result, { ok: false, category: 'SEMANTIC', code: 'UNPITCHED_UNSUPPORTED' })
   assert.equal(SOURCE, original)
 })
 
 test('GTAB-VALIDATOR-01 selected grace voice remains fail-closed', () => {
   const result = validateGuitarTabExport({
-    scoreMusicXml: SOURCE,
+    scoreMusicXml: GRACE_SOURCE,
     guitarTabMusicXml: tabXml(),
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3 },
     DOMParserCtor: SmoosicTestDOMParser,
@@ -78,7 +80,7 @@ test('GTAB-VALIDATOR-01 selected grace voice remains fail-closed', () => {
 
 test('GTAB-VALIDATOR-01 rejects wrong physical pitch and ambiguous technical evidence', () => {
   const wrongPosition = validateGuitarTabExport({
-    scoreMusicXml: SOURCE,
+    scoreMusicXml: SUPPORTED_SOURCE,
     guitarTabMusicXml: tabXml({ string: 1, fret: 0 }),
     targetSelection: TARGET,
     DOMParserCtor: SmoosicTestDOMParser,
@@ -86,7 +88,7 @@ test('GTAB-VALIDATOR-01 rejects wrong physical pitch and ambiguous technical evi
   assert.deepEqual(wrongPosition, { ok: false, category: 'PHYSICAL', code: 'TECHNICAL_POSITION_PITCH_MISMATCH' })
 
   const ambiguous = validateGuitarTabExport({
-    scoreMusicXml: SOURCE,
+    scoreMusicXml: SUPPORTED_SOURCE,
     guitarTabMusicXml: tabXml({ duplicateTechnical: true }),
     targetSelection: TARGET,
     DOMParserCtor: SmoosicTestDOMParser,

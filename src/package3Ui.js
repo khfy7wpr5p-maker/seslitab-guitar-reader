@@ -23,6 +23,11 @@ import {
   stopRhythm,
   stopSpeech,
 } from './services/voiceService.js'
+import {
+  beginScorePlaybackHighlight,
+  endScorePlaybackHighlight,
+  syncScorePlaybackNoteHighlight,
+} from './scoreViewUi.js'
 
 export const MUSIC_LISTEN_LABELS = Object.freeze({
   heading: 'Müziği Dinle',
@@ -38,7 +43,7 @@ const selectedOperationState = new WeakMap()
 function operationState(root) {
   let state = selectedOperationState.get(root)
   if (!state) {
-    state = { token: 0, activeConsumer: null }
+    state = { token: 0, activeConsumer: null, playbackHighlightToken: null }
     selectedOperationState.set(root, state)
   }
   return state
@@ -70,6 +75,9 @@ function stopSelectedOperation(root, message = '') {
   state.token += 1
   const hadActiveSelectedOperation = state.activeConsumer !== null
   state.activeConsumer = null
+  const playbackHighlightToken = state.playbackHighlightToken
+  state.playbackHighlightToken = null
+  if (playbackHighlightToken) void endScorePlaybackHighlight(root, playbackHighlightToken)
 
   // The low-level speech/rhythm services are shared with full-score playback.
   // They may be stopped here only when this UI state proves that Package 3 owns
@@ -188,10 +196,19 @@ export async function runSelectedMeasureAction(root, consumer) {
     } else {
       const tempo = Number.parseFloat(root.getElementById('tempo-slider')?.value ?? '120')
       const speed = bpmToSpeed(Number.isFinite(tempo) && tempo > 0 ? tempo : 120)
+      const selectedMeasure = selectCanonicalMeasure(bridge.notes, bridge.selectedMeasureKey)
+      const playbackNotes = selectedMeasure?.notes ?? []
+      const playbackHighlightToken = beginScorePlaybackHighlight(root, playbackNotes)
+      state.playbackHighlightToken = playbackHighlightToken
       result = await playSelectedMeasure({
         notes: bridge.notes,
         measureKey: bridge.selectedMeasureKey,
         speed,
+        onNote: (_note, noteIndex) => {
+          if (playbackHighlightToken) {
+            void syncScorePlaybackNoteHighlight(root, noteIndex, playbackHighlightToken)
+          }
+        },
       })
     }
 
@@ -215,6 +232,9 @@ export async function runSelectedMeasureAction(root, consumer) {
     return false
   } finally {
     if (state.token === token) {
+      const playbackHighlightToken = state.playbackHighlightToken
+      state.playbackHighlightToken = null
+      if (playbackHighlightToken) await endScorePlaybackHighlight(root, playbackHighlightToken)
       state.activeConsumer = null
       if (stop) stop.disabled = true
     }
