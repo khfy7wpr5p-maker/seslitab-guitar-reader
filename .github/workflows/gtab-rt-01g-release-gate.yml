@@ -1,0 +1,113 @@
+name: GTAB-RT-01G Cross-App Release Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gtab-rt-01g-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-app-exact-head-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GTAB_EDITOR_SHA: 4eb479bc84b12c6deefb289d03c933ce9980bc9f
+      STUDENT_APP_SHA: 70042d2314c005e71de80094363ba66faa795456
+      SEMANTIC_ENGINE_SHA: ef305f45ff90d940ac6c51a0c46c4fac006d7c5c
+      STUDENT_RENDERER_SHA: 13aa0843158257a207afe062879743d58048cc6d
+      SES225_TEACHER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout SesliTab exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SES225_TEACHER_SHA }}
+          path: teacher
+
+      - name: Checkout exact Guitar TAB Editor runtime source
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-guitar-tab-editor
+          ref: ${{ env.GTAB_EDITOR_SHA }}
+          path: editor
+
+      - name: Checkout exact Student App
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-student-app
+          ref: ${{ env.STUDENT_APP_SHA }}
+          path: student-app
+
+      - name: Checkout exact Semantic Engine oracle
+        uses: actions/checkout@v4
+        with:
+          repository: khfy7wpr5p-maker/st-score-semantic-engine
+          ref: ${{ env.SEMANTIC_ENGINE_SHA }}
+          path: semantic-engine
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact dependencies
+        run: |
+          npm --prefix teacher ci --ignore-scripts
+          npm --prefix student-app ci --ignore-scripts
+          python -m pip install --only-binary :all: --disable-pip-version-check ./semantic-engine defusedxml==0.7.1 coverage==7.10.7
+
+      - name: Verify Audiveris to Student exact-head chain
+        working-directory: teacher
+        env:
+          GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
+          STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
+          SEMANTIC_ENGINE_ROOT: ${{ github.workspace }}/semantic-engine
+        run: node scripts/verifyGtabRt01gCrossAppRelease.js
+
+      - name: Verify Semantic Engine and Partitura parity
+        working-directory: teacher
+        env:
+          GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor
+          SEMANTIC_ENGINE_ROOT: ${{ github.workspace }}/semantic-engine
+        run: |
+          env -u GITHUB_SHA \
+            GTAB10C_SESILITAB_SHA="$SES225_TEACHER_SHA" \
+            GTAB10C_PYTHON="$pythonLocation/bin/python" \
+            node scripts/verifyGtab10cSemanticParity.js
+
+      - name: Build exact production bundle
+        working-directory: teacher
+        run: env -u GITHUB_SHA npm run build
+
+      - name: Verify Smoosic Guitar TAB in a real browser
+        working-directory: teacher
+        run: node scripts/verifySes222SmoosicGuitarTabRendererBrowser.js
+
+      - name: Verify pinned Student renderer against delivered package
+        working-directory: teacher
+        env:
+          STUDENT_APP_ROOT: ${{ github.workspace }}/student-app
+        run: node scripts/verifyGtabRt01gStudentRendererBrowser.js
+
+      - name: Upload SES-225 release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtab-rt-01g-release-${{ env.SES225_TEACHER_SHA }}
+          path: |
+            teacher/artifacts/gtab-rt-01g/
+            teacher/artifacts/gtab10c-semantic-parity/
+          if-no-files-found: error
