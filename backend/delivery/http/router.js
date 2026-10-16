@@ -6,6 +6,7 @@ import {
   sendSecureDeliveryError,
 } from './errorResponse.js'
 import {
+  secureDeliveryFailureClass,
   secureDeliveryRequestOutcome,
 } from '../observability/secureDeliveryRequestObserver.js'
 
@@ -61,6 +62,7 @@ function observeSafely(
   operation,
   outcome,
   status,
+  failureClass = null,
 ) {
   if (typeof observeRequest !== 'function') {
     return
@@ -73,6 +75,9 @@ function observeSafely(
           operation,
           outcome,
           status,
+          ...(failureClass === null
+            ? {}
+            : { failureClass }),
         }),
       )
 
@@ -165,12 +170,14 @@ export function createSecureDeliveryRouter({
     operation,
     outcome,
     status,
+    failureClass = null,
   ) {
     observeSafely(
       observeRequest,
       operation,
       outcome,
       status,
+      failureClass,
     )
   }
 
@@ -195,6 +202,9 @@ export function createSecureDeliveryRouter({
             status,
           ),
           status,
+          secureDeliveryFailureClass(
+            error,
+          ),
         )
 
         return sendSecureDeliveryError(
@@ -295,6 +305,9 @@ export function createSecureDeliveryRouter({
             status,
           ),
           status,
+          secureDeliveryFailureClass(
+            error,
+          ),
         )
         return sendSecureDeliveryError(
           res,
