@@ -301,6 +301,53 @@ test('default structured observer serializes only allowlisted fields', async () 
 })
 
 
+test('default observer emits only an allowlisted upstream failure class', async () => {
+  const {
+    createSecureDeliveryRequestObserver,
+  } = await import(
+    '../backend/delivery/observability/secureDeliveryRequestObserver.js'
+  )
+  const lines = []
+  const observe =
+    createSecureDeliveryRequestObserver({
+      write(line) {
+        lines.push(line)
+      },
+    })
+
+  observe({
+    event: 'secure_delivery_request',
+    operation:
+      'teacher_roster_list',
+    outcome: 'unavailable',
+    status: 503,
+    failureClass:
+      'UPSTREAM_UNAVAILABLE',
+    providerMessage:
+      'projects/secret/databases/private',
+  })
+
+  assert.deepEqual(
+    JSON.parse(lines[0]),
+    {
+      event:
+        'secure_delivery_request',
+      operation:
+        'teacher_roster_list',
+      outcome: 'unavailable',
+      status: 503,
+      failureClass:
+        'UPSTREAM_UNAVAILABLE',
+    },
+  )
+  assert.equal(
+    lines[0].includes(
+      'projects/secret',
+    ),
+    false,
+  )
+})
+
 test('router consumes rejected async observer results without affecting the request', async () => {
   const d = deps([])
   let rejectionConsumed = false
