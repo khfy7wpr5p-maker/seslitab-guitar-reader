@@ -113,7 +113,68 @@ def note_tie_flags(note: ET.Element) -> tuple[bool, bool]:
     return stops, starts
 
 
-def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, object]]:
+def positive_staff_number(value: str | None, label: str) -> int:
+    text = (value or '').strip()
+    if not text.isdigit() or int(text) < 1:
+        raise ValueError(f"{label} must identify a positive staff number.")
+    return int(text)
+
+
+def max_source_staff(part: ET.Element) -> int:
+    maximum = 1
+    for staves in part.findall('measure/attributes/staves'):
+        maximum = max(maximum, positive_staff_number(staves.text, 'Source staves'))
+    for note in part.findall('measure/note'):
+        maximum = max(maximum, positive_staff_number(note.findtext('staff') or '1', 'Source note staff'))
+    return maximum
+
+
+def resolve_tab_staff_identity(source_root: ET.Element, derived_root: ET.Element) -> tuple[str, int]:
+    source_parts = source_root.findall('part')
+    derived_parts = derived_root.findall('part')
+    source_by_id = {part.get('id'): part for part in source_parts if part.get('id')}
+    derived_by_id = {part.get('id'): part for part in derived_parts if part.get('id')}
+    if len(source_by_id) != len(source_parts) or len(derived_by_id) != len(derived_parts):
+        raise ValueError("Missing/ambiguous part identity while resolving appended TAB staff.")
+    if set(source_by_id) != set(derived_by_id):
+        raise ValueError("Source/derived part inventory differs while resolving appended TAB staff.")
+
+    candidates: set[tuple[str, int]] = set()
+    for part_id, source_part in source_by_id.items():
+        derived_part = derived_by_id[part_id]
+        appended_staff = max_source_staff(source_part) + 1
+        tab_clefs = [
+            clef for clef in derived_part.findall('measure/attributes/clef')
+            if (clef.findtext('sign') or '').strip() == 'TAB'
+            and clef.get('number') is not None
+            and positive_staff_number(clef.get('number'), 'TAB clef') == appended_staff
+        ]
+        tab_details = [
+            details for details in derived_part.findall('measure/attributes/staff-details')
+            if details.get('number') is not None
+            and positive_staff_number(details.get('number'), 'TAB staff-details') == appended_staff
+        ]
+        declared_counts = [
+            positive_staff_number(staves.text, 'Derived staves')
+            for staves in derived_part.findall('measure/attributes/staves')
+        ]
+        if not tab_clefs and not tab_details:
+            continue
+        if not tab_clefs or not tab_details or appended_staff not in declared_counts:
+            raise ValueError("Appended TAB staff profile is incomplete or inconsistent.")
+        candidates.add((part_id, appended_staff))
+
+    if len(candidates) != 1:
+        raise ValueError("Derived export must identify exactly one appended TAB staff.")
+    return next(iter(candidates))
+
+
+def tab_positions(
+    path: Path,
+    snapshot: dict[str, object],
+    normalization: dict[str, object],
+    tab_identity: tuple[str, int],
+) -> list[dict[str, object]]:
     root = safe_root(path)
     score = partitura.load_musicxml(path, force_note_ids=None)
     xml_parts = root.findall("part")
@@ -123,16 +184,31 @@ def tab_positions(path: Path, snapshot: dict[str, object]) -> list[dict[str, obj
     notes = snapshot.get("notes")
     if not isinstance(notes, list):
         raise ValueError("Semantic snapshot has no note rows.")
-    technical_staffs = {int(note.findtext('staff') or '1') for note in root.findall('part/measure/note')
-        if note.find('notations/technical/string') is not None and note.find('notations/technical/fret') is not None}
-    if len(technical_staffs) != 1:
-        raise ValueError("TAB technical data must identify exactly one staff.")
-    tab_staff = next(iter(technical_staffs))
-    remaining = [note for note in notes if isinstance(note, dict) and note.get("staff") == tab_staff]
+    tab_part_id, tab_staff = tab_identity
+    part_mapping = normalization.get('partMapping')
+    if not isinstance(part_mapping, list):
+        raise ValueError("TAB read-view part mapping is missing.")
+    tab_read_parts = {
+        row.get('readViewPartId') for row in part_mapping
+        if isinstance(row, dict)
+        and row.get('originalPartId') == tab_part_id
+        and row.get('originalStaff') == tab_staff
+        and isinstance(row.get('readViewPartId'), str)
+    }
+    if not tab_read_parts:
+        raise ValueError("TAB read view has no projected lane for the appended staff.")
+    remaining = [
+        note for note in notes
+        if isinstance(note, dict)
+        and note.get("part_id") in tab_read_parts
+        and note.get("staff") == tab_staff
+    ]
     positions: list[dict[str, object]] = []
 
     for part_index, xml_part in enumerate(xml_parts):
         part_id = xml_part.get("id")
+        if part_id not in tab_read_parts:
+            continue
         part = score.parts[part_index]
         measures = list(part.measures)
         xml_measures = xml_part.findall("measure")
@@ -458,6 +534,7 @@ def main() -> None:
         if not parts or any(not row["partId"] for row in parts) or len({row["partId"] for row in parts}) != len(parts):
             raise ValueError("Missing/ambiguous part inventory.")
         return parts
+    tab_identity = resolve_tab_staff_identity(source_root, derived_root)
     tab_profile = derived_tab_profile(derived_root)
     source_staff_profile = derived_tab_profile(source_root)
     source_staff_profile["schema"] = "gtab10c-source-staff-profile-v1"
@@ -476,7 +553,7 @@ def main() -> None:
         views = [source_view, derived_view]
         source_snapshot = snapshot_to_dict(load_musicxml_snapshot(views[0]))
         derived_snapshot = snapshot_to_dict(load_musicxml_snapshot(views[1]))
-        positions = tab_positions(views[1], derived_snapshot)
+        positions = tab_positions(views[1], derived_snapshot, derived_normalization, tab_identity)
         read_view_source_snapshot = deepcopy(source_snapshot)
         read_view_derived_snapshot = deepcopy(derived_snapshot)
         # Only reversible identity projection: never create or alter a tie edge.
