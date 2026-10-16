@@ -261,6 +261,8 @@ Each observed request emits one structured JSON line with exactly these fields:
 
 Allowed outcome classes are `authorized`, `unauthorized`, `revoked`, `not_found`, `unavailable`, and `rejected`.
 
+Failed upstream requests may additionally include one fixed, non-identifying `failureClass` such as `UPSTREAM_UNAVAILABLE` or `UPSTREAM_RESOURCE_EXHAUSTED`. Raw provider messages, resource paths and stack traces remain forbidden. Recognized upstream failures return HTTP 503 instead of being collapsed into an invalid-request response.
+
 The observer never receives or serializes bearer tokens, Firebase/provider subjects, stable teacher/student IDs, assignment IDs, Piece IDs, credentials, secrets, request bodies, or provider error details. Observer failures are swallowed so logging cannot make Secure Delivery unavailable.
 
 For exact student reads, an already revoked assignment/Piece remains externally hidden with the same bounded not-found HTTP response. Internally, the read service uses a non-identifying revoked marker so request observability can record `outcome = revoked` without exposing which record or student was involved.

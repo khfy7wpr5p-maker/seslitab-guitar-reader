@@ -6,10 +6,16 @@ import {
   sendSecureDeliveryError,
 } from './errorResponse.js'
 import {
+  secureDeliveryFailureClass,
   secureDeliveryRequestOutcome,
 } from '../observability/secureDeliveryRequestObserver.js'
 
-function observeSafely(observeRequest, outcome, status) {
+function observeSafely(
+  observeRequest,
+  outcome,
+  status,
+  failureClass = null,
+) {
   if (typeof observeRequest !== 'function') return
   try {
     const result = observeRequest(Object.freeze({
@@ -17,6 +23,9 @@ function observeSafely(observeRequest, outcome, status) {
       operation: 'student_work_request_create',
       outcome,
       status,
+      ...(failureClass === null
+        ? {}
+        : { failureClass }),
     }))
     if (result && typeof result.catch === 'function') result.catch(() => {})
   } catch {
@@ -80,6 +89,7 @@ export function createStudentWorkRequestRouter({
         observeRequest,
         secureDeliveryRequestOutcome(error, status),
         status,
+        secureDeliveryFailureClass(error),
       )
       return sendSecureDeliveryError(res, error)
     }

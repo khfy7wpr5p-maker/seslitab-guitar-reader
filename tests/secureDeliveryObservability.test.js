@@ -148,6 +148,88 @@ test('router emits only privacy-safe authorized and unauthorized request outcome
   }
 })
 
+test('router classifies upstream Firestore failures without exposing provider details', async () => {
+  const cases = [
+    {
+      code: 14,
+      failureClass:
+        'UPSTREAM_UNAVAILABLE',
+    },
+    {
+      code: 'resource-exhausted',
+      failureClass:
+        'UPSTREAM_RESOURCE_EXHAUSTED',
+    },
+  ]
+
+  for (const item of cases) {
+    const events = []
+    const d = deps(events)
+    d.studentService.listAssignments =
+      async () => {
+        const error = new Error(
+          'projects/secret/databases/private',
+        )
+        error.code = item.code
+        throw error
+      }
+    const app =
+      appFor(
+        createSecureDeliveryRouter(d),
+      )
+
+    const response = await request(
+      app,
+      '/api/secure-delivery/v1/student/assignments',
+      {
+        headers: {
+          Authorization:
+            'Bearer good-token',
+        },
+      },
+    )
+
+    assert.equal(response.status, 503)
+    assert.deepEqual(
+      await response.json(),
+      {
+        success: false,
+        error: {
+          code:
+            'SECURE_DELIVERY_UNAVAILABLE',
+          message:
+            'Güvenli teslimat şu anda kullanılamıyor.',
+        },
+      },
+    )
+    assert.deepEqual(events, [
+      {
+        event:
+          'secure_delivery_request',
+        operation:
+          'student_assignments_list',
+        outcome: 'unavailable',
+        status: 503,
+        failureClass:
+          item.failureClass,
+      },
+    ])
+
+    const serialized =
+      JSON.stringify(events)
+    assert.equal(
+      serialized.includes(
+        'projects/secret',
+      ),
+      false,
+    )
+    assert.equal(
+      serialized.includes('private'),
+      false,
+    )
+  }
+})
+
 test('router records revoked internally while preserving the external not-found response', async () => {
   const events = []
   const d = deps(events)
@@ -218,6 +300,53 @@ test('default structured observer serializes only allowlisted fields', async () 
   assert.equal(lines[0].includes('student-secret'), false)
 })
 
+
+test('default observer emits only an allowlisted upstream failure class', async () => {
+  const {
+    createSecureDeliveryRequestObserver,
+  } = await import(
+    '../backend/delivery/observability/secureDeliveryRequestObserver.js'
+  )
+  const lines = []
+  const observe =
+    createSecureDeliveryRequestObserver({
+      write(line) {
+        lines.push(line)
+      },
+    })
+
+  observe({
+    event: 'secure_delivery_request',
+    operation:
+      'teacher_roster_list',
+    outcome: 'unavailable',
+    status: 503,
+    failureClass:
+      'UPSTREAM_UNAVAILABLE',
+    providerMessage:
+      'projects/secret/databases/private',
+  })
+
+  assert.deepEqual(
+    JSON.parse(lines[0]),
+    {
+      event:
+        'secure_delivery_request',
+      operation:
+        'teacher_roster_list',
+      outcome: 'unavailable',
+      status: 503,
+      failureClass:
+        'UPSTREAM_UNAVAILABLE',
+    },
+  )
+  assert.equal(
+    lines[0].includes(
+      'projects/secret',
+    ),
+    false,
+  )
+})
 
 test('router consumes rejected async observer results without affecting the request', async () => {
   const d = deps([])

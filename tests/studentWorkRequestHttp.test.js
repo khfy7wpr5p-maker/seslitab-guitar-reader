@@ -148,3 +148,84 @@ test('student work request endpoint honors global secure-delivery write gate', a
   assert.equal(response.status, 503)
   assert.equal(called, false)
 })
+
+test('student work request endpoint emits only privacy-safe upstream failure classes', async () => {
+  const cases = [
+    {
+      code: 14,
+      failureClass: 'UPSTREAM_UNAVAILABLE',
+    },
+    {
+      code: 'resource-exhausted',
+      failureClass: 'UPSTREAM_RESOURCE_EXHAUSTED',
+    },
+  ]
+
+  for (const item of cases) {
+    const events = []
+    const router = createStudentWorkRequestRouter({
+      tokenVerifier: {
+        async verifyIdToken(token) {
+          assert.equal(token, 'student-token')
+          return { uid: 'uid-student-a' }
+        },
+      },
+      service: {
+        async requestWork() {
+          const error = new Error(
+            'projects/secret/databases/private',
+          )
+          error.code = item.code
+          throw error
+        },
+      },
+      config: {
+        enabled: true,
+        writesEnabled: true,
+      },
+      observeRequest(event) {
+        events.push(event)
+      },
+    })
+
+    const response = await request(
+      appFor(router),
+      '/secure-delivery/student/work-requests',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer student-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'Etüt' }),
+      },
+    )
+
+    assert.equal(response.status, 503)
+    assert.deepEqual(
+      await response.json(),
+      {
+        success: false,
+        error: {
+          code: 'SECURE_DELIVERY_UNAVAILABLE',
+          message: 'Güvenli teslimat şu anda kullanılamıyor.',
+        },
+      },
+    )
+    assert.deepEqual(events, [
+      {
+        event: 'secure_delivery_request',
+        operation: 'student_work_request_create',
+        outcome: 'unavailable',
+        status: 503,
+        failureClass: item.failureClass,
+      },
+    ])
+
+    const serialized = JSON.stringify(events)
+    assert.equal(serialized.includes('projects/secret'), false)
+    assert.equal(serialized.includes('private'), false)
+    assert.equal(serialized.includes('uid-student-a'), false)
+    assert.equal(serialized.includes('student-token'), false)
+  }
+})
