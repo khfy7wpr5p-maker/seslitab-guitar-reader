@@ -12,7 +12,7 @@ function nextTurn() {
   return new Promise((resolve) => setImmediate(resolve))
 }
 
-function mountHarness() {
+function mountHarness({ failPieceAction = false } = {}) {
   const document = createFakeDocument()
   const host = document.createElement('div')
   const results = document.createElement('section')
@@ -82,6 +82,9 @@ function mountHarness() {
       },
       async applyPieceAction(actionKey, action) {
         calls.pieceActions.push([actionKey, action])
+        if (failPieceAction) {
+          throw new Error('piece-action-failed')
+        }
         return Object.freeze({})
       },
       async applyTeacherWorkRequestAction() {
@@ -213,6 +216,54 @@ test('piece revoke removes the cached row without a full Piece refetch', async (
     activeRows.some((row) => row.textContent.includes('Aktif Etüt')),
     false,
     'the revoked Piece must disappear from local management state',
+  )
+
+  handle.destroy()
+})
+
+test('failed Piece mutation leaves the local management snapshot unchanged', async () => {
+  const { host, calls, handle } = mountHarness({
+    failPieceAction: true,
+  })
+  await nextTurn()
+  await openManagement(host)
+
+  const tabs = managementTabs(host)
+  await tabs[1].dispatchEventAsync({ type: 'click' })
+
+  const activeItem = host.querySelector(
+    '.teacher-assignment-workspace__item',
+  )
+  const repertoireButton = activeItem
+    .querySelectorAll('button')
+    .find((button) => button.textContent === 'Repertuara Al')
+  assert.ok(repertoireButton)
+
+  const piecesBeforeMutation = calls.pieces
+  await repertoireButton.dispatchEventAsync({ type: 'click' })
+
+  assert.deepEqual(
+    calls.pieceActions,
+    [['piece-active', 'PLACE_IN_REPERTOIRE']],
+  )
+  assert.equal(
+    calls.pieces,
+    piecesBeforeMutation,
+    'failed Piece mutation must not trigger a full Piece refetch',
+  )
+  assert.equal(
+    host.querySelectorAll('.teacher-assignment-workspace__item')
+      .some((row) => row.textContent.includes('Aktif Etüt')),
+    true,
+    'failed Piece mutation must keep the existing local Piece row',
+  )
+
+  await tabs[2].dispatchEventAsync({ type: 'click' })
+  assert.equal(
+    host.querySelectorAll('.teacher-assignment-workspace__item')
+      .some((row) => row.textContent.includes('Aktif Etüt')),
+    false,
+    'failed Piece mutation must not move the Piece into Repertuar locally',
   )
 
   handle.destroy()
