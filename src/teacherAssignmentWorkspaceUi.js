@@ -79,6 +79,42 @@ function nextView(map, current, direction) {
   return views[(index + direction + views.length) % views.length]
 }
 
+function reconcilePieceActionSnapshot(
+  snapshot,
+  actionKey,
+  action,
+) {
+  if (snapshot === null) return snapshot
+
+  let pieces = snapshot.pieces
+  if (action === 'REVOKE') {
+    pieces = frozenRows(
+      snapshot.pieces.filter(
+        (row) => row?.actionKey !== actionKey,
+      ),
+      'teacher pieces',
+    )
+  } else if (action === 'PLACE_IN_REPERTOIRE') {
+    pieces = frozenRows(
+      snapshot.pieces.map((row) =>
+        row?.actionKey === actionKey
+          ? Object.freeze({
+              ...row,
+              state: 'REPERTOIRE',
+              revoked: false,
+            })
+          : row,
+      ),
+      'teacher pieces',
+    )
+  }
+
+  return Object.freeze({
+    pieces,
+    requests: snapshot.requests,
+  })
+}
+
 export function mountTeacherAssignmentWorkspaceUi({
   root = globalThis.document,
   host,
@@ -285,6 +321,14 @@ export function mountTeacherAssignmentWorkspaceUi({
     return snapshot
   }
 
+  function reconcilePieceAction(actionKey, action) {
+    managementSnapshot = reconcilePieceActionSnapshot(
+      managementSnapshot,
+      actionKey,
+      action,
+    )
+  }
+
   function actionButton(label, operation) {
     const button = element(
       root,
@@ -301,7 +345,12 @@ export function mountTeacherAssignmentWorkspaceUi({
     dialog.remove()
   }
 
-  function confirmRemoval(row, operation, reconcile) {
+  function confirmRemoval(
+    row,
+    operation,
+    reconcile,
+    afterSuccess,
+  ) {
     const dialog = element(
       root,
       'div',
@@ -327,7 +376,12 @@ export function mountTeacherAssignmentWorkspaceUi({
       managementStatus.textContent = 'Kaldırılıyor.'
       try {
         await operation()
-        await reconcileManagement(reconcile)
+        if (destroyed) return
+        if (typeof afterSuccess === 'function') {
+          afterSuccess()
+        } else {
+          await reconcileManagement(reconcile)
+        }
         managementStatus.textContent = 'Kaldırıldı.'
         closeDialog(dialog)
         renderManagementRows()
@@ -358,7 +412,8 @@ export function mountTeacherAssignmentWorkspaceUi({
         row.actionKey,
         action,
       )
-      await reconcileManagement({ pieces: true })
+      if (destroyed) return
+      reconcilePieceAction(row.actionKey, action)
       managementStatus.textContent = successMessage
       renderManagementRows()
     } catch {
@@ -390,7 +445,12 @@ export function mountTeacherAssignmentWorkspaceUi({
               row.actionKey,
               'REVOKE',
             ),
-          { pieces: true },
+          null,
+          () =>
+            reconcilePieceAction(
+              row.actionKey,
+              'REVOKE',
+            ),
         ),
       ),
     )
