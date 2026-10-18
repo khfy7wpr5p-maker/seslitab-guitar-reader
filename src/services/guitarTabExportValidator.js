@@ -145,7 +145,7 @@ function assertContextParity(expectedPart, actualPart, appendedTabStaff) {
     }
   }
 }
-function sourceRegionControlKeys(part, { appendedTabStaff = null } = {}) {
+function sourceRegionControls(part, { appendedTabStaff = null } = {}) {
   return directChildren(part, 'measure').map((measure) => {
     const children = elementChildren(measure)
     let sourceRegionEnd = children.length
@@ -168,7 +168,7 @@ function sourceRegionControlKeys(part, { appendedTabStaff = null } = {}) {
       }
     }
 
-    const keys = []
+    const controls = []
     let cursor = 0
     let sourceNoteOrdinal = 0
     for (const child of children.slice(0, sourceRegionEnd)) {
@@ -185,25 +185,54 @@ function sourceRegionControlKeys(part, { appendedTabStaff = null } = {}) {
       if (tag !== 'backup' && tag !== 'forward') continue
       const durationNode = directChild(child, 'duration')
       const duration = durationNode ? Number(textOf(durationNode)) : NaN
-      keys.push(`${sourceNoteOrdinal}@${cursor}:${canonicalNode(child)}`)
+      controls.push(Object.freeze({
+        key: `${sourceNoteOrdinal}@${cursor}:${canonicalNode(child)}`,
+        tag,
+        duration,
+        cursorBefore: cursor,
+      }))
       if (Number.isSafeInteger(duration)) cursor += tag === 'backup' ? -duration : duration
     }
-    return keys
+    return controls
   })
 }
+
+function generatedTabControlsAreBounded(controls) {
+  if (controls.length < 1 || controls.length > 2) return false
+  const [rewind, leadingRestAdvance] = controls
+  if (
+    rewind.tag !== 'backup' ||
+    !Number.isSafeInteger(rewind.duration) ||
+    rewind.duration <= 0 ||
+    rewind.cursorBefore !== rewind.duration
+  ) return false
+  if (leadingRestAdvance === undefined) return true
+  return (
+    leadingRestAdvance.tag === 'forward' &&
+    Number.isSafeInteger(leadingRestAdvance.duration) &&
+    leadingRestAdvance.duration > 0 &&
+    leadingRestAdvance.cursorBefore === 0 &&
+    leadingRestAdvance.duration < rewind.duration
+  )
+}
+
 function assertControlParity(expectedPart, actualPart, appendedTabStaff) {
-  const expected = sourceRegionControlKeys(expectedPart)
-  const actual = sourceRegionControlKeys(actualPart, { appendedTabStaff })
+  const expected = sourceRegionControls(expectedPart)
+  const actual = sourceRegionControls(actualPart, { appendedTabStaff })
   if (expected.length !== actual.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
   for (let measureIndex = 0; measureIndex < expected.length; measureIndex += 1) {
     const expectedControls = expected[measureIndex]
     const actualControls = actual[measureIndex]
-    const comparable = appendedTabStaff !== null && actualControls.length === expectedControls.length + 1
-      ? actualControls.slice(0, -1)
-      : actualControls
-    if (comparable.length !== expectedControls.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    if (actualControls.length < expectedControls.length) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
     for (let index = 0; index < expectedControls.length; index += 1) {
-      if (expectedControls[index] !== comparable[index]) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+      if (expectedControls[index].key !== actualControls[index].key) fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
+    }
+    const generatedControls = actualControls.slice(expectedControls.length)
+    if (
+      generatedControls.length > 0 &&
+      (appendedTabStaff === null || !generatedTabControlsAreBounded(generatedControls))
+    ) {
+      fail('SEMANTIC', 'SOURCE_SCORE_SEMANTIC_MISMATCH')
     }
   }
 }
