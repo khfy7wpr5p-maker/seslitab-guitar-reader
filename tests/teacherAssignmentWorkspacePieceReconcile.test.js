@@ -118,6 +118,14 @@ function managementTabs(host) {
   )
 }
 
+function managementRowTitles(host) {
+  return host
+    .querySelectorAll('.teacher-assignment-workspace__item')
+    .map((row) =>
+      row.children.find((child) => child.tagName === 'H3')?.textContent,
+    )
+}
+
 async function openManagement(host) {
   await primaryTabs(host)[1].dispatchEventAsync({ type: 'click' })
   await nextTurn()
@@ -153,11 +161,8 @@ test('piece repertoire transition updates the cached management snapshot without
   )
 
   await tabs[2].dispatchEventAsync({ type: 'click' })
-  const repertoireRows = host.querySelectorAll(
-    '.teacher-assignment-workspace__item',
-  )
   assert.equal(
-    repertoireRows.some((row) => row.textContent.includes('Aktif Etüt')),
+    managementRowTitles(host).includes('Aktif Etüt'),
     true,
     'the transitioned Piece must move to the Repertuar view from local state',
   )
@@ -209,11 +214,8 @@ test('piece revoke removes the cached row without a full Piece refetch', async (
     'successful Piece revoke must not refetch the full Piece list',
   )
 
-  const activeRows = host.querySelectorAll(
-    '.teacher-assignment-workspace__item',
-  )
   assert.equal(
-    activeRows.some((row) => row.textContent.includes('Aktif Etüt')),
+    managementRowTitles(host).includes('Aktif Etüt'),
     false,
     'the revoked Piece must disappear from local management state',
   )
@@ -252,16 +254,14 @@ test('failed Piece mutation leaves the local management snapshot unchanged', asy
     'failed Piece mutation must not trigger a full Piece refetch',
   )
   assert.equal(
-    host.querySelectorAll('.teacher-assignment-workspace__item')
-      .some((row) => row.textContent.includes('Aktif Etüt')),
+    managementRowTitles(host).includes('Aktif Etüt'),
     true,
     'failed Piece mutation must keep the existing local Piece row',
   )
 
   await tabs[2].dispatchEventAsync({ type: 'click' })
   assert.equal(
-    host.querySelectorAll('.teacher-assignment-workspace__item')
-      .some((row) => row.textContent.includes('Aktif Etüt')),
+    managementRowTitles(host).includes('Aktif Etüt'),
     false,
     'failed Piece mutation must not move the Piece into Repertuar locally',
   )
