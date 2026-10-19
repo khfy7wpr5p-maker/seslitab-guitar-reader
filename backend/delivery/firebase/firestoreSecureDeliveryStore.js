@@ -176,7 +176,7 @@ function restoreDelivery(raw) {
   return record
 }
 
-function restorePieceAssignment(raw) {
+export function restorePieceAssignment(raw) {
   // Persistence-only query projection; never part of immutable Piece authority.
   const { studentListEligible, ...pieceSnapshot } = raw
   if (
@@ -208,7 +208,7 @@ function restorePieceAssignment(raw) {
   return restored
 }
 
-function restorePieceLifecycle(
+export function restorePieceLifecycle(
   raw,
   piece,
 ) {
