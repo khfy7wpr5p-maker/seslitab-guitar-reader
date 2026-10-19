@@ -163,6 +163,18 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
   })
   await store.putPieceAssignment(piece)
 
+  const pieceRef = db.collection('pieceAssignments')
+    .doc(id(piece.pieceAssignmentId))
+  assert.equal((await pieceRef.get()).data().studentListEligible, true)
+  const indexedStore = createFirestoreSecureDeliveryStore({
+    firestore: db,
+    env: { STUDENT_PIECE_INDEXED_READS_ENABLED: 'true' },
+  })
+  assert.deepEqual(
+    (await indexedStore.listActivePieceContextsForStudent(piece.studentId)).map((context) => context.piece),
+    [piece],
+  )
+
   const active =
     createInitialPieceLifecycleRecord(piece)
   const completed =
@@ -211,6 +223,11 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
     (await store.getLifecycle(childId)).state,
     'REPERTOIRE',
   )
+  assert.equal((await pieceRef.get()).data().studentListEligible, true)
+  assert.equal(
+    (await indexedStore.listActivePieceContextsForStudent(piece.studentId))[0].lifecycle.state,
+    'REPERTOIRE',
+  )
 
   const revoked = revokePieceLifecycleRecord(
     repertoire,
@@ -233,6 +250,11 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
     (await store.getDelivery(childId)).revokedAt,
     '2026-10-03T11:00:00Z',
   )
+  assert.equal((await pieceRef.get()).data().studentListEligible, false)
+  assert.deepEqual(await indexedStore.listActivePieceContextsForStudent(piece.studentId), [])
+  assert.deepEqual(await store.getPieceAssignment(piece.pieceAssignmentId), piece)
+  await store.putPieceAssignment(piece)
+  assert.equal((await pieceRef.get()).data().studentListEligible, false)
 
   const aggregateHistory = await db
     .collection('pieceAssignmentLifecycle')

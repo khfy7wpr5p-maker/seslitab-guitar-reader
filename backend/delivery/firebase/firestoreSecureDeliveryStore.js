@@ -177,6 +177,16 @@ function restoreDelivery(raw) {
 }
 
 function restorePieceAssignment(raw) {
+  // Persistence-only query projection; never part of immutable Piece authority.
+  const { studentListEligible, ...pieceSnapshot } = raw
+  if (
+    hasOwn(raw, 'studentListEligible') &&
+    typeof studentListEligible !== 'boolean'
+  ) {
+    throw new TypeError(
+      'invalid PieceAssignment persistence snapshot.',
+    )
+  }
   const restored = createPieceAssignment({
     pieceAssignmentId:
       raw.pieceAssignmentId,
@@ -189,7 +199,7 @@ function restorePieceAssignment(raw) {
     contentRefs: raw.contentRefs,
   })
 
-  if (!same(restored, raw)) {
+  if (!same(restored, pieceSnapshot)) {
     throw new TypeError(
       'invalid PieceAssignment persistence snapshot.',
     )
@@ -299,8 +309,13 @@ function validatePreparedRow(row) {
 
 export function createFirestoreSecureDeliveryStore({
   firestore,
+  env = {},
 } = {}) {
   const db = assertFirestore(firestore)
+  // Enable only after all existing Pieces have a verified projection and index.
+  const indexedStudentPieceReads =
+    String(env.STUDENT_PIECE_INDEXED_READS_ENABLED ?? '')
+      .trim().toLowerCase() === 'true'
 
   const collections = Object.freeze({
     identities: db.collection(
@@ -533,7 +548,10 @@ export function createFirestoreSecureDeliveryStore({
           return stored
         }
 
-        tx.create(ref, plain(piece))
+        tx.create(ref, {
+          ...plain(piece),
+          studentListEligible: true,
+        })
         return piece
       },
     )
@@ -781,6 +799,15 @@ export function createFirestoreSecureDeliveryStore({
               currentLifecycle
           }
 
+          if (
+            pieceSnap.data().studentListEligible !==
+              (nextLifecycle.revokedAt === null)
+          ) {
+            tx.update(pieceRef, {
+              studentListEligible:
+                nextLifecycle.revokedAt === null,
+            })
+          }
           tx.set(
             lifecycleRef,
             plain(nextLifecycle),
@@ -855,6 +882,15 @@ export function createFirestoreSecureDeliveryStore({
           }
         }
 
+        if (
+          pieceSnap.data().studentListEligible !==
+            (nextLifecycle.revokedAt === null)
+        ) {
+          tx.update(pieceRef, {
+            studentListEligible:
+              nextLifecycle.revokedAt === null,
+          })
+        }
         tx.set(
           lifecycleRef,
           plain(nextLifecycle),
@@ -1620,10 +1656,12 @@ export function createFirestoreSecureDeliveryStore({
       studentId,
       'studentId',
     )
-    const querySnap =
-      await collections.pieces
-        .where('studentId', '==', id)
-        .get()
+    let query = collections.pieces
+      .where('studentId', '==', id)
+    if (indexedStudentPieceReads) {
+      query = query.where('studentListEligible', '==', true)
+    }
+    const querySnap = await query.get()
     const candidates = []
     const seen = new Set()
 
@@ -1696,6 +1734,13 @@ export function createFirestoreSecureDeliveryStore({
         throw new Error(
           'student Piece batch authority mismatch.',
         )
+      }
+
+      if (
+        indexedStudentPieceReads &&
+        pieceSnap.data().studentListEligible !== true
+      ) {
+        continue
       }
 
       const lifecycleSnap = snapshotFor(
