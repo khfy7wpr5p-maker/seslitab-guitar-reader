@@ -21,7 +21,7 @@ export function parsePieceBackfillArgs(argv) {
       if (arg === '--project') options.projectId = value
       if (arg === '--mode') options.mode = value
       if (arg === '--after') options.after = value
-      if (arg === '--limit') options.limit = /^\d+$/u.test(value) ? Number(value) : NaN
+      if (arg === '--limit') options.limit = /^\d+$/u.test(value) ? Number(value) : Number.NaN
     } else throw new Error('piece-backfill-unknown-argument')
   }
   if (options.production === options.emulator) throw new Error('piece-backfill-target-required')
