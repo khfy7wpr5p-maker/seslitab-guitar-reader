@@ -41,8 +41,9 @@ Separately authorized production steps must be ordered as follows:
    for readiness. Backfill each existing Piece from its validated current
    lifecycle in a transaction, checking student/immutable Piece authority.
    A missing lifecycle means initial active only when current validation accepts
-   it. Invalid or conflicting records must be reported, not guessed. A later
-   stage must provide a dry-run, bounded apply, resume and verification tool.
+   it. Invalid or conflicting records must be reported, not guessed. Stage 2
+   provides the manual dry-run, bounded apply, resume and verification tool:
+   see [the backfill runbook](ses238-piece-backfill-runbook.md).
 3. Verify complete coverage and lifecycle consistency, including records created
    during backfill. Then enable the flag on the existing API and verify lists,
    exact-ID revoke denial, all work folders and offline revalidation.
