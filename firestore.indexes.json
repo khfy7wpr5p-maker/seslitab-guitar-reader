@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "pieceAssignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" },
+        { "fieldPath": "studentListEligible", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "deliveries",
       "queryScope": "COLLECTION",
       "fields": [
