@@ -1,7 +1,7 @@
 # SesliTab Product Architecture
 
 **Architecture reality review:** 2026-10-21
-**Teacher/API application reference:** `c1139563bb3120a9d4bbc359ba6d72205c8c0942`
+**Teacher/API review baseline (before SES-243):** `c1139563bb3120a9d4bbc359ba6d72205c8c0942`
 **Student application reference:** `a958dc077c822b3b6c31b51f283fad5d5b13439d`
 
 ## Current Teacher / Student boundary
@@ -12,9 +12,9 @@ Current source, UI releases, compatibility evidence and unresolved findings are 
 
 Teacher-provided notes, ACTIVE / COMPLETED / REPERTOIRE, exact guitar voicing/string/fret data and selected playback instruments retain their existing authority. Student home/work/pool/request/score presentation, focus, separate score size and green/orange follow do not grant editing, approval, delivery or lifecycle-write permissions.
 
-Known integration failure: Student calls GET `/student/work-requests/pending`, while `studentWorkRequestRouter.js` exposes only the create POST. The cohort-scoped domain method exists, but its GET adapter is missing; production returns 404. This is [SES-243](https://linear.app/seslitab/issue/SES-243), not a completed request-list round trip. The existing teacher conversion/revocation flow is not changed by this documentation work.
+[SES-243](https://linear.app/seslitab/issue/SES-243) implementation status: [PR #370](https://github.com/khfy7wpr5p-maker/seslitab-guitar-reader/pull/370) adds authenticated GET `/student/work-requests/pending` alongside the existing create POST in `studentWorkRequestRouter.js`. It delegates to `listSharedPendingForStudent()` with identity derived only from the verified token, preserving active-roster, teacher-cohort and PENDING-only filtering and returning only `title` and `displayNameOrNickname`. Feature and student-read gates apply; the write gate does not block this read. The historical baseline returned 404 because the GET adapter was missing; that is not the current PR source state. Code and HTTP/consumer checks passed at `299ae5185283606897b587518f9a7c736c49341c`; merge, API deployment and authenticated live request-list round-trip acceptance remain pending. Existing POST and teacher conversion/revocation authority are preserved.
 
-The permanent Student frontend and API origins remain `https://st-student-app.onrender.com` and `https://st-student-api.onrender.com`. No service, schema/rules, production account or application code is changed here. Real-device and authenticated teacher/student acceptance remain separate from automated tests.
+The permanent Student frontend and API origins remain `https://st-student-app.onrender.com` and `https://st-student-api.onrender.com`. This architecture status update changes no service, schema/rules or production account; the GET implementation is in PR #370. Real-device and authenticated teacher/student acceptance remain separate from automated tests.
 
 This is the current product-architecture summary. The canonical detailed stage matrix and boundary rules are in `docs/teacher-score-editor-architecture.md`.
 
