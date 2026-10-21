@@ -1,9 +1,13 @@
 # SesliTab AI Context
 
-**Context review:** 2026-08-31
+**Current boundary reconciliation:** 2026-10-21
+
+Authenticated Secure Delivery and ST Student are implemented in the current application. See [product architecture](product-architecture.md) and the [cross-project review](student-teacher-ui-compatibility-2026-10-21.md) for current source references, UI releases and unresolved SES-243. The dated Stage A–L baseline and Package 12 matrix below describe the historical bounded-readiness component; delivery exclusions in that snapshot apply to Stage L, not the whole application.
+
+**Historical component review:** 2026-08-31
 **Fresh-read protected main:** `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`
-**Current application state:** Stage A–L bounded product roadmap is merged on protected `main`; Package 12 T1–T4 contracts and Stage L readiness UI are production. Actual authenticated student delivery remains out of scope.
-**Open PR/issues at fresh-read:** none identified.
+**Historical Stage A–L component state:** Stage A–L bounded product roadmap is merged on protected `main`; Package 12 T1–T4 contracts and Stage L readiness UI are production. Authenticated delivery is outside this readiness component and is implemented by the separate Secure Delivery application.
+**Historical open PR/issues at that fresh-read:** none identified; use the current cross-project review for open findings.
 
 ## 1. Official project purpose
 
@@ -61,7 +65,7 @@ A separate open domain/security PR must not be silently folded into unrelated UI
   - T2 exact-revision quality/provenance eligibility: **Completed**
   - T3 bounded corrected-revision revalidation: **Completed**
   - T4 structural/rhythmic corrected-revision revalidation: **Completed**
-  - authentication/persistence/network delivery: **OUT_OF_SCOPE / separate security application**
+  - authentication/persistence/network delivery: **outside Stage L; implemented in separate Secure Delivery application**
 - Package 13 — Simplified rhythm mode: **OUT_OF_SCOPE**
 - Package 14 — Native/mobile productisation: **OUT_OF_SCOPE**
 
@@ -246,7 +250,7 @@ Stage H — provisional REVIEW playback
 Stage I — Guitar TAB + violin product integration
 Stage J — Discovery presentation simplification
 Stage K — compact tuner UI
-Stage L — student/share readiness UI **(production; delivery out of scope)**
+Stage L — student/share readiness UI **(production; delivery belongs to separate Secure Delivery application)**
 ```
 
 After each stage: focused tests, full regression, production build, applicable browser/accessibility checks, PR and CI evidence are required before production closure. Do not reopen completed stages as planned work without fresh evidence.

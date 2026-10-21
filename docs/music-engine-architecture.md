@@ -1,9 +1,13 @@
 # SesliTab Music Engine — Güncel Mimari
 
-**Belge sürümü:** 3.8.0  
+**Current application boundary reconciliation:** 2026-10-21
+
+Authenticated Secure Delivery and ST Student are implemented separately from the music engine and Stage L readiness component. See [product architecture](product-architecture.md) and the [cross-project review](student-teacher-ui-compatibility-2026-10-21.md). The dated baseline below is a historical music-engine/readiness snapshot; its delivery exclusions do not describe the whole current application.
+
+**Historical component version:** 3.8.0
 **Güncelleme tarihi:** 2026-08-31
 **Fresh-read ürün baseline:** protected `main` `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`
-**Ürün durumu:** Stage A–L production bounded chain; Package 12 T1–T4 exact-revision contracts are present, while actual authenticated student delivery is out of scope.
+**Historical component state:** Stage A–L production bounded chain; Package 12 T1–T4 exact-revision contracts are present. Authenticated delivery is outside this component and is implemented by the separate Secure Delivery application.
 **8B research state:** Research-only; engineering gates exist, genuine admitted/training evidence remains absent.
 
 > Bu belge müzik/OMR domain otoritesini tanımlar. Üst seviye ürün ve UI haritası için `docs/product-architecture.md`, görsel öğretmen editörü için `docs/teacher-score-editor-architecture.md`, gerçek durum için `docs/current-status.md` ve `docs/package-status.md` esas alınır.
@@ -137,7 +141,7 @@ T1 exact sharing authorization                 [production]
 T2 exact source/provenance/quality eligibility [production]
 T3 bounded corrected pitch/position evidence   [production]
 T4 structural/rhythmic corrected revalidation  [production / bounded]
-auth/persistence/network delivery              [out of scope]
+auth/persistence/network delivery              [separate Secure Delivery application]
 ```
 
 T3 must not be interpreted as proof for correction classes it explicitly excludes.
@@ -295,4 +299,4 @@ Stage A  teacher UI + product shell simplification
   -> Stage L sharing UI only when Package 12 gates allow it
 ```
 
-Stage A–L and Package 12 T1–T4 are merged production boundaries. Any future expansion of corrected fields, authentication, persistence or delivery requires a separate security-reviewed contract and must not be inferred from this document.
+Stage A–L and Package 12 T1–T4 are merged component boundaries. Secure Delivery implements the separate application-level authentication, persistence and delivery boundary described in current product architecture. Any further expansion of these authorities or corrected fields requires a separate security-reviewed contract and must not be inferred from this music-engine document.
