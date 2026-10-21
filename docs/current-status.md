@@ -1,6 +1,6 @@
 # SesliTab Current Status
 
-> **19 Ekim 2026 güncel proje fotoğrafı:** [Kanıtlı durum, güncel `main` SHA, Linear/Notion drift ve açık kabul kapıları](project-status-2026-10-19.md). Aşağıdaki 1 Eylül snapshot tarihsel baseline'dır; bugünkü HEAD veya güncel release kabulü olarak okunmamalıdır.
+> **21 Ekim 2026 güncel Teacher/Student mimarisi ve arayüz kapanışı:** [Uyumluluk matrisi, tamamlanan PR'lar, canlı kanıt ve açık hata/kabul](student-teacher-ui-compatibility-2026-10-21.md). [19 Ekim kaydı](project-status-2026-10-19.md) tarihsel kanıt olarak korunmuştur. Aşağıdaki 1 Eylül snapshot'ı bugünkü ürün yokluğu veya sürüm kabulü olarak okunmamalıdır.
 
 Last documentation review: 2026-09-01
 STI-01/02 branch base: `4bb5ae76a63935fd6ec7f827e3b7fc7dc4d548ed`

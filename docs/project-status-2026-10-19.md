@@ -1,3 +1,5 @@
+> Tarihsel snapshot: Güncel 21 Ekim 2026 incelemesi ve açık uyumsuzluklar [buradadır](student-teacher-ui-compatibility-2026-10-21.md). Bu kayıt kendi tarihindeki kanıtı korur.
+
 # SesliTab Core — Kanıta Dayalı Güncel Proje Durumu (19 Ekim 2026)
 
 > **Belge türü:** Tarihli proje durumu ve dokümantasyon eşitlemesi. Bu belge yazıldığı anda GitHub `main`, Linear ve Notion kaynaklarıyla karşılaştırıldı. Mevcut kod, CI veya üretim servisi bu belge hazırlanırken değiştirilmedi; canlı çalışma ayrıca yeniden test edilmedi. Bu kayıt önceki belgelerin tarihsel kanıtlarını silmez.
@@ -44,3 +46,4 @@
 ## Belgelerin öncelik sırası
 
 Güncel protected `main` gerçek kodu → exact head CI/build → gerçek browser/cihaz/runtime kanıtı → domain contractları → güncel tarihli durum belgesi → tarihsel plan ve handoff metinleri. Önceki tarihli dokümanlar geçmiş karar ve kanıtlar için korunur.
+
