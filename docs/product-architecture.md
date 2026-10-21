@@ -120,6 +120,8 @@ Security invariants:
 
 ## Historical Stage A–L verification evidence
 
+Historical evidence baseline: protected `main` `e40e3b3e8d9029673efd780d44c6eefe34ba1e18` (2026-08-31). The 1519-test/build results below belong only to this historical revision, not the current Teacher/API baseline.
+
 The required protected-main check is `test-and-build`, covering `npm test`, production build and the real-browser score-runtime proof. The fresh-read confirmed protected main at the reference SHA; the connector exposed no exact-main workflow run/status for that SHA. Local verification on Node 24 passed 1519/1519 tests across 236 suites and the production build. Local real-browser proof was UNVERIFIED because Chrome/Chromium is not installed.
 
 ## Historical Stage L scope exclusions
