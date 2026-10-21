@@ -1,5 +1,7 @@
 # SesliTab Current Status
 
+> **21 Ekim 2026 güncel Teacher/Student mimarisi ve arayüz kapanışı:** [Uyumluluk matrisi, tamamlanan PR'lar, canlı kanıt ve açık hata/kabul](student-teacher-ui-compatibility-2026-10-21.md). [19 Ekim kaydı](project-status-2026-10-19.md) tarihsel kanıt olarak korunmuştur. Aşağıdaki 1 Eylül snapshot'ı bugünkü ürün yokluğu veya sürüm kabulü olarak okunmamalıdır.
+
 Last documentation review: 2026-09-01
 STI-01/02 branch base: `4bb5ae76a63935fd6ec7f827e3b7fc7dc4d548ed`
 Observed branch metadata at start: `main` protected; required check `test-and-build`.

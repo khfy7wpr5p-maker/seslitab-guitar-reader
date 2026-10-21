@@ -75,7 +75,9 @@ The production frontend source of truth is this GitHub repository. Bolt may be u
 
 ## Roadmap Position
 
-Verified current state:
+The Stage A–L / Package 12 matrix below is the historical bounded-readiness scope, not the full current application boundary. Authenticated Secure Delivery and ST Student are implemented separately. See [current product architecture](docs/product-architecture.md) and the [21 October compatibility review](docs/student-teacher-ui-compatibility-2026-10-21.md) for current application evidence and remaining limitations.
+
+Verified bounded-readiness component state:
 
 - Packages 0–11: **Completed**
 - Package 8B — Audiveris training dataset: **Partially implemented** as deferred research
@@ -87,7 +89,7 @@ Verified current state:
 - Package 13 — Simplified rhythm mode: **OUT_OF_SCOPE**
 - Package 14 — Native/mobile productisation: **OUT_OF_SCOPE**
 
-Authenticated recipient access, persistent authorization, share links/tokens and actual network delivery are outside the current bounded readiness product and require a separate security/application program. Discovery is implemented only as source finding; it never verifies musical truth or grants teacher/student trust.
+Authenticated recipient access, persistent authorization and network delivery are outside the Stage L readiness component; they are implemented by the separate Secure Delivery application. This does not imply arbitrary public share links or delivery authority for Stage L. Discovery is implemented only as source finding; it never verifies musical truth or grants teacher/student trust.
 
 ## Teacher / Student Safety Boundary
 
@@ -180,9 +182,9 @@ npm run backend:start
 - Require focused tests, full regression and a production build for development packages.
 - Do not bypass quality or approval gates by setting authority flags directly on canonical source data.
 
-## CURRENTLY OUT OF SCOPE
+## Stage L component boundary
 
-The current product does not provide authenticated student accounts, persistent student identity, backend/cloud student delivery, permanent share authorization, share tokens, share URLs, a student portal or server-side authorization. These are not unfinished Stage L UI details; they require a separately reviewed security/application architecture.
+Stage L provides readiness metadata, not accounts, persistent identity, server-side authorization or delivery. The current application also includes authenticated Secure Delivery and the ST Student portal; their current scope and unresolved integration findings are documented in [product architecture](docs/product-architecture.md). Do not infer arbitrary public share URLs or expanded authorization from Stage L readiness.
 
 ## License and Commercial Use
 
