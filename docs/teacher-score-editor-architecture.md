@@ -1,9 +1,11 @@
 # SesliTab Teacher Score Editor Architecture
 
-Tarih: 31 Ağustos 2026  
-Durum: **Stage A–L bounded product roadmap protected `main` üzerinde production durumundadır.** Bu kapanış; evrensel müzikal doğruluk, kaynak görüntüyle birebirlik veya authenticated öğrenci teslimatı iddiası değildir.
+Tarih: 2 Eylül 2026  
+Durum: **Stage A–L bounded product roadmap ve `SESLITAB-EDITOR-INTEGRATION-01` STI-00–16 protected `main` üzerinde production durumundadır. STI-17 physical iPhone Safari acceptance henüz tamamlanmamıştır.**
 
-Bu belge, öğretmen çalışma alanı, score runtime, quality routing ve Package 12 readiness sınırları için canonical production mimari referanstır. SHA, PR ve workflow numaraları yalnız audit kanıtıdır; mimari sözleşmenin kendisi değildir.
+Bu belge, öğretmen çalışma alanı, score runtime, Editor Core, Rendering Layer, quality routing ve Package 12 readiness sınırları için canonical production mimari referanstır. SHA, PR ve workflow numaraları audit kanıtıdır; mimari sözleşmenin kendisi değildir.
+
+Machine-readable current integration snapshot: `docs/sti-18-runtime-integration-manifest.json`.
 
 ## Status vocabulary
 
@@ -11,12 +13,13 @@ Bu belge, öğretmen çalışma alanı, score runtime, quality routing ve Packag
 - **BOUNDED** — yalnız açıkça kanıtlanan veri/sözleşme alanında çalışır; unsupported veya belirsiz durum fail-closed kalır.
 - **OUT_OF_SCOPE** — mevcut ürün özelliği değildir; ayrı bir geliştirme ve güvenlik sözleşmesi gerekir.
 - **BLOCKED_BY_CONTRACT** — mevcut sözleşme bilinçli olarak ilerlemeye izin vermez.
+- **PENDING_HUMAN_DEVICE_GATE** — otomasyonla kapatılamayan fiziksel cihaz acceptance kanıtı beklenir.
 
 ## 1. Product purpose
 
 SesliTab, görme engelli, az gören ve gören öğrenciler için öğretmen denetimli, erişilebilir ve yarı otomatik bir müzik eğitim uygulamasıdır.
 
-Amaç yalnızca PDF → MusicXML dönüşümü değildir. Sistem; nota, ritim, TTS, playback, Guitar TAB, violin ve tuner çıktılarında belirsizliği gizlemeden öğretmenin inceleme, düzeltme ve exact-revision approval kararını korur.
+Amaç yalnızca PDF → MusicXML dönüşümü değildir. Sistem; nota, ritim, TTS, playback, Guitar TAB, violin ve tuner çıktılarında belirsizliği gizlemeden öğretmenin inceleme, exact note selection, bounded correction ve exact-revision approval kararını korur.
 
 Temel ilke:
 
@@ -26,11 +29,22 @@ Parse edilebilir veya yapısal olarak geçerli MusicXML, kaynak görüntüyle ya
 
 ## 2. Current production status
 
-Protected `main` üzerinde Stage A–L bounded product zinciri production'dadır. Açık PR/issue fresh-read sırasında yoktur. Package 8B'nin gerçek eğitim verisi/training sonucu yoktur; araştırma sözleşmesi production modeline kanıt sağlamaz.
+Protected production `main`:
 
-Mevcut ürün; PDF/OMR, MusicXML, Guitar TAB, canonical note/timing, quality evidence, öğretmen workspace'i, score presentation, TTS/playback, MIDI, Guitar TAB/violin consumer'ları, Discovery, tuner ve bounded student/share readiness yüzeylerini içerir.
+`a21c1533b919554dd00d0f9852ab865b52e8f475`
 
-`READY_EXACT_REVISION`, yalnız Package 12 readiness sonucudur. Öğrenci hesabı, kalıcı yetki veya teslimat değildir.
+Bu commit post-merge CI run #527 üzerinde `test-and-build` ile doğrulanmıştır ve live Render deployment aynı exact commit üzerinde gözlenmiştir.
+
+Current upstream runtime pins:
+
+- ST Score Editor Core `2e6b975b4b6b8b558593ca43132309848dc3ccab`;
+- ST Score Rendering Layer `a8961e0e68a950cbe980162e23c09f23f0ce5d0a`;
+- Rendering contract `0.2.0`, OSMD `2.1.2`;
+- Editor browser/runtime contract version `1.0.0`.
+
+Integration program status: **17/19**. STI-00–16 complete; STI-17 physical iPhone Safari is `PENDING_HUMAN_DEVICE_GATE`; STI-18 documentation synchronization is prepared but final acceptance wording cannot close before STI-17.
+
+Package 8B'nin gerçek eğitim verisi/training sonucu yoktur; araştırma sözleşmesi production modeline kanıt sağlamaz. `READY_EXACT_REVISION`, yalnız Package 12 readiness sonucudur; öğrenci hesabı, kalıcı yetki veya teslimat değildir.
 
 ## 3. High-level architecture
 
@@ -42,64 +56,87 @@ MusicXML / TAB -> parser + normalization
   -> PASS / REVIEW / BLOCK consumer routing
   -> TTS / playback / MIDI / Guitar TAB / violin / score presentation
 
-Teacher workspace:
-automatic revision -> bounded correction -> corrected revision
-  -> canonicalization/materialization -> revalidation -> rerender
-  -> exact-revision teacher approval
-  -> Package 12 authorization + eligibility/readiness evaluation
+Teacher score interaction:
+physical tap
+  -> ST Score Rendering Layer hitTestNoteDetailed
+  -> current renderEpoch + source correlation validation
+  -> exact ScoreNoteRef
+  -> SesliTab canonical/current-revision resolver
+  -> exact ST Score Editor Core manifest token
+  -> Editor semantic selection
+  -> SMuFL keypad
+  -> one Editor score+notation commit
+  -> exact MusicXML materialization
+  -> SesliTab structural/product revalidation
+  -> one immutable Package 8 product revision
+  -> rerender with fresh renderer correlation
+  -> exact surviving selection rebind or safe clear
 ```
 
-Canonical note/timing modeli bütün musical consumer'ların ortak authority'sidir. UI, renderer, Discovery veya herhangi bir projection kendi pitch, duration, onset, voice, staff, tie veya measure anlamını icat edemez.
+Canonical note/timing modeli ve current immutable product revision, product consumer'ların ortak domain kanıtıdır. UI, renderer, Discovery veya herhangi bir projection kendi pitch, duration, onset, voice, staff, tie, slur, tuplet veya measure anlamını icat edemez.
 
 ## 4. Teacher workflow
 
 Teacher-facing bounded workflow:
 
 1. Eseri açar ve score/çıktıları görür.
-2. Measure veya exact canonical note seçer.
-3. Desteklenen alanı düzeltir ve yeni immutable revision oluşturur.
-4. Revalidation sonucunu görür; kanıt varsa rerender yapılır.
-5. Gerekirse `Geri Al` ile yeni lineage oluşturur.
-6. Onayını exact current revision'a bağlar.
-7. Quality/share readiness sonucunu ayrı bir kanıt olarak değerlendirir.
-
-Stage A, teknik revision ayrıntılarını normal öğretmen akışından ayırır; domain authority'yi değiştirmez.
+2. Visible score üzerinden exact current note seçer; ordinary selection quality marker gerektirmez.
+3. Gerekirse quality marker aynı exact selection modeline navigasyon sağlar.
+4. SMuFL keypad yalnız current exact Editor selection/target sözleşmesi sağlanıyorsa eylem sunar.
+5. Bir keypad commit'i bir Editor score+notation revision veya hiçbiri üretir.
+6. SesliTab sonucu MusicXML'e materialize eder, structural/product revalidation yapar ve tek immutable Package 8 product revision oluşturur.
+7. Renderer yeni içerikle rerender edilir; eski hit evidence stale sayılır; surviving exact selection güvenli biçimde rebind edilir veya temizlenir.
+8. Undo/redo eski product revision ID'sine pointer geri taşımak yerine yeni immutable product revision üretir ve aynı revalidation/rerender/rebind zincirini kullanır.
+9. Teacher approval exact current revision'a bağlanır.
+10. Quality/share readiness sonucu ayrı evidence olarak değerlendirilir.
 
 ## 5. Revision lifecycle
 
 ```text
 original/imported revision
         ↓
-teacher review
+exact current selection
         ↓
-bounded correction
+Editor Core bounded commit
         ↓
-corrected revision
+MusicXML materialization
         ↓
-revalidation
+SesliTab structural/product revalidation
         ↓
-rerender when evidence permits
+new immutable Package 8 revision
         ↓
-teacher approval of the exact revision
+rerender + fresh renderer correlation
+        ↓
+exact rebind or safe clear
+        ↓
+exact-revision teacher approval
         ↓
 quality/share eligibility evaluation
 ```
 
-Automatic/imported revision immutable kalır. Correction eski revision'ı overwrite etmez. Undo geçmişi silmez veya pointer'ı sessizce geri taşımaz; yeni immutable lineage üretir. Daha sonraki correction/undo önceki approval'ı otomatik olarak geçerli kılmaz.
+Automatic/imported revision immutable kalır. Correction eski revision'ı overwrite etmez. Editor Core local score/notation history, SesliTab product revision kimliği yerine geçmez. Product undo/redo yeni immutable revision ID oluşturur; eski semantic state gerektiğinde current product revision kimliği altında validated Editor session'a yeniden hydrate edilir. Daha sonraki correction/undo/redo önceki approval'ı otomatik olarak geçerli kılmaz.
 
 ## 6. Score runtime
 
-Production score runtime, pinned ST Score Rendering Layer runtime'ını build sırasında hazırlar ve score'u browser'da aynı-origin bounded host üzerinden gösterir. SesliTab, renderer'ın sahip olduğu OSMD ayrıntılarını veya geometrisini semantic kaynak olarak kullanmaz.
+Production score runtime build sırasında exact ST Score Rendering Layer revision `a8961e0e68a950cbe980162e23c09f23f0ce5d0a` üzerinden hazırlanır.
+
+Admission contract:
+
+- score renderer contract `0.2.0`;
+- OSMD `2.1.2`;
+- manifest file inventory, byte size ve SHA-256 doğrulanır;
+- runtime source `hitTestNoteDetailed` ve `renderEpoch` yüzeylerini içermelidir.
 
 Runtime sınırları:
 
 - score render ve lifecycle hata durumları fail-closed temizlenir;
-- canonical measure cursor exact part/measure identity ile senkronlanır;
-- stale score/iframe state'i temizlenip güvenli retry yapılabilir;
-- dar viewport'ta controlled horizontal scrolling kullanılır;
-- render/runtime kanıtı yoksa score güvenilir biçimde gösterilmiş sayılmaz.
+- stale source/render evidence kabul edilmez;
+- renderer instance değişiminde textual epoch tek başına global identity sayılmaz; source correlation ile birlikte değerlendirilir;
+- renderer-only recovery OMR'yi yeniden çalıştırmaz;
+- corrected/undo/redo current revision için revalidated product MusicXML varsa recovery bunu tercih eder;
+- exact current selection yeni render üzerinde hâlâ kanıtlanabiliyorsa highlight rebind edilir, aksi halde temizlenir.
 
-Primary implementation: `src/scoreViewUi.js`, `src/services/scoreRendererConsumer.js`, `scripts/prepareScoreRuntime.js`, `tests/stageBScoreRuntimeStabilization.test.js`, `tests/scoreRuntimeBinding.test.js`.
+Primary implementation: `src/scoreViewUi.js`, `src/services/scoreRendererConsumer.js`, `src/services/rendererPrERecovery.js`, `scripts/prepareScoreRuntime.js`.
 
 ## 7. Renderer boundary
 
@@ -109,63 +146,96 @@ Renderer:
 
 - canonical score'un sahibi değildir;
 - müzikal semantic authority değildir;
+- canonical score'u mutate etmez;
 - teacher approval üretmez;
 - correction engine değildir;
 - quality veya provenance kararı vermez.
 
-Stage C'nin reviewed interaction bridge'i `hitTestNote` ve `highlight` için yalnız bounded `ScoreNoteRef` kullanır. SesliTab, exact canonical `NoteObject[]` içindeki part, measure, voice, staff, onset ve preserved source order kanıtıyla eşleme yapar. Pitch, görünür label, SVG yakınlığı veya tahmini geometry semantic eşleme için kullanılamaz.
+Selection için tek admitted yol exact renderer hit evidence'dır. Semantic identity olarak şunlar kullanılamaz:
 
-Kanıt eksik, stale, ambiguous veya out-of-range ise selection/highlight abstain eder.
+- DOM/SVG id;
+- görünen pitch label;
+- nearest note;
+- pitch-nearest;
+- SVG/geometry proximity;
+- `ScoreNoteRef.noteIndex`'in global identity gibi kullanılması.
 
-## 8. Correction boundary
+Hit evidence stale, ambiguous, source-mismatched veya current render correlation ile uyuşmuyorsa selection abstain eder.
 
-Stage E öğretmen yüzeyini şu bounded intent alanlarıyla sınırlar:
+## 8. Editor Core and correction boundary
 
-- `step`
-- `alter`
-- `octave`
-- `durationValue`
+Production build exact ST Score Editor Core revision `2e6b975b4b6b8b558593ca43132309848dc3ccab` üzerinden browser runtime hazırlar.
 
-String/fret, MIDI, frequency, voice, staff, tie, source identity ve verification evidence doğrudan öğretmen alanı değildir.
+Admission contract:
 
-Stage F, teacher intent ile system-derived canonicalization/materialization/revalidation'ı ayırır. Pitch için `midi`, `frequency`, `noteName` ve yalnız kanıtlanabilen aynı-string `fret`; duration için `beats`, `duration`, `dotCount` ve timeline coherence üretilebilir. Corrected MusicXML exact source provenance'tan materialize edilmeden eski XML yeni correction uygulanmış gibi render edilmez.
+- browser contract `ST_SCORE_EDITOR_CORE_BROWSER_BUNDLE`;
+- browser/runtime version `1.0.0`;
+- global `STScoreEditorCoreRuntime`;
+- upstream manifest byte size ve SHA-256 exact match;
+- `externalImports = 0`;
+- network, persistence, server revision authority, approval authority ve publication authority disabled.
 
-Unsupported correction, eksik materialization, stale lineage veya başarısız structural revalidation **BLOCKED_BY_CONTRACT** / fail-closed kalır.
+Authority split:
 
-## 9. Quality routing
+- **ST Score Editor Core** — new SMuFL keypad score/notation mutation authority;
+- **SesliTab Package 8** — immutable product revision/audit authority;
+- **ST Score Rendering Layer** — display/lifecycle/exact hit-test authority only;
+- legacy dual-write forbidden.
 
-Stage G mevcut exact consumer quality gate sonuçlarını product route'a map eder:
+Basic keypad surface includes bounded duration/rest/accidental/dot actions admitted by the current runtime/host contract.
 
-- `ACCEPT` + `allowed=true` + `definitive=true` + `automaticAllowed=true` → `PASS` — **Otomatik kontrollerden geçti**
-- `REVIEW` → `REVIEW` — **İnceleme gerekiyor**
-- `BLOCK`, invalid, unknown veya malformed karar → `BLOCK` — **Kullanım engellendi**
+Advanced actions are explicit-target only:
 
-Aggregate route strictest state'i kullanır: `BLOCK > REVIEW > PASS`.
+- `tie.edit` — exactly two explicit revision-bound note endpoints;
+- `slur.edit` — exactly two explicit revision-bound note endpoints;
+- `tuplet.triplet` — exactly three consecutive revision-bound `EVENT_RANGE` addresses inside one exact measure voice, with canonical timing proving the admitted 3:2 written base.
 
-PASS yalnız ilgili bounded consumer için permission verir. Teacher approval, share authorization, share eligibility veya student delivery vermez. REVIEW definitive output yerine bounded review davranışına gider. BLOCK hiçbir definitive downstream consumer'a ilerleyemez.
+Known bounded triplet limitation:
 
-## 10. Review playback
+- triplet removal/transformation requiring canonical onset/duration retiming is not implemented;
+- an already-present tuplet state requiring retiming fails closed.
 
-Stage H, mevcut playback gate kararını değiştirmeden dört açık route kullanır:
+No endpoint or event range is inferred from nearest notation object, pitch or geometry. Exact source/current notation evidence that cannot be safely represented is not invented.
 
-- `DEFINITIVE` — exact playback gate açıkça definitive ve automatic izin veriyorsa;
-- `REVIEW_PREVIEW` — REVIEW kararında structural/reliable kanıt yeterliyse explicit non-definitive preview;
-- `REVIEW_WITHHELD` — REVIEW kalır fakat preview kanıtı yetersizse playback kapalı;
-- `BLOCKED` — BLOCK veya malformed/invalid karar.
+## 9. Atomic commit, materialization and revalidation
 
-Review preview yalnız **İnceleme İçin Dinle** ve **Doğrulanmamış önizleme** diliyle sunulur. REVIEW hiçbir zaman PASS/ACCEPT'e yükseltilmez ve BLOCK bypass edilmez.
+A production keypad mutation follows one serialized pipeline:
+
+```text
+Editor commit
+→ semantic score+notation result
+→ exact MusicXML materialization
+→ SesliTab parser / structural validation
+→ immutable Package 8 product revision
+→ current-revision selection/quality/routing refresh
+→ renderer content replacement
+→ fresh render correlation
+→ exact surviving selection rebind or clear
+```
+
+An Editor-only revision is not allowed to become visible product truth while Package 8/render state remains stale. A failed materialization/revalidation does not get labeled as a successful product revision.
+
+Current product MusicXML provenance is stored separately from raw/source OMR provenance. Corrected product state is not written back into the raw-source evidence registry as if it were original source evidence.
+
+## 10. Quality routing and playback
+
+Stage G maps applicable current-revision consumer evidence to `PASS`, `REVIEW` or `BLOCK` with fail-closed defaults. Corrected revisions do not silently inherit an old source quality report.
+
+Quality marker navigation and ordinary direct note tap share the same exact current selection model. Quality marker is not required for ordinary note selection.
+
+Guitar TAB and Violin routes are recomputed against current revision projection. If current evidence cannot justify definitive use, the UI remains REVIEW/BLOCK and exposes the reason rather than silently opening a consumer.
+
+Playback is a separate bounded product policy. Renderer/editor readiness is not playback authority. A renderer/editor failure must not itself disable an otherwise permitted playback path. Playback does not gain authority to override independent musical/quality policy.
 
 ## 11. Guitar TAB / Violin consumers
 
-Stage I, mevcut Package 9 Guitar TAB ve Package 10 Violin consumer'larını Stage G routing'ine bağlar.
+Stage I uses current-revision routing for existing Package 9 Guitar TAB and Package 10 Violin consumers.
 
-- PASS + ilgili consumer'ın açık definitive permission'ı varsa bounded action açılır.
-- REVIEW/BLOCK durumunda solver/builder çağrısı yapılmaz veya definitive output withheld kalır.
-- Desteklenmeyen, ambiguous veya unplayable yapı partial/tahmini TAB veya fingering olarak gösterilmez.
-- Generated string/fret/position evidence teacher approval veya source truth değildir.
+- PASS + applicable definitive permission may open bounded action.
+- REVIEW/BLOCK does not get silently upgraded to PASS.
+- unsupported, ambiguous veya unplayable yapı partial/tahmini TAB veya fingering olarak source truth şeklinde gösterilmez.
+- generated string/fret/position evidence teacher approval veya source truth değildir.
 - Stage I `teacherApproved`, `shareAuthorized` veya `studentDeliveryAuthorized` üretmez.
-
-Primary implementation: `src/services/guitarTabConsumer.js`, `src/services/violinConsumer.js`, `src/services/stageIInstrumentProduct.js`, `src/stageIInstrumentProductUi.js`.
 
 ## 12. Discovery
 
@@ -173,9 +243,7 @@ Stage J Discovery yalnız source-finding presentation'ıdır:
 
 `FOUND != SOURCE VERIFIED != MUSICALLY VERIFIED != TEACHER APPROVED`
 
-Arama seçenekleri, trust notice ve **Kaynak Sitesinde Aç** eylemi mevcuttur. `sourcePageUrl`, rights/licence alanları ve gateway/provider semantiği presentation tarafından değiştirilmez. Güvenli import/view mümkün değilse external source action kullanılır; bulunan PDF/MusicXML normal intake, provenance, quality ve teacher-review akışına geri girer.
-
-Discovery verification authority kazanmaz; müzikal doğruluk, teacher approval veya student sharing izni üretemez.
+Arama seçenekleri, trust notice ve güvenli external source action mevcuttur. Discovery verification authority kazanmaz; bulunan kaynak normal intake, provenance, quality ve teacher-review akışına geri girer.
 
 ## 13. Tuner
 
@@ -188,7 +256,7 @@ device microphone
   -> local display
 ```
 
-`Mikrofonu Başlat` ve `Durdur` explicit user action'tır. Mikrofon sessizce başlamaz; ses upload, persistence veya recording'e gitmez. La4 calibration, Hz/cent readout ve threshold açıklamaları secondary details altında kalabilir. Covered controls için minimum 44px hedef ve keyboard-visible focus korunur.
+Mikrofon explicit user action ile başlar/durur. Ses upload, persistence veya recording'e gitmez.
 
 ## 14. Package 12 share readiness
 
@@ -199,7 +267,7 @@ Package 12'nin production bounded zinciri ayrı kanıt türleridir:
 3. **T3 corrected revalidation** — bounded pitch/position corrected revision evidence.
 4. **T4 structural revalidation** — bounded duration/timeline, voice/staff, tie/chord ve permitted undo-history evidence.
 
-Stage L, current workspace revision'ını bu mevcut evaluator'larla kontrol eder. Sadece applicable evaluator `eligible` döndürürse `ready_exact_revision` sonucu verilir. Teacher approval, authorization, revalidation ve eligibility birbirinin yerine geçmez.
+Stage L current workspace revision'ını applicable evaluator'larla kontrol eder. Teacher approval, authorization, revalidation ve eligibility birbirinin yerine geçmez.
 
 ## 15. Student delivery boundary
 
@@ -214,103 +282,98 @@ Stage L bounded readiness UI şunları üretmez:
 - student portal access;
 - backend/network/email/message delivery.
 
-Production sonucu `deliveryState = not_implemented` ve `deliveryAllowed = false` olarak fail-closed'dur. Gerçek öğrenci teslimatı A–L'nin tamamlanmamış bir alt görevi değil, ayrı bir security/application architecture programıdır.
+Production sonucu `deliveryState = not_implemented` ve `deliveryAllowed = false` olarak fail-closed'dur. Gerçek öğrenci teslimatı ayrı bir security/application architecture programıdır.
 
 ## 16. Security invariants
 
 - Original/imported MusicXML ve automatic revision sessizce overwrite edilmez.
 - Structural validity musical correctness değildir.
 - Her approval exact current revision'a bağlıdır.
-- Correction/undo eski approval veya authorization'ı miras almaz.
+- Correction/undo/redo eski approval veya authorization'ı miras almaz.
 - T1/T2/T3/T4 kanıtı exact source, revision, lineage ve applicable scope'a bağlıdır.
 - `PASS`, teacher approval değildir; teacher approval, share eligibility değildir.
 - `shareEligible`, authenticated access değildir.
 - `teacherApproved`, `studentDelivered` anlamına gelmez.
 - Renderer, Discovery ve UI semantic authority değildir.
+- Glyph/codepoint edit target değildir; semantic keypad action identity ayrı contract'tır.
 - Unsupported, malformed, stale veya ambiguous evidence tahminle tamamlanmaz.
-- Package 12 readiness, network delivery veya student access grant değildir.
+- Package 12 readiness network delivery veya student access grant değildir.
 
 ## 17. Accessibility invariants
 
-Mevcut production kanıtının kapsadığı davranışlar:
+STI-16 production evidence şunları kapsar:
 
-- native button/input/select/details ve label semantiği;
-- keyboard interaction ve `:focus-visible` görünür focus;
-- gerekli dinamik durumlarda `role=status`, `role=alert` ve `aria-live` metni;
-- quality/readiness anlamının yalnız renge bırakılmaması;
-- covered mobile/narrow-browser akışlarında minimum 44px interactive target;
-- Stage C canonical note-selection controls;
-- narrow viewport'ta controlled layout/scroll.
+- native control semantics ve keyboard interaction;
+- visible focus ve keypad DOM replacement sonrası logical focus retention;
+- VoiceOver-oriented `aria-label`, `aria-disabled`, `aria-describedby` semantics;
+- disabled state'in yalnız gizli veya yalnız renk tabanlı olmaması;
+- covered keypad controls için minimum 44px target;
+- safe-area top/bottom/left/right bounds;
+- narrow portrait ve narrow landscape layout;
+- supporting Chrome device-metrics proof at exact `320x568`, `568x320`, `1280x900`;
+- sekiz tekrarlı exact selection → edit → revalidation → rerender/focus → immutable undo cycle.
 
-Bu belge, ayrı operational QA kanıtı yoksa iPhone Safari + VoiceOver veya Android Chrome + TalkBack için tamamlanmış manuel sertifikasyon iddia etmez.
+Bu automated evidence fiziksel iPhone Safari + VoiceOver sertifikasyonu değildir. STI-17 ayrı `PENDING_HUMAN_DEVICE_GATE` olarak kalır.
 
 ## 18. Fail-closed rules
 
-- Missing veya malformed quality evidence → REVIEW/BLOCK; PASS varsayılanı yoktur.
-- Exact identity/revision/source eşleşmesi kanıtlanamıyorsa selection, approval veya eligibility ilerlemez.
-- REVIEW definitive consumer'a veya approved output'a dönüştürülmez.
-- BLOCK playback preview, TAB, violin veya delivery ile bypass edilmez.
-- Corrected MusicXML/materialization/revalidation kanıtı yoksa eski source XML corrected output gibi render edilmez.
+- Missing/malformed quality evidence → REVIEW/BLOCK; PASS varsayılanı yoktur.
+- Exact identity/revision/source/render correlation kanıtlanamıyorsa selection veya edit ilerlemez.
+- Advanced endpoint/range ambiguous ise nearest fallback yapılmaz.
+- Unsupported triplet retiming operation reddedilir.
+- Corrected MusicXML/materialization/revalidation kanıtı yoksa source XML corrected output gibi render edilmez.
+- Renderer recovery current corrected XML'i kanıtlayamıyorsa sessizce eski source state'e dönmez.
+- Stale hit evidence yeni renderer epoch/source correlation'da reddedilir.
 - Unsupported correction scope, stale authorization/evidence ve recipient mismatch reddedilir.
-- Browser/runtime proof veya SVG/interaction kanıtı yoksa score capability'si doğrulanmış sayılmaz.
+- Physical iPhone/Safari kanıtı yoksa STI-17 complete yazılmaz.
 
 ## 19. Stage A–L completion matrix
 
-| Stage | Purpose | Production status | Primary files/modules | Safety boundary | Verification evidence |
-|---|---|---|---|---|---|
-| A | Teacher UI simplification | **PRODUCTION** | `src/appShell.js`, `src/stageATeacherPresentation.js` | Presentation-only; Package 8 semantics unchanged | `tests/stageATeacherPresentation.test.js` |
-| B | Score runtime stabilization | **PRODUCTION** | `src/scoreViewUi.js`, `scripts/prepareScoreRuntime.js` | Runtime failure cleanup; no semantic invention | `tests/stageBScoreRuntimeStabilization.test.js`, CI browser script |
-| C | Measure/note selection | **PRODUCTION / BOUNDED** | `src/stageCNoteSelectionUi.js`, `src/services/canonicalNoteSelection.js`, `scoreNoteIdentity.js` | Exact canonical identity; renderer remains presentation-only | `tests/stageCNoteSelection.test.js`, score runtime proof |
-| D | Quality overlay | **PRODUCTION / BOUNDED** | `src/stageDQualityOverlayUi.js`, `src/services/qualityOverlay.js` | Report-backed, read-only, non-color-only evidence | `tests/stageDQualityOverlay.test.js` |
-| E | Visual bounded note editor | **PRODUCTION / BOUNDED** | `src/stageEVisualNoteEditorUi.js`, `src/services/stageEVisualNoteEdit.js` | Only bounded teacher intent fields | `tests/stageEVisualNoteEditor.test.js` |
-| F | Undo/revalidation/rerender | **PRODUCTION / BOUNDED** | `src/services/stageF*.js`, `src/stageFRevisionLifecycleUi.js` | Immutable lineage, materialization and product-local revalidation | `tests/stageF*.test.js`, corrected MusicXML/browser fixtures |
-| G | PASS/REVIEW/BLOCK routing | **PRODUCTION / BOUNDED** | `src/services/stageGProductRouting.js` | Existing consumer gate only; no new truth authority | `tests/stageGProductRouting.test.js` |
-| H | Review playback | **PRODUCTION / BOUNDED** | `src/services/stageHReviewPlayback.js`, `src/app.js` | Explicit non-definitive preview; BLOCK hard stop | `tests/stageHReviewPlayback.test.js` |
-| I | Guitar TAB/Violin integration | **PRODUCTION / BOUNDED** | `src/services/stageIInstrumentProduct.js`, UI adapter | PASS permission required; REVIEW/BLOCK withheld | `tests/stageIInstrumentProduct.test.js`, browser fixture |
-| J | Discovery presentation | **PRODUCTION / BOUNDED** | `src/stageJDiscoveryPresentation.js`, `src/services/discoveryService.js` | Source-finding only; no verification authority | `tests/stageJDiscoveryPresentation.test.js`, browser fixture |
-| K | Compact tuner | **PRODUCTION / BOUNDED** | `src/stageKTunerPresentation.js`, Package 11 tuner UI | Explicit mic action; local audio only | `tests/stageKTunerPresentation.test.js`, Package 11 tests, browser fixture |
-| L | Student/share readiness UI | **PRODUCTION / BOUNDED** | `src/stageLShareUi.js`, `src/services/stageLShareReadiness.js` | Readiness only; actual delivery **BLOCKED_BY_CONTRACT** | `tests/stageLShareReadiness.test.js`, browser fixture |
+| Stage | Purpose | Production status | Safety boundary |
+|---|---|---|---|
+| A | Teacher UI simplification | **PRODUCTION** | Presentation-only; Package 8 semantics unchanged |
+| B | Score runtime stabilization | **PRODUCTION** | Pinned runtime, lifecycle cleanup, no semantic invention |
+| C | Measure/note selection | **PRODUCTION / BOUNDED** | Exact current identity; stale renderer evidence rejected |
+| D | Quality overlay | **PRODUCTION / BOUNDED** | Report-backed and shares exact selection model |
+| E | Visual/SMuFL editor | **PRODUCTION / BOUNDED** | Editor Core single mutation authority; explicit targets; no dual-write |
+| F | Undo/revalidation/rerender | **PRODUCTION / BOUNDED** | Immutable product lineage, materialization, revalidation, fresh rerender/rebind |
+| G | PASS/REVIEW/BLOCK routing | **PRODUCTION / BOUNDED** | Current-revision evidence; no PASS invention |
+| H | Review/playback policy | **PRODUCTION / BOUNDED** | Playback authority separated from renderer/editor readiness |
+| I | Guitar TAB/Violin integration | **PRODUCTION / BOUNDED** | Current-revision route required |
+| J | Discovery presentation | **PRODUCTION / BOUNDED** | Source-finding only; no verification authority |
+| K | Compact tuner | **PRODUCTION / BOUNDED** | Explicit mic action; local audio only |
+| L | Student/share readiness UI | **PRODUCTION / BOUNDED** | Readiness only; actual delivery **BLOCKED_BY_CONTRACT** |
 
 ## 20. Out-of-scope capabilities
 
-### CURRENTLY OUT OF SCOPE
-
-The following are not missing Stage L details; they require a separate security/application program:
+The following are not unfinished STI-17/18 or Stage L details:
 
 - authenticated student accounts;
 - persistent student identity;
 - backend student delivery;
 - permanent share authorization;
-- share token or invite code;
-- share URL/link service;
-- remote delivery service;
+- share token/invite/share URL service;
 - student portal;
 - cloud persistence;
-- server-side authorization.
+- server-side authorization;
+- new OMR/recognizer behavior;
+- universal musical verification;
+- Package 8B production model training/replacement;
+- native application productisation.
 
-Also outside this docs refresh are new OMR/recognizer behavior, universal musical verification, renderer semantic expansion, new dependencies, unrelated refactors, and Package 8B model training/replacement.
+## 21. Physical iPhone Safari acceptance
 
-## 21. S12 real-mobile acceptance addendum
+STI-17 is the remaining blocking human-device gate. It must run against exact live production, not Chrome responsive simulation.
 
-The current production score-runtime pin is renderer revision
-`5ac49bf5483fe6ab0d4ba0cbd09978054ff8af4f`, contract `0.2.0` and OSMD
-`2.1.2`. Mobile interaction handling normalizes Pointer Events, Touch Events and
-synthetic click coordinates, then follows this single bounded path:
+Current acceptance target:
 
-```text
-renderer hit-test → exact ScoreNoteRef → exact canonical resolver
-→ S06 current-revision selection gate → S07 verified editor projection
-```
+- SesliTab production commit: `a21c1533b919554dd00d0f9852ab865b52e8f475`;
+- live URL: `https://seslitab-app.onrender.com`;
+- tracking issue: #191.
 
-No nearest-note, pitch label, SVG geometry/proximity or DOM lookup fallback is
-permitted. A failed hit-test or failed canonical resolution abstains and leaves
-the active selection unchanged. The S12 compact tools merely expose fields after
-the existing verified selection gate succeeds.
+Required real-device coverage includes PDF and MusicXML intake, score persistence, direct exact note tap, basic and supported advanced keypad edits, one atomic product revision, rerender/rebind, immutable undo, quality/routing coexistence, playback independence from renderer/editor readiness, renderer-only recovery, portrait/landscape usability and accessibility sanity.
 
-Exact-main CI run #494 passed for commit
-`d480758032f56572dbaf92cd832b0001b9089987`. This does not certify a physical
-iPhone/Safari session: that acceptance proof remains pending until the recorded
-test demonstrates selection, highlight, edit-save-rerender and undo on-device.
+Chrome/desktop/device-metrics evidence is supporting regression evidence only and cannot close STI-17.
 
 ## 22. CI / production verification model
 
@@ -319,25 +382,27 @@ Production verification is evaluated as:
 ```text
 protected main
   + required CI: test-and-build
-  + full regression suite
+  + full Node regression suite
   + production build
-  + real-browser/runtime proof when the workflow can run it
+  + score runtime browser proof
+  + PR-C keypad browser proof
+  + PR-D Editor→product pipeline browser proof
+  + PR-E quality/routing/recovery coexistence browser proof
+  + PR-F accessibility/mobile regression browser proof
 ```
 
-The CI workflow installs Node 24 dependencies, runs `npm test`, runs `npm run build`, and executes `scripts/verifyScoreRuntimeBrowser.js`. The browser script covers desktop/narrow score runtime and the bounded Stage F/I/J/K/L proofs when Chrome/Chromium is available.
+Post-merge CI run #527 passed on exact production `main` `a21c1533b919554dd00d0f9852ab865b52e8f475`.
 
-Fresh-read on 1 Eylül 2026: current protected `main` is `d480758…`; the
-connector shows exact-main CI run #494 as successful. The fresh local baseline
-independently produced a passing focused S12 test (9/9) and a successful
-production build; local browser proof was **UNVERIFIED** because Chrome/Chromium
-was not installed.
+Build prepares upstream runtimes from reviewed exact SHAs rather than committing generated runtime directories to source control.
 
 ## 23. Future development rules
 
-- Begin every change with fresh-read of protected `main`, rules/checks, open PR/issues, code, tests and runtime evidence.
+- Begin every change with fresh-read of protected `main`, required checks, open PR/issues, code, tests and runtime evidence.
 - Keep documentation-only changes separate from behavior changes.
-- Do not make production code fit stale documentation; classify code/document conflicts as blockers and open a separate issue/PR.
+- Do not make production code fit stale documentation; classify code/document conflicts explicitly.
 - Preserve exact revision, source, lineage, approval, quality and share evidence boundaries.
 - Add no authentication, persistence, token, URL or network delivery by implication.
-- Do not make renderer, Discovery, UI or generated instrument output a semantic authority.
+- Do not make renderer, Discovery, UI, glyphs or generated instrument output a semantic authority.
+- Do not weaken fail-closed target selection, stale-hit rejection, branch protection or required CI.
 - Require focused tests, full regression, build and applicable browser proof before calling a bounded capability production.
+- Do not mark `SESLITAB-EDITOR-INTEGRATION-01` fully accepted until STI-17 physical iPhone Safari evidence passes and STI-18 final closure is synchronized to that evidence.

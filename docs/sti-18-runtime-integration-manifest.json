@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "programId": "SESLITAB-EDITOR-INTEGRATION-01",
+  "generatedAt": "2026-09-02",
+  "status": "PENDING_STI_17_PHYSICAL_IPHONE_SAFARI",
+  "production": {
+    "seslitabMain": "a21c1533b919554dd00d0f9852ab865b52e8f475",
+    "url": "https://seslitab-app.onrender.com",
+    "renderDeployId": "dep-dabs5h0u01pc73f0utp0",
+    "deployObservedState": "live",
+    "postMergeCiRun": 527,
+    "requiredCheck": "test-and-build"
+  },
+  "runtimePins": {
+    "editorCore": {
+      "repository": "khfy7wpr5p-maker/st-score-editor-core",
+      "mainRevision": "2e6b975b4b6b8b558593ca43132309848dc3ccab",
+      "consumedRevision": "2e6b975b4b6b8b558593ca43132309848dc3ccab",
+      "browserContract": "ST_SCORE_EDITOR_CORE_BROWSER_BUNDLE",
+      "browserVersion": "1.0.0",
+      "runtimeVersion": "1.0.0",
+      "global": "STScoreEditorCoreRuntime"
+    },
+    "renderingLayer": {
+      "repository": "khfy7wpr5p-maker/st-score-rendering-layer",
+      "mainRevision": "a8961e0e68a950cbe980162e23c09f23f0ce5d0a",
+      "consumedRevision": "a8961e0e68a950cbe980162e23c09f23f0ce5d0a",
+      "contractVersion": "0.2.0",
+      "opensheetmusicdisplayVersion": "2.1.2",
+      "requiredFeatures": [
+        "hitTestNoteDetailed",
+        "renderEpoch"
+      ]
+    }
+  },
+  "authority": {
+    "keypadMutationAuthority": "ST Score Editor Core",
+    "productRevisionAuditAuthority": "SesliTab Package 8",
+    "rendererAuthority": "presentation-and-hit-test-only",
+    "dualWrite": false,
+    "nearestNoteFallback": false,
+    "pitchOrGeometryIdentityFallback": false
+  },
+  "integratedFlow": [
+    "exact renderer hit",
+    "current renderEpoch/source validation",
+    "ScoreNoteRef",
+    "exact Editor manifest token",
+    "Editor semantic selection",
+    "SMuFL keypad action",
+    "one Editor commit",
+    "MusicXML materialization",
+    "SesliTab structural revalidation",
+    "one immutable Package 8 product revision",
+    "rerender with fresh renderer correlation",
+    "exact surviving selection rebind or safe clear"
+  ],
+  "advancedEditBoundaries": {
+    "tie": "requires exactly two explicit revision-bound note endpoints",
+    "slur": "requires exactly two explicit revision-bound note endpoints",
+    "triplet": "requires exactly three consecutive revision-bound EVENT_RANGE addresses in one exact measure voice with canonical timing evidence",
+    "tripletRetimingRemoval": "not implemented when canonical onset/duration retiming would be required; fail closed",
+    "ambiguousOrUnsupportedEvidence": "fail closed; never infer nearest endpoints or ranges"
+  },
+  "currentRevisionRules": {
+    "qualityEvidence": "source quality report is not silently cloned onto corrected revisions",
+    "routing": "Guitar TAB and Violin routes are recomputed for the current revision and remain REVIEW/BLOCK when evidence does not justify PASS",
+    "playback": "playback authority is independent of renderer/editor readiness and follows its own playback policy",
+    "rendererRecovery": "uses the current revalidated product MusicXML when available; does not rerun OMR; exact highlight is rebound only if the current selection survives"
+  },
+  "accessibilityEvidence": {
+    "automatedSupportingGate": "PR-F real Chrome device-metrics proof",
+    "viewports": [
+      "320x568",
+      "568x320",
+      "1280x900"
+    ],
+    "stressCycles": 8,
+    "physicalIphoneSafariCertified": false
+  },
+  "acceptance": {
+    "completedThrough": "STI-16",
+    "completedCount": 17,
+    "totalCount": 19,
+    "sti17": {
+      "status": "PENDING_HUMAN_DEVICE_GATE",
+      "issue": 191,
+      "requiredDevice": "physical iPhone Safari"
+    },
+    "sti18": {
+      "status": "DOCUMENTATION_SYNC_PREPARED_PENDING_STI_17_FINAL_CLOSURE",
+      "mayMarkProductionAcceptanceComplete": false
+    }
+  }
+}
