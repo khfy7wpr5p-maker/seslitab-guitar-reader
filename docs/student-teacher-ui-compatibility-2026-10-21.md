@@ -2,6 +2,10 @@
 
 İnceleme tarihi: 21 Ekim 2026, Europe/Istanbul. Bu çalışma yalnız belgeleri ve proje kayıtlarını günceller; uygulama, öğretmen/backend davranışı, veritabanı, ses motoru ve dağıtım ayarları değiştirilmez.
 
+## SES-243 uygulama durumu — PR #370
+
+İlk inceleme aşağıdaki kaynak tablosundaki baseline'ları ve o tarihteki canlı durumu belgeler. [PR #370](https://github.com/khfy7wpr5p-maker/seslitab-guitar-reader/pull/370), eksik GET adaptörünü ekler; aşağıdaki güncel C-01 durumu bu takip değişikliğini kapsar. İlk incelemenin 404 ve test kanıtları tarihsel kayıt olarak korunur. PR'ın birleştirilmesi, API dağıtımı ve kimliği doğrulanmış canlı istek round-trip kabulü henüz doğrulanmamıştır.
+
 ## Kaynaklar ve yayın kanıtı
 
 | Yüzey | Doğrulanmış kaynak / durum |
@@ -57,23 +61,25 @@ Paketler immutable kalır. Private MusicXML/paket verisi IndexedDB otoritesinded
 | Piece yaşam döngüsü | PASS (sözleşme) | ACTIVE / COMPLETED / REPERTOIRE sanitize manifestleri kabul edildi; gerçek kullanıcı geçişi bu incelemede yapılmadı |
 | Nota/TAB takip, ölçek ve yön değiştirme | PASS (tarayıcı) | Student CI'da Chromium 17/17, WebKit 17/17 |
 | Bekleyen istek ad/öğretmen grubu domain'i | PASS (domain) | Mevcut teacher servis testlerinde roster ve PENDING-only sınırı geçti |
-| Bekleyen istek HTTP bağlantısı | FAIL | Student GET çağrısına karşı backend route eksik; canlı 404 |
+| Bekleyen istek HTTP bağlantısı | PASS (PR kodu / HTTP testleri); canlı kabul bekliyor | PR #370 authenticated GET adaptörünü ekler. Önceki baseline 404 kanıtı tarihseldir; birleşme, API dağıtımı ve oturumlu canlı round-trip henüz doğrulanmadı |
 | SCORE/TAB farklı müzikal olaylar | Koşullu / bilinçli fail-closed | Paket şeması metni kabul edebilir; exact event kanıtı yoksa highlight UNAVAILABLE olur |
 | Fiziksel iPhone/PWA ve gerçek teacher/student kabulü | Doğrulanmadı | WebKit motor testi gerçek cihaz/VoiceOver veya oturumlu canlı kullanıcı testi değildir |
 
 ## Uyumsuzluklar ve kalan işler
 
-### C-01 — Yüksek: Bekleyen Eser İstekleri GET route'u eksik
+### C-01 — SES-243: GET adaptörü kodda düzeltildi; dağıtım/canlı kabul bekliyor
 
 Student `src/providers/secureDelivery/secureDeliveryApiClient.js` içindeki `listSharedPendingWorkRequests()` şu yolu çağırır:
 
 `GET /api/secure-delivery/v1/student/work-requests/pending`
 
-SesliTab `backend/delivery/http/studentWorkRequestRouter.js` yalnız POST `/student/work-requests` kaydeder. `listSharedPendingForStudent()` domain metodu ve production `rosterStore` bağlantısı mevcuttur; HTTP GET adaptörü yoktur.
+İlk inceleme baseline'ında `backend/delivery/http/studentWorkRequestRouter.js` yalnız POST `/student/work-requests` kaydediyordu; `listSharedPendingForStudent()` ve production `rosterStore` mevcutken HTTP GET adaptörü eksikti.
 
-Canlı, tokensız ve salt okunur kontrol: pending adresi **404 NOT_FOUND / Endpoint bulunamadı**; aynı origin'deki `/student/pieces` ve `/student/assignments` **401 UNAUTHENTICATED** döndürdü. Bu, eksik route'u kimlik doğrulama gereksiniminden ayırır. Gerçek öğrenci içeriği okunmadı veya oluşturulmadı.
+PR #370 şimdi GET `/student/work-requests/pending` yolunu da kaydeder ve mevcut domain metoduna yalnız doğrulanmış token'dan türetilen `providerSubject` değerini geçirir. Feature ve öğrenci okuma kapıları korunur; yazma kapısı GET'i engellemez. Aktif roster, aynı öğretmen grubu ve PENDING-only sınırları ile yalnız `title` + `displayNameOrNickname` DTO'su korunur. Kullanıcının gönderdiği öğrenci/öğretmen kimlikleri yetki kaynağı değildir.
 
-Takip: [SES-243](https://linear.app/seslitab/issue/SES-243). Öneri mevcut router'a authenticated GET bağlamak ve mevcut domain DTO'sunu kullanmaktır. Öğretmen dönüşüm/silme akışı, POST ve güvenlik sınırları korunmalıdır. Bu inceleme düzeltmeyi uygulamaz. Ana Havuz ile Eser İste istek listesi aynı endpoint değildir.
+İlk incelemedeki tarihsel canlı, tokensız ve salt okunur kontrolde pending adresi **404 NOT_FOUND / Endpoint bulunamadı**; aynı origin'deki `/student/pieces` ve `/student/assignments` **401 UNAUTHENTICATED** döndürdü. Bu, eksik route'u kimlik doğrulama gereksiniminden ayırır. Gerçek öğrenci içeriği okunmadı veya oluşturulmadı.
+
+Takip: [SES-243](https://linear.app/seslitab/issue/SES-243). Düzeltme PR #370 içinde uygulanmıştır. `299ae5185283606897b587518f9a7c736c49341c` kodunda ilgili 73 HTTP/domain/bağımlılık testi, uygulama Vite derlemesi ve [GitHub CI](https://github.com/khfy7wpr5p-maker/seslitab-guitar-reader/actions/runs/39569573795) başarılıdır; Dependency Security ve Sonar kontrolleri de bu head'de geçmiştir. Bu belge değişikliği için yeni CI turu ayrıca değerlendirilir. POST ve öğretmen dönüştürme/kaldırma regresyonları geçti. Bu kanıtlar canlı dağıtım veya gerçek kullanıcı kabulü değildir. Ana Havuz ile Eser İste istek listesi aynı endpoint değildir.
 
 ### C-02 — Orta: Mimari belgeler kodun gerisinde
 
@@ -85,7 +91,7 @@ Farklı nota/perde/süre olaylarına sahip iki XML aynı esere iliştirilirse ş
 
 ### C-04 — Kabul açığı: gerçek cihaz ve öğretmen/öğrenci round-trip
 
-Arayüz uygulaması/yayını tamamlanmıştır; gerçek iPhone/PWA yükseltmesi, VoiceOver ve öğrenci isteği -> öğretmen listesi -> mevcut dönüşüm/kaldırma -> öğrenci yenilemesi canlı kabulü yapılmış sayılmaz. [SES-242](https://linear.app/seslitab/issue/SES-242) bağımsız kabul takibi olarak açık tutulur; C-01 çözülmeden bekleyen liste round-trip'ine PASS verilemez.
+Arayüz uygulaması/yayını tamamlanmıştır; gerçek iPhone/PWA yükseltmesi, VoiceOver ve öğrenci isteği -> öğretmen listesi -> mevcut dönüşüm/kaldırma -> öğrenci yenilemesi canlı kabulü yapılmış sayılmaz. [SES-242](https://linear.app/seslitab/issue/SES-242) bağımsız kabul takibi olarak açık tutulur; C-01'in kod düzeltmesi hazırdır; API dağıtımı ve gerçek öğrenci/öğretmen istek round-trip doğrulaması tamamlanmadan canlı kabulüne PASS verilmez.
 
 ## Çalıştırılan kontroller
 
@@ -99,6 +105,6 @@ Arayüz uygulaması/yayını tamamlanmıştır; gerçek iPhone/PWA yükseltmesi,
 
 ## Kapanış kararı
 
-Proje kayıtları: [Notion mimari raporu](https://app.notion.com/p/4002be2e566481b48afbf46d3a9647a2?pvs=204) · [Linear ortak raporu](https://linear.app/seslitab/document/st-student-seslitab-arayuz-kapanisi-ve-uyumluluk-21-ekim-2026-9bb283940577) · [SES-243 açık API hatası](https://linear.app/seslitab/issue/SES-243) · [SES-242 açık kabul takibi](https://linear.app/seslitab/issue/SES-242).
+Proje kayıtları: [Notion mimari raporu](https://app.notion.com/p/4002be2e566481b48afbf46d3a9647a2?pvs=204) · [Linear ortak raporu](https://linear.app/seslitab/document/st-student-seslitab-arayuz-kapanisi-ve-uyumluluk-21-ekim-2026-9bb283940577) · [SES-243 kod düzeltmesi / dağıtım ve canlı kabul takibi](https://linear.app/seslitab/issue/SES-243) · [SES-242 açık kabul takibi](https://linear.app/seslitab/issue/SES-242).
 
-Arayüz geliştirme ve yayımlama işi tamamlandı. Öğretmen ve çalışan müzik özellikleri bu belge çalışmasında değiştirilmedi. **İki proje bütünü için koşulsuz PASS verilmez:** C-01 doğrulanmış bağlantı hatası ve C-04 kabul açığı ayrı kalır. Tarihsel görevler/PR'lar körlemesine silinmez; kanıtsız cihaz/öğretmen kabulü Done olarak işaretlenmez.
+Arayüz geliştirme ve yayımlama işi tamamlandı. Öğretmen ve çalışan müzik özellikleri bu belge çalışmasında değiştirilmedi. **İki proje bütünü için koşulsuz PASS verilmez:** C-01 kod düzeltmesinin dağıtım/canlı doğrulaması ve C-04 kabul takibi ayrı kalır; kaynak kodda eksik GET adaptörü iddiası artık geçerli değildir. Tarihsel görevler/PR'lar körlemesine silinmez; kanıtsız cihaz/öğretmen kabulü Done olarak işaretlenmez.

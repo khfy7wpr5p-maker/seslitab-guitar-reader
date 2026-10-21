@@ -2,7 +2,7 @@
 
 **Current boundary reconciliation:** 2026-10-21
 
-Authenticated Secure Delivery and ST Student are implemented in the current application. See [product architecture](product-architecture.md) and the [cross-project review](student-teacher-ui-compatibility-2026-10-21.md) for current source references, UI releases and unresolved SES-243. The dated Stage A–L baseline and Package 12 matrix below describe the historical bounded-readiness component; delivery exclusions in that snapshot apply to Stage L, not the whole application.
+Authenticated Secure Delivery and ST Student are implemented in the current application. See [product architecture](product-architecture.md) and the [cross-project review](student-teacher-ui-compatibility-2026-10-21.md) for current source references, UI releases and SES-243 implementation versus pending deployment/live acceptance. PR #370 restores the authenticated pending-request GET adapter; its historical absence is not the current PR source state. The dated Stage A–L baseline and Package 12 matrix below describe the historical bounded-readiness component; delivery exclusions in that snapshot apply to Stage L, not the whole application.
 
 **Historical component review:** 2026-08-31
 **Fresh-read protected main:** `e40e3b3e8d9029673efd780d44c6eefe34ba1e18`
