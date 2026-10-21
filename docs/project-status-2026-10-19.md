@@ -46,4 +46,3 @@
 ## Belgelerin öncelik sırası
 
 Güncel protected `main` gerçek kodu → exact head CI/build → gerçek browser/cihaz/runtime kanıtı → domain contractları → güncel tarihli durum belgesi → tarihsel plan ve handoff metinleri. Önceki tarihli dokümanlar geçmiş karar ve kanıtlar için korunur.
-
