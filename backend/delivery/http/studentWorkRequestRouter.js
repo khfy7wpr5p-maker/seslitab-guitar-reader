@@ -15,12 +15,13 @@ function observeSafely(
   outcome,
   status,
   failureClass = null,
+  operation = 'student_work_request_create',
 ) {
   if (typeof observeRequest !== 'function') return
   try {
     const result = observeRequest(Object.freeze({
       event: 'secure_delivery_request',
-      operation: 'student_work_request_create',
+      operation,
       outcome,
       status,
       ...(failureClass === null
@@ -90,6 +91,49 @@ export function createStudentWorkRequestRouter({
         secureDeliveryRequestOutcome(error, status),
         status,
         secureDeliveryFailureClass(error),
+      )
+      return sendSecureDeliveryError(res, error)
+    }
+  })
+
+  router.get('/student/work-requests/pending', async (req, res) => {
+    const operation = 'student_work_request_list_pending'
+    try {
+      if (!config.enabled) throw new Error('secure-delivery-feature-disabled')
+      if (config.studentReadsEnabled !== true) {
+        throw new Error('secure-delivery-student-reads-disabled')
+      }
+
+      let token
+      try {
+        token = parseBearerToken(req.get('authorization'))
+      } catch {
+        throw new Error('secure-delivery-auth-invalid')
+      }
+
+      let decoded
+      try {
+        decoded = await tokenVerifier.verifyIdToken(token)
+      } catch {
+        throw new Error('secure-delivery-auth-invalid')
+      }
+      if (!decoded || typeof decoded.uid !== 'string' || decoded.uid.trim() === '') {
+        throw new Error('secure-delivery-auth-invalid')
+      }
+
+      const data = await service.listSharedPendingForStudent({
+        providerSubject: decoded.uid.trim(),
+      })
+      observeSafely(observeRequest, 'authorized', 200, null, operation)
+      return res.status(200).json({ success: true, data })
+    } catch (error) {
+      const status = secureDeliveryErrorStatus(error)
+      observeSafely(
+        observeRequest,
+        secureDeliveryRequestOutcome(error, status),
+        status,
+        secureDeliveryFailureClass(error),
+        operation,
       )
       return sendSecureDeliveryError(res, error)
     }

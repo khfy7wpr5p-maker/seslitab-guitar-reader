@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import express from 'express'
+import { createStudentWorkRequestRouter } from '../backend/delivery/http/studentWorkRequestRouter.js'
 
 import {
   createPendingStudentWorkRequest,
@@ -99,7 +101,30 @@ function makeHarness({
   })
 }
 
-test('shared pending Havuz is cohort-scoped, pending-only, and presentation-only', async () => {
+async function listOverHttp(service, providerSubject) {
+  const app = express()
+  app.use('/api/secure-delivery/v1', createStudentWorkRequestRouter({
+    tokenVerifier: { async verifyIdToken(token) { return { uid: token } } },
+    service,
+    config: { enabled: true, studentReadsEnabled: true, writesEnabled: false },
+  }))
+  const server = app.listen(0, '127.0.0.1')
+  await new Promise(resolve => server.once('listening', resolve))
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/secure-delivery/v1/student/work-requests/pending`,
+      { headers: { Authorization: `Bearer ${providerSubject}` } },
+    )
+    assert.equal(response.status, 200)
+    const payload = await response.json()
+    assert.equal(payload.success, true)
+    return payload.data
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+}
+
+test('shared pending Havuz over HTTP is cohort-scoped, pending-only, and presentation-only', async () => {
   const grantA = grant('teacher-a', 'student-a')
   const grantB = grant('teacher-a', 'student-b')
   const grantC = grant('teacher-a', 'student-c')
@@ -167,15 +192,9 @@ test('shared pending Havuz is cohort-scoped, pending-only, and presentation-only
     displayNameOrNickname: 'Ahmet',
   }]
 
-  const studentA = await service.listSharedPendingForStudent({
-    providerSubject: 'uid-student-a',
-  })
-  const studentB = await service.listSharedPendingForStudent({
-    providerSubject: 'uid-student-b',
-  })
-  const otherCohort = await service.listSharedPendingForStudent({
-    providerSubject: 'uid-student-d',
-  })
+  const studentA = await listOverHttp(service, 'uid-student-a')
+  const studentB = await listOverHttp(service, 'uid-student-b')
+  const otherCohort = await listOverHttp(service, 'uid-student-d')
 
   assert.deepEqual(studentA, expected)
   assert.deepEqual(studentB, expected)

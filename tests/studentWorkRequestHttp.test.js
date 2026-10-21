@@ -229,3 +229,102 @@ test('student work request endpoint emits only privacy-safe upstream failure cla
     assert.equal(serialized.includes('student-token'), false)
   }
 })
+
+
+const pendingPath = '/secure-delivery/student/work-requests/pending'
+
+function pendingRouter({ verifier, list, config = {}, observeRequest } = {}) {
+  return createStudentWorkRequestRouter({
+    tokenVerifier: { verifyIdToken: verifier ?? (async () => ({ uid: ' uid-student-a ' })) },
+    service: {
+      async requestWork() { throw new Error('GET must not write') },
+      listSharedPendingForStudent: list ?? (async () => []),
+    },
+    config: { enabled: true, studentReadsEnabled: true, writesEnabled: false, ...config },
+    observeRequest,
+  })
+}
+
+test('pending GET authenticates, ignores caller authority, and works with writes disabled', async () => {
+  const calls = []
+  const events = []
+  const rows = [{ title: 'Etüt', displayNameOrNickname: 'Ada' }]
+  const response = await request(appFor(pendingRouter({
+    async verifier(token) {
+      assert.equal(token, 'student-token')
+      return { uid: ' uid-student-a ' }
+    },
+    async list(input) { calls.push(input); return rows },
+    observeRequest(event) { events.push(event) },
+  })), `${pendingPath}?teacherId=other&studentId=other`, {
+    headers: { Authorization: 'Bearer student-token' },
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { success: true, data: rows })
+  assert.deepEqual(calls, [{ providerSubject: 'uid-student-a' }])
+  assert.deepEqual(events, [{
+    event: 'secure_delivery_request', operation: 'student_work_request_list_pending',
+    outcome: 'authorized', status: 200,
+  }])
+})
+
+test('pending GET rejects absent, malformed, rejected and invalid-uid tokens before listing', async () => {
+  for (const scenario of [
+    { authorization: undefined },
+    { authorization: 'Basic secret' },
+    { authorization: 'Bearer token', verifier: async () => { throw new Error('secret') } },
+    ...[null, {}, { uid: '' }, { uid: '   ' }, { uid: 123 }].map(decoded => ({
+      authorization: 'Bearer token', verifier: async () => decoded,
+    })),
+  ]) {
+    let called = false
+    const response = await request(appFor(pendingRouter({
+      verifier: scenario.verifier,
+      async list() { called = true; return [] },
+    })), pendingPath, { headers: scenario.authorization ? { Authorization: scenario.authorization } : {} })
+    assert.equal(response.status, 401)
+    assert.equal((await response.json()).error.code, 'UNAUTHENTICATED')
+    assert.equal(called, false)
+  }
+})
+
+test('pending GET honors feature and student-read gates before authentication or listing', async () => {
+  for (const config of [{ enabled: false }, { studentReadsEnabled: false }, { studentReadsEnabled: undefined }]) {
+    let called = false
+    const response = await request(appFor(pendingRouter({
+      config,
+      async verifier() { called = true; return { uid: 'uid-student-a' } },
+      async list() { called = true; return [] },
+    })), pendingPath, { headers: { Authorization: 'Bearer token' } })
+    assert.equal(response.status, 503)
+    assert.equal(called, false)
+  }
+})
+
+test('pending GET preserves sanitized authorization and upstream errors', async () => {
+  for (const scenario of [
+    { error: new Error('secure-delivery-wrong-role'), status: 403 },
+    { error: Object.assign(new Error('private database student-id'), { code: 14 }), status: 503 },
+  ]) {
+    const events = []
+    const response = await request(appFor(pendingRouter({
+      async list() { throw scenario.error },
+      observeRequest(event) { events.push(event) },
+    })), pendingPath, { headers: { Authorization: 'Bearer token' } })
+    assert.equal(response.status, scenario.status)
+    const serialized = JSON.stringify({ payload: await response.json(), events })
+    assert.equal(serialized.includes(scenario.error.message), false)
+    assert.equal(serialized.includes('uid-student-a'), false)
+    assert.equal(events[0].operation, 'student_work_request_list_pending')
+  }
+})
+
+test('pending GET returns an empty list even when its observer fails', async () => {
+  for (const observeRequest of [() => { throw new Error('observer failed') }, async () => { throw new Error('observer failed') }]) {
+    const response = await request(appFor(pendingRouter({ observeRequest })), pendingPath, {
+      headers: { Authorization: 'Bearer token' },
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { success: true, data: [] })
+  }
+})
