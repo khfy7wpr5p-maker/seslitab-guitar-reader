@@ -203,6 +203,39 @@ export function mountTeacherAssignmentComposerUi({
   instrumentLabel.appendChild(instrumentSelect)
   scoreFieldset.appendChild(instrumentLabel)
 
+  const violinPartLabel = element(root, 'label')
+  violinPartLabel.textContent = 'Takip edilecek keman partisi'
+  const violinPartSelect = element(root, 'select')
+  violinPartSelect.name = 'violinTargetPartId'
+  violinPartSelect.hidden = true
+  violinPartLabel.hidden = true
+  violinPartLabel.appendChild(violinPartSelect)
+  scoreFieldset.appendChild(violinPartLabel)
+
+  function updateViolinPartSelection() {
+    const parts = scoreUpload?.violinParts ?? []
+    const requiresSelection =
+      instrumentSelect.value === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN &&
+      Array.isArray(parts) && parts.length > 1
+    violinPartLabel.hidden = !requiresSelection
+    violinPartSelect.hidden = !requiresSelection
+    violinPartSelect.replaceChildren()
+    if (!requiresSelection) return
+
+    const prompt = element(root, 'option')
+    prompt.value = ''
+    prompt.textContent = 'Parti seçin'
+    violinPartSelect.appendChild(prompt)
+    for (const part of parts) {
+      const option = element(root, 'option')
+      option.value = part.partId
+      option.textContent = `${part.name} (${part.partId})`
+      violinPartSelect.appendChild(option)
+    }
+    violinPartSelect.value = ''
+  }
+  instrumentSelect.addEventListener('change', updateViolinPartSelection)
+
   const chordFieldset = element(root, 'fieldset')
   const chordLegend = element(root, 'legend')
   chordLegend.textContent =
@@ -350,6 +383,7 @@ export function mountTeacherAssignmentComposerUi({
     noteInput.value = ''
     instrumentSelect.value =
       STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO
+    updateViolinPartSelection()
     fileInput.value = ''
     for (
       const input of roster.querySelectorAll(
@@ -418,6 +452,7 @@ export function mountTeacherAssignmentComposerUi({
     'change',
     async () => {
       scoreUpload = null
+      updateViolinPartSelection()
       const file = fileInput.files?.[0]
       scoreFileSelected = Boolean(file)
       if (!file) {
@@ -442,10 +477,12 @@ export function mountTeacherAssignmentComposerUi({
             musicXml,
             draftId,
           })
+        updateViolinPartSelection()
         scoreStatus.textContent =
           'MusicXML doğrulandı.'
       } catch {
         scoreUpload = null
+        updateViolinPartSelection()
         scoreStatus.textContent =
           'MusicXML doğrulanamadı.'
       }
@@ -550,6 +587,20 @@ export function mountTeacherAssignmentComposerUi({
           'MusicXML veya en az bir akor seçin.'
         return
       }
+      if (
+        instrumentSelect.value === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN &&
+        (scoreUpload?.violinParts?.length ?? 0) > 1 &&
+        !scoreUpload.violinParts.some((part) => part.partId === violinPartSelect.value)
+      ) {
+        status.textContent = 'Takip edilecek keman partisini seçin.'
+        return
+      }
+
+      const violinSelection =
+        instrumentSelect.value === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN &&
+        !violinPartSelect.hidden
+          ? { violinTargetPartId: violinPartSelect.value }
+          : {}
 
       const title =
         titleInput.value.trim()
@@ -573,6 +624,7 @@ export function mountTeacherAssignmentComposerUi({
               chordSnapshots: Object.freeze([...selectedSnapshots]),
               playbackInstrument:
                 instrumentSelect.value,
+              ...violinSelection,
             }),
           )
           status.textContent = 'Gönderildi.'
@@ -591,6 +643,7 @@ export function mountTeacherAssignmentComposerUi({
                 selectedSnapshots,
               playbackInstrument:
                 instrumentSelect.value,
+              ...violinSelection,
             })
           const exactSuccess =
             isExactDeliverySuccess(result)
