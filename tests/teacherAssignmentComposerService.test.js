@@ -163,6 +163,11 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
       prepared[0].package.playbackInstrument,
       'VIOLIN',
     )
+    assert.deepEqual(prepared[0].package.content.violin, {
+      schemaVersion: 1,
+      targetPartId: 'P1',
+      position: 1,
+    })
     assert.match(
       prepared[0].assignment.sourceRef.qualityEvidenceId,
       /^teacher-selected:[0-9a-f]{64}$/,
@@ -194,6 +199,7 @@ test('SCORE delivery defaults legacy callers to GRAND_PIANO and rejects unknown 
     calls.prepare[0][0].package.playbackInstrument,
     'GRAND_PIANO',
   )
+  assert.equal(Object.hasOwn(calls.prepare[0][0].package.content, 'violin'), false)
 
   await assert.rejects(
     service.send({
@@ -208,6 +214,35 @@ test('SCORE delivery defaults legacy callers to GRAND_PIANO and rejects unknown 
     }),
     /playbackInstrument/,
   )
+})
+
+test('multiple score parts require an explicit exact violin target before delivery', async () => {
+  const { service, calls } = harness()
+  const secondPart = '<part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>'
+  const xml = VALID_XML
+    .replace('</part-list>', '<score-part id="P2"><part-name>Keman II</part-name></score-part></part-list>')
+    .replace('</score-partwise>', `${secondPart}</score-partwise>`)
+  const scoreUpload = await service.prepareScoreUpload({ musicXml: xml, draftId: 'draft-multi-violin' })
+  assert.deepEqual(scoreUpload.violinParts.map(({ partId }) => partId), ['P1', 'P2'])
+
+  const input = {
+    draftId: 'draft-multi-violin',
+    studentIds: ['student-a'],
+    title: 'İki keman',
+    scoreUpload,
+    playbackInstrument: 'VIOLIN',
+  }
+  await assert.rejects(service.send(input), /violin-target-selection-required/)
+  await assert.rejects(service.send({ ...input, violinTargetPartId: 'P3' }), /violin-target-part-mismatch/)
+  assert.equal(calls.prepare.length, 0)
+
+  const result = await service.send({ ...input, violinTargetPartId: 'P2' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls.prepare[0][0].package.content.violin, {
+    schemaVersion: 1,
+    targetPartId: 'P2',
+    position: 1,
+  })
 })
 
 test('SCORE delivery allows the Student tempo control without overriding the score tempo', async () => {

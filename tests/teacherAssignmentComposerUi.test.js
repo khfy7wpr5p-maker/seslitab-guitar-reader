@@ -190,6 +190,42 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
   assert.equal(host.children.length, 0)
 })
 
+test('Keman seçimi çok partili ödevde açık parti seçimini gerektirir', async () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const calls = []
+  const handle = mountTeacherAssignmentComposerUi({
+    root, host, createDraftId: () => 'draft-violin-ui',
+    service: {
+      async loadRoster() { return [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }] },
+      async prepareScoreUpload() {
+        return { violinParts: [
+          { partId: 'P1', name: 'Keman I' },
+          { partId: 'P2', name: 'Keman II' },
+        ] }
+      },
+      async send(input) { calls.push(input); return { ok: true, recipients: [{ ok: true, pieceLinked: true, phase: TEACHER_ASSIGNMENT_DELIVERY_PHASE.DELIVERED_TO_STUDENT }] } },
+    },
+  })
+  await settle()
+  const file = host.querySelector('input[name="scoreMusicXml"]')
+  file.files = [{ name: 'two.musicxml', size: 100, async text() { return '<score-partwise/>' } }]
+  await file.dispatchEventAsync({ type: 'change' })
+  host.querySelector('select[name="playbackInstrument"]').value = 'VIOLIN'
+  host.querySelector('select[name="playbackInstrument"]').dispatchEvent({ type: 'change' })
+  host.querySelector('input[name="studentId"]').checked = true
+  host.querySelector('input[name="assignmentTitle"]').value = 'İki keman'
+  const form = host.querySelector('form')
+  await form.dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  assert.equal(calls.length, 0)
+  const part = host.querySelector('select[name="violinTargetPartId"]')
+  assert.equal(part.hidden, false)
+  part.value = 'P2'
+  await form.dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  assert.equal(calls[0].violinTargetPartId, 'P2')
+  handle.destroy()
+})
+
 test('SES-141 UI fails closed when roster authority cannot load', async () => {
   const root = createFakeDocument()
   const host = root.createElement('div')

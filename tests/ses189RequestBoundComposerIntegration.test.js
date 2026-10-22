@@ -209,6 +209,7 @@ function draft({
   scoreUpload = null,
   chordSnapshots = [],
   playbackInstrument,
+  violinTargetPartId,
 } = {}) {
   return Object.freeze({
     teacherNote: 'Yavaş çalış.',
@@ -218,6 +219,7 @@ function draft({
     ...(playbackInstrument === undefined
       ? {}
       : { playbackInstrument }),
+    ...(violinTargetPartId === undefined ? {} : { violinTargetPartId }),
   })
 }
 
@@ -230,6 +232,7 @@ test('SES-189 real Composer SCORE-only conversion creates one exact same-student
     composerDraft: draft({
       scoreUpload: await preparedScore(),
       playbackInstrument: 'VIOLIN',
+      violinTargetPartId: 'P1',
     }),
   })
 
@@ -239,6 +242,7 @@ test('SES-189 real Composer SCORE-only conversion creates one exact same-student
   assert.match(calls.pieces[0].scoreAssignmentId, /^ses141:ses189:request-a:score-assignment:student-b$/)
   assert.deepEqual(calls.pieces[0].chordAssignmentIds, [])
   assert.equal(calls.prepared[0][0].package.playbackInstrument, 'VIOLIN')
+  assert.equal(calls.prepared[0][0].package.content.violin.targetPartId, 'P1')
 })
 
 test('SES-189 real Composer CHORD-only conversion creates one exact same-student Piece', async () => {

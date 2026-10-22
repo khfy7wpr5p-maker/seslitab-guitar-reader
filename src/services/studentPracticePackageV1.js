@@ -41,7 +41,20 @@ const INPUT_FIELDS = Object.freeze([
   'canonicalEvents',
   'practice',
   'playbackInstrument',
+  'violinTargetPartId',
 ])
+
+function validViolinDescriptor(value) {
+  return isRecord(value) &&
+    Object.keys(value).length === 3 &&
+    value.schemaVersion === 1 &&
+    value.position === 1 &&
+    typeof value.targetPartId === 'string' &&
+    value.targetPartId.length > 0 &&
+    value.targetPartId.length <= 128 &&
+    value.targetPartId === value.targetPartId.trim() &&
+    !value.targetPartId.includes('\u0000')
+}
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -244,6 +257,11 @@ export function validateStudentPracticePackageV1(value) {
     if (!Array.isArray(content.canonicalEvents)) {
       errors.push('content.canonicalEvents must be an array')
     }
+    if (content.violin !== undefined &&
+      (!validViolinDescriptor(content.violin) ||
+        value.playbackInstrument !== STUDENT_PLAYBACK_INSTRUMENT.VIOLIN)) {
+      errors.push('content.violin must be a first-position VIOLIN descriptor')
+    }
   }
 
   if (
@@ -275,6 +293,11 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
   }
   if (!hasText(input.musicXml)) {
     throw new TypeError('musicXml must be non-empty text.')
+  }
+  if (input.violinTargetPartId !== undefined && input.violinTargetPartId !== null &&
+    (input.playbackInstrument !== STUDENT_PLAYBACK_INSTRUMENT.VIOLIN ||
+      !validViolinDescriptor({ schemaVersion: 1, targetPartId: input.violinTargetPartId, position: 1 }))) {
+    throw new TypeError('violin target requires a valid VIOLIN part identity.')
   }
 
   const pkg = Object.freeze({
@@ -324,6 +347,13 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
                 5_000_000,
               ),
             }),
+      ...(input.violinTargetPartId === undefined || input.violinTargetPartId === null
+        ? {}
+        : { violin: Object.freeze({
+            schemaVersion: 1,
+            targetPartId: input.violinTargetPartId,
+            position: 1,
+          }) }),
     }),
     practice: cloneFrozenJson(input.practice ?? {}),
     ...(input.playbackInstrument === undefined
