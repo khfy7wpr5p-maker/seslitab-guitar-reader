@@ -32,6 +32,7 @@ public/st-guitar-tab-editor-runtime/
 *.sw?
 /storage/jobs/*
 /artifacts/gtab10c-semantic-parity/
+/artifacts/gtab-rt-01g/
 
 # Generated qualification coverage and Python bytecode.
 /coverage/
