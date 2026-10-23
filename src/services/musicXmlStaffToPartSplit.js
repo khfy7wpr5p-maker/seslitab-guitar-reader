@@ -98,11 +98,19 @@ function appendMove(doc, measure, delta, divisions) {
 }
 const rightBarline = record => record.kind === 'barline' &&
   (record.node.getAttribute('location') || 'right') === 'right'
+function normalizedMeasure(node, part) {
+  const clone = node.cloneNode(false)
+  if (part.sourceStaff !== 1) {
+    clone.removeAttribute('id')
+    clone.removeAttribute('xml:id')
+  }
+  return clone
+}
 function buildPart(doc, sourcePart, timeline, part) {
   const target = sourcePart.cloneNode(false)
   target.setAttribute('id', part.partId)
   for (const measure of timeline) {
-    const output = measure.node.cloneNode(false)
+    const output = normalizedMeasure(measure.node, part)
     const rightBarlines = []
     let cursor = 0
     let divisions = null
@@ -160,6 +168,7 @@ function verify(source, target, part) {
   const derived = inspectSplitPart(target, [1])
   if (derived.length !== source.length) splitFailure('semantic-integrity')
   source.forEach((measure, index) => {
+    if (serialize(normalizedMeasure(measure.node, part)) !== serialize(derived[index].node.cloneNode(false))) splitFailure('semantic-integrity', measure.number)
     const before = signatures(measure.records, part, true)
     const after = signatures(derived[index].records, part, false)
     if (Math.abs(measure.extent - derived[index].extent) > 1e-8 || before.length !== after.length) splitFailure('semantic-integrity', measure.number)

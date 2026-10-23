@@ -47,10 +47,11 @@ export function splitFailure(reason, measure = null) {
   throw error
 }
 export function splitStaff(node, allowed, required = true) {
+  const elements = splitChildren(node, 'staff')
   const raw = splitText(node, 'staff')
-  if (!raw && !required) return null
+  if (!elements.length && !required) return null
   const staff = Number(raw)
-  if (!/^[1-2]$/.test(raw) || !allowed.includes(staff) || splitChildren(node, 'staff').length !== 1) splitFailure('staff-ambiguous')
+  if (!/^\+?\d+$/.test(raw) || !Number.isSafeInteger(staff) || !allowed.includes(staff) || elements.length !== 1) splitFailure('staff-ambiguous')
   return staff
 }
 function positive(node, name, measure) {

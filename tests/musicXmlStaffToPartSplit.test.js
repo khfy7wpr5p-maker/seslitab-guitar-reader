@@ -61,6 +61,45 @@ for (const [name, corrupt] of [
   } finally { globalThis.XMLSerializer = SmoosicTestXMLSerializer }
 })
 import { note, score } from './support/staffSplitFixture.js'
+test('retains measure IDs on the first part without rejecting the duplicate container', async () => {
+  const source = score().replace('<measure number="1">', '<measure number="1" id="m1" implicit="no">')
+  const preview = await (await api()).prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  assert.deepEqual(doc.querySelectorAll('measure').map(m => m.getAttribute('id')), ['m1', null])
+  assert.ok(doc.querySelectorAll('measure').every(m => m.getAttribute('implicit') === 'no'))
+  assert.equal(preview.sourceMusicXml, source)
+  assert.deepEqual(events(preview.derivedMusicXml), events((await (await api()).prepareStaffToPartSplit({ musicXml: score() })).derivedMusicXml))
+})
+for (const raw of ['01', '+1', ' 001 ', '02', '+2', ' 002 ']) test('accepts positive-integer staff spelling ' + JSON.stringify(raw), async () => {
+  const staff = Number(raw)
+  const direction = '<direction><direction-type><words>pizz.</words></direction-type><staff>' + raw + '</staff></direction>'
+  const source = score().replaceAll('<staff>' + staff + '</staff>', '<staff>' + raw + '</staff>').replace('<note>', direction + '<note>')
+  const preview = await (await api()).prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  assert.deepEqual(doc.querySelectorAll('part').map(p => p.querySelectorAll('direction').length), staff === 1 ? [1, 0] : [0, 1])
+  assert.ok(doc.querySelectorAll('staff').every(s => s.textContent === '1'))
+  assert.equal(preview.sourceMusicXml, source)
+})
+test('rejects malformed out-of-range and empty staff values', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const raw of ['', '0', '-1', '3', '1.0', '1e0', '0x1', '1 0']) {
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score().replace('<staff>1</staff>', '<staff>' + raw + '</staff>') }), /staff-ambiguous/)
+  }
+  const emptyDirection = '<direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><staff/></direction>'
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score().replace('<note>', emptyDirection + '<note>') }), /staff-ambiguous/)
+})
+test('rejects loss of the retained measure ID during serialization', async () => {
+  class MissingMeasureIdSerializer extends SmoosicTestXMLSerializer {
+    serializeToString(node) {
+      const xml = super.serializeToString(node)
+      return node.tagName === '#document' ? xml.replace(' id="m1"', '') : xml
+    }
+  }
+  globalThis.XMLSerializer = MissingMeasureIdSerializer
+  try {
+    await assert.rejects(() => api().then(({ prepareStaffToPartSplit }) => prepareStaffToPartSplit({ musicXml: score().replace('<measure number="1">', '<measure number="1" id="m1">') })), /semantic-integrity/)
+  } finally { globalThis.XMLSerializer = SmoosicTestXMLSerializer }
+})
 function events(xml) {
   const doc = new SmoosicTestDOMParser().parseFromString(xml)
   return doc.querySelectorAll('part').map(part => {
