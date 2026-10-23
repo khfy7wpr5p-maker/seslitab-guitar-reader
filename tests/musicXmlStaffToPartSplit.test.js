@@ -119,8 +119,59 @@ test('cross-staff slur across different voices is not silently broken', async ()
 
 test('global MusicXML IDs are never duplicated when copied to two parts', async () => {
   const { prepareStaffToPartSplit } = await api()
-  const source = score().replace('<note>', '<direction id="shared"><direction-type><words>dolce</words></direction-type></direction><note>')
+  const source = score().replace('<note>', '<direction id="shared"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><sound tempo="90"/></direction><note>')
   await assert.rejects(() => prepareStaffToPartSplit({ musicXml: source }), /duplicate-id/)
+})
+
+for (const [name, metadata] of [
+  ['local words', '<direction><direction-type><words>pizz.</words></direction-type></direction>'],
+  ['dynamics', '<direction><direction-type><dynamics><p/></dynamics></direction-type><sound dynamics="40"/></direction>'],
+  ['chord symbol', '<harmony><root><root-step>C</root-step></root><kind>major</kind></harmony>'],
+  ['tempo mixed with dynamics', '<direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><sound tempo="90" dynamics="40"/></direction>'],
+  ['tempo mixed with local words', '<direction><direction-type><words>pizz.</words><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><sound tempo="90"/></direction>'],
+  ['voice-local tempo', '<direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><voice>1</voice><sound tempo="90"/></direction>'],
+]) test('rejects ambiguous staffless ' + name + ' before producing a derived score', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const source = score(metadata + note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4))
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: source }), /staff-ambiguous/)
+})
+
+test('standalone sound cannot bypass local metadata scope validation', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const sound of ['<sound dynamics="40"/>', '<sound damper-pedal="yes"/>', '<sound tempo="90" dynamics="40"/>']) {
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(sound + note('E', 1, 4) +
+      '<backup><duration>4</duration></backup>' + note('C', 2, 4)) }), /staff-ambiguous/)
+  }
+  const preview = await prepareStaffToPartSplit({ musicXml: score('<sound tempo="90"/>' + note('E', 1, 4) +
+    '<backup><duration>4</duration></backup>' + note('C', 2, 4)) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(part => part.querySelectorAll('sound').map(sound => sound.getAttribute('tempo'))), [['90'], ['90']])
+})
+
+test('preserves explicit staff-specific words dynamics and harmony on their target only', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const metadata = '<direction><direction-type><words>pizz.</words></direction-type><staff>1</staff></direction>' +
+    '<direction><direction-type><dynamics><p/></dynamics></direction-type><staff>2</staff><sound dynamics="40"/></direction>' +
+    '<harmony><root><root-step>C</root-step></root><kind>major</kind><staff>2</staff></harmony>'
+  const preview = await prepareStaffToPartSplit({ musicXml: score(metadata + note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(part => part.querySelectorAll('words').length), [1, 0])
+  assert.deepEqual(parts.map(part => part.querySelectorAll('dynamics').length), [0, 1])
+  assert.deepEqual(parts.map(part => part.querySelectorAll('harmony').length), [0, 1])
+})
+
+test('preserves pure global tempo and explicit system text without guessing local scope', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const metadata of [
+    '<direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><sound tempo="90"/></direction>',
+    '<direction system="only-top"><direction-type><words>Andantino</words></direction-type></direction>',
+  ]) {
+    const source = score(metadata + note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4))
+    const preview = await prepareStaffToPartSplit({ musicXml: source })
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    assert.deepEqual(parts.map(part => part.querySelectorAll('direction').length), [1, 1])
+    assert.equal(preview.sourceMusicXml, source)
+  }
 })
 
 test('valid four-measure pilot excerpt preserves 8 melody notes and 20 piano notes', async () => {
@@ -186,6 +237,53 @@ test('middle barline remains at beat one in both output parts', async () => {
       if (child.tagName === 'barline') assert.equal(cursor, 2, part.getAttribute('id'))
     }
   }
+})
+
+test('right and default repeat barlines follow trailing silence on either derived staff', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const shortStaff of [1, 2]) for (const location of [' location="right"', '']) {
+    const padding = '<forward><duration>2</duration></forward>'
+    const body = note('E', 1, shortStaff === 1 ? 2 : 4) + (shortStaff === 1 ? padding : '') +
+      '<backup><duration>4</duration></backup>' + note('C', 2, shortStaff === 2 ? 2 : 4) +
+      (shortStaff === 2 ? padding : '') + '<barline' + location + '><repeat direction="backward"/></barline>'
+    const source = score(body)
+    const preview = await prepareStaffToPartSplit({ musicXml: source })
+    assert.equal(preview.sourceMusicXml, source)
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    for (const part of parts) {
+      const children = part.querySelector('measure').children
+      assert.equal(children.at(-1).tagName, 'barline', part.getAttribute('id') + location)
+      let cursor = 0
+      for (const child of children) {
+        const duration = Number(child.querySelector('duration')?.textContent ?? 0)
+        if (child.tagName === 'forward' || child.tagName === 'note') cursor += duration
+        if (child.tagName === 'backup') cursor -= duration
+        if (child.tagName === 'barline') assert.equal(cursor, 4, 'repeat belongs at the two-beat measure end')
+      }
+      assert.equal(part.querySelectorAll('repeat').length, 1)
+    }
+  }
+})
+
+test('semantic verification rejects a serialized right barline moved ahead of trailing silence', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  let corrupted = false
+  class ReorderedBoundarySerializer extends SmoosicTestXMLSerializer {
+    serializeToString(node) {
+      const xml = super.serializeToString(node)
+      if (node.tagName !== '#document') return xml
+      const changed = xml.replace(/(<forward><duration>2<\/duration><\/forward>)(<barline[^>]*>.*?<\/barline>)/, '$2$1')
+      corrupted = changed !== xml
+      return changed
+    }
+  }
+  const source = score(note('E', 1, 2) + '<forward><duration>2</duration></forward>' +
+    '<backup><duration>4</duration></backup>' + note('C', 2, 4) + '<barline><repeat direction="backward"/></barline>')
+  globalThis.XMLSerializer = ReorderedBoundarySerializer
+  try {
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: source }), /semantic-metadata-integrity/)
+    assert.equal(corrupted, true, 'the final serialized score must actually be reordered')
+  } finally { globalThis.XMLSerializer = SmoosicTestXMLSerializer }
 })
 
 const spanNote = (kind, type, staff, duration = 2, voice = 1) => {

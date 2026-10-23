@@ -71,11 +71,14 @@ function appendMove(doc, measure, delta, divisions) {
   move.appendChild(element(doc, 'duration', Math.abs(delta) * divisions))
   measure.appendChild(move)
 }
+const rightBarline = record => record.kind === 'barline' &&
+  (record.node.getAttribute('location') || 'right') === 'right'
 function buildPart(doc, sourcePart, timeline, part) {
   const target = sourcePart.cloneNode(false)
   target.setAttribute('id', part.partId)
   for (const measure of timeline) {
     const output = measure.node.cloneNode(false)
+    const rightBarlines = []
     let cursor = 0
     let divisions = null
     for (const record of measure.records) {
@@ -85,6 +88,10 @@ function buildPart(doc, sourcePart, timeline, part) {
         continue
       }
       if (record.staff !== null && record.staff !== undefined && record.staff !== part.sourceStaff) continue
+      if (rightBarline(record)) {
+        rightBarlines.push(record.node.cloneNode(true))
+        continue
+      }
       if (record.kind === 'note' && record.chord) {
         output.appendChild(normalizedNote(record.node, part))
         continue
@@ -101,6 +108,7 @@ function buildPart(doc, sourcePart, timeline, part) {
       if (record.kind === 'note') cursor += record.duration
     }
     appendMove(doc, output, measure.extent - cursor, divisions ?? measure.divisions)
+    rightBarlines.forEach(barline => output.appendChild(barline))
     target.appendChild(output)
   }
   return target
@@ -134,8 +142,8 @@ function verify(source, target, part) {
     before.forEach((note, n) => {
       if (note.xml !== after[n].xml || Math.abs(note.onset - after[n].onset) > 1e-8 || Math.abs(note.duration - after[n].duration) > 1e-8) splitFailure('semantic-integrity', measure.number)
     })
-    const expectedMetadata = metadataSignatures(measure.records, part, true)
-    const actualMetadata = metadataSignatures(derived[index].records, part, false)
+    const expectedMetadata = metadataSignatures(measure, part, true)
+    const actualMetadata = metadataSignatures(derived[index], part, false)
     if (expectedMetadata.length !== actualMetadata.length) splitFailure('semantic-metadata-integrity', measure.number)
     expectedMetadata.forEach((item, n) => {
       const actual = actualMetadata[n]
@@ -143,13 +151,18 @@ function verify(source, target, part) {
     })
   })
 }
-function metadataSignatures(records, part, source) {
+function metadataSignatures(measure, part, source) {
+  // Boundary semantics do not depend on the source's staff/voice XML order.
+  // Inspect the derived order as emitted, so padding after a right barline fails.
+  const records = source ? [...measure.records.filter(record => !rightBarline(record)),
+    ...measure.records.filter(rightBarline)] : measure.records
   return records.filter(record => ['direction', 'sound', 'harmony', 'barline'].includes(record.kind) &&
     (!source || record.staff === null || record.staff === part.sourceStaff)).map(record => {
     const clone = record.node.cloneNode(true)
     for (const staff of splitChildren(clone, 'staff')) staff.textContent = '1'
     const boundary = record.kind === 'barline' && record.node.getAttribute('location') !== 'middle'
-    return { xml: serialize(clone), onset: boundary ? 0 : record.onset }
+    const boundaryOnset = record.node.getAttribute('location') === 'left' ? 0 : measure.extent
+    return { xml: serialize(clone), onset: source && boundary ? boundaryOnset : record.onset }
   })
 }
 function assertUniqueIds(root) {

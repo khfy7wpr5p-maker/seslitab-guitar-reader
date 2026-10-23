@@ -9,6 +9,31 @@ const EPSILON = 1e-8
 const MAX_EVENTS = 100_000
 const MEASURE_ELEMENTS = new Set(['attributes', 'note', 'backup', 'forward', 'direction', 'sound', 'harmony', 'barline', 'print'])
 const ATTRIBUTE_ELEMENTS = new Set(['divisions', 'key', 'time', 'staves', 'clef', 'transpose'])
+const GLOBAL_DIRECTION_CHILDREN = new Set(['direction-type', 'offset', 'footnote', 'level', 'sound'])
+const SYSTEM_DIRECTION_TYPES = new Set(['metronome', 'words', 'rehearsal', 'segno', 'coda'])
+
+function globalTempoSound(node) {
+  const attributes = node.getAttributeNames()
+  return attributes.includes('tempo') && attributes.every(name => ['tempo', 'time-only', 'id'].includes(name)) &&
+    splitChildren(node).every(child => splitName(child) === 'offset')
+}
+function globalDirection(node) {
+  const types = splitChildren(node, 'direction-type').flatMap(container => splitChildren(container))
+  const systemOnly = node.getAttribute('system') === 'only-top'
+  return types.length > 0 && types.every(child => systemOnly
+    ? SYSTEM_DIRECTION_TYPES.has(splitName(child)) : splitName(child) === 'metronome') &&
+    splitChildren(node).every(child => GLOBAL_DIRECTION_CHILDREN.has(splitName(child))) &&
+    splitChildren(node, 'sound').every(globalTempoSound)
+}
+function metadataStaff(node, kind, allowed, measure) {
+  const staff = splitStaff(node, allowed, false)
+  // Missing staff is not evidence of global scope. Admit known global tempo
+  // and explicit system-only directions, never staff-local instructions by guess.
+  if (allowed.length > 1 && staff === null &&
+    (kind === 'harmony' || (kind === 'direction' && !globalDirection(node)) ||
+      (kind === 'sound' && !globalTempoSound(node)))) splitFailure('staff-ambiguous-' + kind, measure)
+  return staff
+}
 
 export function splitFailure(reason, measure = null) {
   const error = new Error('staff-split-' + (measure === null ? '' : 'measure-' + measure + '-') + reason)
@@ -183,7 +208,7 @@ export function inspectSplitPart(part, allowed) {
         if (splitChildren(node).some(child => splitName(child) === 'staff-layout')) splitFailure('unsupported-staff-layout', number)
       }
       if (node.getElementsByTagName?.('midi-instrument')?.length || node.getElementsByTagName?.('instrument-change')?.length) splitFailure('unsupported-instrument-change', number)
-      records.push({ node, kind, onset: state.cursor, staff: splitStaff(node, allowed, false) })
+      records.push({ node, kind, onset: state.cursor, staff: metadataStaff(node, kind, allowed, number) })
     }
     if (state.extent <= 0) splitFailure('empty-measure', number)
     return { node: measure, number, records, extent: state.extent, divisions: state.divisions }

@@ -65,3 +65,13 @@ Primary specification references:
 - https://www.w3.org/2021/06/musicxml40/musicxml-reference/data-types/start-stop-continue/
 - https://www.w3.org/2021/06/musicxml40/musicxml-reference/data-types/number-level/
 - https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/tied/
+
+## Second review: boundary ordering and metadata scope
+
+The second Codex review found early right/default barlines when one derived staff needs trailing silence, and staffless direction/harmony records being assumed global. The public-API barline regression failed before the fix; six ambiguous-scope regressions independently failed before admission changed. A standalone sound bypass found in independent review also received a failing regression before its correction.
+
+Right/default barlines are now deferred until the derived measure reaches its extent. Source boundary metadata is compared at its declared boundary, while the derived score is checked at its actual emitted cursor; a serialization mutation moving the barline ahead of padding is rejected. Left/middle semantics, repeat XML, note timing and the original source bytes are preserved. Source right boundaries are canonicalized after other metadata for comparison, including the pilot's unlocated repeat boundaries in staff/voice XML order. This intentionally changes output serialization; the earlier byte-identical derived-pilot hash claim predates this fix.
+
+Staffless harmony and ambiguous local directions now fail closed. Known pure metronome/tempo instructions and supported explicit system-only text remain admitted; explicit staff-specific words, dynamics and harmony remain on their target part. Mixed tempo/local effects and standalone local sound effects (including dynamics and damper pedal) cannot bypass scope admission. No target staff is inferred from text or placement.
+
+Fresh focused semantic/UI/composer/Sonar-scope suite: 66/66 PASS; independent final semantic suite: 50/50 PASS, no remaining Critical/Important finding. The real-DOM CI fixture now additionally exercises padded right barlines, ambiguous metadata rejection and global tempo before the existing preview/apply/send/undo checks. Vite production bundle and fixture syntax PASS; the existing large-chunk advisory remains. Local Chromium download was unavailable, so real browser acceptance is pending the new-head CI run. The complete serialized local suite has 2967 tests: 2930 PASS, 36 SKIP, one environment failure, ceBridgeFixtureSerialization.test.js (Chromium required); it is not a passing full suite. No API, package, Student audio, dependency lock, workflow, merge or deployment changes are included in this follow-up.

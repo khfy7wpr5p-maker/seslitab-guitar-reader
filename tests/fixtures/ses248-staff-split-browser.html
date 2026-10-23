@@ -6,7 +6,8 @@
 <script type="module">
 import { mountTeacherAssignmentComposerUi } from '../../src/teacherAssignmentComposerUi.js'
 import { prepareTeacherAssignmentScoreUpload } from '../../src/services/teacherAssignmentComposerScoreUpload.js'
-import { score } from '../support/staffSplitFixture.js'
+import { note, score } from '../support/staffSplitFixture.js'
+import { prepareStaffToPartSplit } from '../../src/services/musicXmlStaffToPartSplit.js'
 const proof = document.querySelector('#proof')
 const check = (condition, message) => { if (!condition) throw new Error(message) }
 const wait = async predicate => {
@@ -17,6 +18,26 @@ const wait = async predicate => {
   }
 }
 try {
+  const full = note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+  const short = score(note('E', 1, 2) + '<forward><duration>2</duration></forward>' +
+    '<backup><duration>4</duration></backup>' + note('C', 2, 4) + '<barline><repeat direction="backward"/></barline>')
+  const split = await prepareStaffToPartSplit({ musicXml: short })
+  const splitDoc = new DOMParser().parseFromString(split.derivedMusicXml, 'application/xml')
+  for (const part of splitDoc.querySelectorAll('part')) {
+    check(part.querySelector('measure').lastElementChild.tagName === 'barline', 'right repeat follows padding')
+  }
+  for (const metadata of [
+    '<direction><direction-type><words>pizz.</words></direction-type></direction>',
+    '<harmony><root><root-step>C</root-step></root><kind>major</kind></harmony>',
+    '<sound damper-pedal="yes"/>',
+  ]) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(metadata + full) }) }
+    catch (error) { rejected = error.code?.startsWith('staff-ambiguous') }
+    check(rejected, 'ambiguous metadata must not become global')
+  }
+  const tempo = await prepareStaffToPartSplit({ musicXml: score('<sound tempo="90"/>' + full) })
+  check(new DOMParser().parseFromString(tempo.derivedMusicXml, 'application/xml').querySelectorAll('sound[tempo="90"]').length === 2, 'global tempo preserved')
   const host = document.querySelector('#host'), sent = []
   const service = {
     loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],

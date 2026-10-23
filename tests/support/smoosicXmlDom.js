@@ -40,6 +40,9 @@ class Element {
   getAttribute(name) {
     return this.attributes.match(new RegExp(`(?:^|\\s)${name}=["']([^"']*)["']`))?.[1] ?? null
   }
+  getAttributeNames() {
+    return Array.from(this.attributes.matchAll(/(?:^|\s)([\w:-]+)=["']/g), match => match[1])
+  }
   appendChild(child) {
     if (child instanceof Element) child.parentNode = this
     this.childNodes.push(child)
