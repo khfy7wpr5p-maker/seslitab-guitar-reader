@@ -203,7 +203,140 @@ test('unsupported cross-staff glissando fails closed instead of creating orphan 
   await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /unsupported-note-span/)
 })
 
-const wedge = (type, staff) => '<direction><direction-type><wedge type="' + type + '" number="1"/></direction-type><staff>' + staff + '</staff></direction>'
+const wedge = (type, staff, number = 1) => '<direction><direction-type><wedge type="' + type + '"' +
+  (number === null ? '' : ' number="' + number + '"') + '/></direction-type><staff>' + staff + '</staff></direction>'
+
+const tremoloNote = (type, staff, duration = 2, voice = 1) => note('E', staff, duration, '', voice)
+  .replace('<type>quarter</type>', '<type>half</type>' + (['start', 'stop'].includes(type)
+    ? '<time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>' : ''))
+  .replace('</note>', '<notations><ornaments><tremolo' + (type ? ' type="' + type + '"' : '') + '>' +
+    (type === 'unmeasured' ? 0 : 3) + '</tremolo></ornaments></notations></note>')
+const arpeggioNote = (staff, attributes = '', duration = 4) => note('E', staff, duration)
+  .replace('</note>', '<notations><arpeggiate' + attributes + '/></notations></note>')
+
+test('rejects cross-staff double tremolos in both endpoint document orientations', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const startStaff of [1, 2]) for (const reverse of [false, true]) {
+    const stopStaff = 3 - startStaff
+    const body = reverse ? '<forward><duration>2</duration></forward>' + tremoloNote('stop', stopStaff) +
+      '<backup><duration>4</duration></backup>' + tremoloNote('start', startStaff) + note('D', startStaff) :
+      tremoloNote('start', startStaff) + tremoloNote('stop', stopStaff)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('rejects an unmatched double-tremolo endpoint', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(tremoloNote('start', 1) + note('C', 2)) }), /unsupported.*span/)
+})
+
+test('preserves same-staff double tremolos without changing note timing', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const source = score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + tremoloNote('start', 2) + tremoloNote('stop', 2))
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  assert.equal(preview.sourceMusicXml, source)
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, [['E', 0, 2, '1'], ['E', 2, 2, '1']])
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('tremolo').map(t => t.getAttribute('type'))), [[], ['start', 'stop']])
+})
+
+test('preserves independent double tremolos in separate piano voices', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' + tremoloNote('start', 2) + tremoloNote('stop', 2) +
+    '<backup><duration>4</duration></backup>' + tremoloNote('start', 2, 2, 2) + tremoloNote('stop', 2, 2, 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, [['E', 0, 2, '1'], ['E', 2, 2, '1'], ['E', 0, 2, '2'], ['E', 2, 2, '2']])
+})
+
+test('preserves single default and unmeasured tremolos', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const type of ['single', '', 'unmeasured']) {
+    const body = tremoloNote(type, 1, 4) +
+      '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+    const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+    const tremolos = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('tremolo')
+    assert.equal(tremolos.length, 1)
+    assert.equal(tremolos[0].getAttribute('type'), type || null)
+  }
+})
+
+test('rejects arpeggios crossing staves with or without the optional unbroken hint', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const firstStaff of [1, 2]) for (const attributes of [' unbroken="yes"', '', ' number="1"']) {
+    const body = arpeggioNote(firstStaff, attributes) + '<backup><duration>4</duration></backup>' + arpeggioNote(3 - firstStaff, attributes)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('rejects an explicit cross-staff arpeggio even without a second marker', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const value of ['yes', ' yes ']) {
+    const body = arpeggioNote(1, ' unbroken="' + value + '"') + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('does not treat lexical spellings of the same arpeggio number as independent groups', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const number of ['01', ' 1 ', '+1']) {
+    const body = arpeggioNote(1, ' number="' + number + '"') + '<backup><duration>4</duration></backup>' + arpeggioNote(2)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('preserves independent simultaneous arpeggios with distinct numbers', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = arpeggioNote(1, ' number="1"') + '<backup><duration>4</duration></backup>' + arpeggioNote(2, ' number="2"')
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('arpeggiate').map(a => a.getAttribute('number'))), [['1'], ['2']])
+})
+
+test('preserves same-number arpeggios on different staves at different musical times', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = arpeggioNote(1, '', 2) + arpeggioNote(2, '', 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  assert.deepEqual(events(preview.derivedMusicXml).map(p => p.notes.map(n => n.slice(0, 3))), [[['E', 0, 2]], [['E', 2, 2]]])
+})
+
+test('preserves same-number crescendo pairs overlapping in score time but separate in XML order', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const firstStaff of [1, 2]) for (const defaultNumber of [false, true]) {
+    const hairpin = staff => wedge(staff === 1 ? 'crescendo' : 'diminuendo', staff, defaultNumber ? null : 1) +
+      note('E', staff, 4) + wedge('stop', staff, defaultNumber ? null : 1)
+    const body = hairpin(firstStaff) + '<backup><duration>4</duration></backup>' + hairpin(3 - firstStaff)
+    const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    assert.deepEqual(parts.map(p => p.querySelectorAll('wedge').map(w => w.getAttribute('type'))), [['crescendo', 'stop'], ['diminuendo', 'stop']])
+    assert.deepEqual(events(preview.derivedMusicXml).map(p => p.notes), [[['E', 0, 4, '1']], [['E', 0, 4, '1']]])
+  }
+})
+
+test('preserves a piano wedge whose stop appears before its start in voice document order', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4) + wedge('stop', 2) +
+    '<backup><duration>4</duration></backup>' + wedge('crescendo', 2) + note('E', 2, 4, '', 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, [['C', 0, 4, '1'], ['E', 0, 4, '2']])
+})
+
+test('preserves a deferred piano wedge continuation with one unambiguous span', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = wedge('crescendo', 1) + note('G', 1, 4) + wedge('stop', 1) + '<backup><duration>4</duration></backup>' +
+    wedge('crescendo', 2, 2) + note('C', 2, 4) + wedge('stop', 2, 2) + '<backup><duration>4</duration></backup><forward><duration>2</duration></forward>' + wedge('continue', 2, 2)
+  // Distinct numbers keep the deferred continuation's score-time owner unique.
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('wedge').length), [2, 3])
+})
+
+test('does not reassign a cross-staff wedge continuation to a same-number local span', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = wedge('crescendo', 1) + note('G', 1) + '<backup><duration>1</duration></backup>' + wedge('continue', 2) +
+    '<forward><duration>3</duration></forward>' + wedge('stop', 1) + '<backup><duration>4</duration></backup>' +
+    wedge('crescendo', 2) + note('C', 2, 4) + wedge('stop', 2)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+})
 
 test('cross-staff crescendo endpoints fail closed including reverse XML staff order', async () => {
   const { prepareStaffToPartSplit } = await api()

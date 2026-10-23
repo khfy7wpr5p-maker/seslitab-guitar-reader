@@ -38,6 +38,29 @@ try {
   }
   const tempo = await prepareStaffToPartSplit({ musicXml: score('<sound tempo="90"/>' + full) })
   check(new DOMParser().parseFromString(tempo.derivedMusicXml, 'application/xml').querySelectorAll('sound[tempo="90"]').length === 2, 'global tempo preserved')
+  const tremolo = (type, staff) => note('E', staff)
+    .replace('<type>quarter</type>', '<type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>')
+    .replace('</note>', '<notations><ornaments><tremolo type="' + type + '">3</tremolo></ornaments></notations></note>')
+  const arpeggio = (staff, attributes = '') => note('E', staff, 4).replace('</note>', '<notations><arpeggiate' + attributes + '/></notations></note>')
+  for (const body of [
+    tremolo('start', 1) + tremolo('stop', 2),
+    arpeggio(1) + '<backup><duration>4</duration></backup>' + arpeggio(2),
+    arpeggio(1, ' number="01"') + '<backup><duration>4</duration></backup>' + arpeggio(2),
+    arpeggio(1, ' unbroken=" yes "') + '<backup><duration>4</duration></backup>' + note('C', 2, 4),
+  ]) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(body) }) }
+    catch (error) { rejected = error.code?.startsWith('cross-staff') }
+    check(rejected, 'cross-staff ornaments must not become orphan notation')
+  }
+  const localTremolo = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) +
+    '<backup><duration>4</duration></backup>' + tremolo('start', 2) + tremolo('stop', 2)) })
+  check(new DOMParser().parseFromString(localTremolo.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] tremolo').length === 2, 'same-staff tremolo preserved')
+  const wedge = (type, staff) => '<direction><direction-type><wedge type="' + type + '"/></direction-type><staff>' + staff + '</staff></direction>'
+  const hairpin = staff => wedge('crescendo', staff) + note('E', staff, 4) + wedge('stop', staff)
+  const hairpins = await prepareStaffToPartSplit({ musicXml: score(hairpin(1) + '<backup><duration>4</duration></backup>' + hairpin(2)) })
+  const hairpinParts = new DOMParser().parseFromString(hairpins.derivedMusicXml, 'application/xml').querySelectorAll('part')
+  check([...hairpinParts].every(part => part.querySelectorAll('wedge').length === 2), 'independent default-number hairpins preserved')
   const host = document.querySelector('#host'), sent = []
   const service = {
     loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],

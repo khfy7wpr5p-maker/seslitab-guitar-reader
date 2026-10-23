@@ -78,8 +78,12 @@ function spanPitch(note, measure) {
 function noteSpan(node, note, measure) {
   const name = splitName(node)
   if (['glissando', 'slide', 'hammer-on', 'pull-off'].includes(name)) splitFailure('unsupported-note-span', measure)
-  if (!['beam', 'slur', 'tuplet', 'tie', 'tied'].includes(name)) return null
-  const type = name === 'beam' ? node.textContent.trim() : node.getAttribute('type')
+  if (!['beam', 'slur', 'tuplet', 'tie', 'tied', 'tremolo'].includes(name)) return null
+  const type = name === 'beam' ? node.textContent.trim() : node.getAttribute('type') || (name === 'tremolo' ? 'single' : '')
+  if (name === 'tremolo') {
+    if (['single', 'unmeasured'].includes(type)) return null
+    if (!['start', 'stop'].includes(type)) splitFailure('unsupported-note-span', measure)
+  }
   if (name === 'beam' && ['forward hook', 'backward hook'].includes(type)) return null
   if (name === 'tied' && type === 'let-ring') return null
   const endpoint = type === 'begin' ? 'start' : type === 'end' ? 'stop' : type
@@ -87,7 +91,7 @@ function noteSpan(node, note, measure) {
   const voice = splitText(note, 'voice') || '1'
   const number = node.getAttribute('number') || '1'
   const pitch = ['tie', 'tied'].includes(name) ? spanPitch(note, measure) : ''
-  return { type: endpoint, key: name + ':' + number + ':' + (['beam', 'tie'].includes(name) ? voice : '') + ':' + pitch }
+  return { type: endpoint, key: name + ':' + number + ':' + (['beam', 'tie', 'tremolo'].includes(name) ? voice : '') + ':' + pitch }
 }
 function checkLinks(note, staff, links, measure, index, onset) {
   const visit = node => {
@@ -103,15 +107,15 @@ function checkLinks(note, staff, links, measure, index, onset) {
   visit(note)
 }
 const compareSpanTime = (a, b) => a.index - b.index || a.onset - b.onset
-function verifyNoteSpanPair(first, second, continuations) {
+function verifySpanPair(first, second, continuations, reasons) {
   const start = first.type === 'start' ? first : second
   const stop = first.type === 'stop' ? first : second
-  if ([first, ...continuations, second].some(point => point.staff !== start.staff)) splitFailure('cross-staff-link', second.measure)
+  if ([first, ...continuations, second].some(point => point.staff !== start.staff)) splitFailure(reasons.crossStaff, second.measure)
   if (compareSpanTime(start, stop) > EPSILON || continuations.some(point =>
-    compareSpanTime(point, start) < -EPSILON || compareSpanTime(point, stop) > EPSILON)) splitFailure('unsupported-note-span-order', second.measure)
+    compareSpanTime(point, start) < -EPSILON || compareSpanTime(point, stop) > EPSILON)) splitFailure(reasons.order, second.measure)
   return { start, stop }
 }
-function verifyNoteSpanContinuations(spans, continuations) {
+function verifySpanContinuations(spans, continuations, reasons) {
   const points = spans.flatMap(span => [
     { ...span.start, onset: span.start.onset - EPSILON, action: 0, span },
     { ...span.stop, onset: span.stop.onset + EPSILON, action: 2, span },
@@ -123,12 +127,18 @@ function verifyNoteSpanContinuations(spans, continuations) {
     if (point.action === 0) active.add(point.span)
     else if (point.action === 2) active.delete(point.span)
     else {
-      if (active.size !== 1) splitFailure('unsupported-unmatched-note-span', point.measure)
-      if (active.values().next().value.start.staff !== point.staff) splitFailure('cross-staff-link', point.measure)
+      if (active.size !== 1) splitFailure(reasons.unmatched, point.measure)
+      if (active.values().next().value.start.staff !== point.staff) splitFailure(reasons.crossStaff, point.measure)
     }
   }
 }
-function verifyNoteSpans(links) {
+function verifySpans(links, kind = 'note') {
+  const reasons = {
+    crossStaff: kind === 'note' ? 'cross-staff-link' : 'cross-staff-direction-span',
+    order: 'unsupported-' + kind + '-span-order',
+    unmatched: 'unsupported-unmatched-' + kind + '-span',
+    overlapping: 'unsupported-overlapping-' + kind + '-span',
+  }
   for (const events of links.values()) {
     let pending = null, attached = []
     const spans = [], continuations = []
@@ -137,12 +147,40 @@ function verifyNoteSpans(links) {
     for (const event of events) {
       if (event.type === 'continue') { (pending ? attached : continuations).push(event); continue }
       if (!pending) { pending = event; continue }
-      if (pending.type === event.type) splitFailure('unsupported-overlapping-note-span', event.measure)
-      spans.push(verifyNoteSpanPair(pending, event, attached))
+      if (pending.type === event.type) splitFailure(reasons.overlapping, event.measure)
+      spans.push(verifySpanPair(pending, event, attached, reasons))
       pending = null;attached = []
     }
-    if (pending) splitFailure('unsupported-unmatched-note-span', pending.measure)
-    if (continuations.length) verifyNoteSpanContinuations(spans, continuations)
+    if (pending) splitFailure(kind === 'direction' && pending.type === 'start'
+      ? 'unsupported-unclosed-direction-span' : reasons.unmatched, pending.measure)
+    if (continuations.length) verifySpanContinuations(spans, continuations, reasons)
+  }
+}
+function verifyArpeggios(timeline) {
+  for (const measure of timeline) {
+    const groups = new Map()
+    for (const record of measure.records.filter(item => item.kind === 'note')) {
+      for (const notation of splitChildren(record.node, 'notations')) {
+        for (const arpeggio of splitChildren(notation, 'arpeggiate')) {
+          // The hint explicitly declares a cross-staff object; its absence does
+          // not make simultaneous, same-number arpeggios independent.
+          if (arpeggio.getAttribute('unbroken')?.trim() === 'yes') splitFailure('cross-staff-arpeggio', measure.number)
+          const rawNumber = arpeggio.getAttribute('number')?.trim() ?? '1'
+          const number = Number(rawNumber)
+          if (!/^\+?\d+$/.test(rawNumber) || !Number.isInteger(number) || number < 1 || number > 16) splitFailure('unsupported-arpeggio-number', measure.number)
+          if (!groups.has(number)) groups.set(number, [])
+          groups.get(number).push(record)
+        }
+      }
+    }
+    for (const points of groups.values()) {
+      points.sort((a, b) => a.onset - b.onset)
+      let anchor = null
+      for (const point of points) {
+        if (!anchor || point.onset - anchor.onset > EPSILON) anchor = point
+        else if (point.staff !== anchor.staff) splitFailure('cross-staff-arpeggio', measure.number)
+      }
+    }
   }
 }
 function inspectNote(node, state, allowed, measure, links, index) {
@@ -213,13 +251,14 @@ export function inspectSplitPart(part, allowed) {
     if (state.extent <= 0) splitFailure('empty-measure', number)
     return { node: measure, number, records, extent: state.extent, divisions: state.divisions }
   })
-  verifyNoteSpans(links)
+  verifySpans(links)
+  verifyArpeggios(timeline)
   verifyDirectionSpans(timeline)
   return timeline
 }
 
 function verifyDirectionSpans(timeline) {
-  const events = []
+  const links = new Map()
   timeline.forEach((measure, index) => {
     for (const record of measure.records.filter(item => item.kind === 'direction')) {
       const offset = splitText(record.node, 'offset')
@@ -232,24 +271,15 @@ function verifyDirectionSpans(timeline) {
           if (kind !== 'wedge') continue
           const type = child.getAttribute('type')
           if (!['crescendo', 'diminuendo', 'stop', 'continue'].includes(type)) splitFailure('unsupported-direction-span', measure.number)
-          events.push({ index, beat, type, staff: record.staff, number: child.getAttribute('number') || '1', measure: measure.number })
+          const number = child.getAttribute('number') || '1'
+          if (!links.has(number)) links.set(number, [])
+          links.get(number).push({ index, onset: beat, type: ['crescendo', 'diminuendo'].includes(type) ? 'start' : type,
+            staff: record.staff, measure: measure.number })
         }
       }
     }
   })
-  // XML voice order is not musical time order. Inspect endpoints in score time.
-  events.sort((a, b) => a.index - b.index || a.beat - b.beat || Number(b.type === 'stop') - Number(a.type === 'stop'))
-  const active = new Map()
-  for (const event of events) {
-    const previous = active.get(event.number)
-    if (previous && previous.staff !== event.staff) splitFailure('cross-staff-direction-span', event.measure)
-    if (['crescendo', 'diminuendo'].includes(event.type)) {
-      if (previous) splitFailure('unsupported-overlapping-direction-span', event.measure)
-      active.set(event.number, event)
-    } else {
-      if (!previous) splitFailure('unsupported-unmatched-direction-span', event.measure)
-      if (event.type === 'stop') active.delete(event.number)
-    }
-  }
-  if (active.size) splitFailure('unsupported-unclosed-direction-span')
+  // Like note spans, wedge numbers identify objects in XML document order,
+  // before their score-time and staff relationships can be checked.
+  verifySpans(links, 'direction')
 }
