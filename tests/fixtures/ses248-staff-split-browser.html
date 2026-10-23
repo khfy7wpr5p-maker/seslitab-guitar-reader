@@ -27,12 +27,17 @@ try {
   check(groupedList.querySelector('group-name').textContent === 'Ensemble' && groupedList.querySelector('group-symbol').textContent === 'brace' && groupedList.querySelector('group-barline').textContent === 'yes', 'group name brace and common barline preserved')
   const identifiedSource = score().replace('</part-name>', '</part-name><score-instrument id="P0-I1"><instrument-name>Piano</instrument-name></score-instrument>')
     .replace('<measure number="1">', '<measure number="1" id="m1">')
+    .replace('<time>', '<key id="key-1"><fifths>0</fifths></key><time id="time-1">')
+    .replace('</attributes>', '<transpose id="transpose-1"><chromatic>0</chromatic></transpose></attributes>')
     .replaceAll('<staff>1</staff>', '<staff>+01</staff>').replaceAll('<staff>2</staff>', '<staff>02</staff>')
     .replace('<note>', '<sound tempo="90" id="tempo-1"/><note>')
     .replaceAll('</note>', '<play id="P0-I1"><other-play type="technique">pizzicato</other-play></play></note>')
   const identified = await prepareStaffToPartSplit({ musicXml: identifiedSource })
   const identifiedDoc = new DOMParser().parseFromString(identified.derivedMusicXml, 'application/xml')
   check(identifiedDoc.querySelectorAll('measure[id="m1"]').length === 1, 'measure ID stays unique on first part')
+  for (const tag of ['key', 'time', 'transpose']) {
+    check(identifiedDoc.querySelectorAll(tag + '[id="' + tag + '-1"]').length === 1 && identifiedDoc.querySelectorAll(tag).length === 2, 'global attribute content and unique ID retained: ' + tag)
+  }
   check([...identifiedDoc.querySelectorAll('staff')].every(staff => staff.textContent === '1'), 'equivalent staff integers retain their part ownership')
   check(identifiedDoc.querySelectorAll('[id="tempo-1"]').length === 1, 'global tempo ID stays unique')
   check(identifiedDoc.querySelectorAll('sound[tempo="90"]').length === 2, 'both parts retain global tempo')

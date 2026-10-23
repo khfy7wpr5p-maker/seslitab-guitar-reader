@@ -261,6 +261,35 @@ function scoreWithPlaybackReference(id = 'P0-I1', allNotes = false) {
   const play = '<play' + (id === null ? '' : ' id="' + id + '"') + '><other-play type="technique">pizzicato</other-play></play>'
   return allNotes ? source.replaceAll('</note>', play + '</note>') : source.replace('</note>', play + '</note>')
 }
+for (const [tag, content] of [['key', '<fifths>0</fifths>'], ['time', '<beats>2</beats><beat-type>4</beat-type>'], ['transpose', '<chromatic>0</chromatic>']]) test('preserves global ' + tag + ' attributes with a single original ID', async () => {
+  const attr = '<' + tag + ' id="global-attribute">' + content + '</' + tag + '>'
+  const source = tag === 'time' ? score().replace('<time><beats>2</beats><beat-type>4</beat-type></time>', attr)
+    : tag === 'key' ? score().replace('<time>', attr + '<time>') : score(undefined, attr)
+  const preview = await (await api()).prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  assert.deepEqual(doc.querySelectorAll(tag).map(n => n.getAttribute('id')), ['global-attribute', null])
+  assert.ok(doc.querySelectorAll(tag).every(n => n.textContent === new SmoosicTestDOMParser().parseFromString(attr).documentElement.textContent))
+  assert.equal(preview.sourceMusicXml, source)
+})
+test('retains staff-local attribute IDs on their sole destination', async () => {
+  const source = score().replace('<time>', '<key number="1" id="violin-key"><fifths>1</fifths></key><key number="2" id="piano-key"><fifths>-1</fifths></key><time>')
+  const preview = await (await api()).prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  assert.deepEqual(doc.querySelectorAll('part').map(p => p.querySelector('key').getAttribute('id')), ['violin-key', 'piano-key'])
+  assert.ok(doc.querySelectorAll('key').every(n => n.getAttribute('number') === '1'))
+})
+test('rejects serialized loss of a retained attribute ID', async () => {
+  class MissingAttributeIdSerializer extends SmoosicTestXMLSerializer {
+    serializeToString(node) {
+      const xml = super.serializeToString(node)
+      return node.tagName === '#document' ? xml.replace(' id="violin-key"', '') : xml
+    }
+  }
+  globalThis.XMLSerializer = MissingAttributeIdSerializer
+  try {
+    await assert.rejects(() => api().then(({ prepareStaffToPartSplit }) => prepareStaffToPartSplit({ musicXml: score().replace('<time>', '<key number="1" id="violin-key"><fifths>1</fifths></key><time>') })), /semantic-attributes-integrity/)
+  } finally { globalThis.XMLSerializer = SmoosicTestXMLSerializer }
+})
 for (const allNotes of [false, true]) test('remaps playback instrument references without treating them as ID declarations: ' + (allNotes ? 'repeated references' : 'one reference'), async () => {
   const { prepareStaffToPartSplit } = await api()
   const source = scoreWithPlaybackReference('P0-I1', allNotes)

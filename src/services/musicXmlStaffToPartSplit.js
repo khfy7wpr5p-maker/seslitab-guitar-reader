@@ -64,19 +64,16 @@ function normalizedNote(node, part) {
   }
   return clone
 }
+function omitDuplicateIds(node) {
+  if (!IDREF_ELEMENTS.has(splitName(node))) node.removeAttribute('id')
+  node.removeAttribute('xml:id')
+  splitChildren(node).forEach(omitDuplicateIds)
+}
 function normalizedMetadata(node, part, global) {
   const clone = node.cloneNode(true)
   for (const staff of splitChildren(clone, 'staff')) staff.textContent = '1'
-  if (global && part.sourceStaff !== 1) {
-    // Keep the original optional IDs on the first global copy. Omitting IDs
-    // on duplicates preserves all original reference targets and tempo values.
-    const omitIds = child => {
-      if (!IDREF_ELEMENTS.has(splitName(child))) child.removeAttribute('id')
-      child.removeAttribute('xml:id')
-      splitChildren(child).forEach(omitIds)
-    }
-    omitIds(clone)
-  }
+  // Keep original targets on the first copy, omitting only duplicate declarations.
+  if (global && part.sourceStaff !== 1) omitDuplicateIds(clone)
   return clone
 }
 function filteredAttributes(node, part) {
@@ -85,6 +82,7 @@ function filteredAttributes(node, part) {
     const number = child.getAttribute('number') || (splitName(child) === 'clef' ? '1' : null)
     if (number && Number(number) !== part.sourceStaff) { remove(child); continue }
     if (number) child.setAttribute('number', '1')
+    else if (part.sourceStaff !== 1) omitDuplicateIds(child)
     if (splitName(child) === 'staves') child.textContent = '1'
   }
   return clone
@@ -100,10 +98,7 @@ const rightBarline = record => record.kind === 'barline' &&
   (record.node.getAttribute('location') || 'right') === 'right'
 function normalizedMeasure(node, part) {
   const clone = node.cloneNode(false)
-  if (part.sourceStaff !== 1) {
-    clone.removeAttribute('id')
-    clone.removeAttribute('xml:id')
-  }
+  if (part.sourceStaff !== 1) omitDuplicateIds(clone)
   return clone
 }
 function buildPart(doc, sourcePart, timeline, part) {
@@ -169,6 +164,9 @@ function verify(source, target, part) {
   if (derived.length !== source.length) splitFailure('semantic-integrity')
   source.forEach((measure, index) => {
     if (serialize(normalizedMeasure(measure.node, part)) !== serialize(derived[index].node.cloneNode(false))) splitFailure('semantic-integrity', measure.number)
+    const expectedAttributes = measure.records.filter(record => record.kind === 'attributes').map(record => serialize(filteredAttributes(record.node, part)))
+    const actualAttributes = derived[index].records.filter(record => record.kind === 'attributes').map(record => serialize(record.node))
+    if (JSON.stringify(expectedAttributes) !== JSON.stringify(actualAttributes)) splitFailure('semantic-attributes-integrity', measure.number)
     const before = signatures(measure.records, part, true)
     const after = signatures(derived[index].records, part, false)
     if (Math.abs(measure.extent - derived[index].extent) > 1e-8 || before.length !== after.length) splitFailure('semantic-integrity', measure.number)
