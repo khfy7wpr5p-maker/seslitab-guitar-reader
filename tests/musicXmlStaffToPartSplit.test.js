@@ -194,7 +194,70 @@ test('cross-staff slur across different voices is not silently broken', async ()
 test('global MusicXML IDs are never duplicated when copied to two parts', async () => {
   const { prepareStaffToPartSplit } = await api()
   const source = score().replace('<note>', '<direction id="shared"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><sound tempo="90"/></direction><note>')
-  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: source }), /duplicate-id/)
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  assert.deepEqual(doc.querySelectorAll('direction').map(node => node.getAttribute('id')), ['shared', null])
+  assert.deepEqual(doc.querySelectorAll('per-minute').map(node => node.textContent), ['90', '90'])
+})
+
+for (const [name, metadata, tag] of [
+  ['standalone tempo', '<sound tempo="90" id="tempo-1"/>', 'sound'],
+  ['nested tempo', '<direction id="direction-1"><direction-type><metronome id="metronome-1"><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type><sound tempo="90" id="tempo-1"/></direction>', 'direction'],
+]) test('retains global ' + name + ' with original IDs on one copy', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const source = score(metadata + note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4))
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  const parts = doc.querySelectorAll('part')
+  assert.deepEqual(parts.map(part => part.querySelectorAll('sound').map(sound => sound.getAttribute('tempo'))), [['90'], ['90']])
+  assert.equal(parts[0].querySelector(tag).getAttribute('id'), tag === 'sound' ? 'tempo-1' : 'direction-1')
+  assert.equal(parts[1].querySelector(tag).getAttribute('id'), null)
+  assert.ok(parts[1].querySelectorAll('sound').every(node => node.getAttribute('id') === null))
+  assert.ok(parts[1].querySelectorAll('metronome').every(node => node.getAttribute('id') === null))
+  assert.equal(preview.sourceMusicXml, source)
+})
+
+function scoreWithPlaybackReference(id = 'P0-I1', allNotes = false) {
+  let source = score().replace('</part-name>', '</part-name><score-instrument id="P0-I1"><instrument-name>Piano</instrument-name></score-instrument>')
+  const play = '<play' + (id === null ? '' : ' id="' + id + '"') + '><other-play type="technique">pizzicato</other-play></play>'
+  return allNotes ? source.replaceAll('</note>', play + '</note>') : source.replace('</note>', play + '</note>')
+}
+for (const allNotes of [false, true]) test('remaps playback instrument references without treating them as ID declarations: ' + (allNotes ? 'repeated references' : 'one reference'), async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const source = scoreWithPlaybackReference('P0-I1', allNotes)
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  for (const part of doc.querySelectorAll('part')) {
+    const expected = part.getAttribute('id') + '-I1'
+    assert.ok(part.querySelectorAll('play').every(play => play.getAttribute('id') === expected))
+  }
+  assert.equal(doc.querySelectorAll('other-play').length, allNotes ? 5 : 1)
+  assert.equal(preview.sourceMusicXml, source)
+})
+test('rejects unknown playback references and preserves optional implicit references', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: scoreWithPlaybackReference('unknown') }), /instrument-reference/)
+  const preview = await prepareStaffToPartSplit({ musicXml: scoreWithPlaybackReference(null, true) })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  assert.ok(doc.querySelectorAll('play').every(play => play.getAttribute('id') === null))
+})
+for (const badId of ['missing-instrument', 'P2-I1']) test('rejects serialized playback reference outside its declared part: ' + badId, async () => {
+  const { prepareStaffToPartSplit } = await api()
+  let corrupted = false
+  class WrongReferenceSerializer extends SmoosicTestXMLSerializer {
+    serializeToString(node) {
+      const xml = super.serializeToString(node)
+      if (node.tagName !== '#document') return xml
+      const changed = xml.replace('<play id="P1-I1">', '<play id="' + badId + '">')
+      corrupted = changed !== xml
+      return changed
+    }
+  }
+  globalThis.XMLSerializer = WrongReferenceSerializer
+  try {
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: scoreWithPlaybackReference() }), /instrument-reference/)
+    assert.equal(corrupted, true)
+  } finally { globalThis.XMLSerializer = SmoosicTestXMLSerializer }
 })
 
 for (const [name, metadata] of [

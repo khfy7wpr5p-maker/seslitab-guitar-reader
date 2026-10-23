@@ -25,6 +25,16 @@ try {
   const groupedList = new DOMParser().parseFromString(groupedSplit.derivedMusicXml, 'application/xml').querySelector('part-list')
   check([...groupedList.children].map(node => node.localName).join(',') === 'part-group,score-part,score-part,part-group', 'original group encloses both derived parts')
   check(groupedList.querySelector('group-name').textContent === 'Ensemble' && groupedList.querySelector('group-symbol').textContent === 'brace' && groupedList.querySelector('group-barline').textContent === 'yes', 'group name brace and common barline preserved')
+  const identifiedSource = score().replace('</part-name>', '</part-name><score-instrument id="P0-I1"><instrument-name>Piano</instrument-name></score-instrument>')
+    .replace('<note>', '<sound tempo="90" id="tempo-1"/><note>')
+    .replaceAll('</note>', '<play id="P0-I1"><other-play type="technique">pizzicato</other-play></play></note>')
+  const identified = await prepareStaffToPartSplit({ musicXml: identifiedSource })
+  const identifiedDoc = new DOMParser().parseFromString(identified.derivedMusicXml, 'application/xml')
+  check(identifiedDoc.querySelectorAll('[id="tempo-1"]').length === 1, 'global tempo ID stays unique')
+  check(identifiedDoc.querySelectorAll('sound[tempo="90"]').length === 2, 'both parts retain global tempo')
+  for (const part of identifiedDoc.querySelectorAll('part')) {
+    check([...part.querySelectorAll('play')].every(play => play.getAttribute('id') === part.getAttribute('id') + '-I1'), 'playback IDREF follows its target instrument')
+  }
   const full = note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
   for (const moves of ['<forward><duration>2</duration></forward>', '<backup><duration>2</duration></backup>',
     '<backup><duration>2</duration></backup><forward><duration>2</duration></forward>']) {
