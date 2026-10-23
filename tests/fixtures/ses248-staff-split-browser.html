@@ -61,6 +61,32 @@ try {
   const hairpins = await prepareStaffToPartSplit({ musicXml: score(hairpin(1) + '<backup><duration>4</duration></backup>' + hairpin(2)) })
   const hairpinParts = new DOMParser().parseFromString(hairpins.derivedMusicXml, 'application/xml').querySelectorAll('part')
   check([...hairpinParts].every(part => part.querySelectorAll('wedge').length === 2), 'independent default-number hairpins preserved')
+  const wave = (type, staff, number = '1') => note('E', staff)
+    .replace('</note>', '<notations><ornaments><wavy-line type="' + type + '" number="' + number + '"/></ornaments></notations></note>')
+  const bracket = (type, staff, chord = false) => note(type === 'top' ? 'E' : 'C', staff, 4, chord ? '<chord/>' : '')
+    .replace('</note>', '<notations><non-arpeggiate type="' + type + '" number="1"/></notations></note>')
+  for (const body of [
+    wave('start', 1, '01') + wave('stop', 2),
+    bracket('top', 1) + '<backup><duration>4</duration></backup>' + bracket('bottom', 2),
+  ]) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(body) }) }
+    catch (error) { rejected = error.code?.startsWith('cross-staff') }
+    check(rejected, 'wavy-line and non-arpeggiate links cannot cross derived parts')
+  }
+  const localWave = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) +
+    '<backup><duration>4</duration></backup>' + wave('start', 2, '01') + wave('stop', 2)) })
+  check(new DOMParser().parseFromString(localWave.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] wavy-line').length === 2, 'local wavy-line and numeric identity preserved')
+  const localBracket = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) +
+    '<backup><duration>4</duration></backup>' + bracket('bottom', 2) + bracket('top', 2, true)) })
+  check(new DOMParser().parseFromString(localBracket.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] non-arpeggiate').length === 2, 'complete piano bracket preserved')
+  const lexicalWedge = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' +
+    wedge('crescendo', 2).replace('/>', ' number="+01"/>') + note('E', 2, 4) + wedge('stop', 2)) })
+  check(new DOMParser().parseFromString(lexicalWedge.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] wedge').length === 2, 'equivalent wedge numbers matched')
+  const localPlay = await prepareStaffToPartSplit({ musicXml: score(note('E', 1, 4)
+    .replace('</note>', '<play><other-play type="start">custom sound</other-play></play></note>') +
+    '<backup><duration>4</duration></backup>' + note('C', 2, 4)) })
+  check(new DOMParser().parseFromString(localPlay.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P1"] other-play[type="start"]').length === 1, 'local playback label is not a span')
   const host = document.querySelector('#host'), sent = []
   const service = {
     loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],

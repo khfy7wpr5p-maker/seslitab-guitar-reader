@@ -11,6 +11,11 @@ const MEASURE_ELEMENTS = new Set(['attributes', 'note', 'backup', 'forward', 'di
 const ATTRIBUTE_ELEMENTS = new Set(['divisions', 'key', 'time', 'staves', 'clef', 'transpose'])
 const GLOBAL_DIRECTION_CHILDREN = new Set(['direction-type', 'offset', 'footnote', 'level', 'sound'])
 const SYSTEM_DIRECTION_TYPES = new Set(['metronome', 'words', 'rehearsal', 'segno', 'coda'])
+const NOTE_SPANS = new Set(['beam', 'slur', 'tuplet', 'tie', 'tied', 'tremolo', 'wavy-line'])
+const ONSET_LINKS = new Set(['arpeggiate', 'non-arpeggiate'])
+const UNSUPPORTED_NOTE_SPANS = new Set(['glissando', 'slide', 'hammer-on', 'pull-off'])
+const LINK_ENDPOINTS = new Set(['start', 'stop', 'continue', 'begin', 'end', 'top', 'bottom'])
+const LINK_CONTAINERS = new Set(['note', 'notations', 'ornaments', 'technical', 'lyric'])
 
 function globalTempoSound(node) {
   const attributes = node.getAttributeNames()
@@ -75,11 +80,24 @@ function spanPitch(note, measure) {
   if (!Number.isFinite(value)) splitFailure('unsupported-note-span-pitch', measure)
   return value
 }
+function relationshipNumber(node, measure, reason, maximum = 16) {
+  const raw = node.getAttribute('number')?.trim() ?? '1'
+  const number = Number(raw)
+  if (!/^\+?\d+$/.test(raw) || !Number.isInteger(number) || number < 1 || number > maximum) splitFailure(reason, measure)
+  return number
+}
 function noteSpan(node, note, measure) {
   const name = splitName(node)
-  if (['glissando', 'slide', 'hammer-on', 'pull-off'].includes(name)) splitFailure('unsupported-note-span', measure)
-  if (!['beam', 'slur', 'tuplet', 'tie', 'tied', 'tremolo'].includes(name)) return null
-  const type = name === 'beam' ? node.textContent.trim() : node.getAttribute('type') || (name === 'tremolo' ? 'single' : '')
+  if (UNSUPPORTED_NOTE_SPANS.has(name)) splitFailure('unsupported-note-span', measure)
+  if (!NOTE_SPANS.has(name)) {
+    // Endpoint tokens in notation/lyric contexts declare links. Playback's free
+    // type labels are local data, even when their text happens to be "start".
+    if (!ONSET_LINKS.has(name) && LINK_CONTAINERS.has(splitName(node.parentNode)) &&
+      LINK_ENDPOINTS.has(node.getAttribute('type')?.trim())) splitFailure('unsupported-note-span', measure)
+    return null
+  }
+  const number = ['tie', 'tremolo'].includes(name) ? 1 : relationshipNumber(node, measure, 'unsupported-note-span-number', name === 'beam' ? 8 : 16)
+  const type = name === 'beam' ? node.textContent.trim() : node.getAttribute('type')?.trim() ?? (name === 'tremolo' ? 'single' : '')
   if (name === 'tremolo') {
     if (['single', 'unmeasured'].includes(type)) return null
     if (!['start', 'stop'].includes(type)) splitFailure('unsupported-note-span', measure)
@@ -89,7 +107,6 @@ function noteSpan(node, note, measure) {
   const endpoint = type === 'begin' ? 'start' : type === 'end' ? 'stop' : type
   if (!['start', 'stop', 'continue'].includes(endpoint)) splitFailure('unsupported-note-span', measure)
   const voice = splitText(note, 'voice') || '1'
-  const number = node.getAttribute('number') || '1'
   const pitch = ['tie', 'tied'].includes(name) ? spanPitch(note, measure) : ''
   return { type: endpoint, key: name + ':' + number + ':' + (['beam', 'tie', 'tremolo'].includes(name) ? voice : '') + ':' + pitch }
 }
@@ -156,30 +173,43 @@ function verifySpans(links, kind = 'note') {
     if (continuations.length) verifySpanContinuations(spans, continuations, reasons)
   }
 }
-function verifyArpeggios(timeline) {
+function noteOnsetLinks(record) {
+  return splitChildren(record.node, 'notations').flatMap(notation => splitChildren(notation))
+    .filter(node => ONSET_LINKS.has(splitName(node))).map(node => ({ node, onset: record.onset, staff: record.staff }))
+}
+function onsetLinkPoint(link, measure) {
+  const kind = splitName(link.node)
+  const type = link.node.getAttribute('type')?.trim()
+  const reason = kind === 'arpeggiate' ? 'arpeggio' : kind
+  if (kind === 'arpeggiate' && link.node.getAttribute('unbroken')?.trim() === 'yes') splitFailure('cross-staff-arpeggio', measure)
+  if (kind === 'non-arpeggiate' && !['top', 'bottom'].includes(type)) splitFailure('unsupported-non-arpeggiate-range', measure)
+  return { ...link, kind, type, reason, number: relationshipNumber(link.node, measure, 'unsupported-' + reason + '-number') }
+}
+function verifyOnsetGroup(points, measure) {
+  const first = points[0]
+  if (points.some(point => point.staff !== first.staff)) splitFailure('cross-staff-' + first.reason, measure)
+  if (first.kind === 'non-arpeggiate' && (points.length !== 2 || points[0].type === points[1].type)) splitFailure('unsupported-non-arpeggiate-range', measure)
+}
+function verifyOnsetLinks(timeline) {
   for (const measure of timeline) {
     const groups = new Map()
-    for (const record of measure.records.filter(item => item.kind === 'note')) {
-      for (const notation of splitChildren(record.node, 'notations')) {
-        for (const arpeggio of splitChildren(notation, 'arpeggiate')) {
-          // The hint explicitly declares a cross-staff object; its absence does
-          // not make simultaneous, same-number arpeggios independent.
-          if (arpeggio.getAttribute('unbroken')?.trim() === 'yes') splitFailure('cross-staff-arpeggio', measure.number)
-          const rawNumber = arpeggio.getAttribute('number')?.trim() ?? '1'
-          const number = Number(rawNumber)
-          if (!/^\+?\d+$/.test(rawNumber) || !Number.isInteger(number) || number < 1 || number > 16) splitFailure('unsupported-arpeggio-number', measure.number)
-          if (!groups.has(number)) groups.set(number, [])
-          groups.get(number).push(record)
-        }
-      }
+    for (const link of measure.records.filter(item => item.kind === 'note').flatMap(noteOnsetLinks)) {
+      const point = onsetLinkPoint(link, measure.number)
+      const key = point.kind + ':' + point.number
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(point)
     }
     for (const points of groups.values()) {
       points.sort((a, b) => a.onset - b.onset)
-      let anchor = null
+      let simultaneous = []
       for (const point of points) {
-        if (!anchor || point.onset - anchor.onset > EPSILON) anchor = point
-        else if (point.staff !== anchor.staff) splitFailure('cross-staff-arpeggio', measure.number)
+        if (simultaneous.length && point.onset - simultaneous[0].onset > EPSILON) {
+          verifyOnsetGroup(simultaneous, measure.number)
+          simultaneous = []
+        }
+        simultaneous.push(point)
       }
+      verifyOnsetGroup(simultaneous, measure.number)
     }
   }
 }
@@ -245,6 +275,7 @@ export function inspectSplitPart(part, allowed) {
       if (kind === 'print') {
         if (splitChildren(node).some(child => splitName(child) === 'staff-layout')) splitFailure('unsupported-staff-layout', number)
       }
+      if (kind === 'barline' && splitChildren(node, 'wavy-line').length) splitFailure('unsupported-barline-span', number)
       if (node.getElementsByTagName?.('midi-instrument')?.length || node.getElementsByTagName?.('instrument-change')?.length) splitFailure('unsupported-instrument-change', number)
       records.push({ node, kind, onset: state.cursor, staff: metadataStaff(node, kind, allowed, number) })
     }
@@ -252,7 +283,7 @@ export function inspectSplitPart(part, allowed) {
     return { node: measure, number, records, extent: state.extent, divisions: state.divisions }
   })
   verifySpans(links)
-  verifyArpeggios(timeline)
+  verifyOnsetLinks(timeline)
   verifyDirectionSpans(timeline)
   return timeline
 }
@@ -269,9 +300,9 @@ function verifyDirectionSpans(timeline) {
           const kind = splitName(child)
           if (['pedal', 'octave-shift', 'bracket', 'dashes', 'wavy-line'].includes(kind)) splitFailure('unsupported-direction-span', measure.number)
           if (kind !== 'wedge') continue
-          const type = child.getAttribute('type')
+          const type = child.getAttribute('type')?.trim()
           if (!['crescendo', 'diminuendo', 'stop', 'continue'].includes(type)) splitFailure('unsupported-direction-span', measure.number)
-          const number = child.getAttribute('number') || '1'
+          const number = relationshipNumber(child, measure.number, 'unsupported-direction-span-number')
           if (!links.has(number)) links.set(number, [])
           links.get(number).push({ index, onset: beat, type: ['crescendo', 'diminuendo'].includes(type) ? 'start' : type,
             staff: record.staff, measure: measure.number })

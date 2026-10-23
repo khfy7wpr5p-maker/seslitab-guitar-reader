@@ -539,3 +539,160 @@ test('does not reassign a cross-staff continuation to an overlapping same-number
     spanNote('slur', 'stop', 1) + '<backup><duration>4</duration></backup>' + spanNote('slur', 'start', 2) + spanNote('slur', 'stop', 2)
   await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff|unsupported.*span/)
 })
+
+const wavyNote = (type, staff, duration = 2, number = '1', voice = 1) => note('E', staff, duration, '', voice)
+  .replace('</note>', '<notations><ornaments><wavy-line type="' + type + '" number="' + number + '"/></ornaments></notations></note>')
+const bracketNote = (type, staff, chord = false, number = '1', voice = 1) => note(type === 'top' ? 'E' : 'C', staff, 4, chord ? '<chord/>' : '', voice)
+  .replace('</note>', '<notations><non-arpeggiate type="' + type + '" number="' + number + '"/></notations></note>')
+
+test('rejects cross-staff wavy-line endpoints in either document orientation', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const startStaff of [1, 2]) for (const reverse of [false, true]) {
+    const stopStaff = 3 - startStaff
+    const body = reverse ? '<forward><duration>2</duration></forward>' + wavyNote('stop', stopStaff) +
+      '<backup><duration>4</duration></backup>' + wavyNote('start', startStaff) + note('D', startStaff) :
+      wavyNote('start', startStaff) + wavyNote('stop', stopStaff)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('preserves same-staff wavy lines and their original number spelling', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const staff of [1, 2]) {
+    const pair = wavyNote('start', staff, 2, '+01') + wavyNote('stop', staff)
+    const body = staff === 1 ? pair + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+      : note('G', 1, 4) + '<backup><duration>4</duration></backup>' + pair
+    const source = score(body)
+    const preview = await prepareStaffToPartSplit({ musicXml: source })
+    assert.equal(preview.sourceMusicXml, source)
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    assert.deepEqual(parts[staff - 1].querySelectorAll('wavy-line').map(w => [w.getAttribute('type'), w.getAttribute('number')]), [['start', '+01'], ['stop', '1']])
+    assert.equal(parts[2 - staff].querySelectorAll('wavy-line').length, 0)
+  }
+})
+
+test('rejects a cross-staff wavy-line continuation even with same-staff endpoints', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = wavyNote('start', 1) + '<backup><duration>1</duration></backup>' + wavyNote('continue', 2, 1) + wavyNote('stop', 1)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+})
+
+test('preserves an unambiguous deferred same-staff wavy-line continuation', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' + wavyNote('start', 2) + wavyNote('stop', 2) +
+    '<backup><duration>4</duration></backup><forward><duration>1</duration></forward>' + wavyNote('continue', 2, 1, '01', 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('wavy-line').length), [0, 3])
+})
+
+test('does not duplicate a staff-sensitive wavy-line continuation inside a global barline', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const first = wavyNote('start', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4) +
+    '<barline><wavy-line type="continue" number="1"/></barline>'
+  const second = wavyNote('stop', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+  const source = score(first).replace('</part></score-partwise>', '<measure number="2">' + second + '</measure></part></score-partwise>')
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: source }), /unsupported-barline-span/)
+})
+
+test('rejects cross-staff non-arpeggiate ranges in either staff document order', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const reverse of [false, true]) {
+    const top = bracketNote('top', 1, false, '+01'), bottom = bracketNote('bottom', 2)
+    const body = reverse ? bottom + '<backup><duration>4</duration></backup>' + top : top + '<backup><duration>4</duration></backup>' + bottom
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('preserves a complete same-staff non-arpeggiate bracket on a piano chord', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const source = score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + bracketNote('bottom', 2, false, '01') + bracketNote('top', 2, true))
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  assert.equal(preview.sourceMusicXml, source)
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('non-arpeggiate').map(n => n.getAttribute('type'))), [[], ['bottom', 'top']])
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, [['C', 0, 4, '1'], ['E', 0, 4, '1']])
+})
+
+test('rejects incomplete duplicate and invalid non-arpeggiate range markers', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const range of [bracketNote('top', 2), bracketNote('bottom', 2),
+    bracketNote('top', 2) + bracketNote('top', 2, true), bracketNote('start', 2)]) {
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + range) }), /unsupported.*non-arpeggiate/)
+  }
+})
+
+test('does not pair non-arpeggiate endpoints at different onsets', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' + bracketNote('bottom', 2) + bracketNote('top', 2)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /unsupported.*non-arpeggiate/)
+})
+
+for (const kind of ['slur', 'tuplet', 'tied']) test('matches equivalent numeric spellings for ' + kind, async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const number of ['01', '+1', ' 1 ']) {
+    const first = spanNote(kind, 'start', 2).replace('number="1"', 'number="' + number + '"')
+    const source = score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + first + spanNote(kind, 'stop', 2))
+    const preview = await prepareStaffToPartSplit({ musicXml: source })
+    assert.equal(preview.sourceMusicXml, source)
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    assert.deepEqual(parts[1].querySelectorAll(kind).map(n => n.getAttribute('number')), [number, '1'])
+  }
+})
+
+test('matches equivalent wedge numbers while preserving source attributes', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const number of ['01', '+1', ' 1 ']) {
+    const source = score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + wedge('crescendo', 2, number) + note('E', 2, 4) + wedge('stop', 2))
+    const preview = await prepareStaffToPartSplit({ musicXml: source })
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    assert.deepEqual(parts[1].querySelectorAll('wedge').map(n => n.getAttribute('number')), [number, '1'])
+  }
+})
+
+test('canonical span numbers cannot hide a cross-staff link', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const first = spanNote('slur', 'start', 1).replace('number="1"', 'number="01"')
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(first + spanNote('slur', 'stop', 2)) }), /cross-staff/)
+})
+
+test('validates number-level lexical syntax and range before matching', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const number of ['', '0', '17', '-1', '1.0', '1e0']) {
+    const source = score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' +
+      wedge('crescendo', 2, number) + note('E', 2, 4) + wedge('stop', 2, number))
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: source }), /unsupported.*number/)
+  }
+  const source = score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + wedge('crescendo', 2, '+016') + note('E', 2, 4) + wedge('stop', 2, '16'))
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  assert.equal(preview.parts[1].noteCount, 1)
+})
+
+test('normalizes beam levels with their own upper bound of eight', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const pair = number => spanNote('beam', 'begin', 2).replace('number="1"', 'number="' + number + '"') + spanNote('beam', 'end', 2)
+  await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + pair('+01')) })
+  const invalid = (spanNote('beam', 'begin', 2) + spanNote('beam', 'end', 2)).replaceAll('number="1"', 'number="9"')
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + invalid) }), /unsupported.*number/)
+})
+
+test('unknown endpoint-bearing notation is rejected instead of treated as a local decoration', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const type of ['start', 'stop', 'continue']) {
+    const body = note('E', 1, 4).replace('</note>', '<notations><other-notation type="' + type + '">custom</other-notation></notations></note>') +
+      '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /unsupported-note-span/)
+  }
+})
+
+test('preserves local playback labels that happen to use endpoint words', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const type of ['start', 'stop', 'continue']) {
+    const source = score(note('E', 1, 4).replace('</note>', '<play><other-play type="' + type + '">custom sound</other-play></play></note>') +
+      '<backup><duration>4</duration></backup>' + note('C', 2, 4))
+    const preview = await prepareStaffToPartSplit({ musicXml: source })
+    assert.equal(preview.sourceMusicXml, source)
+    const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+    assert.deepEqual(parts.map(p => p.querySelectorAll('other-play').map(n => [n.getAttribute('type'), n.textContent])), [[[type, 'custom sound']], []])
+  }
+})
