@@ -10,6 +10,56 @@ async function api() {
   try { return await import('../src/services/musicXmlStaffToPartSplit.js') }
   catch { assert.fail('SES-248 staff-to-part split module must exist') }
 }
+const groupStart = '<part-group number="ensemble" type="start"><group-name>Ensemble</group-name><group-name-display><display-text>Ensemble</display-text></group-name-display><group-abbreviation>Ens.</group-abbreviation><group-symbol default-x="-5">bracket</group-symbol><group-barline>yes</group-barline><group-time/></part-group>'
+const groupStop = '<part-group number="ensemble" type="stop"/>'
+function groupedScore(before = groupStart, after = groupStop) {
+  return score().replace('<part-list>', '<part-list>' + before).replace('</part-list>', after + '</part-list>')
+}
+for (const [name, before, after] of [
+  ['named bracket and common barline', groupStart, groupStop],
+  ['unnumbered brace', '<part-group type="start"><group-symbol>brace</group-symbol><group-barline>Mensurstrich</group-barline></part-group>', '<part-group type="stop"/>'],
+  ['nested token-numbered groups', groupStart + '<part-group number="inner" type="start"><group-symbol>brace</group-symbol><group-barline>no</group-barline></part-group>', '<part-group number="inner" type="stop"/>' + groupStop],
+]) test('preserves part-list ' + name + ' around both derived parts', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const source = groupedScore(before, after)
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  const doc = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml)
+  const list = doc.querySelector('part-list')
+  const serializer = new SmoosicTestXMLSerializer()
+  const parts = list.children.filter(node => node.tagName === 'score-part')
+  assert.deepEqual(parts.map(part => part.getAttribute('id')), ['P1', 'P2'])
+  const xml = serializer.serializeToString(list)
+  assert.ok(xml.startsWith('<part-list>' + before), 'group starts and their complete metadata survive')
+  assert.ok(xml.endsWith(after + '</part-list>'), 'both new parts stay inside the original groups')
+  assert.equal(preview.sourceMusicXml, source)
+  assert.deepEqual(events(preview.derivedMusicXml), [
+    { partId: 'P1', notes: [['E', 0, 2, '1'], ['F', 2, 2, '1']] },
+    { partId: 'P2', notes: [['C', 0, 2, '1'], ['G', 0, 2, '1'], ['D', 2, 2, '1']] },
+  ])
+})
+
+for (const [name, corrupt] of [
+  ['removed groups', xml => xml.replace(/<part-group\b[^>]*\/>|<part-group\b[^>]*>[\s\S]*?<\/part-group>/g, '')],
+  ['changed barline', xml => xml.replace('<group-barline>yes</group-barline>', '<group-barline>no</group-barline>')],
+  ['truncated membership', xml => xml.replace(groupStop, '').replace('<score-part id="P2">', groupStop + '<score-part id="P2">')],
+]) test('rejects serialized part-list with ' + name, async () => {
+  const { prepareStaffToPartSplit } = await api()
+  let corrupted = false
+  class CorruptedGroupSerializer extends SmoosicTestXMLSerializer {
+    serializeToString(node) {
+      const xml = super.serializeToString(node)
+      if (node.tagName !== '#document') return xml
+      const changed = corrupt(xml)
+      corrupted = changed !== xml
+      return changed
+    }
+  }
+  globalThis.XMLSerializer = CorruptedGroupSerializer
+  try {
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: groupedScore() }), /part-list-integrity/)
+    assert.equal(corrupted, true)
+  } finally { globalThis.XMLSerializer = SmoosicTestXMLSerializer }
+})
 import { note, score } from './support/staffSplitFixture.js'
 function events(xml) {
   const doc = new SmoosicTestDOMParser().parseFromString(xml)

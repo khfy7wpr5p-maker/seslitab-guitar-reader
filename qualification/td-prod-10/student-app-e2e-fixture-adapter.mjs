@@ -1,5 +1,6 @@
 import {
   TD_PROD_10_FIXTURE,
+  SES248_FIXTURE,
 } from "./td-prod-10-generated-fixture.mjs";
 
 function requireOnline() {
@@ -22,6 +23,7 @@ function requireStudent(session) {
 }
 
 function itemForAssignment(assignmentId) {
+  if (assignmentId === SES248_FIXTURE.assignmentId) return SES248_FIXTURE.item;
   if (
     assignmentId ===
     TD_PROD_10_FIXTURE.score.assignmentId
@@ -88,6 +90,14 @@ export function createTdProd10OnlineReadService() {
         state === undefined ||
         state === "ACTIVE"
           ? [
+              Object.freeze({
+                assignmentId: SES248_FIXTURE.assignmentId,
+                practiceType: "SCORE",
+                state: "ACTIVE",
+                title: SES248_FIXTURE.package.title,
+                teacherNote: SES248_FIXTURE.package.practice?.teacherNote ?? "",
+                assignedAt: TD_PROD_10_FIXTURE.piece.assignedAt,
+              }),
               Object.freeze({
                 assignmentId:
                   TD_PROD_10_FIXTURE

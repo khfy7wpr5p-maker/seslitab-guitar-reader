@@ -7,7 +7,6 @@ const PARTS = Object.freeze([
   Object.freeze({ partId: 'P2', sourceStaff: 2, name: 'Piyano', instrument: 'Piano', program: 1 }),
 ])
 function remove(node) { node.parentNode.removeChild(node) }
-function empty(node) { for (const child of Array.from(node.childNodes)) node.removeChild(child) }
 function element(doc, tag, value = null) {
   const root = doc.documentElement
   const prefix = root.prefix ? root.prefix + ':' : ''
@@ -185,13 +184,18 @@ export async function prepareStaffToPartSplit({ musicXml } = {}) {
   const timeline = inspectSplitPart(part, [1, 2])
   const outputs = PARTS.map(spec => buildPart(doc, part, timeline, spec))
   outputs.forEach((output, i) => verify(timeline, output, PARTS[i]))
-  empty(list)
-  PARTS.forEach(spec => list.appendChild(scorePart(doc, spec)))
+  // Replace only the source entry: surrounding part-groups must still enclose
+  // both derived parts, with their names, symbols and barline settings intact.
+  const sourceEntry = splitChild(list, 'score-part')
+  PARTS.forEach(spec => list.insertBefore(scorePart(doc, spec), sourceEntry))
+  remove(sourceEntry)
+  const expectedPartList = serialize(list)
   outputs.forEach(output => root.insertBefore(output, part))
   remove(part)
   assertUniqueIds(root)
   const derivedMusicXml = serialize(doc)
   const accepted = parse(derivedMusicXml)
+  if (serialize(splitChild(accepted.documentElement, 'part-list')) !== expectedPartList) splitFailure('part-list-integrity')
   splitChildren(accepted.documentElement, 'part').forEach((output, i) => verify(timeline, output, PARTS[i]))
   const parts = PARTS.map(spec => Object.freeze({ partId: spec.partId, sourceStaff: spec.sourceStaff, name: spec.name,
     noteCount: timeline.flatMap(m => m.records).filter(r => r.kind === 'note' && r.pitched && r.staff === spec.sourceStaff).length }))

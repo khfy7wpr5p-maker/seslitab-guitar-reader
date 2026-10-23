@@ -18,6 +18,13 @@ const wait = async predicate => {
   }
 }
 try {
+  const groupStart = '<part-group type="start"><group-name>Ensemble</group-name><group-symbol>brace</group-symbol><group-barline>yes</group-barline></part-group>'
+  const groupStop = '<part-group type="stop"/>'
+  const grouped = score().replace('<part-list>', '<part-list>' + groupStart).replace('</part-list>', groupStop + '</part-list>')
+  const groupedSplit = await prepareStaffToPartSplit({ musicXml: grouped })
+  const groupedList = new DOMParser().parseFromString(groupedSplit.derivedMusicXml, 'application/xml').querySelector('part-list')
+  check([...groupedList.children].map(node => node.localName).join(',') === 'part-group,score-part,score-part,part-group', 'original group encloses both derived parts')
+  check(groupedList.querySelector('group-name').textContent === 'Ensemble' && groupedList.querySelector('group-symbol').textContent === 'brace' && groupedList.querySelector('group-barline').textContent === 'yes', 'group name brace and common barline preserved')
   const full = note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
   const short = score(note('E', 1, 2) + '<forward><duration>2</duration></forward>' +
     '<backup><duration>4</duration></backup>' + note('C', 2, 4) + '<barline><repeat direction="backward"/></barline>')
