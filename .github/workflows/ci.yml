@@ -68,6 +68,9 @@ jobs:
           path: artifacts/ses153-teacher-authority-browser.json
           if-no-files-found: warn
 
+      - name: Verify SES-248 reversible staff-to-part split in real browser
+        run: node scripts/verifySes248StaffSplitBrowser.js
+
       - name: Build production bundle
         run: npm run build
 

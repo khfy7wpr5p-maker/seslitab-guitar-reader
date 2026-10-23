@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="tr">
+<meta charset="utf-8">
+<title>SES-248 staff split browser qualification</title>
+<div id="host"></div><pre id="proof">RUNNING</pre><pre id="error"></pre>
+<script type="module">
+import { mountTeacherAssignmentComposerUi } from '../../src/teacherAssignmentComposerUi.js'
+import { prepareTeacherAssignmentScoreUpload } from '../../src/services/teacherAssignmentComposerScoreUpload.js'
+import { score } from '../support/staffSplitFixture.js'
+const proof = document.querySelector('#proof')
+const check = (condition, message) => { if (!condition) throw new Error(message) }
+const wait = async predicate => {
+  const deadline = performance.now() + 5000
+  while (!predicate()) {
+    if (performance.now() > deadline) throw new Error('timed out waiting for UI')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+try {
+  const host = document.querySelector('#host'), sent = []
+  const service = {
+    loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],
+    prepareScoreUpload: input => prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-23T00:00:00Z' }),
+    send: async input => { sent.push(input);return { ok: false, recipients: [] } },
+  }
+  const handle = mountTeacherAssignmentComposerUi({ root: document, host, service, createDraftId: () => 'browser-draft' })
+  await wait(() => host.querySelector('[name="studentId"]'))
+  const file = host.querySelector('[name="scoreMusicXml"]')
+  const choose = async xml => {
+    const transfer = new DataTransfer();transfer.items.add(new File([xml], 'piano.musicxml', { type: 'application/xml' }));file.files = transfer.files
+    file.dispatchEvent(new Event('change'))
+    await wait(() => host.querySelector('[class$="__score-status"]').textContent === 'MusicXML doğrulandı.')
+  }
+  const button = label => [...host.querySelectorAll('button')].find(node => node.textContent === label)
+  await choose(score())
+  button('Keman ve piyano partilerini ayır').click()
+  await wait(() => !button('Ayırmayı uygula').hidden)
+  check(sent.length === 0, 'preview must not send')
+  button('Ayırmayı uygula').click()
+  await wait(() => !button('Ayırmayı geri al').hidden)
+  host.querySelector('[name="assignmentTitle"]').value = 'Etüt'
+  host.querySelector('[name="studentId"]').checked = true
+  host.querySelector('form').requestSubmit()
+  await wait(() => sent.length === 1 && !host.querySelector('button[type="submit"]').disabled)
+  const doc = new DOMParser().parseFromString(sent[0].scoreUpload.musicXml, 'application/xml')
+  check(doc.querySelectorAll('score-part').length === 2, 'two declared parts')
+  check(doc.querySelector('part[id="P1"] note staff').textContent === '1', 'violin staff remapped')
+  check(doc.querySelector('part[id="P2"] clef sign').textContent === 'F', 'piano bass clef')
+  check(doc.querySelectorAll('part[id="P2"] chord').length === 1, 'piano chord preserved')
+  button('Ayırmayı geri al').click()
+  host.querySelector('form').requestSubmit()
+  await wait(() => sent.length === 2)
+  check(sent[1].scoreUpload.musicXml === score(), 'undo restores exact original bytes')
+  document.body.dataset.splitPass = 'true'
+  document.body.dataset.undoPass = 'true'
+  handle.destroy()
+  proof.textContent = 'PASS'
+} catch (error) { document.querySelector('#error').textContent = error.stack;proof.textContent = 'FAIL' }
+</script>
+</html>
