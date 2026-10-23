@@ -3,6 +3,7 @@ import { inspectSplitPart, splitChildren, splitChild, splitName, splitFailure } 
 
 const MAX_BYTES = 900 * 1024
 const IDREF_ELEMENTS = new Set(['part', 'midi-instrument', 'midi-device', 'instrument', 'instrument-change', 'instrument-link', 'play'])
+const INSTRUMENT_REF_ELEMENTS = new Set([...IDREF_ELEMENTS].filter(name => name !== 'part'))
 const PARTS = Object.freeze([
   Object.freeze({ partId: 'P1', sourceStaff: 1, name: 'Keman', instrument: 'Violin', program: 41 }),
   Object.freeze({ partId: 'P2', sourceStaff: 2, name: 'Piyano', instrument: 'Piano', program: 1 }),
@@ -44,13 +45,65 @@ function sourceTopology(doc) {
   const sourceInstrument = instruments[0]?.getAttribute('id')
   if (instruments.length > 1) splitFailure('unsupported-instruments')
   validateInstrumentReferences(bodies[0], new Set(sourceInstrument ? [sourceInstrument] : []))
-  return { root, list: lists[0], part: bodies[0], sourceId }
+  const players = splitChildren(parts[0], 'player')
+  const playerIds = players.map(node => node.getAttribute('id'))
+  if (playerIds.some(id => !id) || new Set(playerIds).size !== players.length) splitFailure('unsupported-player-reference')
+  validatePlayerReferences(bodies[0], new Set(playerIds))
+  return { root, list: lists[0], part: bodies[0], sourceId, entry: parts[0], players }
+}
+function visitElements(node, visit) {
+  visit(node)
+  splitChildren(node).forEach(child => visitElements(child, visit))
+}
+function validatePlayerReferences(node, declared) {
+  visitElements(node, child => {
+    const id = child.getAttribute('player')
+    if (id !== null && !declared.has(id)) splitFailure('unsupported-player-reference')
+  })
+}
+function normalizedReferences(node, part) {
+  visitElements(node, child => {
+    if (INSTRUMENT_REF_ELEMENTS.has(splitName(child)) && child.getAttribute('id') !== null) child.setAttribute('id', part.instrumentId)
+    const id = child.getAttribute('player')
+    if (id !== null) {
+      const player = part.players.find(player => player.sourceId === id)
+      // A destination reference may already be normalized during verification.
+      if (player) child.setAttribute('player', player.id)
+    }
+  })
+}
+function declarationId(node) {
+  return IDREF_ELEMENTS.has(splitName(node)) ? node.getAttribute('xml:id') : node.getAttribute('id') || node.getAttribute('xml:id')
+}
+function allocateParts(root, sourceEntry, players) {
+  const used = new Set()
+  const collect = node => {
+    if (node === sourceEntry) return
+    const id = declarationId(node)
+    if (id) used.add(id)
+    splitChildren(node).forEach(collect)
+  }
+  collect(root)
+  // Generated destinations must not look like source player references when
+  // the normalized note is inspected again by semantic verification.
+  players.forEach(node => used.add(node.getAttribute('id')))
+  const allocate = base => {
+    let id = base, suffix = 1
+    while (used.has(id)) id = base + '-' + suffix++
+    used.add(id)
+    return id
+  }
+  return PARTS.map(spec => {
+    const partId = allocate(spec.partId)
+    return { ...spec, partId, instrumentId: allocate(partId + '-I1'),
+      players: players.map((node, i) => ({ node, sourceId: node.getAttribute('id'), id: allocate(partId + '-M' + (i + 1)) })) }
+  })
 }
 function validateInstrumentReferences(part, declared) {
-  for (const name of ['instrument', 'play']) {
+  for (const name of INSTRUMENT_REF_ELEMENTS) {
     for (const node of Array.from(part.getElementsByTagName(name))) {
       const id = node.getAttribute('id')
-      if (name === 'play' && id === null) continue
+      if ((name === 'play' || name === 'midi-device') && id === null) continue
       if (!declared.has(id)) splitFailure('unsupported-instrument-reference')
     }
   }
@@ -58,10 +111,7 @@ function validateInstrumentReferences(part, declared) {
 function normalizedNote(node, part) {
   const clone = node.cloneNode(true)
   for (const staff of splitChildren(clone, 'staff')) staff.textContent = '1'
-  for (const instrument of splitChildren(clone, 'instrument')) instrument.setAttribute('id', part.partId + '-I1')
-  for (const play of Array.from(clone.getElementsByTagName('play'))) {
-    if (play.getAttribute('id') !== null) play.setAttribute('id', part.partId + '-I1')
-  }
+  normalizedReferences(clone, part)
   return clone
 }
 function omitDuplicateIds(node) {
@@ -72,6 +122,7 @@ function omitDuplicateIds(node) {
 function normalizedMetadata(node, part, global) {
   const clone = node.cloneNode(true)
   for (const staff of splitChildren(clone, 'staff')) staff.textContent = '1'
+  normalizedReferences(clone, part)
   // Keep original targets on the first copy, omitting only duplicate declarations.
   if (global && part.sourceStaff !== 1) omitDuplicateIds(clone)
   return clone
@@ -145,11 +196,16 @@ function scorePart(doc, part) {
   node.setAttribute('id', part.partId)
   node.appendChild(element(doc, 'part-name', part.name))
   const instrument = element(doc, 'score-instrument')
-  instrument.setAttribute('id', part.partId + '-I1')
+  instrument.setAttribute('id', part.instrumentId)
   instrument.appendChild(element(doc, 'instrument-name', part.instrument))
   node.appendChild(instrument)
+  for (const player of part.players) {
+    const clone = player.node.cloneNode(true)
+    clone.setAttribute('id', player.id)
+    node.appendChild(clone)
+  }
   const midi = element(doc, 'midi-instrument')
-  midi.setAttribute('id', part.partId + '-I1')
+  midi.setAttribute('id', part.instrumentId)
   midi.appendChild(element(doc, 'midi-channel', part.sourceStaff))
   midi.appendChild(element(doc, 'midi-program', part.program))
   node.appendChild(midi)
@@ -199,8 +255,7 @@ function assertUniqueIds(root) {
   const ids = new Set()
   const visit = node => {
     // MusicXML part/instrument references are IDREF, not ID declarations.
-    const id = IDREF_ELEMENTS.has(splitName(node))
-      ? node.getAttribute('xml:id') : node.getAttribute('id') || node.getAttribute('xml:id')
+    const id = declarationId(node)
     if (id) {
       if (ids.has(id)) splitFailure('duplicate-id')
       ids.add(id)
@@ -216,18 +271,20 @@ function validateOutputIds(root) {
     const entry = entries.find(node => node.getAttribute('id') === part.getAttribute('id'))
     const declared = new Set(splitChildren(entry, 'score-instrument').map(node => node.getAttribute('id')))
     validateInstrumentReferences(part, declared)
+    validatePlayerReferences(part, new Set(splitChildren(entry, 'player').map(node => node.getAttribute('id'))))
   }
 }
 export async function prepareStaffToPartSplit({ musicXml } = {}) {
   const doc = parse(musicXml)
-  const { root, list, part, sourceId } = sourceTopology(doc)
+  const { root, list, part, sourceId, entry, players } = sourceTopology(doc)
+  const specs = allocateParts(root, entry, players)
   const timeline = inspectSplitPart(part, [1, 2])
-  const outputs = PARTS.map(spec => buildPart(doc, part, timeline, spec))
-  outputs.forEach((output, i) => verify(timeline, output, PARTS[i]))
+  const outputs = specs.map(spec => buildPart(doc, part, timeline, spec))
+  outputs.forEach((output, i) => verify(timeline, output, specs[i]))
   // Replace only the source entry: surrounding part-groups must still enclose
   // both derived parts, with their names, symbols and barline settings intact.
   const sourceEntry = splitChild(list, 'score-part')
-  PARTS.forEach(spec => list.insertBefore(scorePart(doc, spec), sourceEntry))
+  specs.forEach(spec => list.insertBefore(scorePart(doc, spec), sourceEntry))
   remove(sourceEntry)
   const expectedPartList = serialize(list)
   outputs.forEach(output => root.insertBefore(output, part))
@@ -237,8 +294,8 @@ export async function prepareStaffToPartSplit({ musicXml } = {}) {
   const accepted = parse(derivedMusicXml)
   if (serialize(splitChild(accepted.documentElement, 'part-list')) !== expectedPartList) splitFailure('part-list-integrity')
   validateOutputIds(accepted.documentElement)
-  splitChildren(accepted.documentElement, 'part').forEach((output, i) => verify(timeline, output, PARTS[i]))
-  const parts = PARTS.map(spec => Object.freeze({ partId: spec.partId, sourceStaff: spec.sourceStaff, name: spec.name,
+  splitChildren(accepted.documentElement, 'part').forEach((output, i) => verify(timeline, output, specs[i]))
+  const parts = specs.map(spec => Object.freeze({ partId: spec.partId, sourceStaff: spec.sourceStaff, name: spec.name,
     noteCount: timeline.flatMap(m => m.records).filter(r => r.kind === 'note' && r.pitched && r.staff === spec.sourceStaff).length }))
   return Object.freeze({ schemaVersion: 1, sourcePartId: sourceId, sourceMusicXml: musicXml,
     sourceFingerprint: await fingerprint(musicXml), derivedMusicXml, derivedFingerprint: await fingerprint(derivedMusicXml),

@@ -25,13 +25,14 @@ try {
   const groupedList = new DOMParser().parseFromString(groupedSplit.derivedMusicXml, 'application/xml').querySelector('part-list')
   check([...groupedList.children].map(node => node.localName).join(',') === 'part-group,score-part,score-part,part-group', 'original group encloses both derived parts')
   check(groupedList.querySelector('group-name').textContent === 'Ensemble' && groupedList.querySelector('group-symbol').textContent === 'brace' && groupedList.querySelector('group-barline').textContent === 'yes', 'group name brace and common barline preserved')
-  const identifiedSource = score().replace('</part-name>', '</part-name><score-instrument id="P0-I1"><instrument-name>Piano</instrument-name></score-instrument>')
+  const identifiedSource = score().replace('</part-name>', '</part-name><score-instrument id="P0-I1"><instrument-name>Piano</instrument-name></score-instrument><player id="source-player"><player-name>Original performer</player-name></player>')
     .replace('<measure number="1">', '<measure number="1" id="m1">')
     .replace('<time>', '<key id="key-1"><fifths>0</fifths></key><time id="time-1">')
     .replace('</attributes>', '<transpose id="transpose-1"><chromatic>0</chromatic></transpose></attributes>')
+    .replace('<note>', '<direction id="P2"><direction-type><words>pizz.</words></direction-type><staff>02</staff><sound><midi-device id="P0-I1" port="1">Device</midi-device></sound></direction><note>')
     .replaceAll('<staff>1</staff>', '<staff>+01</staff>').replaceAll('<staff>2</staff>', '<staff>02</staff>')
     .replace('<note>', '<sound tempo="90" id="tempo-1"/><note>')
-    .replaceAll('</note>', '<play id="P0-I1"><other-play type="technique">pizzicato</other-play></play></note>')
+    .replaceAll('</note>', '<play id="P0-I1"><other-play type="technique">pizzicato</other-play></play><listen><assess type="yes" player="source-player"/></listen></note>')
   const identified = await prepareStaffToPartSplit({ musicXml: identifiedSource })
   const identifiedDoc = new DOMParser().parseFromString(identified.derivedMusicXml, 'application/xml')
   check(identifiedDoc.querySelectorAll('measure[id="m1"]').length === 1, 'measure ID stays unique on first part')
@@ -43,7 +44,11 @@ try {
   check(identifiedDoc.querySelectorAll('sound[tempo="90"]').length === 2, 'both parts retain global tempo')
   for (const part of identifiedDoc.querySelectorAll('part')) {
     check([...part.querySelectorAll('play')].every(play => play.getAttribute('id') === part.getAttribute('id') + '-I1'), 'playback IDREF follows its target instrument')
+    check([...part.querySelectorAll('midi-device')].every(device => device.getAttribute('id') === part.getAttribute('id') + '-I1'), 'local MIDI device reference follows its target instrument')
+    const declaration = [...identifiedDoc.querySelectorAll('score-part')].find(entry => entry.getAttribute('id') === part.getAttribute('id'))
+    check(declaration.querySelector('player-name').textContent === 'Original performer' && [...part.querySelectorAll('assess')].every(node => node.getAttribute('player') === declaration.querySelector('player').getAttribute('id')), 'listening references retain their declared player')
   }
+  check(identifiedDoc.querySelector('direction[id="P2"]') !== null && !identified.parts.some(part => part.partId === 'P2'), 'generated part IDs avoid retained declarations')
   const full = note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
   for (const moves of ['<forward><duration>2</duration></forward>', '<backup><duration>2</duration></backup>',
     '<backup><duration>2</duration></backup><forward><duration>2</duration></forward>']) {
