@@ -335,7 +335,9 @@ await test(
           audio.starts.every(source => source.frames > 0 && source.rate > 0) &&
           positions.some(position => position.playing && position.beat > 0);
       }), { timeoutMs: 15_000 }), true, "Dinle must schedule native sample buffers, advance musical position and produce a nonzero Web Audio signal");
-      await page.getByRole("button", { name: "← Geri", exact: true }).click();
+      // A standalone SCORE uses the persistent Student navigation, not the
+      // Piece Workspace's back control.
+      await page.getByRole("button", { name: "Benim Çalışmalarım", exact: true }).click();
       // Return to the original piece for its existing offline/reconnect checks.
       await page.getByRole("button", { name: TD_PROD_10_FIXTURE.piece.title, exact: true }).click();
 
