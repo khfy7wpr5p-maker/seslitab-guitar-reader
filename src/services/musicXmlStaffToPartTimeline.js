@@ -43,31 +43,84 @@ function checkAttributes(node, state, cursor, allowed, measure) {
     if (name === 'staves' && Number(item.textContent) !== allowed.length) splitFailure('staff-topology', measure)
   }
 }
-function checkLinks(note, staff, links, measure) {
+function spanPitch(note, measure) {
+  const pitch = splitChild(note, 'pitch')
+  const semitone = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[splitText(pitch, 'step')]
+  const value = (Number(splitText(pitch, 'octave')) + 1) * 12 + semitone + Number(splitText(pitch, 'alter') || 0)
+  if (!Number.isFinite(value)) splitFailure('unsupported-note-span-pitch', measure)
+  return value
+}
+function noteSpan(node, note, measure) {
+  const name = splitName(node)
+  if (['glissando', 'slide', 'hammer-on', 'pull-off'].includes(name)) splitFailure('unsupported-note-span', measure)
+  if (!['beam', 'slur', 'tuplet', 'tie', 'tied'].includes(name)) return null
+  const type = name === 'beam' ? node.textContent.trim() : node.getAttribute('type')
+  if (name === 'beam' && ['forward hook', 'backward hook'].includes(type)) return null
+  if (name === 'tied' && type === 'let-ring') return null
+  const endpoint = type === 'begin' ? 'start' : type === 'end' ? 'stop' : type
+  if (!['start', 'stop', 'continue'].includes(endpoint)) splitFailure('unsupported-note-span', measure)
   const voice = splitText(note, 'voice') || '1'
+  const number = node.getAttribute('number') || '1'
+  const pitch = ['tie', 'tied'].includes(name) ? spanPitch(note, measure) : ''
+  return { type: endpoint, key: name + ':' + number + ':' + (['beam', 'tie'].includes(name) ? voice : '') + ':' + pitch }
+}
+function checkLinks(note, staff, links, measure, index, onset) {
   const visit = node => {
     for (const child of splitChildren(node)) {
-      const name = splitName(child)
-      if (['glissando', 'slide', 'hammer-on', 'pull-off'].includes(name)) splitFailure('unsupported-note-span', measure)
-      const type = name === 'beam' ? child.textContent.trim() : child.getAttribute('type')
-      if (['beam', 'slur', 'tuplet', 'tie'].includes(name)) {
-        const number = child.getAttribute('number') || '1'
-        const pitch = name === 'tie' ? splitText(splitChild(note, 'pitch'), 'step') + ':' + splitText(splitChild(note, 'pitch'), 'alter') + ':' + splitText(splitChild(note, 'pitch'), 'octave') : ''
-        const key = name + ':' + number + ':' + (name === 'beam' ? voice : '') + ':' + pitch
-        if (['start', 'begin'].includes(type)) {
-          if (links.has(key) && links.get(key) !== staff) splitFailure('cross-staff-link', measure)
-          links.set(key, staff)
-        } else if (['stop', 'end', 'continue'].includes(type) && links.has(key)) {
-          if (links.get(key) !== staff) splitFailure('cross-staff-link', measure)
-          if (type !== 'continue') links.delete(key)
-        }
+      const span = noteSpan(child, note, measure)
+      if (span) {
+        if (!links.has(span.key)) links.set(span.key, [])
+        links.get(span.key).push({ type: span.type, index, onset, staff, measure })
       }
       visit(child)
     }
   }
   visit(note)
 }
-function inspectNote(node, state, allowed, measure, links) {
+const compareSpanTime = (a, b) => a.index - b.index || a.onset - b.onset
+function verifyNoteSpanPair(first, second, continuations) {
+  const start = first.type === 'start' ? first : second
+  const stop = first.type === 'stop' ? first : second
+  if ([first, ...continuations, second].some(point => point.staff !== start.staff)) splitFailure('cross-staff-link', second.measure)
+  if (compareSpanTime(start, stop) > EPSILON || continuations.some(point =>
+    compareSpanTime(point, start) < -EPSILON || compareSpanTime(point, stop) > EPSILON)) splitFailure('unsupported-note-span-order', second.measure)
+  return { start, stop }
+}
+function verifyNoteSpanContinuations(spans, continuations) {
+  const points = spans.flatMap(span => [
+    { ...span.start, onset: span.start.onset - EPSILON, action: 0, span },
+    { ...span.stop, onset: span.stop.onset + EPSILON, action: 2, span },
+  ])
+  points.push(...continuations.map(point => ({ ...point, action: 1 })))
+  points.sort((a, b) => compareSpanTime(a, b) || a.action - b.action)
+  const active = new Set()
+  for (const point of points) {
+    if (point.action === 0) active.add(point.span)
+    else if (point.action === 2) active.delete(point.span)
+    else {
+      if (active.size !== 1) splitFailure('unsupported-unmatched-note-span', point.measure)
+      if (active.values().next().value.start.staff !== point.staff) splitFailure('cross-staff-link', point.measure)
+    }
+  }
+}
+function verifyNoteSpans(links) {
+  for (const events of links.values()) {
+    let pending = null, attached = []
+    const spans = [], continuations = []
+    // Numbers may be reused by spans that overlap in score time but not XML
+    // order. Pair both start/stop orientations before validating score times.
+    for (const event of events) {
+      if (event.type === 'continue') { (pending ? attached : continuations).push(event); continue }
+      if (!pending) { pending = event; continue }
+      if (pending.type === event.type) splitFailure('unsupported-overlapping-note-span', event.measure)
+      spans.push(verifyNoteSpanPair(pending, event, attached))
+      pending = null;attached = []
+    }
+    if (pending) splitFailure('unsupported-unmatched-note-span', pending.measure)
+    if (continuations.length) verifyNoteSpanContinuations(spans, continuations)
+  }
+}
+function inspectNote(node, state, allowed, measure, links, index) {
   if (splitChild(node, 'grace') || splitChild(node, 'unpitched')) splitFailure('unsupported-note', measure)
   const staff = splitStaff(node, allowed)
   const duration = positive(node, 'duration', measure) / state.divisions
@@ -82,7 +135,7 @@ function inspectNote(node, state, allowed, measure, links) {
     if (state.violinEnds.some(end => end > onset + EPSILON)) splitFailure('polyphonic-violin', measure)
     state.violinEnds.push(onset + duration)
   }
-  checkLinks(node, staff, links, measure)
+  checkLinks(node, staff, links, measure, index, onset)
   if (!chord) {
     state.anchor = { onset, staff, voice, duration }
     state.cursor += duration
@@ -121,7 +174,7 @@ export function inspectSplitPart(part, allowed) {
         continue
       }
       if (kind === 'note') {
-        records.push(inspectNote(node, state, allowed, number, links))
+        records.push(inspectNote(node, state, allowed, number, links, index))
         continue
       }
       // Instrument changes, cross-staff identifiers and layout with staff-local
@@ -135,6 +188,7 @@ export function inspectSplitPart(part, allowed) {
     if (state.extent <= 0) splitFailure('empty-measure', number)
     return { node: measure, number, records, extent: state.extent, divisions: state.divisions }
   })
+  verifyNoteSpans(links)
   verifyDirectionSpans(timeline)
   return timeline
 }

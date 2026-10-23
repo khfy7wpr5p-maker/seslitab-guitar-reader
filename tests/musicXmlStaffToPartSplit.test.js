@@ -187,3 +187,124 @@ test('middle barline remains at beat one in both output parts', async () => {
     }
   }
 })
+
+const spanNote = (kind, type, staff, duration = 2, voice = 1) => {
+  const marker = kind === 'beam' ? '<beam number="1">' + type + '</beam>' :
+    kind === 'tie' ? '<tie type="' + type + '"/>' : '<notations><' + kind + ' type="' + type + '" number="1"/></notations>'
+  return note('E', staff, duration, '', voice).replace('</note>', marker + '</note>')
+}
+
+for (const kind of ['slur', 'tuplet', 'tie', 'beam']) test('rejects reverse-document cross-staff ' + kind + ' endpoints', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const stopStaff of [1, 2]) {
+    const startStaff = 3 - stopStaff
+    const body = '<forward><duration>2</duration></forward>' + spanNote(kind, kind === 'beam' ? 'end' : 'stop', stopStaff) +
+      '<backup><duration>4</duration></backup>' + spanNote(kind, kind === 'beam' ? 'begin' : 'start', startStaff) + note('D', startStaff)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('preserves independent same-number slurs that overlap in musical time on separate staves', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = spanNote('slur', 'start', 1) + spanNote('slur', 'stop', 1) + '<backup><duration>4</duration></backup>' +
+    spanNote('slur', 'start', 2) + spanNote('slur', 'stop', 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('slur').map(s => s.getAttribute('type'))), [['start', 'stop'], ['start', 'stop']])
+})
+
+test('preserves a same-staff slur whose stop precedes its start in piano voice document order', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup><forward><duration>2</duration></forward>' +
+    spanNote('slur', 'stop', 2) + '<backup><duration>4</duration></backup>' + spanNote('slur', 'start', 2, 2, 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, [['E', 2, 2, '1'], ['E', 0, 2, '2']])
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('slur').length), [0, 2])
+})
+
+test('rejects unmatched note span endpoints instead of exporting orphan notation', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const type of ['start', 'stop', 'continue']) {
+    const body = spanNote('slur', type, 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /unsupported.*span/)
+  }
+})
+
+test('rejects cross-staff visual tied endpoints in either document orientation', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  for (const reverse of [false, true]) {
+    const body = reverse ? '<forward><duration>2</duration></forward>' + spanNote('tied', 'stop', 1) +
+      '<backup><duration>4</duration></backup>' + spanNote('tied', 'start', 2) + note('D', 2) :
+      spanNote('tied', 'start', 1) + note('G', 1) + '<backup><duration>4</duration></backup><forward><duration>2</duration></forward>' + spanNote('tied', 'stop', 2)
+    await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+  }
+})
+
+test('preserves same-staff visual ties and standalone let-ring notation', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = spanNote('tied', 'let-ring', 1, 4) + '<backup><duration>4</duration></backup>' +
+    spanNote('tied', 'start', 2) + spanNote('tied', 'stop', 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('tied').map(s => s.getAttribute('type'))), [['let-ring'], ['start', 'stop']])
+})
+
+test('rejects orphan visual tie notation without a sounding tie', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = spanNote('tied', 'start', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /unsupported.*span/)
+})
+
+test('preserves a piano slur continuation after both endpoints in XML voice order', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' + spanNote('slur', 'start', 2) +
+    spanNote('slur', 'stop', 2) + '<backup><duration>4</duration></backup><forward><duration>1</duration></forward>' + spanNote('slur', 'continue', 2, 1, 2)
+  const preview = await prepareStaffToPartSplit({ musicXml: score(body) })
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, [['E', 0, 2, '1'], ['E', 2, 2, '1'], ['E', 1, 1, '2']])
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('slur').length), [0, 3])
+})
+
+test('preserves independent same-pitch sounding ties across piano voices and measures', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const measure = type => note('G', 1, 4) + '<backup><duration>4</duration></backup>' + spanNote('tie', type, 2, 4, 1) +
+    '<backup><duration>4</duration></backup>' + spanNote('tie', type, 2, 4, 2)
+  const source = score(measure('start')).replace('</part></score-partwise>', '<measure number="2">' + measure('stop') + '</measure></part></score-partwise>')
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts.map(p => p.querySelectorAll('tie').length), [0, 4])
+  assert.deepEqual(parts[1].querySelectorAll('note voice').map(v => v.textContent), ['1', '2', '1', '2'])
+})
+
+test('preserves enharmonic visual ties across piano voices without respelling pitches', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const first = spanNote('tied', 'start', 2).replace('<step>E</step>', '<step>F</step><alter>1</alter>')
+  const second = spanNote('tied', 'stop', 2, 2, 2).replace('<step>E</step>', '<step>G</step><alter>-1</alter>')
+  const source = score(note('C', 1, 4) + '<backup><duration>4</duration></backup>' + first + second)
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  const parts = new SmoosicTestDOMParser().parseFromString(preview.derivedMusicXml).querySelectorAll('part')
+  assert.deepEqual(parts[1].querySelectorAll('pitch').map(p => [p.querySelector('step').textContent, p.querySelector('alter').textContent]), [['F', '1'], ['G', '-1']])
+  assert.equal(parts[1].querySelectorAll('tied').length, 2)
+})
+
+test('rejects a cross-staff continuation even when its paired endpoints were already read', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = spanNote('slur', 'start', 1) + spanNote('slur', 'stop', 1) +
+    '<backup><duration>4</duration></backup><forward><duration>1</duration></forward>' + spanNote('slur', 'continue', 2)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff/)
+})
+
+test('rejects cross-voice cross-staff sounding ties rather than exporting unmatched endpoints', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = spanNote('tie', 'start', 1) + note('G', 1) + '<backup><duration>4</duration></backup><forward><duration>2</duration></forward>' +
+    spanNote('tie', 'stop', 2, 2, 2)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff|unsupported.*span/)
+})
+
+test('does not reassign a cross-staff continuation to an overlapping same-number local span', async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = spanNote('slur', 'start', 1) + '<backup><duration>1</duration></backup>' + spanNote('slur', 'continue', 2, 1) +
+    spanNote('slur', 'stop', 1) + '<backup><duration>4</duration></backup>' + spanNote('slur', 'start', 2) + spanNote('slur', 'stop', 2)
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /cross-staff|unsupported.*span/)
+})
