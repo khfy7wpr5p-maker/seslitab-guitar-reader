@@ -115,3 +115,27 @@ Fresh local combined semantic/UI/upload/composer/Sonar/delivery qualification: 1
 Independent review found no Critical/Important issue in this targeted patch; it reran 94 focused tests, independently reconstructed all 189 source events and checked the pinned Student resolver, browser flow, playback subscription lifecycle and native audio instrumentation. Native browser execution remains pending exact-head CI.
 
 First exact-head browser CI at d938380 exercised the complete new pilot assertions in both Chromium and WebKit: SVG, all 189 events, native scheduling, advancing position and nonzero audio signal passed. Both then failed at the test's return navigation: the standalone SCORE has no Piece Workspace back button. The harness now uses the existing persistent Benim Çalışmalarım action after the pilot. No application source change is needed for this test-navigation error. Fresh rerun is required for complete prior-flow/offline/reconnect acceptance.
+
+## Sixth review: pending submission and independent chord interpretation
+
+At c191f804 all 12 CI checks passed. A new P1 review identified a submit race: while confirmed split upload preparation was pending, both ordinary assignment send and request-conversion submit could deliver the original upload and invalidate the requested split. Four committed composer regressions reproduced this before the fix. Split pending transitions are now published to the composer, which disables its submit control and rejects programmatic submission before either delivery path. Preview hashing, apply completion/failure, replacement, stale finalizers and teardown retain bounded ownership; pending state is released only for the current generation. Nine composer checks cover these boundaries, including ordinary submission of the unchanged source after unsupported split admission.
+
+The previously inconclusive chord P2 is now confirmed as an interoperability risk. The MusicXML 4.0 documentation describes an additional tone with the preceding note, but XSD acceptance and an onset model sharing the Student parser's interpretation did not independently establish safe regrouping across cursor moves. A separate scratch-only Music21 10.5.1 installation exposed different source/derived events in all three disputed cases. It has not been added as a product or CI dependency.
+
+For the exact one-division reproduction cases, Music21 reports these C4/E4/D4 onset triples (quarter-note beats):
+
+| Case | Original XML | Earlier derived XML |
+| --- | --- | --- |
+| forward before chord | 0 / 2 / 3 | 0 / 0 / 2 |
+| backup before chord | 0 / 0 / 1 | 0 / 0 / 0 |
+| backup then forward before chord | 0 / 1 / 2 | 0 / 0 / 1 |
+
+The supported conversion subset now requires a fresh non-chord base after backup/forward. A stale or missing chord base reports `unsupported-chord-anchor`; no derived preview is accepted. This is an explicit interoperability boundary, not a claim that the XSD forbids these documents. Three regressions failed before this correction; normal adjacent chords and fresh bases after either move remain accepted with their original timing. Music21 independently confirms identical source/derived events for all three positive controls. The unchanged original remains available for an explicit ordinary send after an unsupported split; this failure does not mutate or automatically deliver it.
+
+Primary references: [MusicXML 4.0 chord semantics](https://github.com/w3c-cg/musicxml/blob/v4.0/schema/musicxml.xsd) and [Music21 10.5.1 XML chord grouping](https://github.com/cuthbertlab/music21/blob/v10.5.1/music21/musicxml/xmlToM21.py). The reproduction input/output evidence is retained in the task scratch work; the permanent public-API regressions exercise rejection and permitted timing directly.
+
+Fresh focused suite: 127/127 PASS. Fresh pinned Student resolver with independent xmldom matches all 189 source-oracle events across 24 measures. The corrected pilot's derived SHA-256 remains `809e2add06b735514eb75277de189c3a57e4784e6ad77ffb5b0aee29c0d7d800`; Music21 independently matches all 189 source/derived events too. Vite bundling passes with the existing large-chunk advisory. Native-DOM qualification now holds real upload preparation pending, rejects a forced submit, then checks derived send and undo; it also covers the three unsupported chord-anchor cases. Exact-head Chromium/WebKit and full CI results remain pending publication of this fix. No package, workflow, dependency, API contract, Student production source, merge or deployment changes are included.
+
+Independent review found no Critical/Important issue, reran 125 scoped tests and independently gated both preview submit modes. The two preview probes were then made permanent; the final focused run is 127/127. Full local-suite results are recorded below once complete. Local Chromium/WebKit binaries remain unavailable, so native browser acceptance is delegated to the existing exact-head CI jobs.
+
+Final full local npm test: 3020 total, 2983 PASS, 36 SKIP, one environment failure in `ceBridgeFixtureSerialization.test.js` (`Chromium is required for the transport regression`). This is not a passing full suite. The same browser transport check passed in the previous head's CI; new-head CI must establish the result for this patch.

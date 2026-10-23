@@ -219,7 +219,8 @@ function inspectNote(node, state, allowed, measure, links, index) {
   const duration = positive(node, 'duration', measure) / state.divisions
   const chord = splitChild(node, 'chord') !== null
   const voice = splitText(node, 'voice') || '1'
-  if (chord && (!state.anchor || state.anchor.staff !== staff || state.anchor.voice !== voice)) splitFailure('cross-staff-chord', measure)
+  if (chord && !state.anchor) splitFailure('unsupported-chord-anchor', measure)
+  if (chord && (state.anchor.staff !== staff || state.anchor.voice !== voice)) splitFailure('cross-staff-chord', measure)
   if (chord && duration > state.anchor.duration + EPSILON) splitFailure('unsupported-chord-duration', measure)
   const onset = chord ? state.anchor.onset : state.cursor
   const pitched = splitChild(node, 'pitch') !== null
@@ -264,6 +265,9 @@ export function inspectSplitPart(part, allowed) {
         if (state.cursor < -EPSILON) splitFailure('negative-cursor', number)
         state.cursor = Math.max(0, state.cursor)
         if (kind === 'forward') state.extent = Math.max(state.extent, state.cursor)
+        // Readers disagree about chord notes separated from their base by a
+        // cursor move. Require a fresh base note rather than silently regrouping.
+        state.anchor = null
         continue
       }
       if (kind === 'note') {

@@ -123,6 +123,7 @@ export function mountTeacherAssignmentComposerUi({
   let selectedSnapshots = []
   let destroyed = false
   let sending = false
+  let splitPending = false
   let rosterReady = false
   let requestConversion = null
 
@@ -243,6 +244,7 @@ export function mountTeacherAssignmentComposerUi({
   const splitUi = mountStaffToPartSplitUi({
     root, host: splitHost, getUpload: () => scoreUpload,
     isBusy: () => sending || destroyed,
+    onPendingChange(value) { splitPending = value;updateSubmitState() },
     prepareUpload: musicXml => service.prepareScoreUpload({ musicXml, draftId }),
     onApply(upload) { scoreUpload = upload;updateViolinPartSelection();scoreStatus.textContent = 'İki partili MusicXML hazır.' },
     onRestore(upload) { scoreUpload = upload;updateViolinPartSelection();scoreStatus.textContent = 'Kaynak MusicXML geri yüklendi.' },
@@ -512,7 +514,7 @@ export function mountTeacherAssignmentComposerUi({
   function updateSubmitState() {
     fileInput.disabled = sending
     submit.disabled =
-      sending ||
+      sending || destroyed || splitPending ||
       (requestConversion === null && !rosterReady)
   }
 
@@ -562,7 +564,11 @@ export function mountTeacherAssignmentComposerUi({
     'submit',
     async (event) => {
       event.preventDefault()
-      if (sending) return
+      if (sending || destroyed) return
+      if (splitPending) {
+        status.textContent = 'Partiler hazırlanıyor. Tamamlanınca tekrar gönderin.'
+        return
+      }
 
       let studentIds = []
       if (requestConversion === null) {

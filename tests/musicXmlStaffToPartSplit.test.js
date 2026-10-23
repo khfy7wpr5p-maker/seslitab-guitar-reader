@@ -80,6 +80,30 @@ function events(xml) {
   })
 }
 
+for (const [name, moves] of [
+  ['forward', '<forward><duration>2</duration></forward>'],
+  ['backup', '<backup><duration>2</duration></backup>'],
+  ['round-trip cursor movement', '<backup><duration>2</duration></backup><forward><duration>2</duration></forward>'],
+]) test('rejects a chord that reuses an anchor across ' + name, async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' +
+    note('C', 2, 2) + moves + note('E', 2, 2, '<chord/>')
+  await assert.rejects(() => prepareStaffToPartSplit({ musicXml: score(body) }), /chord-anchor/)
+})
+
+for (const [name, moves, want] of [
+  ['forward', '<forward><duration>2</duration></forward>', [['C', 0, 2, '1'], ['D', 4, 2, '1'], ['E', 4, 2, '1']]],
+  ['backup', '<backup><duration>2</duration></backup>', [['C', 0, 2, '1'], ['D', 0, 2, '1'], ['E', 0, 2, '1']]],
+]) test('preserves a chord with a fresh base note after ' + name, async () => {
+  const { prepareStaffToPartSplit } = await api()
+  const body = note('G', 1, 4) + '<backup><duration>4</duration></backup>' +
+    note('C', 2, 2) + moves + note('D', 2, 2) + note('E', 2, 2, '<chord/>')
+  const source = score(body)
+  const preview = await prepareStaffToPartSplit({ musicXml: source })
+  assert.deepEqual(events(preview.derivedMusicXml)[1].notes, want)
+  assert.equal(preview.sourceMusicXml, source)
+})
+
 test('splits exact two-staff notes and piano chord into independent parts without changing source', async () => {
   const { prepareStaffToPartSplit, confirmStaffToPartSplit } = await api()
   const source = score()

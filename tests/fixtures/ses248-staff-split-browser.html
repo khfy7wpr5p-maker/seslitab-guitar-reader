@@ -26,6 +26,13 @@ try {
   check([...groupedList.children].map(node => node.localName).join(',') === 'part-group,score-part,score-part,part-group', 'original group encloses both derived parts')
   check(groupedList.querySelector('group-name').textContent === 'Ensemble' && groupedList.querySelector('group-symbol').textContent === 'brace' && groupedList.querySelector('group-barline').textContent === 'yes', 'group name brace and common barline preserved')
   const full = note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+  for (const moves of ['<forward><duration>2</duration></forward>', '<backup><duration>2</duration></backup>',
+    '<backup><duration>2</duration></backup><forward><duration>2</duration></forward>']) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2) + moves + note('E', 2, 2, '<chord/>')) }) }
+    catch (error) { rejected = error.code === 'unsupported-chord-anchor' }
+    check(rejected, 'cursor movement requires a fresh chord base')
+  }
   const short = score(note('E', 1, 2) + '<forward><duration>2</duration></forward>' +
     '<backup><duration>4</duration></backup>' + note('C', 2, 4) + '<barline><repeat direction="backward"/></barline>')
   const split = await prepareStaffToPartSplit({ musicXml: short })
@@ -95,9 +102,13 @@ try {
     '<backup><duration>4</duration></backup>' + note('C', 2, 4)) })
   check(new DOMParser().parseFromString(localPlay.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P1"] other-play[type="start"]').length === 1, 'local playback label is not a span')
   const host = document.querySelector('#host'), sent = []
+  let prepareWait = null, prepareEntered = false
   const service = {
     loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],
-    prepareScoreUpload: input => prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-23T00:00:00Z' }),
+    prepareScoreUpload: async input => {
+      if (prepareWait) { prepareEntered = true;await prepareWait;prepareWait = null }
+      return prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-23T00:00:00Z' })
+    },
     send: async input => { sent.push(input);return { ok: false, recipients: [] } },
   }
   const handle = mountTeacherAssignmentComposerUi({ root: document, host, service, createDraftId: () => 'browser-draft' })
@@ -113,10 +124,17 @@ try {
   button('Keman ve piyano partilerini ayır').click()
   await wait(() => !button('Ayırmayı uygula').hidden)
   check(sent.length === 0, 'preview must not send')
-  button('Ayırmayı uygula').click()
-  await wait(() => !button('Ayırmayı geri al').hidden)
   host.querySelector('[name="assignmentTitle"]').value = 'Etüt'
   host.querySelector('[name="studentId"]').checked = true
+  let releasePrepare
+  prepareWait = new Promise(resolve => { releasePrepare = resolve })
+  button('Ayırmayı uygula').click()
+  await wait(() => prepareEntered)
+  check(host.querySelector('button[type="submit"]').disabled, 'send waits for confirmed split preparation')
+  host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  check(sent.length === 0, 'programmatic submit cannot send the original during split apply')
+  releasePrepare()
+  await wait(() => !button('Ayırmayı geri al').hidden)
   host.querySelector('form').requestSubmit()
   await wait(() => sent.length === 1 && !host.querySelector('button[type="submit"]').disabled)
   const doc = new DOMParser().parseFromString(sent[0].scoreUpload.musicXml, 'application/xml')
