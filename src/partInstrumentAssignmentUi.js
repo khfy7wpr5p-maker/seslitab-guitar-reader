@@ -47,6 +47,7 @@ export function mountPartInstrumentAssignmentUi({ root, host, getUpload, prepare
     selectors = parts.map(part => {
       const label = root.createElement('label');label.textContent = `${part.name} (${part.partId})`
       const select = root.createElement('select');select.name = 'partInstrument:' + part.partId
+      select.setAttribute('aria-label', `${part.name} (${part.partId})`)
       for (const [value, title] of [['', 'Enstrüman seçin'], ...OPTIONS]) {
         const option = root.createElement('option');option.value = value;option.textContent = title;select.appendChild(option)
       }

@@ -47,6 +47,8 @@ test('already separate parts expose assignment choices and send the confirmed XM
   assert.equal(button(h, 'Keman ve piyano partilerini ayır').disabled, true)
   assert.ok(button(h, 'Partilere enstrüman ata'))
   await h.preview()
+  assert.equal(h.host.querySelector('select[name="partInstrument:lead"]').getAttribute('aria-label'), 'Voice (lead)')
+  assert.equal(h.host.querySelector('select[name="partInstrument:bass"]').getAttribute('aria-label'), 'Voice (bass)')
   await button(h, 'Enstrüman atamasını uygula').dispatchEventAsync({ type: 'click' })
   await h.submit()
   assert.equal(h.sent.length, 1)
