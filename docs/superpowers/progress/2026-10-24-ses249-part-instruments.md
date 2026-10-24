@@ -1,0 +1,12 @@
+# Execution ledger — plan: docs/superpowers/plans/2026-10-24-ses249-part-instruments.md
+
+- Approved scope: implement the reviewed approach with broad valid/invalid input coverage; preserve homework delivery.
+- Baselines: Teacher c38be721f19bf8757990000227e17f02949146a9; Student 16a944f44e335d80b8b9a637fa0eea604f256ad0. Independent linked worktrees; original review checkouts untouched.
+- Ruling: use standard derived XML declarations plus an explicit version marker rather than a new package field; all three existing strict package boundaries reject uncoordinated fields. Cost: new producer must follow the upgraded consumer when released.
+- Pre-flight shared interfaces: Teacher marker/declarations -> Student routing; Teacher applied upload -> existing revalidation/fingerprint/delivery; UI pending state -> send/reset ownership. One integration owner, no concurrent writers.
+- Cloud skill helper scripts have no executable local path; task state and evidence are recorded here directly.
+- Task 1: initial missing-boundary assertion RED, then preview/confirmation/core tests GREEN. Additional schema-order and duplicate global ID regressions reproduced RED and fixed GREEN. Full Vals bodies retained: 108+108 measures, 315/524 raw notes including 47 target chord members.
+- Task 2: Student marked-routing suite initially 17 failures; implementation GREEN. Full Student suite 801/801 PASS, zero skips. PWA new-module cache regression RED→GREEN, v46 migration included.
+- Task 3: missing multipart controls and changed-draft regression RED→GREEN. Native component preview/apply/undo, pending ordinary/request-conversion send, replacement, destruction, exact retry and restored bytes covered. Changed bytes after an attempted send receive a fresh draft; exact retries keep their original draft.
+- Task 4: Vals actual upload→isolated authorized preparation→delivery→Student read PASS under unchanged package schema. Browser qualification extended to the distinct Vals fixture plus original pilot and legacy SCORE/TAB/CHORD_BOARD.
+- Environment: locked npm ci succeeded with no dependency or lockfile changes. Browser download returned a truncated ZIP; local full Teacher suite retains the known missing-Chromium iframe failure. Baseline before UI changes: 3030 pass / 36 skip / 1 environment failure (3067 total incl. new core tests). New code must pass native Chromium/WebKit in exact-candidate CI before readiness is claimed.

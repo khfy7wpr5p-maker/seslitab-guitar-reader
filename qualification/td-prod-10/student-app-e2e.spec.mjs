@@ -8,6 +8,7 @@ import {
   TD_PROD_10_FIXTURE,
   SES248_FIXTURE,
   SES248_EXPECTED_EVENTS,
+  SES249_FIXTURE,
 } from "./support/td-prod-10-generated-fixture.mjs";
 
 const E2E_PATH = "/__td-prod-10__/";
@@ -343,6 +344,20 @@ await test(
       // A standalone SCORE uses the persistent Student navigation, not the
       // Piece Workspace's back control.
       await page.getByRole("button", { name: "Benim Çalışmalarım", exact: true }).click();
+      await page.getByRole('button', { name: SES249_FIXTURE.package.title, exact: true }).click();
+      assert.equal(await eventually(() => visibleScoreSvg(page)), true, '108-measure Vals renders after actual Teacher instrument assignment and delivery');
+      const valsEvidence = await page.evaluate(() => {
+        const proof = globalThis.__SES249_QUALIFICATION__;
+        return { sourceExact: proof.sourceExact, measures: proof.plan?.measures.length,
+          total: proof.plan?.notes.length, violin: proof.plan?.notes.filter(n => n.partId === 'P1').length,
+          piano: proof.plan?.notes.filter(n => n.partId === 'P2').length, mapping: proof.partInstruments };
+      });
+      assert.deepEqual(valsEvidence, { sourceExact: true, measures: 108, total: 783, violin: 259, piano: 524, mapping: { P1: 'VIOLIN', P2: 'GRAND_PIANO' } });
+      const beforeVals = await page.evaluate(() => globalThis.__SES248_AUDIO__.starts.length);
+      await page.getByRole('button', { name: 'Dinle', exact: true }).click();
+      assert.equal(await eventually(() => page.evaluate(before => globalThis.__SES248_AUDIO__.starts.length >= before + 2 &&
+        globalThis.__SES249_QUALIFICATION__.positions.some(p => p.playing && p.beat > 0), beforeVals), { timeoutMs: 45000 }), true);
+      await page.getByRole('button', { name: 'Benim Çalışmalarım', exact: true }).click();
       // Return to the original piece for its existing offline/reconnect checks.
       await page.getByRole("button", { name: TD_PROD_10_FIXTURE.piece.title, exact: true }).click();
 

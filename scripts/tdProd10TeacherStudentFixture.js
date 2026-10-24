@@ -71,7 +71,7 @@ globalThis.XMLSerializer =
   globalThis.XMLSerializer ?? SmoosicTestXMLSerializer
 
 export const TD_PROD_10_STUDENT_APP_SHA =
-  '70a484dc06201ec8a08fbc41b5b60a0a1d5044c5'
+  'df4b0d0a80f6254f830ba068ea2fe3b7bce8fed2'
 
 const TEACHER_ID = 'td-prod-10-teacher-a'
 const TEACHER_SUBJECT = 'td-prod-10-uid-teacher'
@@ -366,7 +366,7 @@ async function createScoreItem({ musicXml = FINAL_XML, guitarTabMusicXml = TAB_X
       packageId:
         `${prefix}-score-only-package-a`,
       title:
-        prefix === 'ses248' ? 'SES-248 Fikrimin İnce Gülü' : 'TD-PROD-10 SCORE-only Etüdü',
+        prefix === 'ses248' ? 'SES-248 Fikrimin İnce Gülü' : prefix === 'ses249' ? 'SES-249 Vals' : 'TD-PROD-10 SCORE-only Etüdü',
       practice: {
         tempoBpm: 60,
         allowTempoChange: true,
@@ -807,8 +807,8 @@ export async function buildTdProd10QualificationFixture() {
 
 // Qualification only: uses real package and delivery services with an isolated
 // in-memory repository and fixture identities, never a live student account.
-export async function buildSes248StudentQualificationFixture({ musicXml } = {}) {
-  const { scoreOnly } = await createScoreItem({ musicXml, guitarTabMusicXml: null, prefix: 'ses248' })
+export async function buildSes248StudentQualificationFixture({ musicXml, prefix = 'ses248' } = {}) {
+  const { scoreOnly } = await createScoreItem({ musicXml, guitarTabMusicXml: null, prefix })
   const base = scoreOnly.package
   const selected = Object.freeze({ assignment: scoreOnly.assignment,
     package: createStudentPrivatePracticePackageV1({

@@ -56,6 +56,7 @@ import {
 import {
   TD_PROD_10_FIXTURE,
   SES248_FIXTURE,
+  SES249_FIXTURE,
 } from "./td-prod-10-generated-fixture.mjs";
 
 const root = document.querySelector("#app");
@@ -180,6 +181,14 @@ Object.defineProperty(globalThis, "__SES248_QUALIFICATION__", {
     positions: pilotPositions,
   }),
 });
+const valsPlaybackContext = playbackPort.getScoreFollowPlaybackContextForPackage(SES249_FIXTURE.package);
+const valsPositions = [];
+playbackPort.subscribePositionForPackage(SES249_FIXTURE.package, snapshot => valsPositions.push(snapshot));
+Object.defineProperty(globalThis, '__SES249_QUALIFICATION__', { value: Object.freeze({
+  plan: valsPlaybackContext?.plan ?? null, partInstruments: valsPlaybackContext?.partInstruments ?? null,
+  sourceExact: valsPlaybackContext?.timingProvenance?.musicXml === SES249_FIXTURE.package.content.score.data,
+  positions: valsPositions,
+}) });
 const scoreFollowCoordinator =
   createScoreFollowCoordinator({
     notationAdapter,
