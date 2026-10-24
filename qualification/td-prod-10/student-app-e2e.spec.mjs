@@ -32,6 +32,7 @@ const E2E_DOCUMENT = `<!doctype html>
   </head>
   <body>
     <div id="app"></div>
+    <script src="/vendor/st-score-audio/st-score-audio-engine.js"></script>
     <script type="module" src="/browser-tests/support/td-prod-10-e2e-bootstrap.mjs"></script>
   </body>
 </html>`;
@@ -173,6 +174,8 @@ await test(
           `${baseUrl}${E2E_PATH}`,
         );
       assert.equal(response?.status(), 200);
+      assert.equal(await page.evaluate(() => globalThis.STScoreAudioEngine?.version), "0.2.0",
+        "the qualification page must load the same real instrument runtime as current Student");
 
       await page
         .locator("[data-sign-in-email]")
