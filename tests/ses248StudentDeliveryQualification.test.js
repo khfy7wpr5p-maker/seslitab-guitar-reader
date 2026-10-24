@@ -20,6 +20,8 @@ test('PDF-corrected SES-248 pilot survives Teacher upload, authorized delivery a
   assert.equal(fixture.package.content.score.data, preview.derivedMusicXml)
   assert.equal(fixture.item.package.content.score.data, preview.derivedMusicXml)
   assert.equal(fixture.package.content.guitarTab, null)
+  assert.equal(fixture.package.playbackInstrument, 'VIOLIN')
+  assert.deepEqual(fixture.package.content.violin, { schemaVersion: 1, targetPartId: 'P1', position: 1 })
   assert.equal(fixture.package.publication.recipientStudentId, 'td-prod-10-student-a')
   assert.equal(fixture.assignmentId, 'ses248-score-only-a')
 })

@@ -37,6 +37,7 @@ import {
 import {
   createWebAudioPianoEngine,
 } from "../../src/playback/webAudioPianoEngine.js";
+import { createScoreAudioVoiceAdapter } from "../../src/playback/scoreAudioVoiceAdapter.js";
 import {
   createStudentAppController,
 } from "../../src/ui/studentAppController.js";
@@ -150,14 +151,17 @@ const AudioContextCtor =
   globalThis.webkitAudioContext;
 const audioContextSupported =
   typeof AudioContextCtor === "function";
+let sharedAudioContext = null;
+const audioContextFactory = () => {
+  if (sharedAudioContext === null && typeof AudioContextCtor === "function") sharedAudioContext = new AudioContextCtor();
+  return sharedAudioContext;
+};
 const playbackEngine =
   createWebAudioPianoEngine({
-    audioContextFactory: () =>
-      typeof AudioContextCtor === "function"
-        ? new AudioContextCtor()
-        : null,
+    audioContextFactory,
     audioContextSupported,
     sampleBank,
+    scoreAudioVoice: createScoreAudioVoiceAdapter({ runtime: globalThis.STScoreAudioEngine, audioContextFactory }),
   });
 const playbackPort =
   createStudentPlaybackPort({
@@ -165,12 +169,13 @@ const playbackPort =
     engine: playbackEngine,
   });
 // Observe the real resolver and engine; never substitute a playback plan or audio.
-const pilotPlaybackContext = playbackPlanResolver.resolvePackageContext(SES248_FIXTURE.package);
+const pilotPlaybackContext = playbackPort.getScoreFollowPlaybackContextForPackage(SES248_FIXTURE.package);
 const pilotPositions = [];
 playbackPort.subscribePositionForPackage(SES248_FIXTURE.package, snapshot => pilotPositions.push(snapshot));
 Object.defineProperty(globalThis, "__SES248_QUALIFICATION__", {
   value: Object.freeze({
     plan: pilotPlaybackContext?.plan ?? null,
+    partInstruments: pilotPlaybackContext?.partInstruments ?? null,
     sourceExact: pilotPlaybackContext?.timingProvenance?.musicXml === SES248_FIXTURE.package.content.score.data,
     positions: pilotPositions,
   }),
