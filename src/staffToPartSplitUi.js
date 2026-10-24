@@ -64,5 +64,9 @@ export function mountStaffToPartSplitUi({ root, host, getUpload, prepareUpload, 
     if (applied && !pending && current(generation, applied)) { onRestore(source);reset() }
   })
   render()
-  return Object.freeze({ setUpload: reset, invalidate: reset, invalidatePending() { generation += 1;setPending(false);preview = null;if (!applied) source = null;render() }, destroy() { destroyed = true;generation += 1;setPending(false);host.replaceChildren() } })
+  return Object.freeze({ setUpload: reset, invalidate: reset,
+    rebindAppliedUpload(previous, next) {
+      if (!destroyed && !pending && applied === previous && next?.musicXml === previous.musicXml && next.musicXmlFingerprint === previous.musicXmlFingerprint) { applied = next;render() }
+    },
+    invalidatePending() { generation += 1;setPending(false);preview = null;if (!applied) source = null;render() }, destroy() { destroyed = true;generation += 1;setPending(false);host.replaceChildren() } })
 }

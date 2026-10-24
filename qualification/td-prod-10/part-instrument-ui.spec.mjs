@@ -52,6 +52,7 @@ test('SES-249 native Teacher assignment preserves Vals, produces real Student au
     await page.getByLabel('Voice (P2)', { exact: true }).selectOption('GRAND_PIANO');
     await page.getByRole('button', { name: 'Enstrüman atamasını önizle', exact: true }).click();
     await page.getByRole('button', { name: 'Enstrüman atamasını uygula', exact: true }).click();
+    await page.getByRole('button', { name: 'Atanan sesleri çal', exact: true }).waitFor({ state: 'visible' });
     const evidence = await page.evaluate(() => {
       const t = globalThis.__SES249_NATIVE__, p = t.port.getScoreFollowPlaybackContextForPackage(t.pkg);
       const bodies = xml => Array.from(new DOMParser().parseFromString(xml, 'application/xml').documentElement.children).filter(n => n.localName === 'part').map(n => new XMLSerializer().serializeToString(n));
@@ -71,12 +72,15 @@ test('SES-249 native Teacher assignment preserves Vals, produces real Student au
     await context.setOffline(false);
     await page.evaluate(() => globalThis.__SES249_NATIVE__.engine.pause());
     const ns = await page.evaluate(async () => {
-      const xml = '<mx:score-partwise xmlns:mx="urn:musicxml-test"><mx:part-list><mx:score-part id="lead"><mx:part-name>Voice</mx:part-name></mx:score-part><mx:score-part id="bass"><mx:part-name>Voice</mx:part-name></mx:score-part></mx:part-list><mx:part id="lead"><mx:measure number="1"><mx:note><mx:pitch><mx:step>D</mx:step><mx:octave>5</mx:octave></mx:pitch><mx:duration>1</mx:duration></mx:note></mx:measure></mx:part><mx:part id="bass"><mx:measure number="1"><mx:note><mx:pitch><mx:step>C</mx:step><mx:octave>3</mx:octave></mx:pitch><mx:duration>1</mx:duration></mx:note></mx:measure></mx:part></mx:score-partwise>';
+      const prefixed = '<mx:score-partwise xmlns:mx="urn:musicxml-test"><mx:part-list><mx:score-part id="lead"><mx:part-name>Voice</mx:part-name></mx:score-part><mx:score-part id="bass"><mx:part-name>Voice</mx:part-name></mx:score-part></mx:part-list><mx:part id="lead"><mx:measure number="1"><mx:note><mx:pitch><mx:step>D</mx:step><mx:octave>5</mx:octave></mx:pitch><mx:duration>1</mx:duration></mx:note></mx:measure></mx:part><mx:part id="bass"><mx:measure number="1"><mx:note><mx:pitch><mx:step>C</mx:step><mx:octave>3</mx:octave></mx:pitch><mx:duration>1</mx:duration></mx:note></mx:measure></mx:part></mx:score-partwise>';
+      let prefixedRejected = false;
+      try { await globalThis.__SES249_NATIVE__.preparePartInstrumentAssignment({ musicXml: prefixed, assignments: [] }); } catch (error) { prefixedRejected = error.message === 'part-instruments-invalid-xml'; }
+      const xml = prefixed.replace(/(<\/?)mx:/g, '$1').replace('xmlns:mx=', 'xmlns=');
       const result = await globalThis.__SES249_NATIVE__.preparePartInstrumentAssignment({ musicXml: xml, assignments: [{ partId: 'lead', instrumentId: 'VIOLIN' }, { partId: 'bass', instrumentId: 'GRAND_PIANO' }] });
       const doc = new DOMParser().parseFromString(result.derivedMusicXml, 'application/xml');
-      return { markerNamespace: doc.getElementsByTagNameNS('urn:musicxml-test', 'miscellaneous-field')[0]?.namespaceURI, notes: doc.getElementsByTagNameNS('urn:musicxml-test', 'note').length, errors: doc.getElementsByTagName('parsererror').length };
+      return { prefixedRejected, markerNamespace: doc.getElementsByTagNameNS('urn:musicxml-test', 'miscellaneous-field')[0]?.namespaceURI, notes: doc.getElementsByTagNameNS('urn:musicxml-test', 'note').length, errors: doc.getElementsByTagName('parsererror').length };
     });
-    assert.deepEqual(ns, { markerNamespace: 'urn:musicxml-test', notes: 2, errors: 0 });
+    assert.deepEqual(ns, { prefixedRejected: true, markerNamespace: 'urn:musicxml-test', notes: 2, errors: 0 });
     await page.getByRole('button', { name: 'Enstrüman atamasını geri al', exact: true }).click();
     assert.equal(await page.evaluate(() => globalThis.__SES249_NATIVE__.upload.musicXml === globalThis.__SES249_NATIVE__.source), true);
     assert.deepEqual(errors, []);

@@ -129,6 +129,7 @@ export function mountTeacherAssignmentComposerUi({
   let assignmentEditing = false
   let rosterReady = false
   let requestConversion = null
+  let requestConversionDraft = null
   const attemptedDrafts = new Set()
 
   function prepareEditedUpload(musicXml) {
@@ -137,7 +138,7 @@ export function mountTeacherAssignmentComposerUi({
   }
 
   function restoreEditedUpload(upload) {
-    const restoredDraftId = attemptedDrafts.has(draftId) ? nextDraftId() : (upload.draftId ?? draftId)
+    const restoredDraftId = attemptedDrafts.has(draftId) || attemptedDrafts.has(upload.draftId) ? nextDraftId() : (upload.draftId ?? draftId)
     scoreUpload = restoredDraftId === upload.draftId ? upload : Object.freeze({ ...upload, draftId: restoredDraftId })
     draftId = restoredDraftId
   }
@@ -258,7 +259,7 @@ export function mountTeacherAssignmentComposerUi({
   scoreFieldset.appendChild(splitHost)
   const splitUi = mountStaffToPartSplitUi({
     root, host: splitHost, getUpload: () => scoreUpload,
-    isBusy: () => sending || destroyed || assignmentPending || assignmentEditing || partAssignmentUi.isApplied(),
+    isBusy: () => sending || destroyed || requestConversionDraft !== null || assignmentPending || assignmentEditing || partAssignmentUi.isApplied(),
     onPendingChange(value) { splitPending = value;updateSubmitState() },
     prepareUpload: prepareEditedUpload,
     onApply(upload) { scoreUpload = upload;draftId = upload.draftId ?? draftId;partAssignmentUi.setUpload(upload);updateViolinPartSelection();scoreStatus.textContent = 'İki partili MusicXML hazır.' },
@@ -269,7 +270,7 @@ export function mountTeacherAssignmentComposerUi({
   scoreFieldset.appendChild(assignmentHost)
   const partAssignmentUi = mountPartInstrumentAssignmentUi({
     root, host: assignmentHost, getUpload: () => scoreUpload,
-    isBusy: () => sending || destroyed || splitPending,
+    isBusy: () => sending || destroyed || requestConversionDraft !== null || splitPending,
     getSettings: () => ({ instrument: instrumentSelect.value, violinTarget: violinPartSelect.value }),
     onPendingChange(value) { assignmentPending = value;updateSubmitState() },
     onEditingChange(value) { assignmentEditing = value;updateSubmitState() },
@@ -283,7 +284,8 @@ export function mountTeacherAssignmentComposerUi({
       scoreStatus.textContent = 'Parti enstrümanları hazır.'
     },
     onRestore(upload, settings) {
-      restoreEditedUpload(upload);instrumentSelect.value = settings.instrument;instrumentLabel.hidden = Boolean(upload.partInstruments)
+      restoreEditedUpload(upload);splitUi.rebindAppliedUpload(upload, scoreUpload)
+      instrumentSelect.value = settings.instrument;instrumentLabel.hidden = Boolean(upload.partInstruments)
       updateViolinPartSelection();violinPartSelect.value = settings.violinTarget
       scoreStatus.textContent = 'Kaynak MusicXML geri yüklendi.'
     },
@@ -436,6 +438,7 @@ export function mountTeacherAssignmentComposerUi({
     scoreFileSelected = false
     selectedSnapshots = []
     attemptedDrafts.clear()
+    requestConversionDraft = null
 
     titleInput.value = ''
     noteInput.value = ''
@@ -477,6 +480,7 @@ export function mountTeacherAssignmentComposerUi({
   )
 
   addChord.addEventListener('click', () => {
+    if (sending || destroyed || requestConversionDraft !== null) return
     const snapshot =
       getChordBoardVoicings(
         symbolSelect.value,
@@ -509,7 +513,7 @@ export function mountTeacherAssignmentComposerUi({
   fileInput.addEventListener(
     'change',
     async () => {
-      if (sending || destroyed) return
+      if (sending || destroyed || requestConversionDraft !== null) return
       if (attemptedDrafts.has(draftId)) draftId = nextDraftId()
       const uploadToken = ++uploadGeneration
       scoreUpload = null
@@ -564,7 +568,11 @@ export function mountTeacherAssignmentComposerUi({
   )
 
   function updateSubmitState() {
-    fileInput.disabled = sending
+    const conversionLocked = requestConversionDraft !== null
+    fileInput.disabled = sending || conversionLocked
+    scoreFieldset.disabled = conversionLocked
+    chordFieldset.disabled = conversionLocked
+    noteInput.disabled = conversionLocked
     submit.disabled =
       sending || destroyed || splitPending || assignmentPending || assignmentEditing ||
       (requestConversion === null && !rosterReady)
@@ -697,8 +705,7 @@ export function mountTeacherAssignmentComposerUi({
         'Gönderiliyor.'
       try {
         if (requestConversion !== null) {
-          await requestConversion.onSubmit(
-            Object.freeze({
+          requestConversionDraft ??= Object.freeze({
               teacherNote: noteInput.value,
               scoreUpload,
               guitarTabUpload: null,
@@ -706,8 +713,9 @@ export function mountTeacherAssignmentComposerUi({
               playbackInstrument:
                 instrumentSelect.value,
               ...violinSelection,
-            }),
-          )
+            })
+          updateSubmitState()
+          await requestConversion.onSubmit(requestConversionDraft)
           status.textContent = 'Gönderildi.'
           leaveRequestConversion()
           resetCompletedAssignment()
@@ -742,7 +750,9 @@ export function mountTeacherAssignmentComposerUi({
         }
       } catch {
         status.textContent =
-          'Gönderilemedi. Tekrar deneyin.'
+          requestConversionDraft !== null
+            ? 'Gönderim sonucu doğrulanamadı. İçerik korundu ve kilitlendi; aynı içerikle tekrar deneyin.'
+            : 'Gönderilemedi. Tekrar deneyin.'
       } finally {
         sending = false
         updateSubmitState()

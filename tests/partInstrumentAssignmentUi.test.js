@@ -5,12 +5,13 @@ import { SmoosicTestDOMParser, SmoosicTestXMLSerializer } from './support/smoosi
 import { mountTeacherAssignmentComposerUi } from '../src/teacherAssignmentComposerUi.js'
 import { prepareTeacherAssignmentScoreUpload } from '../src/services/teacherAssignmentComposerScoreUpload.js'
 import { readMusicXmlPartInstrumentMap } from '../src/services/musicXmlPartInstrumentAssignment.js'
+import { score } from './support/staffSplitFixture.js'
 
 globalThis.DOMParser = SmoosicTestDOMParser
 globalThis.XMLSerializer = SmoosicTestXMLSerializer
 const source = '<score-partwise><part-list><score-part id="lead"><part-name>Voice</part-name></score-part><score-part id="bass"><part-name>Voice</part-name></score-part></part-list><part id="lead"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration></note></measure></part><part id="bass"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration></note></measure></part></score-partwise>'
 const button = (h, label) => h.host.querySelectorAll('button').find(b => b.textContent === label)
-async function harness({ gate, conversion = false } = {}) {
+async function harness({ gate, conversion = false, conversionFailure = false } = {}) {
   const root = createFakeDocument(), host = root.createElement('div'), sent = []
   let draft = 0
   const handle = mountTeacherAssignmentComposerUi({ root, host, createDraftId: () => 'assignment-' + ++draft,
@@ -22,7 +23,7 @@ async function harness({ gate, conversion = false } = {}) {
       send: async input => { sent.push(input);return { ok: false, recipients: [] } },
     } })
   await new Promise(r => setImmediate(r))
-  if (conversion) handle.startRequestConversion({ title: 'Vals', displayNameOrNickname: 'Ada', targetState: 'ACTIVE', onSubmit: async input => { sent.push(input) } })
+  if (conversion) handle.startRequestConversion({ title: 'Vals', displayNameOrNickname: 'Ada', targetState: 'ACTIVE', onSubmit: async input => { sent.push(input);if (conversionFailure) throw new Error('conversion-response-lost') } })
   const choose = async (musicXml = source) => {
     const input = host.querySelector('input[name="scoreMusicXml"]')
     input.files = [{ name: 'piece.musicxml', size: musicXml.length, text: async () => musicXml }]
@@ -121,5 +122,39 @@ test('changing instruments after a failed send creates a new draft while exact r
   await button(h, 'Enstrüman atamasını geri al').dispatchEventAsync({ type: 'click' });await h.submit()
   assert.notEqual(h.sent[3].draftId, h.sent[1].draftId)
   assert.equal(h.sent[3].scoreUpload.musicXml, source)
+  h.handle.destroy()
+})
+
+test('failed delivery followed by assignment undo and split undo restores original bytes with a fresh retry identity', async () => {
+  const h = await harness(), original = score()
+  await h.choose(original)
+  await button(h, 'Keman ve piyano partilerini ayır').dispatchEventAsync({ type: 'click' })
+  await button(h, 'Ayırmayı uygula').dispatchEventAsync({ type: 'click' })
+  await button(h, 'Partilere enstrüman ata').dispatchEventAsync({ type: 'click' })
+  h.host.querySelector('select[name="partInstrument:P1"]').value = 'VIOLIN'
+  h.host.querySelector('select[name="partInstrument:P2"]').value = 'GRAND_PIANO'
+  await button(h, 'Enstrüman atamasını önizle').dispatchEventAsync({ type: 'click' })
+  await button(h, 'Enstrüman atamasını uygula').dispatchEventAsync({ type: 'click' })
+  await h.submit()
+  await button(h, 'Enstrüman atamasını geri al').dispatchEventAsync({ type: 'click' })
+  await button(h, 'Ayırmayı geri al').dispatchEventAsync({ type: 'click' })
+  await h.submit();await h.submit()
+  assert.equal(h.sent[1].scoreUpload.musicXml, original)
+  assert.notEqual(h.sent[1].draftId, h.sent[0].draftId)
+  assert.equal(h.sent[1].draftId, h.sent[1].scoreUpload.draftId)
+  assert.equal(h.sent[2].draftId, h.sent[1].draftId)
+  h.handle.destroy()
+})
+
+test('request conversion failed attempt keeps the exact attempted content locked for retry', async () => {
+  const h = await harness({ conversion: true, conversionFailure: true })
+  await h.preview();await button(h, 'Enstrüman atamasını uygula').dispatchEventAsync({ type: 'click' })
+  await h.submit()
+  assert.equal(h.host.querySelector('input[name="scoreMusicXml"]').disabled, true)
+  await button(h, 'Enstrüman atamasını geri al').dispatchEventAsync({ type: 'click' })
+  await h.choose(source.replace('<step>D</step>', '<step>E</step>'))
+  h.host.querySelector('select[name="playbackInstrument"]').value = 'CLASSICAL_GUITAR'
+  await h.submit()
+  assert.deepEqual(h.sent[1], h.sent[0], 'a possibly completed conversion only retries its exact attempted payload')
   h.handle.destroy()
 })
