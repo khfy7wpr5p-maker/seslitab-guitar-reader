@@ -317,10 +317,12 @@ await test(
       assert.equal(await eventually(() => visibleScoreSvg(page)), true, "24-measure SES-248 pilot must render in Student App");
       const pilotEvidence = await page.evaluate(() => {
         const proof = globalThis.__SES248_QUALIFICATION__;
-        return { notes: proof.plan?.notes, measures: proof.plan?.measures.length, sourceExact: proof.sourceExact };
+        return { notes: proof.plan?.notes, measures: proof.plan?.measures.length, sourceExact: proof.sourceExact,
+          partInstruments: proof.partInstruments };
       });
       assert.equal(pilotEvidence.sourceExact, true);
       assert.equal(pilotEvidence.measures, 24);
+      assert.deepEqual(pilotEvidence.partInstruments, { P1: 'VIOLIN', P2: 'GRAND_PIANO' });
       assert.deepEqual(pilotEvidence.notes, SES248_EXPECTED_EVENTS, "all 189 Student playback pitches, onsets and durations must match the independently calculated source");
       await page.getByRole("button", { name: "Dinle", exact: true }).click();
       assert.equal(await eventually(() => page.evaluate(() => {

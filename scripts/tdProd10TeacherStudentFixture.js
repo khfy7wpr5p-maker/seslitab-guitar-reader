@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { createStudentPrivatePracticePackageV1 } from '../src/services/studentPracticePackageV1.js'
+import { resolveViolinAssignmentTarget } from '../src/services/violinAssignmentTarget.js'
 
 import {
   SmoosicTestDOMParser,
@@ -69,7 +71,7 @@ globalThis.XMLSerializer =
   globalThis.XMLSerializer ?? SmoosicTestXMLSerializer
 
 export const TD_PROD_10_STUDENT_APP_SHA =
-  'b084b691820e8a10e2c141857951ce3aa8fc57e6'
+  '70a484dc06201ec8a08fbc41b5b60a0a1d5044c5'
 
 const TEACHER_ID = 'td-prod-10-teacher-a'
 const TEACHER_SUBJECT = 'td-prod-10-uid-teacher'
@@ -807,8 +809,17 @@ export async function buildTdProd10QualificationFixture() {
 // in-memory repository and fixture identities, never a live student account.
 export async function buildSes248StudentQualificationFixture({ musicXml } = {}) {
   const { scoreOnly } = await createScoreItem({ musicXml, guitarTabMusicXml: null, prefix: 'ses248' })
+  const base = scoreOnly.package
+  const selected = Object.freeze({ assignment: scoreOnly.assignment,
+    package: createStudentPrivatePracticePackageV1({
+      packageId: base.packageId, workId: base.workId, title: base.title,
+      revisionId: base.approvedRevision.revisionId, approvedAt: base.approvedRevision.approvedAt,
+      studentId: base.publication.recipientStudentId, musicXml,
+      guitarTabMusicXml: null, canonicalEvents: base.content.canonicalEvents, practice: base.practice,
+      playbackInstrument: 'VIOLIN', violinTargetPartId: resolveViolinAssignmentTarget(musicXml, 'P1'),
+    }) })
   const harness = createDeliveryHarness()
-  await harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items: [scoreOnly] })
+  await harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items: [selected] })
   await harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds: [scoreOnly.assignment.assignmentId] })
   const view = await harness.student.getAssignment({ providerSubject: STUDENT_A_SUBJECT, deliveryId: scoreOnly.assignment.assignmentId })
   assert.equal(view.package.content.score.data, musicXml)
