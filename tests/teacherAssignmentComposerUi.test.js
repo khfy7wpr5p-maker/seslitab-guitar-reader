@@ -351,3 +351,33 @@ test('SES-147 send stays disabled until authorized roster readiness and remains 
     true,
   )
 })
+
+test('SES-248 composer sends derived parts only after explicit preview confirmation', async () => {
+  const { SmoosicTestDOMParser, SmoosicTestXMLSerializer } = await import('./support/smoosicXmlDom.js')
+  const { score } = await import('./support/staffSplitFixture.js')
+  const { prepareTeacherAssignmentScoreUpload } = await import('../src/services/teacherAssignmentComposerScoreUpload.js')
+  globalThis.DOMParser = SmoosicTestDOMParser
+  globalThis.XMLSerializer = SmoosicTestXMLSerializer
+  const root = createFakeDocument(), host = root.createElement('div'), sent = []
+  const service = {
+    loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],
+    prepareScoreUpload: input => prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-23T00:00:00Z' }),
+    send: async input => { sent.push(input);return { ok: false, recipients: [] } },
+  }
+  const handle = mountTeacherAssignmentComposerUi({ root, host, service, createDraftId: () => 'split-draft' })
+  await settle()
+  const file = host.querySelector('input[name="scoreMusicXml"]')
+  file.files = [{ name: 'piano.musicxml', size: 1000, text: async () => score() }]
+  await file.dispatchEventAsync({ type: 'change' })
+  const find = label => host.querySelectorAll('button').find(b => b.textContent === label)
+  assert.ok(find('Keman ve piyano partilerini ayır'))
+  await find('Keman ve piyano partilerini ayır').dispatchEventAsync({ type: 'click' })
+  await find('Ayırmayı uygula').dispatchEventAsync({ type: 'click' })
+  host.querySelector('input[name="assignmentTitle"]').value = 'Etüt'
+  host.querySelector('input[name="studentId"]').checked = true
+  await host.querySelector('form').dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  assert.match(sent[0].scoreUpload.musicXml, /<part id="P1">/)
+  assert.match(sent[0].scoreUpload.musicXml, /<part id="P2">/)
+  assert.equal(sent[0].playbackInstrument, 'GRAND_PIANO')
+  handle.destroy()
+})

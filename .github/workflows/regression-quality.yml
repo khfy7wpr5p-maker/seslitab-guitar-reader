@@ -35,6 +35,20 @@ jobs:
       - name: Install isolated Playwright test dependency
         run: npm install --ignore-scripts --no-save --package-lock=false @playwright/test@1.63.0
 
+      - name: Route Ubuntu package indexes through the reachable HTTPS mirror
+        run: |
+          sudo find /etc/apt -type f \
+            \( -name '*.list' -o -name '*.sources' -o -name 'apt-mirrors.txt' \) \
+            -exec sed -E -i 's#[[:alpha:]]+://azure\.archive\.ubuntu\.com#https://archive.ubuntu.com#g' {} +
+          # Current Ubuntu runners select repositories through this mirror+file list.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            cat /etc/apt/apt-mirrors.txt
+            if grep -Eq 'https?://azure\.archive\.ubuntu\.com([/:[:space:]]|$)' /etc/apt/apt-mirrors.txt; then
+              echo "::error::Ubuntu mirror list still points to Azure after HTTPS routing."
+              exit 1
+            fi
+          fi
+
       - name: Install Chromium and WebKit for Playwright
         run: ./node_modules/.bin/playwright install --with-deps chromium webkit
 

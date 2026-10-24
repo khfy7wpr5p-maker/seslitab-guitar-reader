@@ -32,7 +32,7 @@
     "express": "^4.21.2",
     "firebase-admin": "14.4.0",
     "jszip": "^3.10.1",
-    "multer": "2.4.0",
+    "multer": "2.5.0",
     "pdfjs-dist": "6.2.108"
   },
   "devDependencies": {

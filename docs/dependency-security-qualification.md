@@ -212,3 +212,68 @@ The zero-finding audit gate, historical security overrides, runtime dependencies
 application features and production settings were preserved. No audit findings
 were allowlisted, ignored or hidden. Complete release qualification remains in
 GitHub CI; no production deployment or merge is part of this refresh.
+
+## SES-248 advisory refresh (2026-10-24)
+
+At PR #372 head `dba0ed7ca39ce28278344ef3c493c58ba0b1b3bc`, Dependency
+Security run `40039561106` reported one high production package record
+(`body-parser`) and two high full-graph records (`body-parser`, `zod`). The
+retained CI JSON artifact was downloaded and checked. A fresh local audit later
+reported five package records: four high and one moderate, including subsequently
+published/updated Multer, Undici and fast-uri advisories. These are dependency
+findings; the previous Playwright installation timeout had already been fixed.
+
+The bounded update uses `npm update multer body-parser zod fast-uri undici
+--package-lock-only --ignore-scripts --no-audit --no-fund` after pinning Multer
+2.5.0. It changes eight installed package records, all within their consumers'
+declared ranges and existing major versions:
+
+| Package | Before | After | Consumer |
+| --- | --- | --- | --- |
+| multer | 2.4.0 | 2.5.0 | PDF upload gateway |
+| body-parser | 1.20.8 | 1.20.9 | Express/Firebase CLI |
+| body-parser | 2.3.0 | 2.4.0 | MCP SDK's Express 5 |
+| zod | 4.6.5 | 4.6.7 | Firebase CLI/MCP SDK |
+| fast-uri | 3.1.8 | 3.1.9 | AJV |
+| undici | 6.28.1 | 6.29.1 | Firebase CLI |
+| undici | 8.11.0 | 8.12.3 | node-gyp tooling |
+| qs | 6.16.0 | 6.16.1 | Required by patched body-parser 2 |
+
+Primary advisories:
+[body-parser](https://github.com/advisories/GHSA-27r3-jxmh-p828),
+[Multer](https://github.com/advisories/GHSA-q7qp-rjg7-q26m),
+[Zod](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5),
+[fast-uri](https://github.com/advisories/GHSA-w74x-v6f9-j3xg),
+[Undici](https://github.com/advisories/GHSA-xjj6-f33q-929c).
+SesliTab uses a synchronous Multer file filter; the asynchronous-filter exploit
+was not reproduced against that gateway. The dependency is nevertheless updated
+to its patched release. No override, audit exception or security threshold changes
+are needed.
+
+Fresh verification on Node 24.22.1 / npm 11.9.0:
+
+- Clean `npm ci --ignore-scripts --no-audit --no-fund`: exit 0.
+- Production and full `npm audit --json`: both exit 0, empty inventories and zero
+  findings at every severity. These are live audit results after installation.
+- Security contracts, actual dependency consumers, PDF upload/input handling and
+  exact Teacher-to-Student pilot delivery: 41/41 PASS.
+- New Zod bounded-validation and encoded-URI regressions failed before the update
+  (2001 issues instead of one; encoded input promoted to a javascript scheme) and
+  pass afterward. Valid schema/URI controls remain supported.
+- The isolated compressed-body HTTP probe is a compatibility/draining control:
+  it passes before and after, so it is not evidence of reproducing the prior
+  body-parser vulnerability. It verifies exact parsed content and a subsequent
+  healthy request, with child-process containment and bounded execution.
+- Independent read-only review: no material findings; 10/10 consumer/tooling tests
+  PASS. Installed versions match the lock and satisfy their consumers' ranges and
+  Node 24 engine requirements.
+- Full local npm test: 3058 total, 3021 PASS, 36 SKIP, one environment failure in
+  ceBridgeFixtureSerialization.test.js because Chromium is unavailable. This is
+  not a passing full local suite; fresh browser/emulator acceptance requires CI.
+- Vite application bundle, Firebase CLI version (`15.32.0`) and diff checks PASS.
+  The existing bundle-size advisory remains.
+
+Only dependency declarations/lock, existing version assertions, targeted consumer
+checks and this evidence record change. Application implementation, MusicXML
+conversion, authorization, publication and playback code are unchanged. Complete
+acceptance requires the new commit's CI; no merge or deployment is included.

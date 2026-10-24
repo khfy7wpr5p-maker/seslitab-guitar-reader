@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="tr">
+<meta charset="utf-8">
+<title>SES-248 staff split browser qualification</title>
+<div id="host"></div><pre id="proof">RUNNING</pre><pre id="error"></pre>
+<script type="module">
+import { mountTeacherAssignmentComposerUi } from '../../src/teacherAssignmentComposerUi.js'
+import { prepareTeacherAssignmentScoreUpload } from '../../src/services/teacherAssignmentComposerScoreUpload.js'
+import { note, score } from '../support/staffSplitFixture.js'
+import { prepareStaffToPartSplit } from '../../src/services/musicXmlStaffToPartSplit.js'
+const proof = document.querySelector('#proof')
+const check = (condition, message) => { if (!condition) throw new Error(message) }
+const wait = async predicate => {
+  const deadline = performance.now() + 5000
+  while (!predicate()) {
+    if (performance.now() > deadline) throw new Error('timed out waiting for UI')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+try {
+  const groupStart = '<part-group type="start"><group-name>Ensemble</group-name><group-symbol>brace</group-symbol><group-barline>yes</group-barline></part-group>'
+  const groupStop = '<part-group type="stop"/>'
+  const grouped = score().replace('<part-list>', '<part-list>' + groupStart).replace('</part-list>', groupStop + '</part-list>')
+  const groupedSplit = await prepareStaffToPartSplit({ musicXml: grouped })
+  const groupedList = new DOMParser().parseFromString(groupedSplit.derivedMusicXml, 'application/xml').querySelector('part-list')
+  check([...groupedList.children].map(node => node.localName).join(',') === 'part-group,score-part,score-part,part-group', 'original group encloses both derived parts')
+  check(groupedList.querySelector('group-name').textContent === 'Ensemble' && groupedList.querySelector('group-symbol').textContent === 'brace' && groupedList.querySelector('group-barline').textContent === 'yes', 'group name brace and common barline preserved')
+  const identifiedSource = score().replace('</part-name>', '</part-name><score-instrument id="P0-I1"><instrument-name>Piano</instrument-name></score-instrument><player id="source-player"><player-name>Original performer</player-name></player>')
+    .replace('<measure number="1">', '<measure number="1" id="m1">')
+    .replace('<time>', '<key id="key-1"><fifths>0</fifths></key><time id="time-1">')
+    .replace('</attributes>', '<transpose id="transpose-1"><chromatic>0</chromatic></transpose></attributes>')
+    .replace('<note>', '<direction id="P2"><direction-type><words>pizz.</words></direction-type><staff>02</staff><sound><midi-device id="P0-I1" port="1">Device</midi-device></sound></direction><note>')
+    .replaceAll('<staff>1</staff>', '<staff>+01</staff>').replaceAll('<staff>2</staff>', '<staff>02</staff>')
+    .replace('<note>', '<sound tempo="90" id="tempo-1"/><note>')
+    .replaceAll('</note>', '<play id="P0-I1"><other-play type="technique">pizzicato</other-play></play><listen><assess type="yes" player="source-player"/></listen></note>')
+  const identified = await prepareStaffToPartSplit({ musicXml: identifiedSource })
+  const identifiedDoc = new DOMParser().parseFromString(identified.derivedMusicXml, 'application/xml')
+  check(identifiedDoc.querySelectorAll('measure[id="m1"]').length === 1, 'measure ID stays unique on first part')
+  for (const tag of ['key', 'time', 'transpose']) {
+    check(identifiedDoc.querySelectorAll(tag + '[id="' + tag + '-1"]').length === 1 && identifiedDoc.querySelectorAll(tag).length === 2, 'global attribute content and unique ID retained: ' + tag)
+  }
+  check([...identifiedDoc.querySelectorAll('staff')].every(staff => staff.textContent === '1'), 'equivalent staff integers retain their part ownership')
+  check(identifiedDoc.querySelectorAll('[id="tempo-1"]').length === 1, 'global tempo ID stays unique')
+  check(identifiedDoc.querySelectorAll('sound[tempo="90"]').length === 2, 'both parts retain global tempo')
+  for (const part of identifiedDoc.querySelectorAll('part')) {
+    check([...part.querySelectorAll('play')].every(play => play.getAttribute('id') === part.getAttribute('id') + '-I1'), 'playback IDREF follows its target instrument')
+    check([...part.querySelectorAll('midi-device')].every(device => device.getAttribute('id') === part.getAttribute('id') + '-I1'), 'local MIDI device reference follows its target instrument')
+    const declaration = [...identifiedDoc.querySelectorAll('score-part')].find(entry => entry.getAttribute('id') === part.getAttribute('id'))
+    check(declaration.querySelector('player-name').textContent === 'Original performer' && [...part.querySelectorAll('assess')].every(node => node.getAttribute('player') === declaration.querySelector('player').getAttribute('id')), 'listening references retain their declared player')
+  }
+  check(identifiedDoc.querySelector('direction[id="P2"]') !== null && !identified.parts.some(part => part.partId === 'P2'), 'generated part IDs avoid retained declarations')
+  const full = note('E', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2, 4)
+  for (const moves of ['<forward><duration>2</duration></forward>', '<backup><duration>2</duration></backup>',
+    '<backup><duration>2</duration></backup><forward><duration>2</duration></forward>']) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' + note('C', 2) + moves + note('E', 2, 2, '<chord/>')) }) }
+    catch (error) { rejected = error.code === 'unsupported-chord-anchor' }
+    check(rejected, 'cursor movement requires a fresh chord base')
+  }
+  const short = score(note('E', 1, 2) + '<forward><duration>2</duration></forward>' +
+    '<backup><duration>4</duration></backup>' + note('C', 2, 4) + '<barline><repeat direction="backward"/></barline>')
+  const split = await prepareStaffToPartSplit({ musicXml: short })
+  const splitDoc = new DOMParser().parseFromString(split.derivedMusicXml, 'application/xml')
+  for (const part of splitDoc.querySelectorAll('part')) {
+    check(part.querySelector('measure').lastElementChild.tagName === 'barline', 'right repeat follows padding')
+  }
+  for (const metadata of [
+    '<direction><direction-type><words>pizz.</words></direction-type></direction>',
+    '<harmony><root><root-step>C</root-step></root><kind>major</kind></harmony>',
+    '<sound damper-pedal="yes"/>',
+  ]) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(metadata + full) }) }
+    catch (error) { rejected = error.code?.startsWith('staff-ambiguous') }
+    check(rejected, 'ambiguous metadata must not become global')
+  }
+  const tempo = await prepareStaffToPartSplit({ musicXml: score('<sound tempo="90"/>' + full) })
+  check(new DOMParser().parseFromString(tempo.derivedMusicXml, 'application/xml').querySelectorAll('sound[tempo="90"]').length === 2, 'global tempo preserved')
+  const tremolo = (type, staff) => note('E', staff)
+    .replace('<type>quarter</type>', '<type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>')
+    .replace('</note>', '<notations><ornaments><tremolo type="' + type + '">3</tremolo></ornaments></notations></note>')
+  const arpeggio = (staff, attributes = '') => note('E', staff, 4).replace('</note>', '<notations><arpeggiate' + attributes + '/></notations></note>')
+  for (const body of [
+    tremolo('start', 1) + tremolo('stop', 2),
+    arpeggio(1) + '<backup><duration>4</duration></backup>' + arpeggio(2),
+    arpeggio(1, ' number="01"') + '<backup><duration>4</duration></backup>' + arpeggio(2),
+    arpeggio(1, ' unbroken=" yes "') + '<backup><duration>4</duration></backup>' + note('C', 2, 4),
+  ]) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(body) }) }
+    catch (error) { rejected = error.code?.startsWith('cross-staff') }
+    check(rejected, 'cross-staff ornaments must not become orphan notation')
+  }
+  const localTremolo = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) +
+    '<backup><duration>4</duration></backup>' + tremolo('start', 2) + tremolo('stop', 2)) })
+  check(new DOMParser().parseFromString(localTremolo.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] tremolo').length === 2, 'same-staff tremolo preserved')
+  const wedge = (type, staff) => '<direction><direction-type><wedge type="' + type + '"/></direction-type><staff>' + staff + '</staff></direction>'
+  const hairpin = staff => wedge('crescendo', staff) + note('E', staff, 4) + wedge('stop', staff)
+  const hairpins = await prepareStaffToPartSplit({ musicXml: score(hairpin(1) + '<backup><duration>4</duration></backup>' + hairpin(2)) })
+  const hairpinParts = new DOMParser().parseFromString(hairpins.derivedMusicXml, 'application/xml').querySelectorAll('part')
+  check([...hairpinParts].every(part => part.querySelectorAll('wedge').length === 2), 'independent default-number hairpins preserved')
+  const wave = (type, staff, number = '1') => note('E', staff)
+    .replace('</note>', '<notations><ornaments><wavy-line type="' + type + '" number="' + number + '"/></ornaments></notations></note>')
+  const bracket = (type, staff, chord = false) => note(type === 'top' ? 'E' : 'C', staff, 4, chord ? '<chord/>' : '')
+    .replace('</note>', '<notations><non-arpeggiate type="' + type + '" number="1"/></notations></note>')
+  for (const body of [
+    wave('start', 1, '01') + wave('stop', 2),
+    bracket('top', 1) + '<backup><duration>4</duration></backup>' + bracket('bottom', 2),
+  ]) {
+    let rejected = false
+    try { await prepareStaffToPartSplit({ musicXml: score(body) }) }
+    catch (error) { rejected = error.code?.startsWith('cross-staff') }
+    check(rejected, 'wavy-line and non-arpeggiate links cannot cross derived parts')
+  }
+  const localWave = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) +
+    '<backup><duration>4</duration></backup>' + wave('start', 2, '01') + wave('stop', 2)) })
+  check(new DOMParser().parseFromString(localWave.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] wavy-line').length === 2, 'local wavy-line and numeric identity preserved')
+  const localBracket = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) +
+    '<backup><duration>4</duration></backup>' + bracket('bottom', 2) + bracket('top', 2, true)) })
+  check(new DOMParser().parseFromString(localBracket.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] non-arpeggiate').length === 2, 'complete piano bracket preserved')
+  const lexicalWedge = await prepareStaffToPartSplit({ musicXml: score(note('G', 1, 4) + '<backup><duration>4</duration></backup>' +
+    wedge('crescendo', 2).replace('/>', ' number="+01"/>') + note('E', 2, 4) + wedge('stop', 2)) })
+  check(new DOMParser().parseFromString(lexicalWedge.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P2"] wedge').length === 2, 'equivalent wedge numbers matched')
+  const localPlay = await prepareStaffToPartSplit({ musicXml: score(note('E', 1, 4)
+    .replace('</note>', '<play><other-play type="start">custom sound</other-play></play></note>') +
+    '<backup><duration>4</duration></backup>' + note('C', 2, 4)) })
+  check(new DOMParser().parseFromString(localPlay.derivedMusicXml, 'application/xml').querySelectorAll('part[id="P1"] other-play[type="start"]').length === 1, 'local playback label is not a span')
+  const host = document.querySelector('#host'), sent = []
+  let prepareWait = null, prepareEntered = false
+  const service = {
+    loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],
+    prepareScoreUpload: async input => {
+      if (prepareWait) { prepareEntered = true;await prepareWait;prepareWait = null }
+      return prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-23T00:00:00Z' })
+    },
+    send: async input => { sent.push(input);return { ok: false, recipients: [] } },
+  }
+  const handle = mountTeacherAssignmentComposerUi({ root: document, host, service, createDraftId: () => 'browser-draft' })
+  await wait(() => host.querySelector('[name="studentId"]'))
+  const file = host.querySelector('[name="scoreMusicXml"]')
+  const choose = async xml => {
+    const transfer = new DataTransfer();transfer.items.add(new File([xml], 'piano.musicxml', { type: 'application/xml' }));file.files = transfer.files
+    file.dispatchEvent(new Event('change'))
+    await wait(() => host.querySelector('[class$="__score-status"]').textContent === 'MusicXML doğrulandı.')
+  }
+  const button = label => [...host.querySelectorAll('button')].find(node => node.textContent === label)
+  await choose(score())
+  button('Keman ve piyano partilerini ayır').click()
+  await wait(() => !button('Ayırmayı uygula').hidden)
+  check(sent.length === 0, 'preview must not send')
+  host.querySelector('[name="assignmentTitle"]').value = 'Etüt'
+  host.querySelector('[name="studentId"]').checked = true
+  let releasePrepare
+  prepareWait = new Promise(resolve => { releasePrepare = resolve })
+  button('Ayırmayı uygula').click()
+  await wait(() => prepareEntered)
+  check(host.querySelector('button[type="submit"]').disabled, 'send waits for confirmed split preparation')
+  host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  check(sent.length === 0, 'programmatic submit cannot send the original during split apply')
+  releasePrepare()
+  await wait(() => !button('Ayırmayı geri al').hidden)
+  host.querySelector('form').requestSubmit()
+  await wait(() => sent.length === 1 && !host.querySelector('button[type="submit"]').disabled)
+  const doc = new DOMParser().parseFromString(sent[0].scoreUpload.musicXml, 'application/xml')
+  check(doc.querySelectorAll('score-part').length === 2, 'two declared parts')
+  check(doc.querySelector('part[id="P1"] note staff').textContent === '1', 'violin staff remapped')
+  check(doc.querySelector('part[id="P2"] clef sign').textContent === 'F', 'piano bass clef')
+  check(doc.querySelectorAll('part[id="P2"] chord').length === 1, 'piano chord preserved')
+  button('Ayırmayı geri al').click()
+  host.querySelector('form').requestSubmit()
+  await wait(() => sent.length === 2)
+  check(sent[1].scoreUpload.musicXml === score(), 'undo restores exact original bytes')
+  document.body.dataset.splitPass = 'true'
+  document.body.dataset.undoPass = 'true'
+  handle.destroy()
+  proof.textContent = 'PASS'
+} catch (error) { document.querySelector('#error').textContent = error.stack;proof.textContent = 'FAIL' }
+</script>
+</html>

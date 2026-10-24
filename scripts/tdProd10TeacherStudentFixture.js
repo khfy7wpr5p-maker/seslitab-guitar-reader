@@ -282,15 +282,15 @@ function createScoreSourceRef(workspace) {
   })
 }
 
-async function createScoreItem() {
+async function createScoreItem({ musicXml = FINAL_XML, guitarTabMusicXml = TAB_XML, prefix = 'td-prod-10' } = {}) {
   const authority =
     createSmoosicProductAuthority({
-      notes: parsedNotes(),
-      musicXml: FINAL_XML,
-      sourceId: 'td-prod-10-source-a',
+      notes: parsedNotes(musicXml),
+      musicXml,
+      sourceId: `${prefix}-source-a`,
       automaticRevisionId:
-        'td-prod-10-root-a',
-      historyId: 'td-prod-10-history-a',
+        `${prefix}-root-a`,
+      historyId: `${prefix}-history-a`,
       actorId: TEACHER_ID,
       createdAt:
         '2026-09-30T18:05:00Z',
@@ -299,7 +299,7 @@ async function createScoreItem() {
     approveTeacherWorkspace({
       workspace: authority.workspace,
       approvalId:
-        'td-prod-10-approval-a',
+        `${prefix}-approval-a`,
       createdAt:
         '2026-09-30T18:06:00Z',
     })
@@ -315,7 +315,7 @@ async function createScoreItem() {
   const assignment =
     createPrivateAssignment({
       assignmentId:
-        'td-prod-10-score-a',
+        `${prefix}-score-a`,
       studentId: STUDENT_A_ID,
       practiceType:
         PRIVATE_ASSIGNMENT_PRACTICE_TYPE
@@ -332,20 +332,20 @@ async function createScoreItem() {
       assignment,
       intake,
       packageId:
-        'td-prod-10-score-package-a',
+        `${prefix}-score-package-a`,
       title: 'TD-PROD-10 E2E Etüdü',
       practice: {
         tempoBpm: 60,
         allowTempoChange: true,
         allowMeasureRepeat: true,
       },
-      guitarTabMusicXml: TAB_XML,
+      guitarTabMusicXml,
     })
 
   const scoreOnlyAssignment =
     createPrivateAssignment({
       assignmentId:
-        'td-prod-10-score-only-a',
+        `${prefix}-score-only-a`,
       studentId: STUDENT_A_ID,
       practiceType:
         PRIVATE_ASSIGNMENT_PRACTICE_TYPE
@@ -362,9 +362,9 @@ async function createScoreItem() {
       assignment: scoreOnlyAssignment,
       intake,
       packageId:
-        'td-prod-10-score-only-package-a',
+        `${prefix}-score-only-package-a`,
       title:
-        'TD-PROD-10 SCORE-only Etüdü',
+        prefix === 'ses248' ? 'SES-248 Fikrimin İnce Gülü' : 'TD-PROD-10 SCORE-only Etüdü',
       practice: {
         tempoBpm: 60,
         allowTempoChange: true,
@@ -801,4 +801,17 @@ export async function buildTdProd10QualificationFixture() {
         chord,
       }),
   })
+}
+
+// Qualification only: uses real package and delivery services with an isolated
+// in-memory repository and fixture identities, never a live student account.
+export async function buildSes248StudentQualificationFixture({ musicXml } = {}) {
+  const { scoreOnly } = await createScoreItem({ musicXml, guitarTabMusicXml: null, prefix: 'ses248' })
+  const harness = createDeliveryHarness()
+  await harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items: [scoreOnly] })
+  await harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds: [scoreOnly.assignment.assignmentId] })
+  const view = await harness.student.getAssignment({ providerSubject: STUDENT_A_SUBJECT, deliveryId: scoreOnly.assignment.assignmentId })
+  assert.equal(view.package.content.score.data, musicXml)
+  return Object.freeze({ assignmentId: view.assignmentId, practiceType: view.practiceType,
+    package: view.package, item: browserItem(view, STUDENT_A_ID) })
 }

@@ -54,6 +54,7 @@ import {
 } from "./td-prod-10-e2e-fixture-adapter.mjs";
 import {
   TD_PROD_10_FIXTURE,
+  SES248_FIXTURE,
 } from "./td-prod-10-generated-fixture.mjs";
 
 const root = document.querySelector("#app");
@@ -163,6 +164,17 @@ const playbackPort =
     playbackPlanResolver,
     engine: playbackEngine,
   });
+// Observe the real resolver and engine; never substitute a playback plan or audio.
+const pilotPlaybackContext = playbackPlanResolver.resolvePackageContext(SES248_FIXTURE.package);
+const pilotPositions = [];
+playbackPort.subscribePositionForPackage(SES248_FIXTURE.package, snapshot => pilotPositions.push(snapshot));
+Object.defineProperty(globalThis, "__SES248_QUALIFICATION__", {
+  value: Object.freeze({
+    plan: pilotPlaybackContext?.plan ?? null,
+    sourceExact: pilotPlaybackContext?.timingProvenance?.musicXml === SES248_FIXTURE.package.content.score.data,
+    positions: pilotPositions,
+  }),
+});
 const scoreFollowCoordinator =
   createScoreFollowCoordinator({
     notationAdapter,

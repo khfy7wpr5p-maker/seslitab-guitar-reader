@@ -6,6 +6,8 @@ import {
 } from "./support/static-server.mjs";
 import {
   TD_PROD_10_FIXTURE,
+  SES248_FIXTURE,
+  SES248_EXPECTED_EVENTS,
 } from "./support/td-prod-10-generated-fixture.mjs";
 
 const E2E_PATH = "/__td-prod-10__/";
@@ -137,6 +139,29 @@ await test(
         deviceScaleFactor: 3,
       });
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      const telemetry = { starts: [], analysers: [] };
+      globalThis.__SES248_AUDIO__ = telemetry;
+      // Observe real native sample scheduling and the real output signal.
+      // The analyser is inserted in series; no plan, sample or audio node is mocked.
+      const connect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function(destination, ...args) {
+        if (destination === this.context.destination) {
+          const analyser = this.context.createAnalyser();
+          connect.call(this, analyser);
+          connect.call(analyser, destination);
+          telemetry.analysers.push(analyser);
+          return destination;
+        }
+        return connect.call(this, destination, ...args);
+      };
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function(...args) {
+        const result = start.apply(this, args);
+        telemetry.starts.push({ when: args[0], frames: this.buffer?.length ?? 0, rate: this.playbackRate.value });
+        return result;
+      };
+    });
     const pageErrors = [];
     page.on("pageerror", (error) => {
       pageErrors.push(error.message);
@@ -287,6 +312,34 @@ await test(
       );
 
       await assertNoAuthorityLeakage(page);
+      await page.getByRole("button", { name: "← Geri", exact: true }).click();
+      await page.getByRole("button", { name: SES248_FIXTURE.package.title, exact: true }).click();
+      assert.equal(await eventually(() => visibleScoreSvg(page)), true, "24-measure SES-248 pilot must render in Student App");
+      const pilotEvidence = await page.evaluate(() => {
+        const proof = globalThis.__SES248_QUALIFICATION__;
+        return { notes: proof.plan?.notes, measures: proof.plan?.measures.length, sourceExact: proof.sourceExact };
+      });
+      assert.equal(pilotEvidence.sourceExact, true);
+      assert.equal(pilotEvidence.measures, 24);
+      assert.deepEqual(pilotEvidence.notes, SES248_EXPECTED_EVENTS, "all 189 Student playback pitches, onsets and durations must match the independently calculated source");
+      await page.getByRole("button", { name: "Dinle", exact: true }).click();
+      assert.equal(await eventually(() => page.evaluate(() => {
+        const audio = globalThis.__SES248_AUDIO__;
+        const positions = globalThis.__SES248_QUALIFICATION__.positions;
+        const nonzeroSignal = audio.analysers.some(analyser => {
+          const values = new Float32Array(analyser.fftSize);
+          analyser.getFloatTimeDomainData(values);
+          return values.some(value => Math.abs(value) > 0.00001);
+        });
+        return nonzeroSignal && audio.starts.length >= 2 &&
+          audio.starts.every(source => source.frames > 0 && source.rate > 0) &&
+          positions.some(position => position.playing && position.beat > 0);
+      }), { timeoutMs: 15_000 }), true, "Dinle must schedule native sample buffers, advance musical position and produce a nonzero Web Audio signal");
+      // A standalone SCORE uses the persistent Student navigation, not the
+      // Piece Workspace's back control.
+      await page.getByRole("button", { name: "Benim Çalışmalarım", exact: true }).click();
+      // Return to the original piece for its existing offline/reconnect checks.
+      await page.getByRole("button", { name: TD_PROD_10_FIXTURE.piece.title, exact: true }).click();
 
       await page
         .getByRole("button", {

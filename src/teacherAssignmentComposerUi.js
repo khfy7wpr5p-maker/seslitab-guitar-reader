@@ -1,3 +1,4 @@
+import { mountStaffToPartSplitUi } from './staffToPartSplitUi.js'
 import {
   getChordBoardVoicings,
   listChordBoardSymbols,
@@ -116,11 +117,13 @@ export function mountTeacherAssignmentComposerUi({
   }
 
   let draftId = nextDraftId()
+  let uploadGeneration = 0
   let scoreUpload = null
   let scoreFileSelected = false
   let selectedSnapshots = []
   let destroyed = false
   let sending = false
+  let splitPending = false
   let rosterReady = false
   let requestConversion = null
 
@@ -235,6 +238,17 @@ export function mountTeacherAssignmentComposerUi({
     violinPartSelect.value = ''
   }
   instrumentSelect.addEventListener('change', updateViolinPartSelection)
+
+  const splitHost = element(root, 'div', 'teacher-assignment-composer__part-split')
+  scoreFieldset.appendChild(splitHost)
+  const splitUi = mountStaffToPartSplitUi({
+    root, host: splitHost, getUpload: () => scoreUpload,
+    isBusy: () => sending || destroyed,
+    onPendingChange(value) { splitPending = value;updateSubmitState() },
+    prepareUpload: musicXml => service.prepareScoreUpload({ musicXml, draftId }),
+    onApply(upload) { scoreUpload = upload;updateViolinPartSelection();scoreStatus.textContent = 'İki partili MusicXML hazır.' },
+    onRestore(upload) { scoreUpload = upload;updateViolinPartSelection();scoreStatus.textContent = 'Kaynak MusicXML geri yüklendi.' },
+  })
 
   const chordFieldset = element(root, 'fieldset')
   const chordLegend = element(root, 'legend')
@@ -375,7 +389,9 @@ export function mountTeacherAssignmentComposerUi({
   function resetCompletedAssignment() {
     const nextId = nextDraftId()
 
+    uploadGeneration += 1
     scoreUpload = null
+    splitUi.invalidate()
     scoreFileSelected = false
     selectedSnapshots = []
 
@@ -451,7 +467,10 @@ export function mountTeacherAssignmentComposerUi({
   fileInput.addEventListener(
     'change',
     async () => {
+      if (sending || destroyed) return
+      const uploadToken = ++uploadGeneration
       scoreUpload = null
+      splitUi.invalidate()
       updateViolinPartSelection()
       const file = fileInput.files?.[0]
       scoreFileSelected = Boolean(file)
@@ -472,16 +491,19 @@ export function mountTeacherAssignmentComposerUi({
       try {
         const musicXml =
           await file.text()
-        scoreUpload =
-          await service.prepareScoreUpload({
-            musicXml,
-            draftId,
-          })
+        if (destroyed || uploadToken !== uploadGeneration) return
+        const prepared =
+          await service.prepareScoreUpload({ musicXml, draftId })
+        if (destroyed || uploadToken !== uploadGeneration) return
+        scoreUpload = prepared
+        splitUi.setUpload(scoreUpload)
         updateViolinPartSelection()
         scoreStatus.textContent =
           'MusicXML doğrulandı.'
       } catch {
+        if (destroyed || uploadToken !== uploadGeneration) return
         scoreUpload = null
+        splitUi.invalidate()
         updateViolinPartSelection()
         scoreStatus.textContent =
           'MusicXML doğrulanamadı.'
@@ -490,8 +512,9 @@ export function mountTeacherAssignmentComposerUi({
   )
 
   function updateSubmitState() {
+    fileInput.disabled = sending
     submit.disabled =
-      sending ||
+      sending || destroyed || splitPending ||
       (requestConversion === null && !rosterReady)
   }
 
@@ -541,7 +564,11 @@ export function mountTeacherAssignmentComposerUi({
     'submit',
     async (event) => {
       event.preventDefault()
-      if (sending) return
+      if (sending || destroyed) return
+      if (splitPending) {
+        status.textContent = 'Partiler hazırlanıyor. Tamamlanınca tekrar gönderin.'
+        return
+      }
 
       let studentIds = []
       if (requestConversion === null) {
@@ -611,6 +638,7 @@ export function mountTeacherAssignmentComposerUi({
       }
 
       sending = true
+      splitUi.invalidatePending()
       updateSubmitState()
       status.textContent =
         'Gönderiliyor.'
@@ -733,6 +761,8 @@ export function mountTeacherAssignmentComposerUi({
     destroy() {
       if (destroyed) return
       destroyed = true
+      uploadGeneration += 1
+      splitUi.destroy()
       rosterReady = false
       requestConversion = null
       host.replaceChildren()

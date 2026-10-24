@@ -68,6 +68,9 @@ jobs:
           path: artifacts/ses153-teacher-authority-browser.json
           if-no-files-found: warn
 
+      - name: Verify SES-248 reversible staff-to-part split in real browser
+        run: node scripts/verifySes248StaffSplitBrowser.js
+
       - name: Build production bundle
         run: npm run build
 
@@ -251,8 +254,16 @@ jobs:
       - name: Route Ubuntu package indexes through the reachable HTTPS mirror
         run: |
           sudo find /etc/apt -type f \
-            \( -name '*.list' -o -name '*.sources' \) \
+            \( -name '*.list' -o -name '*.sources' -o -name 'apt-mirrors.txt' \) \
             -exec sed -E -i 's#[[:alpha:]]+://azure\.archive\.ubuntu\.com#https://archive.ubuntu.com#g' {} +
+          # Current Ubuntu runners select repositories through this mirror+file list.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            cat /etc/apt/apt-mirrors.txt
+            if grep -Eq 'https?://azure\.archive\.ubuntu\.com([/:[:space:]]|$)' /etc/apt/apt-mirrors.txt; then
+              echo "::error::Ubuntu mirror list still points to Azure after HTTPS routing."
+              exit 1
+            fi
+          fi
 
       - name: Install qualification browser
         working-directory: student-app
