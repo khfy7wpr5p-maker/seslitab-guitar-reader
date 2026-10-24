@@ -197,8 +197,8 @@ await test(
         .click();
 
       await page
-        .getByRole("heading", {
-          name: "Çalışmalar",
+        .getByRole("button", {
+          name: "Benim Çalışmalarım",
           exact: true,
         })
         .waitFor();
