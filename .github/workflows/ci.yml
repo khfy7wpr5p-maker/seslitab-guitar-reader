@@ -176,7 +176,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STUDENT_APP_SHA: 70a484dc06201ec8a08fbc41b5b60a0a1d5044c5
+      STUDENT_APP_SHA: df4b0d0a80f6254f830ba068ea2fe3b7bce8fed2
       RENDERER_SHA: a015f9049149037c48ac764ab30ed2bcbbe200d3
 
     strategy:
@@ -246,6 +246,11 @@ jobs:
           cp teacher/qualification/td-prod-10/student-app-e2e-fixture-adapter.mjs student-app/browser-tests/support/td-prod-10-e2e-fixture-adapter.mjs
           cp teacher/qualification/td-prod-10/student-app-e2e-bootstrap.mjs student-app/browser-tests/support/td-prod-10-e2e-bootstrap.mjs
           cp teacher/qualification/td-prod-10/student-app-e2e.spec.mjs student-app/browser-tests/td-prod-10-teacher-delivery.spec.mjs
+          cp teacher/qualification/td-prod-10/part-instrument-ui.spec.mjs student-app/browser-tests/td-prod-10-part-instrument-ui.spec.mjs
+          mkdir -p student-app/browser-tests/support/ses249-teacher/src/services
+          cp teacher/musicXmlSecurity.js student-app/browser-tests/support/ses249-teacher/
+          cp teacher/src/partInstrumentAssignmentUi.js student-app/browser-tests/support/ses249-teacher/src/
+          cp teacher/src/services/musicXmlPartInstrumentAssignment.js student-app/browser-tests/support/ses249-teacher/src/services/
 
       - name: Generate exact teacher-delivered Student App fixture
         working-directory: teacher
@@ -273,4 +278,4 @@ jobs:
         working-directory: student-app
         env:
           ST_BROWSER: ${{ matrix.browser }}
-        run: node --test browser-tests/td-prod-10-teacher-delivery.spec.mjs
+        run: node --test browser-tests/td-prod-10-*.spec.mjs

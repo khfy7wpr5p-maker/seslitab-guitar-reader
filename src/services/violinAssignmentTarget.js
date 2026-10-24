@@ -1,4 +1,5 @@
 import { inspectMusicXml } from '../../musicXmlSecurity.js'
+import { readMusicXmlPartInstrumentMap } from './musicXmlPartInstrumentAssignment.js'
 
 function localName(node) {
   return String(node?.localName ?? node?.tagName ?? '').replace(/^.*:/u, '')
@@ -37,25 +38,29 @@ export function listViolinAssignmentParts(musicXml, DOMParserCtor = globalThis.D
   }
 
   const seen = new Set()
-  return Object.freeze(listed.map((part, index) => {
+  const bodyIds = new Set(bodies.map(part => part.getAttribute?.('id')))
+  if (bodyIds.size !== bodies.length) throw new Error('violin-score-parts-unavailable')
+  const mapping = readMusicXmlPartInstrumentMap(musicXml)
+  return Object.freeze(listed.map((part) => {
     const partId = part.getAttribute?.('id')
     const nameNodes = children(part, 'part-name')
     const name = nameNodes[0]?.textContent?.trim()
     if (
       typeof partId !== 'string' || !partId || partId !== partId.trim() ||
       partId.length > 128 || seen.has(partId) ||
-      bodies[index].getAttribute?.('id') !== partId ||
+      !bodyIds.has(partId) ||
       nameNodes.length !== 1 || !name
     ) {
       throw new Error('violin-score-parts-unavailable')
     }
     seen.add(partId)
     return Object.freeze({ partId, name })
-  }))
+  }).filter(part => mapping === null || mapping[part.partId] === 'VIOLIN'))
 }
 
 export function resolveViolinAssignmentTarget(musicXml, selectedPartId = null) {
   const parts = listViolinAssignmentParts(musicXml)
+  if (!parts.length) throw new Error('violin-target-part-mismatch')
   if (parts.length > 1 && selectedPartId === null) {
     throw new Error('violin-target-selection-required')
   }

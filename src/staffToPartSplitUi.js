@@ -1,4 +1,5 @@
 import { prepareStaffToPartSplit, confirmStaffToPartSplit } from './services/musicXmlStaffToPartSplit.js'
+import { listMusicXmlInstrumentParts } from './services/musicXmlPartInstrumentAssignment.js'
 
 function failureMessage(error) {
   if (error?.code === 'negative-cursor') return error.measure + '. ölçüde zamanlama tutarsız. Kaynak MusicXML dosyasını düzeltip yeniden seçin.'
@@ -17,7 +18,9 @@ export function mountStaffToPartSplitUi({ root, host, getUpload, prepareUpload, 
   for (const button of [previewButton, apply, cancel, undo]) button.type = 'button'
   function render() {
     host.hidden = typeof getUpload()?.musicXml !== 'string'
-    previewButton.disabled = pending || applied !== null
+    let multipart = false
+    try { multipart = listMusicXmlInstrumentParts(getUpload()?.musicXml).length > 1 } catch {}
+    previewButton.disabled = pending || applied !== null || multipart
     apply.hidden = preview === null;cancel.hidden = preview === null;undo.hidden = applied === null
     apply.disabled = pending;cancel.disabled = pending;undo.disabled = pending
   }
@@ -61,5 +64,9 @@ export function mountStaffToPartSplitUi({ root, host, getUpload, prepareUpload, 
     if (applied && !pending && current(generation, applied)) { onRestore(source);reset() }
   })
   render()
-  return Object.freeze({ setUpload: reset, invalidate: reset, invalidatePending() { generation += 1;setPending(false);preview = null;if (!applied) source = null;render() }, destroy() { destroyed = true;generation += 1;setPending(false);host.replaceChildren() } })
+  return Object.freeze({ setUpload: reset, invalidate: reset,
+    rebindAppliedUpload(previous, next) {
+      if (!destroyed && !pending && applied === previous && next?.musicXml === previous.musicXml && next.musicXmlFingerprint === previous.musicXmlFingerprint) { applied = next;render() }
+    },
+    invalidatePending() { generation += 1;setPending(false);preview = null;if (!applied) source = null;render() }, destroy() { destroyed = true;generation += 1;setPending(false);host.replaceChildren() } })
 }
