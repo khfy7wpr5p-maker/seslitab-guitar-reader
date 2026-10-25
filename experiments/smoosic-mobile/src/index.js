@@ -40,6 +40,8 @@ let metronomeNodes = [];
 let activePlaybackStartPoint = null;
 let currentScoreBaseName = 'score';
 let mobileEditPromise = Promise.resolve();
+let musicXmlImportSequence = 0;
+let musicXmlChangeQueue = Promise.resolve();
 const mobileSoundfonts = {};
 const mobileSoundLoads = {};
 
@@ -339,6 +341,7 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
   }
   if (!file) return;
 
+  const sequence = ++musicXmlImportSequence;
   stopNativePlayback();
   const name = String(file.name || 'score.musicxml');
   const lower = name.toLowerCase();
@@ -348,6 +351,7 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
 
   setStatus('MusicXML yükleniyor…');
   const text = await readFileText(file);
+  if (sequence !== musicXmlImportSequence) return;
   const parser = new DOMParser();
   const xml = parser.parseFromString(text, 'text/xml');
   if (xml.querySelector('parsererror')) throw new Error('MusicXML ayrıştırılamadı');
@@ -377,50 +381,57 @@ async function loadMusicXmlFile(file, sourceRevision = null) {
     candidateStructuralTracker.clear();
     throw error;
   }
-  try {
-    if (score && score.layoutManager && typeof score.layoutManager.zoomToWidth === 'function') {
-      score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
-    }
-    await applicationInstance.view.changeScore(score);
-    candidateTracker.adoptRenderedScore(applicationInstance.view.score);
-    candidateStructuralTracker.reconcileRenderedScore(applicationInstance.view.score);
-  } catch (error) {
-    candidateTracker.clear();
-    candidateStructuralTracker.clear();
-    throw error;
-  }
-  if (activePaddingRestTracker) activePaddingRestTracker.clear();
-  if (activeStructuralActionTracker) activeStructuralActionTracker.clear();
-  activePaddingRestTracker = candidateTracker;
-  activeStructuralActionTracker = candidateStructuralTracker;
-
-  if (activeCorrectionOverlayManager) {
+  const change = musicXmlChangeQueue.catch(() => undefined).then(async () => {
+    if (sequence !== musicXmlImportSequence) { candidateTracker.clear(); candidateStructuralTracker.clear(); return; }
     try {
-      if (sourceRevision === null) {
-        activeCorrectionOverlayManager.reset();
-      } else {
-        await activeCorrectionOverlayManager.bindImportedSource({
-          musicXml: text,
-          partIds,
-          score: applicationInstance.view.score,
-          sourceRevision
-        });
+      if (score && score.layoutManager && typeof score.layoutManager.zoomToWidth === 'function') {
+        score.layoutManager.zoomToWidth(Math.max(320, window.innerWidth));
       }
+      await applicationInstance.view.changeScore(score);
+      if (sequence !== musicXmlImportSequence) { candidateTracker.clear(); candidateStructuralTracker.clear(); return; }
+      candidateTracker.adoptRenderedScore(applicationInstance.view.score);
+      candidateStructuralTracker.reconcileRenderedScore(applicationInstance.view.score);
     } catch (error) {
-      activeCorrectionOverlayManager.reset();
-      console.warn('Correction overlay kaynağı kabul edilmedi', error);
+      candidateTracker.clear();
+      candidateStructuralTracker.clear();
+      throw error;
     }
-  }
+    if (activePaddingRestTracker) activePaddingRestTracker.clear();
+    if (activeStructuralActionTracker) activeStructuralActionTracker.clear();
+    activePaddingRestTracker = candidateTracker;
+    activeStructuralActionTracker = candidateStructuralTracker;
 
-  await applicationInstance.view.moveHome({
-    ctrlKey: true,
-    shiftKey: false,
-    altKey: false
+    if (activeCorrectionOverlayManager) {
+      try {
+        if (sourceRevision === null) {
+          activeCorrectionOverlayManager.reset();
+        } else {
+          await activeCorrectionOverlayManager.bindImportedSource({
+            musicXml: text,
+            partIds,
+            score: applicationInstance.view.score,
+            sourceRevision
+          });
+        }
+      } catch (error) {
+        activeCorrectionOverlayManager.reset();
+        console.warn('Correction overlay kaynağı kabul edilmedi', error);
+      }
+    }
+
+    await applicationInstance.view.moveHome({
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false
+    });
+    if (sequence !== musicXmlImportSequence) return;
+    currentScoreBaseName = stripMusicXmlExtension(name);
+    window.dispatchEvent(new Event('resize'));
+    document.getElementById('poc-status')?.setAttribute('data-loaded-file-name', name);
+    setStatus(`Yüklendi: ${name}`);
   });
-  currentScoreBaseName = stripMusicXmlExtension(name);
-  window.dispatchEvent(new Event('resize'));
-  document.getElementById('poc-status')?.setAttribute('data-loaded-file-name', name);
-  setStatus(`Yüklendi: ${name}`);
+  musicXmlChangeQueue = change;
+  await change;
 }
 
 async function loadInstrumentSound(instrumentKey) {
