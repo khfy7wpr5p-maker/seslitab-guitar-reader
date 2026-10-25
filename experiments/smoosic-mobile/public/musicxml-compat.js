@@ -357,7 +357,7 @@
 
       if (!result.changed) {
         redispatching = true;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: event.detail ?? null }));
         redispatching = false;
         return;
       }
@@ -371,7 +371,7 @@
       input.files = transfer.files;
 
       redispatching = true;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: event.detail ?? null }));
       redispatching = false;
     } catch (error) {
       if (sequence !== importSequence) return;
@@ -382,7 +382,7 @@
         error: String(error)
       };
       redispatching = true;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: event.detail ?? null }));
       redispatching = false;
     }
   }

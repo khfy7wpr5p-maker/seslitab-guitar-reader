@@ -114,6 +114,9 @@ function stateFor(root) {
       frameReadyPromise: null,
       independent: false,
       nativeInput: null,
+      hostImportRevision: null,
+      hostImportContext: null,
+      parentImportContexts: new WeakSet(),
       resetFrameOnEmpty: false,
       lastSourceXml: null,
       lastSourceName: 'seslitab-current.musicxml',
@@ -919,10 +922,10 @@ function stampIframeImportProvenance(input, sourceRevision) {
   input.dataset.seslitabImportRevision = String(sourceRevision)
 }
 
-function createIframeImportEvent(frame) {
+function createIframeImportEvent(frame, context) {
   const win = frame.contentWindow
-  if (!win?.Event) throw new Error('Editör olay API’si kullanılamıyor.')
-  return new win.Event('change', { bubbles: true })
+  if (!win?.CustomEvent) throw new Error('Editör olay API’si kullanılamıyor.')
+  return new win.CustomEvent('change', { bubbles: true, detail: context })
 }
 
 function assignInputFile(frame, input, file) {
@@ -972,10 +975,22 @@ function bindNativeEditorInput(root, frame) {
   if (!input || input === state.nativeInput) return
   state.nativeInput = input
   frame.contentDocument.addEventListener?.('change', (event) => {
-    // Parent imports use a synthetic change event. A native file picker belongs
-    // to an independent session, even if parsing that replacement later fails.
+    // Only the currently dispatched, revision-stamped parent transfer can
+    // retain canonical binding. User/automated picker events may be synthetic.
     const selectedInput = event.target
-    if (!event.isTrusted || selectedInput?.type !== 'file' || !selectedInput.files?.length) return
+    if (selectedInput?.type !== 'file' || !selectedInput.files?.length) return
+    // A late compatibility replay belongs to its old transfer; it must not
+    // detach a newer session or grant that old transfer current authority.
+    if (!event.isTrusted && selectedInput === input
+      && state.parentImportContexts.has(event.detail)
+      && event.detail !== state.hostImportContext) return
+    const parentTransfer = !event.isTrusted && selectedInput === input
+      && state.hostImportRevision !== null
+      && state.hostImportContext !== null && event.detail === state.hostImportContext
+      && input.dataset?.seslitabImportContract === 'SESLITAB_SMOOSIC_IMPORT_V1'
+      && input.dataset?.seslitabImportVersion === '1'
+      && input.dataset?.seslitabImportRevision === String(state.hostImportRevision)
+    if (parentTransfer) return
     state.independent = true
     state.sourceRevision += 1
     cancelPendingWriteback(state)
@@ -1076,8 +1091,19 @@ async function loadSourceIntoEditor(root, frame, { quiet = false } = {}) {
   if (!quiet) {
     setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
   }
-  input.dispatchEvent(createIframeImportEvent(frame))
-  await waitForMusicXmlLoad(frame, fileName, () => !state.independent && state.sourceRevision === targetRevision)
+  const importContext = Object.freeze({ sourceRevision: targetRevision })
+  state.hostImportRevision = targetRevision
+  state.hostImportContext = importContext
+  state.parentImportContexts.add(importContext)
+  try {
+    input.dispatchEvent(createIframeImportEvent(frame, importContext))
+    await waitForMusicXmlLoad(frame, fileName, () => !state.independent && state.sourceRevision === targetRevision)
+  } finally {
+    if (state.hostImportContext === importContext) {
+      state.hostImportRevision = null
+      state.hostImportContext = null
+    }
+  }
 
   // A newer PDF/MusicXML may have completed while this import was running.
   // Never mark the older transfer as current in that case; the queued sync

@@ -231,7 +231,7 @@ class Task7Element {
   appendChild(child) { child.parentElement = this; this.children.push(child); return child }
   addEventListener(type, listener) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]) }
   dispatchEvent(event) { for (const listener of this.listeners.get(event.type) ?? []) listener(event); return true }
-  click() { return this.dispatchEvent({ type: 'click' }) }
+  click() { if (this.disabled) return; return this.dispatchEvent({ type: 'click' }) }
   set src(value) { this.setAttribute('src', value) }
   get src() { return this.getAttribute('src') }
 }
@@ -318,6 +318,7 @@ function task7Host({
         element.contentWindow = {
           File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
           Event: class { constructor(type) { this.type = type } },
+          CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail } },
           postMessage(message) {
             if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
               queueMicrotask(() => {
