@@ -178,6 +178,7 @@ body {
 
 /* OMR project download */
 .omr-download-area { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+.omr-download-area[hidden], .omr-download-area [hidden], .smoosic-editor-frame[hidden] { display: none !important; }
 .omr-download-status { font-size: 0.8125rem; color: var(--neutral-600); }
 
 /* Playback */
@@ -267,3 +268,9 @@ body {
   width: fit-content;
   font-weight: 600;
 }
+
+/* Persistent teacher controls are outside score/reset visibility. */
+.teacher-tools-navigation { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.teacher-tool-btn { padding: .75rem 1rem; min-height: 44px; border: 1px solid var(--neutral-200); border-radius: var(--radius-sm); background: white; color: var(--neutral-700); font: inherit; cursor: pointer; }
+.teacher-tool-btn.active { background: var(--primary-500); color: white; }
+.teacher-tool-btn:focus-visible { outline: 3px solid var(--primary-500); outline-offset: 3px; }

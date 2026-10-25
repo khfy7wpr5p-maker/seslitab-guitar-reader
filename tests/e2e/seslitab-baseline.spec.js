@@ -12,7 +12,7 @@ test.describe('SesliTab protected baseline', () => {
     await expect(page.getByRole('heading', { name: 'Dosya Aç', level: 2 })).toBeVisible()
 
     const pdfTab = page.getByRole('tab', { name: 'PDF' })
-    const musicXmlTab = page.getByRole('tab', { name: 'MusicXML' })
+    const musicXmlTab = page.getByRole('tablist', { name: 'Giriş türü seç' }).getByRole('tab', { name: 'MusicXML', exact: true })
     const tabTab = page.getByRole('tab', { name: 'TAB', exact: true })
 
     await expect(pdfTab).toHaveAttribute('aria-selected', 'true')

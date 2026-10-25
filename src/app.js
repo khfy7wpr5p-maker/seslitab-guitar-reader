@@ -1,3 +1,4 @@
+import { bindTeacherToolsNavigation, resetTeacherResultsPresentation } from './teacherToolsNavigation.js'
 // SesliTab — Main application UI logic.
 //
 // Supports three input modes:
@@ -90,6 +91,7 @@ E|---------------|`
 // ── Init ──────────────────────────────────────────────────────
 
 function init() {
+  bindTeacherToolsNavigation(document)
   // Preload and cache speech synthesis voices at startup so the Turkish
   // voice is ready immediately when the user presses the voice button.
   if ('speechSynthesis' in window) {
@@ -581,8 +583,12 @@ function switchResultTab(tabName) {
   $('tab-html').hidden = tabName !== 'html'
   $('tab-notes').hidden = tabName !== 'notes'
   const assignmentPanel = $('tab-assignment')
-  if (assignmentPanel) assignmentPanel.hidden = tabName !== 'assignment'
-  $('tab-xml').hidden = tabName !== 'xml'
+  if (!document.getElementById('teacher-tools-navigation')) {
+    if (assignmentPanel) assignmentPanel.hidden = tabName !== 'assignment'
+    $('tab-xml').hidden = tabName !== 'xml'
+  } else {
+    $('tab-xml').hidden = false
+  }
 }
 
 // ── Note cards ──────────────────────────────────────────────
@@ -659,7 +665,7 @@ function resetApp() {
   $('musicxml-open-btn').disabled = true
   $('musicxml-progress').hidden = true
   $('tab-textarea').value = ''
-  $('results-section').hidden = true
+  resetTeacherResultsPresentation(document)
   $('voice-section').hidden = true
   $('rhythm-section').hidden = true
 
