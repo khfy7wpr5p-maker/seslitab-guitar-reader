@@ -178,6 +178,7 @@ body {
 
 /* OMR project download */
 .omr-download-area { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+.omr-download-area[hidden], .omr-download-area [hidden] { display: none !important; }
 .omr-download-status { font-size: 0.8125rem; color: var(--neutral-600); }
 
 /* Playback */

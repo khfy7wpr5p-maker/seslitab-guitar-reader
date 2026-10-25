@@ -37,7 +37,10 @@ test('teacher navigation reveals the existing panel and keeps XML visible withou
 
 test('reset removes the old MusicXML source while keeping teacher panels and draft state mounted', () => {
   const { root, nodes } = harness()
-  activateTeacherTool(root, 'assignment')
+  activateTeacherTool(root, 'violin')
+  const score = createFakeDocument().createElement('div')
+  nodes.set('tab-score-view', score)
+  score.hidden = false
   const panel = nodes.get('tab-assignment'), source = nodes.get('xml-output')
   panel.draft = 'unfinished homework'
   resetTeacherResultsPresentation(root)
@@ -46,6 +49,8 @@ test('reset removes the old MusicXML source while keeping teacher panels and dra
   assert.equal(nodes.get('tab-assignment'), panel)
   assert.equal(panel.draft, 'unfinished homework')
   assert.equal(nodes.get('tab-xml').hidden, false)
+  assert.equal(score.hidden, true)
+  assert.equal(panel.hidden, false)
 })
 
 test('unknown or not-yet-mounted teacher targets leave selection unchanged', () => {

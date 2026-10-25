@@ -10,6 +10,9 @@ export function resetTeacherResultsPresentation(root) {
     // The existing Smoosic source observer must see an empty source after reset.
     const source = root.getElementById('xml-output')
     if (source) source.textContent = ''
+    // Retained score/editor panels must not present the previous piece after
+    // reset. Return to the existing assignment panel without rebuilding it.
+    activateTeacherTool(root, 'assignment')
   }
 }
 
