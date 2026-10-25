@@ -87,8 +87,8 @@ try {
     )
     await evaluate(`document.getElementById('progress-container').hidden = false; true`)
     await waitFor(
-      `document.getElementById('smoosic-editor-frame')?.hidden === true`,
-      `${pdfName} pending hides stale editor`,
+      `document.getElementById('smoosic-editor-frame')?.hidden === false && document.getElementById('smoosic-apply-btn')?.disabled === true`,
+      `${pdfName} pending retains the editor and blocks stale apply`,
     )
   }
 
