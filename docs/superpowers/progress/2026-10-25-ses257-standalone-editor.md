@@ -28,3 +28,9 @@ Follow-up independent review found one Important active-transfer gap: a syntheti
 Final follow-up affected host/composer suites: 59/59 passed. The new S15 capture expression is executed against disabled/not-yet-imported/ready editor states in a VM test; disabled clicks do not arm a probe. Final full suite and prepared-assets/Vite build are being checked for the exact follow-up candidate. Desktop workspace plus mobile toolbar cases remain protected native CI acceptance, not locally claimed green.
 
 Expanded affected host/composer/CE structural suite: 70/70 passed. Full-suite discovery exposed six CE fixture failures because its browser double omitted CustomEvent; added the standard CustomEvent detail behavior and disabled-click semantics to that fixture without weakening structural assertions. Final full suite rerun pending. No engine changes, no merge/deploy.
+
+## Exact-head native follow-up (1f81627)
+
+CI test-and-build, including the S15 real browser proof, passed. Protected baseline: 14 passed, 1 intentionally skipped desktop-only case on mobile, 1 failed. All mobile XML open/save and independent B/parent C cases passed on Chromium and WebKit. The sole failure is the added desktop assertion: `#smoo svg` first resolves to hidden `#piano-svg`, not the score. Pinned Smoosic svgPageMap.ts creates each real score SVG under `#smoosic-svg-div-N`; narrowed the assertion to page 0's direct SVG. CI failure is the RED reproduction; no production changes for this test-only correction. Sonar analysis job passed; latest revised head still requires fresh native evidence.
+
+Local full suite before this selector-only correction: 3114 total, 3077 pass, 36 skipped, 1 environment failure (missing Chromium). Prepared editor assets and Vite production build passed. No merge/deploy.

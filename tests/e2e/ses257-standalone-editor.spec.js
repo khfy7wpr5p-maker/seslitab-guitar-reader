@@ -70,7 +70,8 @@ test('SES-257 desktop empty editor uses the desktop workspace', async ({ page },
   const editor = page.frameLocator('#smoosic-editor-frame')
   await expect(editor.locator('#poc-status')).toContainText('Editör hazır', { timeout: 60000 })
   await expect(page.locator('#smoosic-editor-frame')).toBeVisible()
-  await expect(editor.locator('#smoo svg').first()).toBeVisible()
+  // #smoo also contains the intentionally hidden piano SVG. Assert the score page.
+  await expect(editor.locator('#smoosic-svg-div-0 > svg')).toBeVisible()
   await expect(editor.locator('#mobile-toolbar')).toBeHidden()
   await expect(page.locator('#smoosic-apply-btn')).toBeDisabled()
 })
