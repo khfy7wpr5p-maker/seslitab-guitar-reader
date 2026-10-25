@@ -36,6 +36,8 @@ import {
 } from './services/correctionAnalysisRuntimeLoader.js'
 import { replaceSuspiciousMeasureOverlays } from './services/correctionMeasureOverlay.js'
 
+import { clearTeacherToolSelection } from './teacherToolsNavigation.js'
+
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
 const scoreMeasureSubscriptions = new WeakMap()
@@ -58,6 +60,8 @@ function selectionNotesFor(snapshot) {
 }
 
 function setExistingResultTabs(root, activeName) {
+  const persistentTools = Boolean(root.getElementById('teacher-tools-navigation'))
+  if (persistentTools) clearTeacherToolSelection(root)
   const buttons = root.querySelectorAll?.('.tab-btn') ?? []
   for (const button of buttons) {
     const active = button.dataset?.tab === activeName
@@ -67,6 +71,7 @@ function setExistingResultTabs(root, activeName) {
 
   const panelIds = ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-xml', 'tab-guitar-tab', 'tab-violin', 'tab-chords']
   for (const id of panelIds) {
+    if (persistentTools && id === 'tab-xml') continue
     const panel = root.getElementById(id)
     if (panel) panel.hidden = true
   }

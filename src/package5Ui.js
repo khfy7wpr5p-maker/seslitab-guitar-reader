@@ -1,3 +1,4 @@
+import { activateTeacherTool, bindTeacherToolsNavigation } from './teacherToolsNavigation.js'
 // Package 5F + Package 10 — accessible quality-gated Violin result panel.
 //
 // The UI consumes the exact NoteObject[] reference already published by the
@@ -280,6 +281,7 @@ function setActiveTabState(root, activeName) {
 }
 
 export function activateViolinResultTab(root) {
+  if (root?.getElementById?.('teacher-tools-navigation')) return activateTeacherTool(root, 'violin')
   if (!root || typeof root.getElementById !== 'function') return false
   const panel = root.getElementById('tab-violin')
   if (!panel) return false
@@ -297,15 +299,21 @@ export function ensureViolinPanel(root) {
   const existing = root.getElementById('tab-violin')
   if (existing) return existing
 
-  const tabList = root.querySelector?.('.result-tabs') ?? null
+  const navigation = root.getElementById('teacher-tools-navigation')
+  const tabList = navigation ?? root.querySelector?.('.result-tabs') ?? null
   const notesSummary = root.getElementById('notes-summary')
   const host = notesSummary?.parentElement ?? tabList?.parentElement ?? null
   if (!tabList || !host) return null
 
   const button = root.createElement('button')
-  button.id = 'result-violin-btn'; button.type = 'button'; button.className = 'tab-btn'; button.dataset.tab = 'violin'; button.textContent = 'Keman'
+  button.id = 'result-violin-btn'; button.type = 'button'; button.className = navigation ? 'teacher-tool-btn' : 'tab-btn'; button.dataset.tab = 'violin'; button.textContent = 'Keman'
   button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', 'false'); button.setAttribute('aria-controls', 'tab-violin')
-  button.addEventListener('click', () => activateViolinResultTab(root)); tabList.appendChild(button)
+  if (!navigation) button.addEventListener('click', () => activateViolinResultTab(root))
+  tabList.appendChild(button)
+  if (navigation) {
+    button.setAttribute('tabindex', '-1')
+    bindTeacherToolsNavigation(root)
+  }
 
   const panel = root.createElement('div')
   panel.id = 'tab-violin'; panel.className = 'tab-content violin-panel'; panel.hidden = true
@@ -320,7 +328,7 @@ export function ensureViolinPanel(root) {
   if (notesSummary && notesSummary.parentElement === host) host.insertBefore(panel, notesSummary)
   else host.appendChild(panel)
 
-  if (!existingTabBindings.has(root)) {
+  if (!navigation && !existingTabBindings.has(root)) {
     const buttons = root.querySelectorAll?.('.tab-btn') ?? []
     for (const existingButton of buttons) {
       if (existingButton === button) continue
