@@ -71,7 +71,7 @@ jobs:
 
       - name: Install pinned Student Chromium for qualification
         run: |
-          npm --prefix student-app exec -- playwright install --with-deps chromium
+          npm --prefix student-app exec --ignore-scripts -- playwright install --with-deps chromium
           CHROME_PATH="$(cd student-app && node --input-type=module -e "import { chromium } from 'playwright'; process.stdout.write(chromium.executablePath())")"
           echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
           echo "CHROME_BIN=$CHROME_PATH" >> "$GITHUB_ENV"
