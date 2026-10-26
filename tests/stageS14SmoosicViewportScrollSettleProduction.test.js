@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { fileURLToPath } from 'node:url'
 
 const source = readFileSync(
   new URL('../experiments/smoosic-mobile/public/viewport-fit.js', import.meta.url),
@@ -30,6 +31,13 @@ function createHarness() {
   let anchorShiftOnHeightWrite = 0
   let delayedAnchorShiftOnHeightWrite = 0
 
+  const anchorProperties = new Map()
+  const anchorStyle = {
+    getPropertyValue: (name) => anchorProperties.get(name)?.value || '',
+    getPropertyPriority: (name) => anchorProperties.get(name)?.priority || '',
+    setProperty(name, value, priority = '') { anchorProperties.set(name, { value, priority }) },
+    removeProperty(name) { anchorProperties.delete(name) },
+  }
   const dataset = {}
   let inlineHeight = ''
   let inlineMinHeight = ''
@@ -51,12 +59,12 @@ function createHarness() {
       const previous = inlineHeight
       inlineHeight = String(value)
       heightWrites += 1
-      if (anchorShiftOnHeightWrite && previous !== inlineHeight) {
+      if (anchorShiftOnHeightWrite && previous !== inlineHeight && anchorStyle.getPropertyValue('overflow-anchor') !== 'none') {
         scrollY += anchorShiftOnHeightWrite
         frameTop -= anchorShiftOnHeightWrite
         anchorShiftOnHeightWrite = 0
       }
-      if (delayedAnchorShiftOnHeightWrite && previous !== inlineHeight) {
+      if (delayedAnchorShiftOnHeightWrite && previous !== inlineHeight && anchorStyle.getPropertyValue('overflow-anchor') !== 'none') {
         const shift = delayedAnchorShiftOnHeightWrite
         delayedAnchorShiftOnHeightWrite = 0
         const id = nextRafId++
@@ -137,6 +145,7 @@ function createHarness() {
       },
     },
     document: {
+      scrollingElement: { style: anchorStyle },
       querySelector(selector) {
         return selector === '.app-header' ? header : null
       },
@@ -246,12 +255,15 @@ function createHarness() {
     }
   }
 
-  vm.runInNewContext(source, { window, document, Element, MutationObserver, console })
+  vm.runInNewContext(source, { window, document, Element, MutationObserver, console }, {
+    filename: fileURLToPath(new URL('../experiments/smoosic-mobile/public/viewport-fit.js', import.meta.url)),
+  })
   flushRaf()
   advance(0)
 
   return {
     parent,
+    anchorStyle,
     parentListeners,
     visualViewportListeners,
     documentListeners,
@@ -388,14 +400,14 @@ test('S14 production viewport fit preserves parent scroll when browser anchoring
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().scrollY, 240)
   assert.equal(harness.metrics().frameTop, 20)
-  assert.equal(harness.metrics().scrollToCalls, 1)
+  assert.equal(harness.metrics().scrollToCalls, 0)
 
   harness.advance(220)
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().scrollY, 240)
 })
 
-test('S14 production viewport fit restores parent scroll when Chromium applies anchoring on the next animation frame', () => {
+test('S14 production viewport fit prevents next-frame browser anchoring without deferred scrollTo', () => {
   const harness = createHarness()
   harness.setScrollState(240, 20)
   harness.armDelayedScrollAnchorShift(87)
@@ -407,20 +419,50 @@ test('S14 production viewport fit restores parent scroll when Chromium applies a
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().scrollY, 240)
   assert.equal(harness.metrics().frameTop, 20)
-  assert.equal(harness.metrics().scrollToCalls, 1)
+  assert.equal(harness.metrics().scrollToCalls, 0)
 
   harness.advance(220)
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().scrollY, 240)
 })
 
-// Catch the old PR's unconditional next-frame scrollTo overwriting new input.
+test('S14 a newer programmatic parent scroll retires the pending restoration', () => {
+  const harness = createHarness()
+  harness.setScrollState(240, 20)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+  harness.advanceTimersOnly(140)
+
+  // scrollTo/focus/assistive navigation may scroll without wheel or touch input.
+  harness.setScrollState(300, -40)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+  assert.equal(harness.metrics().scrollY, 300)
+  assert.equal(harness.metrics().scrollToCalls, 0)
+  harness.advance(140)
+  assert.equal(harness.metrics().height, '880px')
+  assert.equal(harness.metrics().scrollY, 300)
+})
+
+test('S14 newer scroll survives even before its scroll event is delivered', () => {
+  const harness = createHarness()
+  harness.setScrollState(240, 20)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+  harness.advanceTimersOnly(140)
+  harness.setScrollState(300, -40)
+  harness.flushRaf()
+  assert.equal(harness.metrics().scrollY, 300)
+  assert.equal(harness.metrics().scrollToCalls, 0)
+})
+
+// No delayed snapshot may overwrite new input, whether or not an input event exists.
 for (const [surface, type] of [
   ['parent', 'wheel'], ['parent', 'touchstart'], ['parent', 'touchmove'],
   ['parent', 'pointerdown'], ['parent', 'keydown'], ['editor', 'pointerdown'],
   ['editor', 'keydown'], ['editor', 'touchmove'],
 ]) {
-  test(`S14 deferred anchoring restoration preserves newer ${surface} ${type} input`, () => {
+  test(`S14 height fitting preserves newer ${surface} ${type} input`, () => {
     const harness = createHarness()
     harness.setScrollState(240, 20)
     harness.parentListeners.get('scroll')()
@@ -442,7 +484,7 @@ for (const [surface, type] of [
 }
 
 for (const hidden of ['setPanelHidden', 'setFrameHidden']) {
-  test(`S14 deferred anchoring restoration retires when ${hidden}`, () => {
+  test(`S14 height fitting preserves scroll when ${hidden}`, () => {
     const harness = createHarness()
     harness.setScrollState(240, 20)
     harness.parentListeners.get('scroll')()
@@ -457,7 +499,7 @@ for (const hidden of ['setPanelHidden', 'setFrameHidden']) {
 }
 
 for (const event of ['resize', 'orientationchange']) {
-  test(`S14 deferred anchoring restoration retires on ${event}`, () => {
+  test(`S14 height fitting preserves scroll on ${event}`, () => {
     const harness = createHarness()
     harness.setScrollState(240, 20)
     harness.parentListeners.get('scroll')()
@@ -472,7 +514,7 @@ for (const event of ['resize', 'orientationchange']) {
 }
 
 for (const event of ['resize', 'scroll']) {
-  test(`S14 deferred restoration retires on visual viewport ${event}`, () => {
+  test(`S14 height fitting preserves scroll on visual viewport ${event}`, () => {
     const harness = createHarness()
     harness.setScrollState(240, 20)
     harness.parentListeners.get('scroll')()
@@ -582,4 +624,31 @@ test('S14 production viewport fit restores desktop cleanup and can re-enter mobi
   harness.flushRaf()
   assert.equal(harness.metrics().height, '620px')
   assert.equal(harness.metrics().viewportFit, 'mobile')
+})
+
+for (const original of ['', 'auto', 'none']) {
+  test(`S14 temporary anchoring suppression restores original inline value '${original}'`, () => {
+    const harness = createHarness()
+    if (original) harness.anchorStyle.setProperty('overflow-anchor', original, 'important')
+    harness.setFrameTop(20)
+    harness.parentListeners.get('scroll')()
+    harness.flushRaf()
+    harness.advanceTimersOnly(140)
+    assert.equal(harness.anchorStyle.getPropertyValue('overflow-anchor'), 'none')
+    harness.flushRaf()
+    assert.equal(harness.anchorStyle.getPropertyValue('overflow-anchor'), original)
+    assert.equal(harness.anchorStyle.getPropertyPriority('overflow-anchor'), original ? 'important' : '')
+  })
+}
+
+test('S14 anchor cleanup preserves a newer external inline style', () => {
+  const harness = createHarness()
+  harness.setFrameTop(20)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+  harness.advanceTimersOnly(140)
+  harness.anchorStyle.setProperty('overflow-anchor', 'auto', 'important')
+  harness.flushRaf()
+  assert.equal(harness.anchorStyle.getPropertyValue('overflow-anchor'), 'auto')
+  assert.equal(harness.anchorStyle.getPropertyPriority('overflow-anchor'), 'important')
 })
