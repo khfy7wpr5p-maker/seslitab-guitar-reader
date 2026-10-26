@@ -28,6 +28,7 @@ function createHarness() {
   let scrollY = 0
   let scrollToCalls = 0
   let anchorShiftOnHeightWrite = 0
+  let delayedAnchorShiftOnHeightWrite = 0
 
   const dataset = {}
   let inlineHeight = ''
@@ -54,6 +55,18 @@ function createHarness() {
         scrollY += anchorShiftOnHeightWrite
         frameTop -= anchorShiftOnHeightWrite
         anchorShiftOnHeightWrite = 0
+      }
+      if (delayedAnchorShiftOnHeightWrite && previous !== inlineHeight) {
+        const shift = delayedAnchorShiftOnHeightWrite
+        delayedAnchorShiftOnHeightWrite = 0
+        const id = nextRafId++
+        rafQueue.push({
+          id,
+          callback() {
+            scrollY += shift
+            frameTop -= shift
+          },
+        })
       }
     },
   })
@@ -256,6 +269,9 @@ function createHarness() {
     armScrollAnchorShift(value) {
       anchorShiftOnHeightWrite = Number(value)
     },
+    armDelayedScrollAnchorShift(value) {
+      delayedAnchorShiftOnHeightWrite = Number(value)
+    },
     setHostStatusHidden(value, nextFrameTop = frameTop) {
       hostStatus.hidden = value
       frameTop = nextFrameTop
@@ -377,6 +393,111 @@ test('S14 production viewport fit preserves parent scroll when browser anchoring
   harness.advance(220)
   assert.equal(harness.metrics().heightWrites, 2)
   assert.equal(harness.metrics().scrollY, 240)
+})
+
+test('S14 production viewport fit restores parent scroll when Chromium applies anchoring on the next animation frame', () => {
+  const harness = createHarness()
+  harness.setScrollState(240, 20)
+  harness.armDelayedScrollAnchorShift(87)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+
+  harness.advance(140)
+  assert.equal(harness.metrics().height, '820px')
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().scrollY, 240)
+  assert.equal(harness.metrics().frameTop, 20)
+  assert.equal(harness.metrics().scrollToCalls, 1)
+
+  harness.advance(220)
+  assert.equal(harness.metrics().heightWrites, 2)
+  assert.equal(harness.metrics().scrollY, 240)
+})
+
+// Catch the old PR's unconditional next-frame scrollTo overwriting new input.
+for (const [surface, type] of [
+  ['parent', 'wheel'], ['parent', 'touchstart'], ['parent', 'touchmove'],
+  ['parent', 'pointerdown'], ['parent', 'keydown'], ['editor', 'pointerdown'],
+  ['editor', 'keydown'], ['editor', 'touchmove'],
+]) {
+  test(`S14 deferred anchoring restoration preserves newer ${surface} ${type} input`, () => {
+    const harness = createHarness()
+    harness.setScrollState(240, 20)
+    harness.parentListeners.get('scroll')()
+    harness.flushRaf()
+    harness.advanceTimersOnly(140)
+
+    const listeners = surface === 'parent' ? harness.parentListeners : harness.documentListeners
+    listeners.get(type)?.({ type, key: 'PageDown' })
+    harness.setScrollState(300, -40)
+    harness.parentListeners.get('scroll')()
+    harness.flushRaf()
+
+    assert.equal(harness.metrics().scrollY, 300)
+    assert.equal(harness.metrics().scrollToCalls, 0)
+    harness.advance(140)
+    assert.equal(harness.metrics().height, '880px')
+    assert.equal(harness.metrics().scrollY, 300)
+  })
+}
+
+for (const hidden of ['setPanelHidden', 'setFrameHidden']) {
+  test(`S14 deferred anchoring restoration retires when ${hidden}`, () => {
+    const harness = createHarness()
+    harness.setScrollState(240, 20)
+    harness.parentListeners.get('scroll')()
+    harness.flushRaf()
+    harness.advanceTimersOnly(140)
+    harness[hidden](true, -40)
+    harness.setScrollState(300, -40)
+    harness.flushRaf()
+    assert.equal(harness.metrics().scrollY, 300)
+    assert.equal(harness.metrics().scrollToCalls, 0)
+  })
+}
+
+for (const event of ['resize', 'orientationchange']) {
+  test(`S14 deferred anchoring restoration retires on ${event}`, () => {
+    const harness = createHarness()
+    harness.setScrollState(240, 20)
+    harness.parentListeners.get('scroll')()
+    harness.flushRaf()
+    harness.advanceTimersOnly(140)
+    harness.setScrollState(300, -40)
+    harness.parentListeners.get(event)()
+    harness.flushRaf()
+    assert.equal(harness.metrics().scrollY, 300)
+    assert.equal(harness.metrics().scrollToCalls, 0)
+  })
+}
+
+for (const event of ['resize', 'scroll']) {
+  test(`S14 deferred restoration retires on visual viewport ${event}`, () => {
+    const harness = createHarness()
+    harness.setScrollState(240, 20)
+    harness.parentListeners.get('scroll')()
+    harness.flushRaf()
+    harness.advanceTimersOnly(140)
+    harness.setScrollState(300, -40)
+    harness.visualViewportListeners.get(event)()
+    harness.flushRaf()
+    assert.equal(harness.metrics().scrollY, 300)
+    assert.equal(harness.metrics().scrollToCalls, 0)
+  })
+}
+
+test('S14 a hidden then reopened frame cannot restore an old scroll snapshot', () => {
+  const harness = createHarness()
+  harness.setScrollState(240, 20)
+  harness.parentListeners.get('scroll')()
+  harness.flushRaf()
+  harness.advanceTimersOnly(140)
+  harness.setFrameHidden(true)
+  harness.setScrollState(300, -40)
+  harness.setFrameHidden(false)
+  harness.flushRaf()
+  assert.equal(harness.metrics().scrollY, 300)
+  assert.equal(harness.metrics().scrollToCalls, 0)
 })
 
 test('S14 production viewport fit applies final geometry even if post-timer animation frames are not serviced', () => {
