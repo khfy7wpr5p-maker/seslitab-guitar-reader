@@ -148,6 +148,12 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
     'input[name="assignmentTitle"]',
   ).value = 'Etüt 1'
 
+  const instrument = host.querySelector(
+    'select[name="playbackInstrument"]',
+  )
+  assert.ok(instrument)
+  instrument.value = 'VIOLIN'
+
   const form =
     host.querySelector('form')
   await form.dispatchEventAsync({
@@ -170,6 +176,10 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
     1,
   )
   assert.equal(
+    calls.send[0].playbackInstrument,
+    'VIOLIN',
+  )
+  assert.equal(
     host.querySelector(
       '.teacher-assignment-composer__status',
     ).textContent,
@@ -178,6 +188,42 @@ test('SES-141 UI supports MusicXML + exact chord + multi-student send and only r
 
   handle.destroy()
   assert.equal(host.children.length, 0)
+})
+
+test('Keman seçimi çok partili ödevde açık parti seçimini gerektirir', async () => {
+  const root = createFakeDocument()
+  const host = root.createElement('div')
+  const calls = []
+  const handle = mountTeacherAssignmentComposerUi({
+    root, host, createDraftId: () => 'draft-violin-ui',
+    service: {
+      async loadRoster() { return [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }] },
+      async prepareScoreUpload() {
+        return { violinParts: [
+          { partId: 'P1', name: 'Keman I' },
+          { partId: 'P2', name: 'Keman II' },
+        ] }
+      },
+      async send(input) { calls.push(input); return { ok: true, recipients: [{ ok: true, pieceLinked: true, phase: TEACHER_ASSIGNMENT_DELIVERY_PHASE.DELIVERED_TO_STUDENT }] } },
+    },
+  })
+  await settle()
+  const file = host.querySelector('input[name="scoreMusicXml"]')
+  file.files = [{ name: 'two.musicxml', size: 100, async text() { return '<score-partwise/>' } }]
+  await file.dispatchEventAsync({ type: 'change' })
+  host.querySelector('select[name="playbackInstrument"]').value = 'VIOLIN'
+  host.querySelector('select[name="playbackInstrument"]').dispatchEvent({ type: 'change' })
+  host.querySelector('input[name="studentId"]').checked = true
+  host.querySelector('input[name="assignmentTitle"]').value = 'İki keman'
+  const form = host.querySelector('form')
+  await form.dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  assert.equal(calls.length, 0)
+  const part = host.querySelector('select[name="violinTargetPartId"]')
+  assert.equal(part.hidden, false)
+  part.value = 'P2'
+  await form.dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  assert.equal(calls[0].violinTargetPartId, 'P2')
+  handle.destroy()
 })
 
 test('SES-141 UI fails closed when roster authority cannot load', async () => {
@@ -304,4 +350,34 @@ test('SES-147 send stays disabled until authorized roster readiness and remains 
     failedSubmit.disabled,
     true,
   )
+})
+
+test('SES-248 composer sends derived parts only after explicit preview confirmation', async () => {
+  const { SmoosicTestDOMParser, SmoosicTestXMLSerializer } = await import('./support/smoosicXmlDom.js')
+  const { score } = await import('./support/staffSplitFixture.js')
+  const { prepareTeacherAssignmentScoreUpload } = await import('../src/services/teacherAssignmentComposerScoreUpload.js')
+  globalThis.DOMParser = SmoosicTestDOMParser
+  globalThis.XMLSerializer = SmoosicTestXMLSerializer
+  const root = createFakeDocument(), host = root.createElement('div'), sent = []
+  const service = {
+    loadRoster: async () => [{ studentId: 'student-a', displayNameOrNickname: 'Ada' }],
+    prepareScoreUpload: input => prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-23T00:00:00Z' }),
+    send: async input => { sent.push(input);return { ok: false, recipients: [] } },
+  }
+  const handle = mountTeacherAssignmentComposerUi({ root, host, service, createDraftId: () => 'split-draft' })
+  await settle()
+  const file = host.querySelector('input[name="scoreMusicXml"]')
+  file.files = [{ name: 'piano.musicxml', size: 1000, text: async () => score() }]
+  await file.dispatchEventAsync({ type: 'change' })
+  const find = label => host.querySelectorAll('button').find(b => b.textContent === label)
+  assert.ok(find('Keman ve piyano partilerini ayır'))
+  await find('Keman ve piyano partilerini ayır').dispatchEventAsync({ type: 'click' })
+  await find('Ayırmayı uygula').dispatchEventAsync({ type: 'click' })
+  host.querySelector('input[name="assignmentTitle"]').value = 'Etüt'
+  host.querySelector('input[name="studentId"]').checked = true
+  await host.querySelector('form').dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  assert.match(sent[0].scoreUpload.musicXml, /<part id="P1">/)
+  assert.match(sent[0].scoreUpload.musicXml, /<part id="P2">/)
+  assert.equal(sent[0].playbackInstrument, 'GRAND_PIANO')
+  handle.destroy()
 })

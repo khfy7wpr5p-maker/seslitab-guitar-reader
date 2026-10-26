@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createFakeDocument } from './support/fakeTeacherPoolDom.js'
+import { mountTeacherAssignmentComposerUi } from '../src/teacherAssignmentComposerUi.js'
+import { readMusicXmlPartInstrumentMap } from '../src/services/musicXmlPartInstrumentAssignment.js'
 
 import {
   SmoosicTestDOMParser,
@@ -35,7 +38,7 @@ const VALID_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </part>
 </score-partwise>`
 
-function integrationHarness() {
+function integrationHarness({ failDeliveryOnce = false, loseAcknowledgementOnce = false } = {}) {
   const calls = {
     prepared: [],
     delivered: [],
@@ -104,6 +107,7 @@ function integrationHarness() {
       async deliverBatch({ providerSubject, assignmentIds }) {
         assert.equal(providerSubject, 'uid-teacher-a')
         calls.delivered.push([...assignmentIds])
+        if (failDeliveryOnce) { failDeliveryOnce = false;throw new Error('delivery-interrupted') }
         return Object.freeze(assignmentIds.map((assignmentId) => {
           const item = preparedItems.get(assignmentId)
           assert.ok(item)
@@ -187,6 +191,7 @@ function integrationHarness() {
           pieceAssignmentId: input.pieceAssignmentId,
           updatedAt: '2026-10-04T08:00:04Z',
         })
+        if (loseAcknowledgementOnce) { loseAcknowledgementOnce = false;throw new Error('converted-response-lost') }
         return request
       },
     },
@@ -195,6 +200,42 @@ function integrationHarness() {
 
   return { service, calls, pieces }
 }
+
+for (const phase of ['prepared-only', 'converted-response-lost']) test(`SES-249 real request conversion ${phase} retries the original mapped sounds after failure`, async () => {
+  const backend = integrationHarness({ failDeliveryOnce: phase === 'prepared-only', loseAcknowledgementOnce: phase === 'converted-response-lost' })
+  const root = createFakeDocument(), host = root.createElement('div'), attempts = [], results = []
+  const xml = VALID_XML.replace('</part-list>', '<score-part id="P2"><part-name>Piano</part-name></score-part></part-list>')
+    .replace('</score-partwise>', '<part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration></note></measure></part></score-partwise>')
+  let id = 0
+  const composer = mountTeacherAssignmentComposerUi({ root, host, createDraftId: () => 'conversion-' + ++id,
+    service: { loadRoster: async () => [], send: async () => assert.fail('request must use its bound route'),
+      prepareScoreUpload: input => prepareTeacherAssignmentScoreUpload({ ...input, teacherId: 'teacher-a', now: () => '2026-10-04T07:59:00Z' }) } })
+  composer.startRequestConversion({ title: 'Duet', displayNameOrNickname: 'Ada', targetState: 'ACTIVE', onSubmit: async composerDraft => {
+    attempts.push(composerDraft)
+    results.push(await backend.service.convert({ providerSubject: 'uid-teacher-a', requestId: 'request-a', targetState: 'ACTIVE', composerDraft }))
+  } })
+  const file = host.querySelector('input[name="scoreMusicXml"]')
+  file.files = [{ name: 'duet.musicxml', size: xml.length, text: async () => xml }]
+  await file.dispatchEventAsync({ type: 'change' })
+  const click = label => host.querySelectorAll('button').find(b => b.textContent === label).dispatchEventAsync({ type: 'click' })
+  await click('Partilere enstrüman ata')
+  host.querySelector('select[name="partInstrument:P1"]').value = 'VIOLIN'
+  host.querySelector('select[name="partInstrument:P2"]').value = 'GRAND_PIANO'
+  await click('Enstrüman atamasını önizle');await click('Enstrüman atamasını uygula')
+  const submit = () => host.querySelector('form').dispatchEventAsync({ type: 'submit', preventDefault() {} })
+  await submit()
+  assert.equal(results.length, 0)
+  await click('Enstrüman atamasını geri al')
+  host.querySelector('select[name="playbackInstrument"]').value = 'CLASSICAL_GUITAR'
+  await submit()
+  assert.equal(results[0]?.state, 'CONVERTED')
+  assert.deepEqual(attempts[1], attempts[0])
+  assert.deepEqual(readMusicXmlPartInstrumentMap(backend.calls.prepared[0][0].package.content.score.data), { P1: 'VIOLIN', P2: 'GRAND_PIANO' })
+  assert.equal(backend.calls.prepared.length, phase === 'prepared-only' ? 2 : 1)
+  assert.equal(backend.pieces.size, 1)
+  assert.equal(file.disabled, false, 'confirmed conversion releases the editor for the next assignment')
+  composer.destroy()
+})
 
 async function preparedScore() {
   return prepareTeacherAssignmentScoreUpload({
@@ -205,12 +246,21 @@ async function preparedScore() {
   })
 }
 
-function draft({ scoreUpload = null, chordSnapshots = [] } = {}) {
+function draft({
+  scoreUpload = null,
+  chordSnapshots = [],
+  playbackInstrument,
+  violinTargetPartId,
+} = {}) {
   return Object.freeze({
     teacherNote: 'Yavaş çalış.',
     scoreUpload,
     guitarTabUpload: null,
     chordSnapshots: Object.freeze([...chordSnapshots]),
+    ...(playbackInstrument === undefined
+      ? {}
+      : { playbackInstrument }),
+    ...(violinTargetPartId === undefined ? {} : { violinTargetPartId }),
   })
 }
 
@@ -220,7 +270,11 @@ test('SES-189 real Composer SCORE-only conversion creates one exact same-student
     providerSubject: 'uid-teacher-a',
     requestId: 'request-a',
     targetState: 'ACTIVE',
-    composerDraft: draft({ scoreUpload: await preparedScore() }),
+    composerDraft: draft({
+      scoreUpload: await preparedScore(),
+      playbackInstrument: 'VIOLIN',
+      violinTargetPartId: 'P1',
+    }),
   })
 
   assert.equal(result.state, 'CONVERTED')
@@ -228,6 +282,8 @@ test('SES-189 real Composer SCORE-only conversion creates one exact same-student
   assert.equal(calls.pieces[0].studentId, 'student-b')
   assert.match(calls.pieces[0].scoreAssignmentId, /^ses141:ses189:request-a:score-assignment:student-b$/)
   assert.deepEqual(calls.pieces[0].chordAssignmentIds, [])
+  assert.equal(calls.prepared[0][0].package.playbackInstrument, 'VIOLIN')
+  assert.equal(calls.prepared[0][0].package.content.violin.targetPartId, 'P1')
 })
 
 test('SES-189 real Composer CHORD-only conversion creates one exact same-student Piece', async () => {

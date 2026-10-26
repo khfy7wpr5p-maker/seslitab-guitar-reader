@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import {
   access,
@@ -14,22 +15,20 @@ import { fileURLToPath } from 'node:url'
 import { runBrowserFixture } from '../tests/support/browserFixture.js'
 import {
   qualifyGtabRt01gReleaseEvidence,
+  verifyGtabRt01gStudentRenderInput,
 } from './gtabRt01gReleaseGate.js'
 import {
   verifyStudentRendererRuntimeIntegrity,
 } from './studentRendererRuntimeIntegrity.js'
 
 const EXPECTED_STUDENT_RENDERER_SHA =
-  '13aa0843158257a207afe062879743d58048cc6d'
+  'a015f9049149037c48ac764ab30ed2bcbbe200d3'
 const EXPECTED_CONTRACT_VERSION = '0.2.0'
 
 const root = path.resolve(
   fileURLToPath(new URL('..', import.meta.url)),
 )
 const studentRoot = process.env.STUDENT_APP_ROOT
-if (!studentRoot) {
-  throw new Error('STUDENT_APP_ROOT is required.')
-}
 
 const artifactRoot = path.join(
   root,
@@ -44,6 +43,11 @@ const finalPath = path.join(
   artifactRoot,
   'release-evidence.json',
 )
+// Remove old success even if prerequisites or pending evidence are missing.
+await rm(finalPath, { force: true })
+if (!studentRoot) {
+  throw new Error('STUDENT_APP_ROOT is required.')
+}
 const stagingRoot = path.join(
   artifactRoot,
   '.student-renderer-browser',
@@ -128,8 +132,8 @@ function fixtureHtml() {
         expectedContractVersion: '${EXPECTED_CONTRACT_VERSION}',
       })
       const adapter = createStNotationAdapter({ runtimeLoader: loader })
-      const scoreXml = await readMusicXml('../student-score.musicxml')
-      const tabXml = await readMusicXml('../student-guitar-tab.musicxml')
+      const scoreXml = await readMusicXml('./student-score.musicxml')
+      const tabXml = await readMusicXml('./student-guitar-tab.musicxml')
 
       const scoreResult = await adapter.render({
         musicXml: scoreXml,
@@ -158,7 +162,7 @@ function fixtureHtml() {
 `
 }
 
-async function stageStudentRenderer() {
+async function stageStudentRenderer(scoreBytes, tabBytes) {
   await rm(stagingRoot, {
     recursive: true,
     force: true,
@@ -205,6 +209,8 @@ async function stageStudentRenderer() {
     fixtureHtml(),
     'utf8',
   )
+  await writeFile(path.join(stagingRoot, 'student-score.musicxml'), scoreBytes)
+  await writeFile(path.join(stagingRoot, 'student-guitar-tab.musicxml'), tabBytes)
 }
 
 const pending = JSON.parse(
@@ -259,8 +265,22 @@ assert.deepEqual(
   'Pinned Student renderer integrity evidence changed between preflight and browser proof.',
 )
 
-await rm(finalPath, { force: true })
-await stageStudentRenderer()
+const scoreBytes = await readFile(path.join(artifactRoot, 'student-score.musicxml'))
+const tabBytes = await readFile(path.join(artifactRoot, 'student-guitar-tab.musicxml'))
+function gitHead(directory) {
+  return execFileSync('/usr/bin/git', ['-C', directory, 'rev-parse', 'HEAD'],
+    { encoding: 'utf8' }).trim()
+}
+verifyGtabRt01gStudentRenderInput({
+  pending, scoreBytes, tabBytes,
+  revisions: {
+    ...pending.revisions,
+    teacher: gitHead(root),
+    student: gitHead(studentRoot),
+    studentRenderer: studentRendererIntegrity.rendererSourceRevision,
+  },
+})
+await stageStudentRenderer(scoreBytes, tabBytes)
 
 try {
   const chrome = await findChrome()

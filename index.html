@@ -30,6 +30,10 @@
     </header>
 
     <main class="app-main">
+      <div class="teacher-tools-navigation" id="teacher-tools-navigation" role="tablist" aria-label="Öğretmen araçları">
+        <button class="teacher-tool-btn active" id="result-assignment-btn" type="button" role="tab" aria-selected="true" aria-controls="tab-assignment" tabindex="0">Ödev Gönder</button>
+      </div>
+
       <section class="card input-card" id="input-section" aria-labelledby="input-heading">
         <div class="card-header">
           <h2 id="input-heading">Dosya Aç</h2>
@@ -127,7 +131,7 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
         </div>
       </section>
 
-      <section class="card results-card" id="results-section" hidden aria-labelledby="results-heading">
+      <section class="card results-card" id="results-section" aria-labelledby="results-heading">
         <div class="card-header">
           <h2 id="results-heading">Çıktı</h2>
           <div class="card-actions">
@@ -144,7 +148,6 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
             <button class="tab-btn teacher-surface-hidden" id="result-rhythmic-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="rhythmic">Metin</button>
             <button class="tab-btn teacher-surface-hidden" id="result-html-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="html">HTML</button>
             <button class="tab-btn teacher-surface-hidden" id="result-notes-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="notes">Notalar</button>
-            <button class="tab-btn" id="result-assignment-btn" role="tab" aria-selected="false" aria-controls="tab-assignment" data-tab="assignment">Ödev Gönder</button>
             <button class="tab-btn active" id="result-xml-btn" role="tab" aria-selected="true" data-tab="xml">MusicXML</button>
           </div>
 
@@ -162,7 +165,7 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
             <div class="notes-grid" id="notes-output" aria-label="Nota kartları"></div>
           </div>
 
-          <div class="tab-content teacher-assignment-composer-panel" id="tab-assignment" role="tabpanel" aria-labelledby="result-assignment-btn" hidden>
+          <div class="tab-content teacher-assignment-composer-panel" id="tab-assignment" role="tabpanel" aria-labelledby="result-assignment-btn">
             <div id="teacher-auth-session-host"></div>
             <div id="teacher-student-management-host"></div>
             <div id="teacher-assignment-composer-host">

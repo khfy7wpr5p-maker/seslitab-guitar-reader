@@ -4,6 +4,10 @@ import {
   validateGuitarTabExport,
 } from './guitarTabExportValidator.js'
 import { normalizeGuitarTabTargetSelection } from './guitarTabCanonicalIdentity.js'
+import {
+  GUITAR_TAB_PITCH_POLICY,
+  normalizeGuitarTabPitchPolicy,
+} from './guitarTabPitchPolicy.js'
 
 export const EDITOR_GUITAR_TAB_HANDOFF_SCHEMA_VERSION = '1.0.0'
 export const EDITOR_GUITAR_TAB_MAX_FRET = GUITAR_TAB_MAX_FRET
@@ -29,6 +33,14 @@ function normalizeTargetSelection(targetSelection) {
     return normalizeGuitarTabTargetSelection(targetSelection, { allowNull: true })
   } catch {
     fail('target-selection-invalid', { category: 'IDENTITY', validatorCode: 'TARGET_SELECTION_INVALID' })
+  }
+}
+
+function normalizePitchPolicy(guitarPitchPolicy) {
+  try {
+    return normalizeGuitarTabPitchPolicy(guitarPitchPolicy)
+  } catch {
+    fail('guitar-pitch-policy-invalid', { category: 'PHYSICAL', validatorCode: 'GUITAR_PITCH_POLICY_INVALID' })
   }
 }
 
@@ -72,6 +84,7 @@ export async function prepareEditorGuitarTabHandoff({
   guitarTabMusicXml,
   draftId,
   targetSelection = null,
+  guitarPitchPolicy = GUITAR_TAB_PITCH_POLICY.SOURCE_SOUNDING,
 } = {}) {
   if (!isRecord(scoreUpload)) fail('score-upload-required')
   if (!hasText(draftId)) fail('draft-id-required')
@@ -84,10 +97,12 @@ export async function prepareEditorGuitarTabHandoff({
   if (!hasText(guitarTabMusicXml)) fail('tab-empty')
 
   const normalizedTargetSelection = normalizeTargetSelection(targetSelection)
+  const normalizedGuitarPitchPolicy = normalizePitchPolicy(guitarPitchPolicy)
   const validation = validateGuitarTabExport({
     scoreMusicXml: scoreUpload.musicXml,
     guitarTabMusicXml,
     targetSelection: normalizedTargetSelection,
+    guitarPitchPolicy: normalizedGuitarPitchPolicy,
   })
   if (!validation.ok) throwValidatorFailure(validation)
 

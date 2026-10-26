@@ -27,8 +27,8 @@ test('actual pinned oracle graph retains original identities and rejects corrupt
   assert.equal(qualifyGtab10cSemanticParity(input).status, 'PASS')
   assert.equal(oracle.readViews.derived.policy, 'gtab10c-note-id-part-lane-read-view-v3')
   for (const note of oracle.derivedSnapshot.notes) {
-    assert.equal(note.voice, 1)
     assert.ok(note.staff === 1 || note.staff === 2)
+    assert.equal(note.voice, note.staff === 1 ? 1 : 5)
     const row = oracle.readViews.derived.mapping.find(row => row.readViewId === note.source_id)
     assert.equal(note.part_id, row.partId)
     assert.equal(note.staff, row.originalStaff)
@@ -71,7 +71,7 @@ test('real pinned multi-staff keys retain raw evidence and cannot qualify missin
   const document = editor.createTabAssignmentDocument(session)
   document.assignPosition(session.events[0].sourceEventId, { string: 1, fret: 0 })
   const exported = editor.serializeGuitarTabMusicXml({ sourceSession: session, document })
-  assert.match(exported, /<key number="1"><fifths>0<\/fifths><mode>major<\/mode><\/key>/)
+  assert.match(exported, /<key number="1"><fifths>3<\/fifths><mode>major<\/mode><\/key><key number="2"><fifths>0<\/fifths>/)
   const sourcePath = fileURLToPath(new URL('artifacts/gtab10c-semantic-parity/key-staff-source.musicxml', root))
   await writeFile(sourcePath, xml)
   for (const [name, derivedXml] of [
@@ -84,7 +84,7 @@ test('real pinned multi-staff keys retain raw evidence and cannot qualify missin
     await writeFile(derivedPath, derivedXml)
     execFileSync(process.env.GTAB10C_PYTHON, [fileURLToPath(new URL('scripts/gtab10cSemanticOracle.py', root)), sourcePath, derivedPath, outputPath], { env: { ...process.env, PYTHONPATH: path.join(process.env.SEMANTIC_ENGINE_ROOT, 'src') } })
     const actual = JSON.parse(await readFile(outputPath))
-    assert.deepEqual(actual.keySignatureCoverage.source[0].rawKeyStaffNumbers, ['1', '2'])
+    assert.deepEqual(actual.keySignatureCoverage.source[0].rawKeyContexts.map(row => row.number), ['1', '2'])
     assert.ok(actual.sourceSnapshot.key_signatures.every(row => !Object.hasOwn(row, 'staff')))
     const result = qualifyGtab10cSemanticParity({ ...input, sourceBytes: xml, derivedBytes: derivedXml,
       sourceSnapshot: actual.sourceSnapshot, derivedSnapshot: actual.derivedSnapshot, tabPositions: actual.tabPositions,
@@ -106,7 +106,7 @@ test('real pinned multi-staff meters retain raw evidence and cannot qualify miss
   const document = editor.createTabAssignmentDocument(session)
   document.assignPosition(session.events[0].sourceEventId, { string: 1, fret: 0 })
   const exported = editor.serializeGuitarTabMusicXml({ sourceSession: session, document })
-  assert.match(exported, /<time><beats>1<\/beats><beat-type>4<\/beat-type><\/time>/)
+  assert.match(exported, /<time number="1"><beats>1<\/beats><beat-type>4<\/beat-type><\/time><time number="2"><beats>2<\/beats>/)
   const sourcePath = fileURLToPath(new URL('artifacts/gtab10c-semantic-parity/time-staff-source.musicxml', root))
   await writeFile(sourcePath, xml)
   for (const [name, derivedXml] of [
@@ -119,7 +119,7 @@ test('real pinned multi-staff meters retain raw evidence and cannot qualify miss
     await writeFile(derivedPath, derivedXml)
     execFileSync(process.env.GTAB10C_PYTHON, [fileURLToPath(new URL('scripts/gtab10cSemanticOracle.py', root)), sourcePath, derivedPath, outputPath], { env: { ...process.env, PYTHONPATH: path.join(process.env.SEMANTIC_ENGINE_ROOT, 'src') } })
     const actual = JSON.parse(await readFile(outputPath))
-    assert.deepEqual(actual.timeSignatureCoverage.source[0].rawTimeStaffNumbers, ['1', '2'])
+    assert.deepEqual(actual.timeSignatureCoverage.source[0].rawTimeContexts.map(row => row.number), ['1', '2'])
     assert.ok(actual.sourceSnapshot.time_signatures.every(row => !Object.hasOwn(row, 'staff')))
     const result = qualifyGtab10cSemanticParity({ ...input, sourceBytes: xml, derivedBytes: derivedXml,
       sourceSnapshot: actual.sourceSnapshot, derivedSnapshot: actual.derivedSnapshot, tabPositions: actual.tabPositions,
@@ -149,6 +149,10 @@ test('actual oracle regression envelope cannot be mixed with pristine independen
 test('real oracle cannot qualify missing or altered TAB clef, lines or tuning', async () => {
   const original = await readFile(new URL(`artifacts/gtab10c-semantic-parity/derived/${fixtureId}.musicxml`, root), 'utf8')
   const sourcePath = fileURLToPath(new URL('tests/fixtures/gtab10c/musescore-like-multipart-source.musicxml', root))
+  const appendAfterLast = (xml, marker, addition) => {
+    const index = xml.lastIndexOf(marker)
+    return index < 0 ? xml : `${xml.slice(0, index + marker.length)}${addition}${xml.slice(index + marker.length)}`
+  }
   const mutations = [
     ['wrong-staves', xml => xml.replace('<staves>2</staves>', '<staves>3</staves>')],
     ['missing-staves', xml => xml.replace('<staves>2</staves>', '')],
@@ -159,7 +163,7 @@ test('real oracle cannot qualify missing or altered TAB clef, lines or tuning', 
     ['missing-profile', xml => xml.replace(/<staff-details[^>]*>[\s\S]*?<\/staff-details>/, '')],
     ['wrong-lines', xml => xml.replace('<staff-lines>6</staff-lines>', '<staff-lines>5</staff-lines>')],
     ['wrong-tuning', xml => xml.replace('<tuning-step>E</tuning-step><tuning-octave>2</tuning-octave>', '<tuning-step>F</tuning-step><tuning-octave>2</tuning-octave>')],
-    ['conflicting-profile', xml => xml.replace('<time><beats>3</beats><beat-type>4</beat-type></time>', '<time><beats>3</beats><beat-type>4</beat-type></time><staff-details number="2"><staff-lines>5</staff-lines></staff-details>')],
+    ['conflicting-profile', xml => appendAfterLast(xml, '<time><beats>3</beats><beat-type>4</beat-type></time>', '<staff-details number="2"><staff-lines>5</staff-lines></staff-details>')],
     ['missing-tuning', xml => xml.replace(/<staff-tuning line="1">[\s\S]*?<\/staff-tuning>/, '')],
   ]
   const passedMutations = []
@@ -175,7 +179,10 @@ test('real oracle cannot qualify missing or altered TAB clef, lines or tuning', 
       sourceSnapshot: actual.sourceSnapshot, derivedSnapshot: actual.derivedSnapshot, tabPositions: actual.tabPositions,
       provenance: { ...input.provenance, derivedSha256: actual.derivedSha256 } })
     if (result.status === 'PASS') passedMutations.push(name)
-    assert.ok(result.diagnostics.some(row => row.code === (name.includes('clef') ? 'TAB_CLEF_MISMATCH' : 'TAB_PROFILE_MISMATCH')), name)
+    const expectedCodes = name.includes('clef')
+      ? new Set(['TAB_CLEF_MISMATCH', 'FULL_SCORE_CLEF_MISMATCH'])
+      : new Set(['TAB_PROFILE_MISMATCH'])
+    assert.ok(result.diagnostics.some(row => expectedCodes.has(row.code)), name)
     assert.equal(await readFile(derivedPath, 'utf8'), xml)
   }
   assert.deepEqual(passedMutations, [])

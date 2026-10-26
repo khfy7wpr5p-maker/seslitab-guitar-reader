@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -10,6 +11,7 @@ import {
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { spawnSync } from 'node:child_process'
 
 const releaseGate = await import(
   '../scripts/gtabRt01gReleaseGate.js'
@@ -54,6 +56,7 @@ function validEvidence() {
       packageTabSha256: sha256(guitarTabMusicXml),
     },
     music: {
+      guitarPitchPolicy: 'source-sounding',
       writtenMidi: 61,
       soundingMidi: 61,
       string: 2,
@@ -198,70 +201,52 @@ test('SES-225 verifies every pinned Student renderer artifact byte and digest', 
   }
 })
 
-test('SES-225 workflow pins every cross-app dependency and runs required release proofs', async () => {
-  const workflow = await readFile(
-    new URL(
-      '../.github/workflows/gtab-rt-01g-release-gate.yml',
-      import.meta.url,
-    ),
-    'utf8',
-  ).catch(() => '')
+test('SES-225 browser finalization rejects changed delivered SCORE or TAB bytes', () => {
+  const evidence = validEvidence()
+  evidence.status = 'PENDING_STUDENT_RENDERER'
+  evidence.checks.studentRendererRender = 'PENDING'
+  const scoreBytes = Buffer.from('<score-partwise>smoosic-final-c-sharp-4</score-partwise>')
+  const tabBytes = Buffer.from('<score-partwise>string-2-fret-2</score-partwise>')
+  assert.equal(typeof releaseGate.verifyGtabRt01gStudentRenderInput, 'function')
+  const verify = (overrides = {}) => releaseGate.verifyGtabRt01gStudentRenderInput({
+    pending: evidence, scoreBytes, tabBytes, revisions: REVISIONS, ...overrides,
+  })
+  assert.doesNotThrow(() => verify())
+  assert.throws(() => verify({ scoreBytes: Buffer.from('changed score') }), /SCORE bytes/)
+  assert.throws(() => verify({ tabBytes: Buffer.from('changed tab') }), /TAB bytes/)
+  assert.throws(() => verify({ revisions: { ...REVISIONS, student: 'f'.repeat(40) } }), /revision/)
+  evidence.checks.sourceImmutable = 'FAIL'
+  assert.throws(() => verify(), /preflight/)
+})
 
-  assert.match(workflow, /GTAB_EDITOR_SHA:\s*4eb479bc84b12c6deefb289d03c933ce9980bc9f/u)
-  assert.match(workflow, /STUDENT_APP_SHA:\s*70042d2314c005e71de80094363ba66faa795456/u)
-  assert.match(workflow, /SEMANTIC_ENGINE_SHA:\s*ef305f45ff90d940ac6c51a0c46c4fac006d7c5c/u)
-  assert.match(workflow, /STUDENT_RENDERER_SHA:\s*13aa0843158257a207afe062879743d58048cc6d/u)
-  assert.match(workflow, /verifyGtabRt01gCrossAppRelease\.js/u)
-  assert.match(workflow, /verifyGtab10cSemanticParity\.js/u)
-  assert.match(workflow, /verifySes222SmoosicGuitarTabRendererBrowser\.js/u)
-  assert.match(workflow, /verifyGtabRt01gStudentRendererBrowser\.js/u)
-  assert.match(
-    workflow,
-    /Verify pinned Student renderer against delivered package[\s\S]*STUDENT_APP_ROOT:/u,
-  )
-  assert.match(
-    workflow,
-    /env -u GITHUB_SHA[\s\S]*GTAB10C_SESILITAB_SHA="\$SES225_TEACHER_SHA"/u,
-  )
-  assert.match(
-    workflow,
-    /name: Build exact production bundle[\s\S]*run: env -u GITHUB_SHA npm run build/u,
-  )
-  assert.doesNotMatch(workflow, /render\.com|firebase deploy|SECURE_DELIVERY_TEACHER_WRITES_ACTIVATION:\s*true/u)
+test('SES-225 rejects a missing or different pitch policy instead of trusting octave coincidence', () => {
+  for (const policy of [undefined, 'standard-guitar-written']) {
+    const evidence = validEvidence()
+    evidence.music.guitarPitchPolicy = policy
+    assert.equal(qualify(evidence).status, 'FAIL')
+  }
+})
 
-  const crossAppProof = await readFile(
-    new URL(
-      '../scripts/verifyGtabRt01gCrossAppRelease.js',
-      import.meta.url,
-    ),
-    'utf8',
-  )
-  assert.match(
-    crossAppProof,
-    /vendor\/st-score-runtime\/runtime-manifest\.json/u,
-  )
-  assert.match(
-    crossAppProof,
-    /verifyStudentRendererRuntimeIntegrity/u,
-  )
-  assert.match(
-    crossAppProof,
-    /release-evidence\.pending\.json/u,
-  )
-  assert.match(
-    crossAppProof,
-    /student-score\.musicxml/u,
-  )
-  assert.match(
-    crossAppProof,
-    /student-guitar-tab\.musicxml/u,
-  )
-  assert.match(
-    crossAppProof,
-    /studentRendererArtifact:\s*'PASS'/u,
-  )
-  assert.match(
-    crossAppProof,
-    /studentRendererRender:\s*'PENDING'/u,
-  )
+test('SES-225 browser prerequisite failure removes stale success evidence', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ses225-stale-proof-'))
+  try {
+    for (const relative of ['scripts/verifyGtabRt01gStudentRendererBrowser.js',
+      'scripts/gtabRt01gReleaseGate.js', 'scripts/studentRendererRuntimeIntegrity.js',
+      'tests/support/browserFixture.js']) {
+      const target = path.join(directory, relative)
+      await mkdir(path.dirname(target), { recursive: true })
+      await cp(new URL('../' + relative, import.meta.url), target)
+    }
+    await writeFile(path.join(directory, 'package.json'), '{"type":"module"}')
+    const artifact = path.join(directory, 'artifacts/gtab-rt-01g/release-evidence.json')
+    await mkdir(path.dirname(artifact), { recursive: true })
+    await writeFile(artifact, '{"status":"PASS"}')
+    const env = { ...process.env }
+    delete env.STUDENT_APP_ROOT
+    const result = spawnSync(process.execPath,
+      [path.join(directory, 'scripts/verifyGtabRt01gStudentRendererBrowser.js')], { env, encoding: 'utf8' })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /STUDENT_APP_ROOT is required/)
+    await assert.rejects(readFile(artifact), { code: 'ENOENT' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })

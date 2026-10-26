@@ -68,6 +68,9 @@ jobs:
           path: artifacts/ses153-teacher-authority-browser.json
           if-no-files-found: warn
 
+      - name: Verify SES-248 reversible staff-to-part split in real browser
+        run: node scripts/verifySes248StaffSplitBrowser.js
+
       - name: Build production bundle
         run: npm run build
 
@@ -173,8 +176,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STUDENT_APP_SHA: 70042d2314c005e71de80094363ba66faa795456
-      RENDERER_SHA: 13aa0843158257a207afe062879743d58048cc6d
+      STUDENT_APP_SHA: df4b0d0a80f6254f830ba068ea2fe3b7bce8fed2
+      RENDERER_SHA: a015f9049149037c48ac764ab30ed2bcbbe200d3
 
     strategy:
       fail-fast: false
@@ -243,6 +246,11 @@ jobs:
           cp teacher/qualification/td-prod-10/student-app-e2e-fixture-adapter.mjs student-app/browser-tests/support/td-prod-10-e2e-fixture-adapter.mjs
           cp teacher/qualification/td-prod-10/student-app-e2e-bootstrap.mjs student-app/browser-tests/support/td-prod-10-e2e-bootstrap.mjs
           cp teacher/qualification/td-prod-10/student-app-e2e.spec.mjs student-app/browser-tests/td-prod-10-teacher-delivery.spec.mjs
+          cp teacher/qualification/td-prod-10/part-instrument-ui.spec.mjs student-app/browser-tests/td-prod-10-part-instrument-ui.spec.mjs
+          mkdir -p student-app/browser-tests/support/ses249-teacher/src/services
+          cp teacher/musicXmlSecurity.js student-app/browser-tests/support/ses249-teacher/
+          cp teacher/src/partInstrumentAssignmentUi.js student-app/browser-tests/support/ses249-teacher/src/
+          cp teacher/src/services/musicXmlPartInstrumentAssignment.js student-app/browser-tests/support/ses249-teacher/src/services/
 
       - name: Generate exact teacher-delivered Student App fixture
         working-directory: teacher
@@ -251,8 +259,16 @@ jobs:
       - name: Route Ubuntu package indexes through the reachable HTTPS mirror
         run: |
           sudo find /etc/apt -type f \
-            \( -name '*.list' -o -name '*.sources' \) \
+            \( -name '*.list' -o -name '*.sources' -o -name 'apt-mirrors.txt' \) \
             -exec sed -E -i 's#[[:alpha:]]+://azure\.archive\.ubuntu\.com#https://archive.ubuntu.com#g' {} +
+          # Current Ubuntu runners select repositories through this mirror+file list.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            cat /etc/apt/apt-mirrors.txt
+            if grep -Eq 'https?://azure\.archive\.ubuntu\.com([/:[:space:]]|$)' /etc/apt/apt-mirrors.txt; then
+              echo "::error::Ubuntu mirror list still points to Azure after HTTPS routing."
+              exit 1
+            fi
+          fi
 
       - name: Install qualification browser
         working-directory: student-app
@@ -262,4 +278,4 @@ jobs:
         working-directory: student-app
         env:
           ST_BROWSER: ${{ matrix.browser }}
-        run: node --test browser-tests/td-prod-10-teacher-delivery.spec.mjs
+        run: node --test browser-tests/td-prod-10-*.spec.mjs

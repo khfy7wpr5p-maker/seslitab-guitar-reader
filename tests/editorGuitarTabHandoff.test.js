@@ -83,17 +83,33 @@ function sourceScore(events, staff = null) {
 
 function editorTab(events, technicalById, { staffLines = 6 } = {}) {
   const staff1 = voiceTracks(events, 1)
-  const staff2 = voiceTracks(events, 2, technicalById)
+  const sourceVoices = [...new Set(events.map((event) => event.voice))]
+    .sort((left, right) => Number(left) - Number(right))
+  const reservedVoices = new Set(sourceVoices.map(Number).filter(Number.isSafeInteger))
+  const assignedVoices = new Set()
+  let nextVoice = 5
+  const tabVoiceBySource = new Map(sourceVoices.map((voice) => {
+    while (reservedVoices.has(nextVoice) || assignedVoices.has(nextVoice)) nextVoice += 1
+    if (!Number.isSafeInteger(nextVoice)) throw new RangeError('No renderer-safe TAB voice remains.')
+    const tabVoice = String(nextVoice)
+    assignedVoices.add(nextVoice)
+    nextVoice += 1
+    return [voice, tabVoice]
+  }))
+  const staff2 = voiceTracks(
+    events.map((event) => ({ ...event, voice: tabVoiceBySource.get(event.voice) })),
+    2,
+    technicalById,
+  )
   return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
-  <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
+  <part-list><score-part id="P1"><part-name>Source</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
       <attributes>
         <divisions>1</divisions>
         <time><beats>4</beats><beat-type>4</beat-type></time>
         <staves>2</staves>
-        <clef number="1"><sign>G</sign><line>2</line></clef>
         <clef number="2"><sign>TAB</sign><line>5</line></clef>
         <staff-details number="2" show-frets="numbers">
           <staff-type>alternate</staff-type>
@@ -112,6 +128,19 @@ function editorTab(events, technicalById, { staffLines = 6 } = {}) {
     </measure>
   </part>
 </score-partwise>`
+}
+
+function preserveMultipartSourceWithSelectedTab(fullScore, selectedTab, selectedPartId) {
+  const sourceParts = [...fullScore.matchAll(/<part id="([^"]+)">[\s\S]*?<\/part>/gu)]
+    .map((match) => ({ id: match[1], xml: match[0] }))
+  const selectedPart = selectedTab.match(/<part id="P1">[\s\S]*?<\/part>/u)?.[0]
+  assert.ok(selectedPart)
+  const parts = sourceParts.map((part) => part.id === selectedPartId
+    ? selectedPart.replace('<part id="P1">', `<part id="${selectedPartId}">`)
+    : part.xml)
+  const partList = fullScore.match(/<part-list>[\s\S]*?<\/part-list>/u)?.[0]
+  assert.ok(partList)
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0">${partList}${parts.join('')}</score-partwise>`
 }
 
 async function preparedScore(events, draftId = 'draft-a') {
@@ -161,7 +190,11 @@ test('GTAB-10B validates selected part/staff/voice in a full multipart score', a
   const scoreUpload = await prepareTeacherAssignmentScoreUpload({
     musicXml: fullScore, teacherId: 'teacher-a', draftId: 'multipart-draft', now: () => '2026-10-04T10:00:00Z',
   })
-  const tabXml = editorTab(selected, { n1: { string: 2, fret: 1 } })
+  const tabXml = preserveMultipartSourceWithSelectedTab(
+    fullScore,
+    editorTab(selected, { n1: { string: 2, fret: 1 } }),
+    'P2',
+  )
   const result = await prepareEditorGuitarTabHandoff({
     scoreUpload, guitarTabMusicXml: tabXml, draftId: 'multipart-draft',
     targetSelection: { partId: 'P2', partIndex: 1, staff: 1, voice: 1 },
@@ -248,7 +281,7 @@ test('GTAB-10B accepts safe implicit Staff 1 and Voice 1 for targeted source not
   assert.equal(withoutVoice.pitchedEventCount, 1)
 })
 
-test('GTAB-10B targeted handoff ignores unsupported notes outside the selected voice', async () => {
+test('SES-233 targeted handoff fails closed on unsupported notes anywhere in the selected staff', async () => {
   const selected = [{ id: 'selected', pitch: PITCHES.C4, voice: '1', onset: 0, duration: 1 }]
   const sourceXml = sourceScore(selected, 1).replace(
     '</measure>',
@@ -260,13 +293,12 @@ test('GTAB-10B targeted handoff ignores unsupported notes outside the selected v
     musicXml: sourceXml, teacherId: 'teacher-a', draftId: 'draft-target-filter',
     now: () => '2026-10-04T10:00:00Z',
   })
-  const handoff = await prepareEditorGuitarTabHandoff({
+  await assert.rejects(prepareEditorGuitarTabHandoff({
     scoreUpload,
     guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
     draftId: 'draft-target-filter',
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 1 },
-  })
-  assert.equal(handoff.pitchedEventCount, 1)
+  }), /unpitched-unsupported/u)
 
   await assert.rejects(prepareEditorGuitarTabHandoff({
     scoreUpload,
@@ -279,7 +311,7 @@ test('GTAB-10B targeted handoff ignores unsupported notes outside the selected v
     guitarTabMusicXml: editorTab(selected, { selected: { string: 2, fret: 1 } }),
     draftId: 'draft-target-filter',
     targetSelection: { partId: 'P1', partIndex: 0, staff: 1, voice: 3 },
-  }), /grace-unsupported/u)
+  }), /unpitched-unsupported/u)
 })
 
 test('GTAB-10B targeted handoff rejects repeated staff or voice identities', async () => {

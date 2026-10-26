@@ -7,7 +7,7 @@ export const GTAB10C_PINNED_SEMANTIC_ENGINE_COMMIT = 'ef305f45ff90d940ac6c51a0c4
 export const GTAB10C_PINNED_SNAPSHOT_SCHEMA = 'st-semantic-snapshot-v1'
 export const GTAB10C_PINNED_PARTITURA_VERSION = '1.9.0'
 // This is the exact upstream revision used to build the editor runtime pinned by SesliTab.
-export const GTAB10C_PINNED_EDITOR_COMMIT = '4eb479bc84b12c6deefb289d03c933ce9980bc9f'
+export const GTAB10C_PINNED_EDITOR_COMMIT = '9d6532001c54a06dcc9b0a5db1db1a641d2fe1aa'
 
 const STANDARD_TUNING_MIDI = Object.freeze({ 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 })
 const MAX_FRET = 20
@@ -70,6 +70,34 @@ function semanticNote(note) {
 function eventKey(note) {
   return [note.measure_index, note.onset_div, note.duration_div, note.voice, note.pitch_midi,
     note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
+}
+
+function eventKeyWithoutVoice(note) {
+  return [note.measure_index, note.onset_div, note.duration_div, note.pitch_midi,
+    note.tie_prev === null ? 0 : 1, note.tie_next === null ? 0 : 1].join(':')
+}
+
+function voiceSort(left, right) {
+  const leftNumber = Number(left), rightNumber = Number(right)
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber
+  return String(left).localeCompare(String(right))
+}
+
+function createTabVoiceMap(notes) {
+  const sourceVoices = [...new Set(notes.map((note) => note.voice))].sort(voiceSort)
+  const occupiedVoices = new Set(sourceVoices
+    .map((voice) => Number.parseInt(String(voice), 10))
+    .filter((voice) => Number.isSafeInteger(voice) && voice >= 0))
+  const tabVoiceBySource = new Map()
+  let nextVoice = 5
+  for (const sourceVoice of sourceVoices) {
+    while (occupiedVoices.has(nextVoice)) nextVoice += 1
+    if (!Number.isSafeInteger(nextVoice)) return null
+    tabVoiceBySource.set(sourceVoice, nextVoice)
+    occupiedVoices.add(nextVoice)
+    nextVoice += 1
+  }
+  return tabVoiceBySource
 }
 
 function groupKey(note, omittedField) {
@@ -145,10 +173,11 @@ function validTieGraph(notes) {
   return true
 }
 
-function tieEdges(notes) {
+function tieEdges(notes, includeVoice = true) {
   const byId = new Map(notes.map((note) => [note.source_id, note]))
+  const keyOf = includeVoice ? eventKey : eventKeyWithoutVoice
   return notes.filter((note) => note.tie_next !== null).map((note) =>
-    `${eventKey(note)}>${byId.has(note.tie_next) ? eventKey(byId.get(note.tie_next)) : 'UNRESOLVED'}`
+    `${keyOf(note)}>${byId.has(note.tie_next) ? keyOf(byId.get(note.tie_next)) : 'UNRESOLVED'}`
   ).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
@@ -180,14 +209,15 @@ function contextRows(snapshot, field, partId, normalizeStaff = false, staffFilte
   return result.map((row) => JSON.stringify(row)).sort((left, right) => left.localeCompare(right, 'en'))
 }
 
-function hasGlobalContextCoverage(rows, partId, numberField) {
+function hasGlobalContextCoverage(rows, partId, contextField) {
   if (!Array.isArray(rows)) return false
   const identities = new Set()
   for (const row of rows) {
     if (!isRecord(row) || typeof row.partId !== 'string' || !row.partId || identities.has(row.partId)
-      || !Array.isArray(row[numberField])
-      || !row[numberField].every(number => number === null || typeof number === 'string')
-      || row.staffSpecific !== row[numberField].some(number => number !== null)) return false
+      || !Array.isArray(row[contextField])
+      || !row[contextField].every(context => isRecord(context)
+        && (context.number === null || typeof context.number === 'string'))
+      || row.staffSpecific !== row[contextField].some(context => context.number !== null)) return false
     identities.add(row.partId)
   }
   return rows.some(row => row.partId === partId && row.staffSpecific === false)
@@ -204,18 +234,20 @@ function hasBoundOracleFields(input, evidence) {
   }
 }
 
-function hasStandardTabProfile(profile, partId) {
+function hasStandardTabProfile(profile, partId, tabStaff = 2) {
   if (profile?.schema !== 'gtab10c-derived-tab-profile-v1' || !Array.isArray(profile.parts)
-    || profile.parts.length !== 1 || profile.parts[0]?.partId !== partId
-    || !Array.isArray(profile.parts[0].staffDetails)) return false
-  const counts = profile.parts[0].staffCounts
+    || new Set(profile.parts.map((part) => part?.partId)).size !== profile.parts.length) return false
+  const selectedPart = profile.parts.find((part) => part?.partId === partId)
+  if (!selectedPart || !Array.isArray(selectedPart.staffDetails)) return false
+  const counts = selectedPart.staffCounts
   if (!Array.isArray(counts) || counts.length === 0
     || counts[0]?.measureIndex !== 0 || counts.some(row => !isRecord(row)
       || !Number.isSafeInteger(row.measureIndex) || row.measureIndex < 0
-      || row.beforeEvents !== true || !isDeepStrictEqual(row.values, ['2']))) return false
-  const declarations = profile.parts[0].staffDetails
-  if (declarations.some(row => !isRecord(row) || !['1', '2'].includes(row.number))) return false
-  const tab = declarations.filter(row => row.number === '2')
+      || row.beforeEvents !== true || !isDeepStrictEqual(row.values, [String(tabStaff)]))) return false
+  const declarations = selectedPart.staffDetails
+  if (declarations.some(row => !isRecord(row) || !Number.isSafeInteger(Number(row.number))
+    || Number(row.number) < 1 || Number(row.number) > tabStaff)) return false
+  const tab = declarations.filter(row => row.number === String(tabStaff))
   const tuning = [['E', '2'], ['A', '2'], ['D', '3'], ['G', '3'], ['B', '3'], ['E', '4']]
   return tab.length > 0 && tab[0].measureIndex === 0 && tab[0].beforeEvents === true
     && tab.every(row => Number.isSafeInteger(row.measureIndex) && row.measureIndex >= 0
@@ -226,6 +258,96 @@ function hasStandardTabProfile(profile, partId) {
         && isDeepStrictEqual(entry.steps, [tuning[index][0]])
         && isDeepStrictEqual(entry.octaves, [tuning[index][1]])
         && (isDeepStrictEqual(entry.alters, []) || isDeepStrictEqual(entry.alters, ['0']))))
+}
+
+function declaredSourceStaffCount(profile, partId, observedStaffs) {
+  if (profile?.schema !== 'gtab10c-source-staff-profile-v1' || !Array.isArray(profile.parts)
+    || new Set(profile.parts.map((part) => part?.partId)).size !== profile.parts.length) return null
+  const selectedPart = profile.parts.find((part) => part?.partId === partId)
+  if (!selectedPart || !Array.isArray(selectedPart.staffCounts) || !Array.isArray(selectedPart.staffDetails)) return null
+  const candidates = [...observedStaffs]
+  for (const row of selectedPart.staffCounts) {
+    if (!isRecord(row) || !Array.isArray(row.values) || row.values.length !== 1) return null
+    const value = Number(row.values[0])
+    if (!Number.isSafeInteger(value) || value < 1) return null
+    candidates.push(value)
+  }
+  for (const row of selectedPart.staffDetails) {
+    const value = Number(row?.number)
+    if (!Number.isSafeInteger(value) || value < 1) return null
+    candidates.push(value)
+  }
+  return candidates.length > 0 ? Math.max(...candidates) : 1
+}
+
+function fullEventKey(note) {
+  return `${note.part_id}|${note.staff}|${eventKey(note)}`
+}
+
+function fullContextRows(snapshot, field, excludedClef = null) {
+  const values = snapshot[field]
+  if (!Array.isArray(values)) return null
+  const rows = []
+  for (const value of values) {
+    if (!isRecord(value) || typeof value.part_id !== 'string'
+      || !Number.isSafeInteger(value.onset_div) || value.onset_div < 0) return null
+    if (field === 'time_signatures') {
+      if (!Number.isSafeInteger(value.beats) || value.beats <= 0
+        || !Number.isSafeInteger(value.beat_type) || value.beat_type <= 0) return null
+      rows.push([value.part_id, value.onset_div, value.beats, value.beat_type])
+    } else if (field === 'key_signatures') {
+      if (!Number.isSafeInteger(value.fifths)
+        || (value.mode !== null && typeof value.mode !== 'string')) return null
+      rows.push([value.part_id, value.onset_div, value.fifths, value.mode])
+    } else {
+      if (!Number.isSafeInteger(value.staff) || value.staff < 1
+        || typeof value.sign !== 'string' || value.sign.trim() === ''
+        || (value.line !== null && !Number.isSafeInteger(value.line))
+        || !Number.isSafeInteger(value.octave_change)) return null
+      if (excludedClef && value.part_id === excludedClef.partId && value.staff === excludedClef.staff) continue
+      rows.push([value.part_id, value.onset_div, value.staff, value.sign, value.line, value.octave_change])
+    }
+  }
+  return rows.map((row) => JSON.stringify(row)).sort((left, right) => left.localeCompare(right, 'en'))
+}
+
+function restInventoryRows(inventory) {
+  if (inventory?.schema !== 'gtab10c-rest-inventory-v1' || !Array.isArray(inventory.rows)) return null
+  const rows = []
+  for (const row of inventory.rows) {
+    if (!isRecord(row) || typeof row.partId !== 'string' || !row.partId
+      || !Number.isSafeInteger(row.measureIndex) || row.measureIndex < 0
+      || !Number.isSafeInteger(row.restIndex) || row.restIndex < 0
+      || !Number.isSafeInteger(row.onsetDiv) || row.onsetDiv < 0
+      || typeof row.noteXml !== 'string' || !row.noteXml.includes('<rest')) return null
+    rows.push(JSON.stringify(row))
+  }
+  return rows.sort((left, right) => left.localeCompare(right, 'en'))
+}
+
+function coverageRows(coverage, schema, field) {
+  if (coverage?.schema !== schema || !Array.isArray(coverage.source) || !Array.isArray(coverage.derived)) return null
+  const normalize = (rows) => {
+    const result = []
+    for (const row of rows) {
+      if (!isRecord(row) || typeof row.partId !== 'string' || !row.partId
+        || typeof row.staffSpecific !== 'boolean' || !Array.isArray(row[field])) return null
+      const contexts = []
+      for (const context of row[field]) {
+        if (!isRecord(context) || !Number.isSafeInteger(context.measureIndex) || context.measureIndex < 0
+          || !Number.isSafeInteger(context.onsetDiv) || context.onsetDiv < 0
+          || !Number.isSafeInteger(context.order) || context.order < 0
+          || (context.number !== null && typeof context.number !== 'string')
+          || typeof context.payloadXml !== 'string' || !context.payloadXml) return null
+        contexts.push(context)
+      }
+      if (row.staffSpecific !== contexts.some((context) => context.number !== null)) return null
+      result.push(JSON.stringify({ partId: row.partId, staffSpecific: row.staffSpecific, contexts }))
+    }
+    return result.sort((left, right) => left.localeCompare(right, 'en'))
+  }
+  const source = normalize(coverage.source), derived = normalize(coverage.derived)
+  return source === null || derived === null ? null : { source, derived }
 }
 
 function sameRows(left, right) {
@@ -286,8 +408,13 @@ export function qualifyGtab10cSemanticParity(input = {}) {
   const validParts = (parts) => parts.length > 0 && new Set(parts.map((part) => part?.partId)).size === parts.length &&
     parts.every((part) => isRecord(part) && typeof part.partId === 'string' && part.partId.trim() &&
       Number.isSafeInteger(part.measureCount) && part.measureCount > 0)
+  const preservesFullPartInventory = validParts(evidence.sourceParts) && validParts(evidence.derivedParts)
+    && evidence.sourceParts.length === evidence.derivedParts.length
+    && evidence.sourceParts.every((part, index) => part.partId === evidence.derivedParts[index].partId
+      && part.measureCount === evidence.derivedParts[index].measureCount)
   if (!validParts(evidence.sourceParts) || !validParts(evidence.derivedParts) ||
-      evidence.sourceParts[target.partIndex]?.partId !== target.partId || evidence.derivedParts.length !== 1) {
+      evidence.sourceParts[target.partIndex]?.partId !== target.partId
+      || !preservesFullPartInventory) {
     return rejected('UNSUPPORTED', 'TARGET_SELECTION_MISMATCH', { cause: 'PART_INVENTORY' }, provenance)
   }
   if (!/^[0-9a-f]{40}$/u.test(input.provenance.sesliTabCommit ?? '')
@@ -308,7 +435,7 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     || !Number.isSafeInteger(source.measure_count) || source.measure_count < 0
     || !Number.isSafeInteger(derived.measure_count) || derived.measure_count < 0
     || !Number.isSafeInteger(source.part_count) || source.part_count < 1
-    || derived.part_count !== 1
+    || derived.part_count !== source.part_count
     || !Array.isArray(source.notes) || !Array.isArray(derived.notes)
     || !Array.isArray(source.diagnostics) || !Array.isArray(derived.diagnostics)) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'SNAPSHOT_SCHEMA_OR_SHAPE' }, provenance)
@@ -327,18 +454,29 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'MALFORMED_NOTE' }, provenance)
   }
   const sourceNotes = sourceAll.filter((note) => note.part_id === target.partId
-    && note.staff === target.staff && note.voice === target.voice)
+    && note.staff === target.staff)
   const derivedPartIds = [...new Set(derivedAll.map((note) => note.part_id))]
-  if (derivedPartIds.length !== 1) {
+  const derivedPartId = evidence.derivedParts[target.partIndex]?.partId
+  if (!derivedPartId || !derivedPartIds.includes(derivedPartId)) {
     return rejected('UNSUPPORTED', 'AMBIGUOUS_STRUCTURAL_MATCH', { cause: 'DERIVED_PART_IDENTITY' }, provenance)
   }
-  const derivedPartId = derivedPartIds[0]
   const unverifiedContexts = []
-  if (derivedAll.some((note) => note.staff !== 1 && note.staff !== 2)) {
+  const sourceTargetPartStaffs = new Set(sourceAll
+    .filter((note) => note.part_id === target.partId)
+    .map((note) => note.staff))
+  const notationStaff = target.staff
+  const declaredStaffCount = declaredSourceStaffCount(evidence.sourceStaffProfile, target.partId, sourceTargetPartStaffs)
+  if (!Number.isSafeInteger(declaredStaffCount) || declaredStaffCount < target.staff) {
+    return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'SOURCE_STAFF_PROFILE' }, provenance)
+  }
+  const tabStaff = declaredStaffCount + 1
+  const allowedDerivedNotationStaffs = sourceTargetPartStaffs
+  if (derivedAll.some((note) => note.part_id === derivedPartId
+    && !allowedDerivedNotationStaffs.has(note.staff) && note.staff !== tabStaff)) {
     return rejected('DIAGNOSTIC', 'NOTE_EXTRA', { side: 'DERIVED_UNEXPECTED_STAFF' }, provenance, unverifiedContexts)
   }
-  const notationNotes = derivedAll.filter((note) => note.part_id === derivedPartId && note.staff === 1)
-  const tabNotes = derivedAll.filter((note) => note.part_id === derivedPartId && note.staff === 2)
+  const notationNotes = derivedAll.filter((note) => note.part_id === derivedPartId && note.staff === notationStaff)
+  const tabNotes = derivedAll.filter((note) => note.part_id === derivedPartId && note.staff === tabStaff)
   if (!Array.isArray(source.key_signatures) || !Array.isArray(derived.key_signatures)) unverifiedContexts.push('keySignatures')
   if (!Array.isArray(source.clefs) || !Array.isArray(derived.clefs)) unverifiedContexts.push('clefs')
   if (sourceNotes.length === 0) {
@@ -349,14 +487,46 @@ export function qualifyGtab10cSemanticParity(input = {}) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'GRACE_NOTE' }, provenance, unverifiedContexts)
   }
   const selectedMeasureCount = evidence.sourceParts[target.partIndex].measureCount
-  if (evidence.sourceParts.length !== source.part_count || evidence.derivedParts[0].partId !== derivedPartId) return rejected('UNSUPPORTED', 'TARGET_SELECTION_MISMATCH', { cause: 'SNAPSHOT_INVENTORY' }, provenance)
-  if (selectedMeasureCount !== derived.measure_count || evidence.derivedParts[0].measureCount !== derived.measure_count) {
+  const derivedTargetPart = evidence.derivedParts[target.partIndex]
+  if (evidence.sourceParts.length !== source.part_count || derivedTargetPart.partId !== derivedPartId) return rejected('UNSUPPORTED', 'TARGET_SELECTION_MISMATCH', { cause: 'SNAPSHOT_INVENTORY' }, provenance)
+  const derivedTargetMeasureCount = derivedTargetPart.measureCount
+  if (selectedMeasureCount !== derivedTargetMeasureCount || source.measure_count !== derived.measure_count) {
     return rejected('DIAGNOSTIC', 'MEASURE_COUNT_MISMATCH', {
-      source: selectedMeasureCount, derived: derived.measure_count,
+      source: selectedMeasureCount, derived: derivedTargetMeasureCount,
     }, provenance, unverifiedContexts)
   }
 
   const output = []
+  const sourceFullNoteKeys = sourceAll.map(fullEventKey).sort((left, right) => left.localeCompare(right, 'en'))
+  const derivedFullNoteKeys = derivedAll
+    .filter((note) => note.part_id !== derivedPartId || note.staff !== tabStaff)
+    .map(fullEventKey).sort((left, right) => left.localeCompare(right, 'en'))
+  if (!sameRows(sourceFullNoteKeys, derivedFullNoteKeys)) output.push({ code: 'FULL_SCORE_NOTE_MISMATCH' })
+  const sourceRests = restInventoryRows(evidence.sourceRestInventory)
+  const derivedRests = restInventoryRows(evidence.derivedRestInventory)
+  if (sourceRests === null || derivedRests === null) unverifiedContexts.push('fullScore:rests')
+  else if (!sameRows(sourceRests, derivedRests)) output.push({ code: 'FULL_SCORE_REST_MISMATCH' })
+
+  for (const [coverage, schema, field, context] of [
+    [evidence.timeSignatureCoverage, 'gtab10c-time-staff-coverage-v1', 'rawTimeContexts', 'timeSignatures'],
+    [evidence.keySignatureCoverage, 'gtab10c-key-staff-coverage-v1', 'rawKeyContexts', 'keySignatures'],
+  ]) {
+    const rows = coverageRows(coverage, schema, field)
+    if (rows === null) unverifiedContexts.push(`fullScore:${context}:scope`)
+    else if (!sameRows(rows.source, rows.derived)) output.push({ code: `FULL_SCORE_${context === 'timeSignatures' ? 'METER' : 'KEY'}_SCOPE_MISMATCH` })
+  }
+
+  for (const [field, code] of [
+    ['time_signatures', 'FULL_SCORE_METER_MISMATCH'],
+    ['key_signatures', 'FULL_SCORE_KEY_MISMATCH'],
+    ['clefs', 'FULL_SCORE_CLEF_MISMATCH'],
+  ]) {
+    const sourceRows = fullContextRows(source, field)
+    const derivedRows = fullContextRows(derived, field,
+      field === 'clefs' ? { partId: derivedPartId, staff: tabStaff } : null)
+    if (sourceRows === null || derivedRows === null) unverifiedContexts.push(`fullScore:${field}`)
+    else if (!sameRows(sourceRows, derivedRows)) output.push({ code })
+  }
   if (hasDuplicateEvents(sourceNotes) || hasDuplicateEvents(notationNotes) || hasDuplicateEvents(tabNotes)) {
     output.push({ code: 'AMBIGUOUS_STRUCTURAL_MATCH' })
   }
@@ -381,8 +551,8 @@ export function qualifyGtab10cSemanticParity(input = {}) {
 
   const timeCoverage = evidence.timeSignatureCoverage
   if (timeCoverage?.schema !== 'gtab10c-time-staff-coverage-v1'
-    || !hasGlobalContextCoverage(timeCoverage.source, target.partId, 'rawTimeStaffNumbers')
-    || !hasGlobalContextCoverage(timeCoverage.derived, derivedPartId, 'rawTimeStaffNumbers')) {
+    || !hasGlobalContextCoverage(timeCoverage.source, target.partId, 'rawTimeContexts')
+    || !hasGlobalContextCoverage(timeCoverage.derived, derivedPartId, 'rawTimeContexts')) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED',
       { cause: 'TIME_SIGNATURE_STAFF_CONTEXT' }, provenance, ['timeSignatures'])
   }
@@ -397,8 +567,8 @@ export function qualifyGtab10cSemanticParity(input = {}) {
   // coverage can establish global context, but cannot recover scoped oracle rows.
   const keyCoverage = evidence.keySignatureCoverage
   if (keyCoverage?.schema !== 'gtab10c-key-staff-coverage-v1'
-    || !hasGlobalContextCoverage(keyCoverage.source, target.partId, 'rawKeyStaffNumbers')
-    || !hasGlobalContextCoverage(keyCoverage.derived, derivedPartId, 'rawKeyStaffNumbers')) {
+    || !hasGlobalContextCoverage(keyCoverage.source, target.partId, 'rawKeyContexts')
+    || !hasGlobalContextCoverage(keyCoverage.derived, derivedPartId, 'rawKeyContexts')) {
     return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED',
       { cause: 'KEY_SIGNATURE_STAFF_CONTEXT' }, provenance, ['keySignatures'])
   }
@@ -410,25 +580,33 @@ export function qualifyGtab10cSemanticParity(input = {}) {
   }
   if (!unverifiedContexts.includes('clefs')) {
     const sourceClefs = contextRows(source, 'clefs', target.partId, true, target.staff)
-    const derivedClefs = contextRows(derived, 'clefs', derivedPartId, false, 1)
+    const derivedClefs = contextRows(derived, 'clefs', derivedPartId, false, notationStaff)
     if (sourceClefs === null || derivedClefs === null) unverifiedContexts.push('clefs')
     else if (!sameRows(sourceClefs, derivedClefs)) output.push({ code: 'CLEF_MISMATCH' })
   }
 
   const tabClefs = Array.isArray(derived.clefs)
-    ? derived.clefs.filter(row => isRecord(row) && row.part_id === derivedPartId && row.staff === 2) : []
+    ? derived.clefs.filter(row => isRecord(row) && row.part_id === derivedPartId && row.staff === tabStaff) : []
   if (tabClefs.length === 0 || !tabClefs.some(row => row.onset_div === 0)
     || tabClefs.some(row => row.sign !== 'TAB' || row.line !== 5 || row.octave_change !== 0)) {
     output.push({ code: 'TAB_CLEF_MISMATCH' })
   }
-  if (!hasStandardTabProfile(evidence.derivedTabProfile, derivedPartId)) {
+  if (!hasStandardTabProfile(evidence.derivedTabProfile, derivedPartId, tabStaff)) {
     output.push({ code: 'TAB_PROFILE_MISMATCH' })
   }
 
   if (tabNotes.length !== notationNotes.length) {
     output.push({ code: tabNotes.length < notationNotes.length ? 'NOTE_MISSING' : 'NOTE_EXTRA', side: 'TAB' })
-  } else if (notationNotes.some((note) => !tabNotes.some((candidate) => eventKey(candidate) === eventKey(note)))) {
-    output.push({ code: 'TAB_EVENT_MISMATCH' })
+  } else {
+    const notationVoices = new Set(notationNotes.map((note) => note.voice))
+    if (tabNotes.some((note) => notationVoices.has(note.voice))) output.push({ code: 'TAB_VOICE_NAMESPACE_COLLISION' })
+    if (tabNotes.some((note) => !Number.isSafeInteger(Number(note.voice)) || Number(note.voice) < 5)) output.push({ code: 'TAB_VOICE_STAFF_RANGE_INVALID' })
+    const tabVoiceBySource = createTabVoiceMap(notationNotes)
+    const expectedTabKeys = tabVoiceBySource === null ? [] : notationNotes
+      .map((note) => eventKey({ ...note, voice: tabVoiceBySource.get(note.voice) }))
+      .sort((left, right) => left.localeCompare(right, 'en'))
+    const actualTabKeys = tabNotes.map(eventKey).sort((left, right) => left.localeCompare(right, 'en'))
+    if (tabVoiceBySource === null || !sameRows(expectedTabKeys, actualTabKeys)) output.push({ code: 'TAB_EVENT_MISMATCH' })
   }
   const positions = input.tabPositions
   if (!Array.isArray(positions) || positions.length !== tabNotes.length) {
@@ -455,6 +633,7 @@ export function qualifyGtab10cSemanticParity(input = {}) {
 
   if (unverifiedContexts.length) return rejected('UNSUPPORTED', 'SEMANTIC_ORACLE_UNSUPPORTED', { cause: 'UNVERIFIED_CONTEXT' }, provenance, unverifiedContexts)
   if (!validTieGraph(sourceNotes) || !validTieGraph(notationNotes) || !validTieGraph(tabNotes) ||
-      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes)) || !sameRows(tieEdges(notationNotes), tieEdges(tabNotes))) output.push({ code: 'TIE_MISMATCH' })
+      !sameRows(tieEdges(sourceNotes), tieEdges(notationNotes))
+      || !sameRows(tieEdges(notationNotes, false), tieEdges(tabNotes, false))) output.push({ code: 'TIE_MISMATCH' })
   return freezeReport(output.length === 0 ? 'PASS' : 'DIAGNOSTIC', output, provenance, unverifiedContexts)
 }

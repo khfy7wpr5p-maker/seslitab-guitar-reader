@@ -5,6 +5,39 @@ import { join, resolve, relative, extname, sep } from 'node:path'
 import { createServer } from 'node:http'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export async function discoverBrowserPage(portFile, {
+  deadline,
+  assertRunning = () => {},
+  fetchImpl = fetch,
+} = {}) {
+  let lastError
+  while (Date.now() < deadline) {
+    assertRunning()
+    if (existsSync(portFile)) {
+      const port = Number(readFileSync(portFile, 'utf8').split('\n')[0])
+      if (Number.isInteger(port) && port > 0 && port <= 65535) {
+        try {
+          const response = await fetchImpl(`http://127.0.0.1:${port}/json/list`, {
+            signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))),
+          })
+          if (!response.ok) throw new Error(`CDP discovery: HTTP ${response.status}`)
+          const targets = await response.json()
+          if (!Array.isArray(targets)) throw new Error('CDP discovery: invalid target list.')
+          const page = targets.find((item) => item.type === 'page' && typeof item.webSocketDebuggerUrl === 'string' && item.webSocketDebuggerUrl.length > 0)
+          if (page) return page
+        } catch (error) {
+          if (error.name !== 'TimeoutError' && !['ECONNREFUSED', 'ECONNRESET'].includes(error.cause?.code)) throw error
+          lastError = error
+        }
+      }
+    }
+    await delay(Math.max(1, Math.min(25, deadline - Date.now())))
+  }
+  assertRunning()
+  throw new Error('CDP discovery timed out.', { cause: lastError })
+}
+
 function connectCdp(webSocketUrl) {
   return new Promise((resolveConnection, rejectConnection) => {
     const socket = new WebSocket(webSocketUrl)
@@ -108,15 +141,13 @@ export async function runBrowserFixture(chrome, fixturePath, viewport) {
   const timeout = setTimeout(() => child.kill('SIGKILL'), 22000)
   try {
     const portFile = join(profile, 'DevToolsActivePort')
-    while (!existsSync(portFile)) {
-      if (launchError) throw launchError
-      if (child.exitCode !== null || Date.now() > deadline) throw new Error(`Chromium startup failed: ${stderr}`)
-      await delay(25)
-    }
-    const port = Number(readFileSync(portFile, 'utf8').split('\n')[0])
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) })
-    if (!response.ok) throw new Error(`CDP discovery: HTTP ${response.status}`)
-    const target = (await response.json()).find((item) => item.type === 'page')
+    const target = await discoverBrowserPage(portFile, {
+      deadline,
+      assertRunning() {
+        if (launchError) throw launchError
+        if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Chromium startup failed: ${stderr}`)
+      },
+    })
     cdp = await connectCdp(target.webSocketDebuggerUrl)
     await cdp.send('Page.enable')
     await cdp.send('Emulation.setDeviceMetricsOverride', {

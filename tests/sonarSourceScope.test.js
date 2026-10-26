@@ -50,24 +50,18 @@ import { analysisType } from '../scripts/sonarSourceInventory.mjs'
 test('only audited CI proof scripts and their test-only helpers are classified as tests', () => {
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
   const smenu = readFileSync('.github/workflows/smenu-native-menu-proof.yml', 'utf8')
-  const releaseGate = readFileSync('.github/workflows/gtab-rt-01g-release-gate.yml', 'utf8')
   const proofs = [...new Set([...ci.matchAll(/node (scripts\/verify\w*Browser\.js)/g)].map((match) => match[1]))]
   const smenuProofs = [
     'scripts/inspectSmoosic1044Reflection.js',
     'scripts/verifySmoosicNativeMenuLayoutBrowserV3.js',
   ]
   for (const path of smenuProofs) assert.ok(smenu.includes(`node ${path}`), path)
-  const releaseGateProofs = [
-    'scripts/verifyGtabRt01gCrossAppRelease.js',
-    'scripts/gtabRt01gReleaseGate.js',
-  ]
-  assert.ok(releaseGate.includes(`node ${releaseGateProofs[0]}`))
-  assert.ok(readFileSync(releaseGateProofs[0], 'utf8').includes(`'./gtabRt01gReleaseGate.js'`))
-  const approved = [...proofs, 'scripts/s14CdpProofHarness.js', 'scripts/ses153BrowserProofSession.js',
-    'scripts/ceBridgeFixtureTransport.js', ...smenuProofs, ...releaseGateProofs].sort()
+  const releaseProofs = ['scripts/verifyGtabRt01gCrossAppRelease.js', 'scripts/verifyGtabRt01gStudentRendererBrowser.js', 'scripts/gtabRt01gReleaseGate.js', 'scripts/studentRendererRuntimeIntegrity.js']
+  const approved = [...releaseProofs, ...proofs, 'scripts/s14CdpProofHarness.js', 'scripts/ses153BrowserProofSession.js',
+    'scripts/ceBridgeFixtureTransport.js', ...smenuProofs].sort()
   const actual = /^sonar\.test\.inclusions=(.*)$/m.exec(config)[1].split(',').filter((path) => path.startsWith('scripts/')).sort()
   assert.deepEqual(actual, approved)
-  assert.equal(actual.length, 26)
+  assert.equal(actual.length, 29)
   for (const path of approved) {
     assert.equal(analysisType(path, config), 'test', path)
     const callers = productCallers( ['grep', '-l', '-F', path.split('/').at(-1), '--',

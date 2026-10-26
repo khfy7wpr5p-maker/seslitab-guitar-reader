@@ -132,6 +132,7 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
     studentIds: ['student-a', 'student-b'],
     title: 'Etüt 1',
     teacherNote: 'Yavaş çalış.',
+    playbackInstrument: 'VIOLIN',
     scoreUpload,
     chordSnapshots: [
       getChordBoardVoicings('Am')[0],
@@ -158,6 +159,15 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
       prepared[0].assignment.sourceRef.package12Status,
       'teacher_selected_safe_musicxml',
     )
+    assert.equal(
+      prepared[0].package.playbackInstrument,
+      'VIOLIN',
+    )
+    assert.deepEqual(prepared[0].package.content.violin, {
+      schemaVersion: 1,
+      targetPartId: 'P1',
+      position: 1,
+    })
     assert.match(
       prepared[0].assignment.sourceRef.qualityEvidenceId,
       /^teacher-selected:[0-9a-f]{64}$/,
@@ -170,6 +180,97 @@ test('SES-141 fans SCORE + multiple exact CHORD_BOARD selections out as isolated
     assert.equal(calls.pieces[index].studentId, studentId)
     assert.equal(calls.pieces[index].chordAssignmentIds.length, 2)
   }
+})
+
+test('SCORE delivery defaults legacy callers to GRAND_PIANO and rejects unknown instruments', async () => {
+  const { service, calls } = harness()
+  const scoreUpload = await service.prepareScoreUpload({
+    musicXml: VALID_XML,
+    draftId: 'draft-instrument-default',
+  })
+
+  await service.send({
+    draftId: 'draft-instrument-default',
+    studentIds: ['student-a'],
+    title: 'Varsayılan piyano',
+    scoreUpload,
+  })
+  assert.equal(
+    calls.prepare[0][0].package.playbackInstrument,
+    'GRAND_PIANO',
+  )
+  assert.equal(Object.hasOwn(calls.prepare[0][0].package.content, 'violin'), false)
+
+  await assert.rejects(
+    service.send({
+      draftId: 'draft-instrument-invalid',
+      studentIds: ['student-a'],
+      title: 'Geçersiz ses',
+      scoreUpload: {
+        ...scoreUpload,
+        draftId: 'draft-instrument-invalid',
+      },
+      playbackInstrument: 'RANDOM_INSTRUMENT',
+    }),
+    /playbackInstrument/,
+  )
+})
+
+test('multiple score parts require an explicit exact violin target before delivery', async () => {
+  const { service, calls } = harness()
+  const secondPart = '<part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes><note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration></note></measure></part>'
+  const xml = VALID_XML
+    .replace('</part-list>', '<score-part id="P2"><part-name>Keman II</part-name></score-part></part-list>')
+    .replace('</score-partwise>', `${secondPart}</score-partwise>`)
+  const scoreUpload = await service.prepareScoreUpload({ musicXml: xml, draftId: 'draft-multi-violin' })
+  assert.deepEqual(scoreUpload.violinParts.map(({ partId }) => partId), ['P1', 'P2'])
+
+  const input = {
+    draftId: 'draft-multi-violin',
+    studentIds: ['student-a'],
+    title: 'İki keman',
+    scoreUpload,
+    playbackInstrument: 'VIOLIN',
+  }
+  await assert.rejects(service.send(input), /violin-target-selection-required/)
+  await assert.rejects(service.send({ ...input, violinTargetPartId: 'P3' }), /violin-target-part-mismatch/)
+  assert.equal(calls.prepare.length, 0)
+
+  const result = await service.send({ ...input, violinTargetPartId: 'P2' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls.prepare[0][0].package.content.violin, {
+    schemaVersion: 1,
+    targetPartId: 'P2',
+    position: 1,
+  })
+})
+
+test('SCORE delivery allows the Student tempo control without overriding the score tempo', async () => {
+  const { service, calls } = harness()
+  const scoreUpload = await service.prepareScoreUpload({
+    musicXml: VALID_XML,
+    draftId: 'draft-student-tempo',
+  })
+
+  const result = await service.send({
+    draftId: 'draft-student-tempo',
+    studentIds: ['student-a'],
+    title: 'Tempo Etüdü',
+    teacherNote: '',
+    scoreUpload,
+    chordSnapshots: [],
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(calls.prepare.length, 1)
+  assert.equal(
+    calls.prepare[0][0].package.practice.allowTempoChange,
+    true,
+  )
+  assert.equal(
+    Object.hasOwn(calls.prepare[0][0].package.practice, 'tempoBpm'),
+    false,
+  )
 })
 
 test('SES-141 never reports a failed recipient as sent and does not cross-contaminate the other recipient', async () => {

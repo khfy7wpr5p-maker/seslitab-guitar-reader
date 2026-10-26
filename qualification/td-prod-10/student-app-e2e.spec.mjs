@@ -6,6 +6,9 @@ import {
 } from "./support/static-server.mjs";
 import {
   TD_PROD_10_FIXTURE,
+  SES248_FIXTURE,
+  SES248_EXPECTED_EVENTS,
+  SES249_FIXTURE,
 } from "./support/td-prod-10-generated-fixture.mjs";
 
 const E2E_PATH = "/__td-prod-10__/";
@@ -30,6 +33,7 @@ const E2E_DOCUMENT = `<!doctype html>
   </head>
   <body>
     <div id="app"></div>
+    <script src="/vendor/st-score-audio/st-score-audio-engine.js"></script>
     <script type="module" src="/browser-tests/support/td-prod-10-e2e-bootstrap.mjs"></script>
   </body>
 </html>`;
@@ -137,6 +141,29 @@ await test(
         deviceScaleFactor: 3,
       });
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      const telemetry = { starts: [], analysers: [] };
+      globalThis.__SES248_AUDIO__ = telemetry;
+      // Observe real native sample scheduling and the real output signal.
+      // The analyser is inserted in series; no plan, sample or audio node is mocked.
+      const connect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function(destination, ...args) {
+        if (destination === this.context.destination) {
+          const analyser = this.context.createAnalyser();
+          connect.call(this, analyser);
+          connect.call(analyser, destination);
+          telemetry.analysers.push(analyser);
+          return destination;
+        }
+        return connect.call(this, destination, ...args);
+      };
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function(...args) {
+        const result = start.apply(this, args);
+        telemetry.starts.push({ when: args[0], frames: this.buffer?.length ?? 0, rate: this.playbackRate.value });
+        return result;
+      };
+    });
     const pageErrors = [];
     page.on("pageerror", (error) => {
       pageErrors.push(error.message);
@@ -148,6 +175,8 @@ await test(
           `${baseUrl}${E2E_PATH}`,
         );
       assert.equal(response?.status(), 200);
+      assert.equal(await page.evaluate(() => globalThis.STScoreAudioEngine?.version), "0.2.0",
+        "the qualification page must load the same real instrument runtime as current Student");
 
       await page
         .locator("[data-sign-in-email]")
@@ -169,8 +198,8 @@ await test(
         .click();
 
       await page
-        .getByRole("heading", {
-          name: "Çalışmalar",
+        .getByRole("button", {
+          name: "Benim Çalışmalarım",
           exact: true,
         })
         .waitFor();
@@ -287,6 +316,50 @@ await test(
       );
 
       await assertNoAuthorityLeakage(page);
+      await page.getByRole("button", { name: "← Geri", exact: true }).click();
+      await page.getByRole("button", { name: SES248_FIXTURE.package.title, exact: true }).click();
+      assert.equal(await eventually(() => visibleScoreSvg(page)), true, "24-measure SES-248 pilot must render in Student App");
+      const pilotEvidence = await page.evaluate(() => {
+        const proof = globalThis.__SES248_QUALIFICATION__;
+        return { notes: proof.plan?.notes, measures: proof.plan?.measures.length, sourceExact: proof.sourceExact,
+          partInstruments: proof.partInstruments };
+      });
+      assert.equal(pilotEvidence.sourceExact, true);
+      assert.equal(pilotEvidence.measures, 24);
+      assert.deepEqual(pilotEvidence.partInstruments, { P1: 'VIOLIN', P2: 'GRAND_PIANO' });
+      assert.deepEqual(pilotEvidence.notes, SES248_EXPECTED_EVENTS, "all 189 Student playback pitches, onsets and durations must match the independently calculated source");
+      await page.getByRole("button", { name: "Dinle", exact: true }).click();
+      assert.equal(await eventually(() => page.evaluate(() => {
+        const audio = globalThis.__SES248_AUDIO__;
+        const positions = globalThis.__SES248_QUALIFICATION__.positions;
+        const nonzeroSignal = audio.analysers.some(analyser => {
+          const values = new Float32Array(analyser.fftSize);
+          analyser.getFloatTimeDomainData(values);
+          return values.some(value => Math.abs(value) > 0.00001);
+        });
+        return nonzeroSignal && audio.starts.length >= 2 &&
+          audio.starts.every(source => source.frames > 0 && source.rate > 0) &&
+          positions.some(position => position.playing && position.beat > 0);
+      }), { timeoutMs: 15_000 }), true, "Dinle must schedule native sample buffers, advance musical position and produce a nonzero Web Audio signal");
+      // A standalone SCORE uses the persistent Student navigation, not the
+      // Piece Workspace's back control.
+      await page.getByRole("button", { name: "Benim Çalışmalarım", exact: true }).click();
+      await page.getByRole('button', { name: SES249_FIXTURE.package.title, exact: true }).click();
+      assert.equal(await eventually(() => visibleScoreSvg(page)), true, '108-measure Vals renders after actual Teacher instrument assignment and delivery');
+      const valsEvidence = await page.evaluate(() => {
+        const proof = globalThis.__SES249_QUALIFICATION__;
+        return { sourceExact: proof.sourceExact, measures: proof.plan?.measures.length,
+          total: proof.plan?.notes.length, violin: proof.plan?.notes.filter(n => n.partId === 'P1').length,
+          piano: proof.plan?.notes.filter(n => n.partId === 'P2').length, mapping: proof.partInstruments };
+      });
+      assert.deepEqual(valsEvidence, { sourceExact: true, measures: 108, total: 783, violin: 259, piano: 524, mapping: { P1: 'VIOLIN', P2: 'GRAND_PIANO' } });
+      const beforeVals = await page.evaluate(() => globalThis.__SES248_AUDIO__.starts.length);
+      await page.getByRole('button', { name: 'Dinle', exact: true }).click();
+      assert.equal(await eventually(() => page.evaluate(before => globalThis.__SES248_AUDIO__.starts.length >= before + 2 &&
+        globalThis.__SES249_QUALIFICATION__.positions.some(p => p.playing && p.beat > 0), beforeVals), { timeoutMs: 45000 }), true);
+      await page.getByRole('button', { name: 'Benim Çalışmalarım', exact: true }).click();
+      // Return to the original piece for its existing offline/reconnect checks.
+      await page.getByRole("button", { name: TD_PROD_10_FIXTURE.piece.title, exact: true }).click();
 
       await page
         .getByRole("button", {

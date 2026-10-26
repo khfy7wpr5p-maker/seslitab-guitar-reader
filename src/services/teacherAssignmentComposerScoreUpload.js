@@ -2,6 +2,8 @@ import { inspectMusicXml } from '../../musicXmlSecurity.js'
 import {
   normalizeSmoosicDirectUploadTiming,
 } from './smoosicDirectUploadTimingNormalization.js'
+import { listViolinAssignmentParts } from './violinAssignmentTarget.js'
+import { PART_INSTRUMENT_MARKER, readMusicXmlPartInstrumentMap } from './musicXmlPartInstrumentAssignment.js'
 
 export const TEACHER_ASSIGNMENT_SCORE_DELIVERY_MAX_BYTES =
   900 * 1024
@@ -95,11 +97,23 @@ export async function prepareTeacherAssignmentScoreUpload({
   const musicXmlFingerprint =
     await sha256Utf8(acceptedMusicXml)
 
+  const partInstruments = acceptedMusicXml.includes(PART_INSTRUMENT_MARKER)
+    ? readMusicXmlPartInstrumentMap(acceptedMusicXml) : null
+
+  let violinParts = Object.freeze([])
+  try {
+    violinParts = listViolinAssignmentParts(acceptedMusicXml)
+  } catch {
+    // Non-violin uploads retain their existing intake behavior.
+  }
+
   return Object.freeze({
     draftId: workDraftId,
     musicXml: acceptedMusicXml,
     musicXmlFingerprint,
     createdAt,
     canonicalEvents: Object.freeze([]),
+    violinParts,
+    ...(partInstruments === null ? {} : { partInstruments }),
   })
 }

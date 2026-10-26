@@ -24,6 +24,7 @@ import {
 import {
   fingerprintPracticePackage,
 } from '../backend/delivery/integrity/packageFingerprint.js'
+import { backfillPieceEligibilityPage } from '../backend/delivery/firebase/pieceEligibilityBackfill.js'
 
 const PROJECT_ID = 'demo-seslitab-td06'
 const EMULATOR_AVAILABLE = Boolean(
@@ -136,6 +137,74 @@ after(async () => {
   await admin?.delete()
 })
 
+test('SES-238 real Firestore backfill preserves immutable records, repairs eligibility and verifies every cursor page', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const { getFirestore } = await import('firebase-admin/firestore')
+  const isolatedDb = getFirestore(admin.app, 'ses238-backfill-pages')
+  const store = createFirestoreSecureDeliveryStore({
+    firestore: isolatedDb,
+    env: { STUDENT_PIECE_INDEXED_READS_ENABLED: 'true' },
+  })
+  const pieces = ['active', 'revoked'].map((suffix) => createPieceAssignment({
+    pieceAssignmentId: `ses238-${suffix}`, pieceId: `work-${suffix}`,
+    arrangementId: `arr-${suffix}`, studentId: 'ses238-student', title: 'Etüt',
+    teacherNote: '', assignedAt: '2026-10-18T08:00:00Z',
+    contentRefs: { scoreAssignmentId: `score-${suffix}`, chordAssignmentIds: [] },
+  }))
+  for (const piece of pieces) {
+    await isolatedDb.collection('pieceAssignments').doc(id(piece.pieceAssignmentId)).set(JSON.parse(JSON.stringify(piece)))
+  }
+  const revoked = revokePieceLifecycleRecord(createInitialPieceLifecycleRecord(pieces[1]), '2026-10-18T09:00:00Z')
+  await isolatedDb.collection('pieceAssignmentLifecycle').doc(id(pieces[1].pieceAssignmentId)).set(JSON.parse(JSON.stringify(revoked)))
+  const dry = await backfillPieceEligibilityPage({ firestore: isolatedDb })
+  assert.equal(dry.wouldUpdate, 2)
+  assert.equal(dry.updated, 0)
+  let after = null, updated = 0
+  do {
+    const page = await backfillPieceEligibilityPage({ firestore: isolatedDb, mode: 'apply', limit: 1, after, applyAuthorized: true })
+    assert.deepEqual(page.errors, [])
+    updated += page.updated
+    after = page.nextCursor
+  } while (after !== null)
+  assert.equal(updated, 2)
+  const verify = await backfillPieceEligibilityPage({ firestore: isolatedDb, mode: 'verify' })
+  assert.equal(verify.wouldUpdate, 0)
+  assert.equal(verify.unchanged, 2)
+  assert.equal(verify.pageComplete, true)
+  assert.equal(verify.eligible, 1)
+  assert.equal(verify.revoked, 1)
+  assert.deepEqual(await store.getPieceAssignment(pieces[0].pieceAssignmentId), pieces[0])
+  assert.deepEqual(await store.getPieceAssignment(pieces[1].pieceAssignmentId), pieces[1])
+  assert.deepEqual((await store.listActivePieceContextsForStudent('ses238-student')).map((row) => row.piece), [pieces[0]])
+  assert.equal((await backfillPieceEligibilityPage({ firestore: isolatedDb, mode: 'apply', applyAuthorized: true })).updated, 0)
+})
+
+test('SES-238 real backfill transaction observes revoke committed after page discovery', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const { getFirestore } = await import('firebase-admin/firestore')
+  const isolatedDb = getFirestore(admin.app, 'ses238-backfill-race')
+  const piece = createPieceAssignment({
+    pieceAssignmentId: 'ses238-race', pieceId: 'work-race', arrangementId: 'arr-race',
+    studentId: 'ses238-race-student', title: 'Etüt', teacherNote: '', assignedAt: '2026-10-18T08:00:00Z',
+    contentRefs: { scoreAssignmentId: 'score-race', chordAssignmentIds: [] },
+  })
+  const pieceRef = isolatedDb.collection('pieceAssignments').doc(id(piece.pieceAssignmentId))
+  await pieceRef.set(JSON.parse(JSON.stringify(piece)))
+  const store = createFirestoreSecureDeliveryStore({ firestore: isolatedDb })
+  const initial = createInitialPieceLifecycleRecord(piece)
+  const revoked = revokePieceLifecycleRecord(initial, '2026-10-18T09:00:00Z')
+  const firestore = {
+    collection: (name) => isolatedDb.collection(name),
+    async runTransaction(operation) {
+      await store.commitPieceLifecycleMutation({ currentLifecycle: initial, nextLifecycle: revoked })
+      return isolatedDb.runTransaction(operation)
+    },
+  }
+  const result = await backfillPieceEligibilityPage({ firestore, mode: 'apply', applyAuthorized: true })
+  assert.deepEqual(result.errors, [])
+  assert.equal(result.revoked, 1)
+  assert.equal(result.updated, 0)
+  assert.equal((await pieceRef.get()).data().studentListEligible, false)
+})
+
 test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVOKE to child lifecycle and delivery', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({
     firestore: db,
@@ -162,6 +231,18 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
     },
   })
   await store.putPieceAssignment(piece)
+
+  const pieceRef = db.collection('pieceAssignments')
+    .doc(id(piece.pieceAssignmentId))
+  assert.equal((await pieceRef.get()).data().studentListEligible, true)
+  const indexedStore = createFirestoreSecureDeliveryStore({
+    firestore: db,
+    env: { STUDENT_PIECE_INDEXED_READS_ENABLED: 'true' },
+  })
+  assert.deepEqual(
+    (await indexedStore.listActivePieceContextsForStudent(piece.studentId)).map((context) => context.piece),
+    [piece],
+  )
 
   const active =
     createInitialPieceLifecycleRecord(piece)
@@ -211,6 +292,11 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
     (await store.getLifecycle(childId)).state,
     'REPERTOIRE',
   )
+  assert.equal((await pieceRef.get()).data().studentListEligible, true)
+  assert.equal(
+    (await indexedStore.listActivePieceContextsForStudent(piece.studentId))[0].lifecycle.state,
+    'REPERTOIRE',
+  )
 
   const revoked = revokePieceLifecycleRecord(
     repertoire,
@@ -233,6 +319,11 @@ test('SES-154 Firestore transaction cascades Piece COMPLETE, REPERTOIRE and REVO
     (await store.getDelivery(childId)).revokedAt,
     '2026-10-03T11:00:00Z',
   )
+  assert.equal((await pieceRef.get()).data().studentListEligible, false)
+  assert.deepEqual(await indexedStore.listActivePieceContextsForStudent(piece.studentId), [])
+  assert.deepEqual(await store.getPieceAssignment(piece.pieceAssignmentId), piece)
+  await store.putPieceAssignment(piece)
+  assert.equal((await pieceRef.get()).data().studentListEligible, false)
 
   const aggregateHistory = await db
     .collection('pieceAssignmentLifecycle')

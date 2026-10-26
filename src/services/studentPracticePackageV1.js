@@ -11,6 +11,11 @@ export const STUDENT_PRACTICE_PACKAGE_SCOPE = Object.freeze({
   PUBLIC_POOL: 'public_pool',
   STUDENT_PRIVATE: 'student_private',
 })
+export const STUDENT_PLAYBACK_INSTRUMENT = Object.freeze({
+  GRAND_PIANO: 'GRAND_PIANO',
+  CLASSICAL_GUITAR: 'CLASSICAL_GUITAR',
+  VIOLIN: 'VIOLIN',
+})
 
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'schemaVersion',
@@ -21,6 +26,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'publication',
   'content',
   'practice',
+  'playbackInstrument',
 ])
 
 const INPUT_FIELDS = Object.freeze([
@@ -34,7 +40,21 @@ const INPUT_FIELDS = Object.freeze([
   'guitarTabMusicXml',
   'canonicalEvents',
   'practice',
+  'playbackInstrument',
+  'violinTargetPartId',
 ])
+
+function validViolinDescriptor(value) {
+  return isRecord(value) &&
+    Object.keys(value).length === 3 &&
+    value.schemaVersion === 1 &&
+    value.position === 1 &&
+    typeof value.targetPartId === 'string' &&
+    value.targetPartId.length > 0 &&
+    value.targetPartId.length <= 128 &&
+    value.targetPartId === value.targetPartId.trim() &&
+    !value.targetPartId.includes('\u0000')
+}
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -42,6 +62,17 @@ function isRecord(value) {
 
 function hasText(value) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function normalizePlaybackInstrument(value) {
+  if (
+    !Object.values(STUDENT_PLAYBACK_INSTRUMENT).includes(value)
+  ) {
+    throw new TypeError(
+      'playbackInstrument must be GRAND_PIANO, CLASSICAL_GUITAR or VIOLIN.',
+    )
+  }
+  return value
 }
 
 function cloneFrozenJson(value, ancestors = new Set()) {
@@ -226,6 +257,22 @@ export function validateStudentPracticePackageV1(value) {
     if (!Array.isArray(content.canonicalEvents)) {
       errors.push('content.canonicalEvents must be an array')
     }
+    if (content.violin !== undefined &&
+      (!validViolinDescriptor(content.violin) ||
+        value.playbackInstrument !== STUDENT_PLAYBACK_INSTRUMENT.VIOLIN)) {
+      errors.push('content.violin must be a first-position VIOLIN descriptor')
+    }
+  }
+
+  if (
+    value.playbackInstrument !== undefined &&
+    !Object.values(STUDENT_PLAYBACK_INSTRUMENT).includes(
+      value.playbackInstrument,
+    )
+  ) {
+    errors.push(
+      'playbackInstrument must be GRAND_PIANO, CLASSICAL_GUITAR or VIOLIN',
+    )
   }
 
   return Object.freeze({
@@ -246,6 +293,11 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
   }
   if (!hasText(input.musicXml)) {
     throw new TypeError('musicXml must be non-empty text.')
+  }
+  if (input.violinTargetPartId !== undefined && input.violinTargetPartId !== null &&
+    (input.playbackInstrument !== STUDENT_PLAYBACK_INSTRUMENT.VIOLIN ||
+      !validViolinDescriptor({ schemaVersion: 1, targetPartId: input.violinTargetPartId, position: 1 }))) {
+    throw new TypeError('violin target requires a valid VIOLIN part identity.')
   }
 
   const pkg = Object.freeze({
@@ -295,8 +347,23 @@ export function createStudentPrivatePracticePackageV1(input = {}) {
                 5_000_000,
               ),
             }),
+      ...(input.violinTargetPartId === undefined || input.violinTargetPartId === null
+        ? {}
+        : { violin: Object.freeze({
+            schemaVersion: 1,
+            targetPartId: input.violinTargetPartId,
+            position: 1,
+          }) }),
     }),
     practice: cloneFrozenJson(input.practice ?? {}),
+    ...(input.playbackInstrument === undefined
+      ? {}
+      : {
+          playbackInstrument:
+            normalizePlaybackInstrument(
+              input.playbackInstrument,
+            ),
+        }),
   })
 
   const validation = validateStudentPracticePackageV1(pkg)

@@ -58,6 +58,10 @@ function validRuntime() {
   return Object.freeze({
     runtimeVersion: GUITAR_TAB_EDITOR_RUNTIME_VERSION,
     profile,
+    GUITAR_PITCH_POLICY: Object.freeze({
+      SOURCE_SOUNDING: 'source-sounding',
+      STANDARD_GUITAR_WRITTEN: 'standard-guitar-written',
+    }),
     inspectMusicXml: noop,
     createSourceSession: noop,
     createTabAssignmentDocument: noop,
@@ -118,7 +122,7 @@ function fakeDocument({ scope = {}, existingScript = null, onAppend = null } = {
 }
 
 test('GTAB-09A Guitar TAB Editor runtime pin is exact reviewed revision', () => {
-  assert.equal(GUITAR_TAB_EDITOR_REVISION, '4eb479bc84b12c6deefb289d03c933ce9980bc9f')
+  assert.equal(GUITAR_TAB_EDITOR_REVISION, '9d6532001c54a06dcc9b0a5db1db1a641d2fe1aa')
   const manifest = validManifest()
   assert.equal(verifyGuitarTabEditorRuntimeManifest(manifest), manifest)
 })
@@ -198,6 +202,18 @@ test('GTAB-09A loader accepts only the frozen expected runtime surface', () => {
     resolveGuitarTabEditorRuntime({
       [GUITAR_TAB_EDITOR_RUNTIME_GLOBAL]: wrongVersion,
     }),
+    null,
+  )
+
+  const wrongPitchPolicy = Object.freeze({
+    ...runtime,
+    GUITAR_PITCH_POLICY: Object.freeze({
+      SOURCE_SOUNDING: 'source-sounding',
+      STANDARD_GUITAR_WRITTEN: 'wrong-policy',
+    }),
+  })
+  assert.equal(
+    resolveGuitarTabEditorRuntime({ [GUITAR_TAB_EDITOR_RUNTIME_GLOBAL]: wrongPitchPolicy }),
     null,
   )
 

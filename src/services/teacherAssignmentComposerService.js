@@ -16,6 +16,7 @@ import {
 } from './scoreAssignmentSourceBinding.js'
 import {
   createStudentPrivatePracticePackageV1,
+  STUDENT_PLAYBACK_INSTRUMENT,
 } from './studentPracticePackageV1.js'
 import {
   createInMemoryTeacherChordBoardAssignmentRepository,
@@ -36,6 +37,7 @@ import {
 import {
   prepareEditorGuitarTabHandoff,
 } from './editorGuitarTabHandoff.js'
+import { resolveViolinAssignmentTarget } from './violinAssignmentTarget.js'
 
 function requiredText(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -286,6 +288,9 @@ export function createTeacherAssignmentComposerService({
     scoreUpload = null,
     guitarTabUpload = null,
     chordSnapshots = [],
+    playbackInstrument =
+      STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO,
+    violinTargetPartId = null,
   } = {}) {
     const normalizedDraftId =
       requiredText(draftId, 'draftId')
@@ -404,6 +409,14 @@ export function createTeacherAssignmentComposerService({
         )
       }
 
+      const resolvedViolinPartId =
+        playbackInstrument === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN
+          ? resolveViolinAssignmentTarget(
+              verifiedScoreUpload.musicXml,
+              violinTargetPartId,
+            )
+          : null
+
       let verifiedGuitarTabUpload = null
       if (guitarTabUpload !== null) {
         assertPreparedGuitarTabUpload(
@@ -498,7 +511,9 @@ export function createTeacherAssignmentComposerService({
                 ?.guitarTabMusicXml ?? null,
             canonicalEvents:
               verifiedScoreUpload.canonicalEvents,
-            practice: {},
+            practice: { allowTempoChange: true },
+            playbackInstrument,
+            violinTargetPartId: resolvedViolinPartId,
           })
 
         scoreByStudent.set(

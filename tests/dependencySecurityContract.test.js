@@ -21,16 +21,16 @@ const qualification = readFileSync(
 )
 
 test('TD-PROD-15 pins the qualified direct and transitive security versions', () => {
-  assert.equal(packageJson.dependencies.multer, '2.4.0')
+  assert.equal(packageJson.dependencies.multer, '2.5.0')
   assert.equal(packageJson.devDependencies['firebase-tools'], '15.32.0')
   assert.equal(packageJson.overrides?.['@grpc/grpc-js'], '^1.13.6')
 
-  assert.equal(packageLock.packages[''].dependencies.multer, '2.4.0')
+  assert.equal(packageLock.packages[''].dependencies.multer, '2.5.0')
   assert.equal(
     packageLock.packages[''].devDependencies['firebase-tools'],
     '15.32.0',
   )
-  assert.equal(packageLock.packages['node_modules/multer'].version, '2.4.0')
+  assert.equal(packageLock.packages['node_modules/multer'].version, '2.5.0')
   assert.equal(
     packageLock.packages['node_modules/firebase-tools'].version,
     '15.32.0',

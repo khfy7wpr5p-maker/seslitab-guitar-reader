@@ -34,19 +34,24 @@ import {
 
 const EXPECTED = Object.freeze({
   editor:
-    '4eb479bc84b12c6deefb289d03c933ce9980bc9f',
+    '9d6532001c54a06dcc9b0a5db1db1a641d2fe1aa',
   student:
-    '70042d2314c005e71de80094363ba66faa795456',
+    'c646ab5ba58171dfa2c13a1ed79411ffa70f12a8',
   semanticEngine:
     'ef305f45ff90d940ac6c51a0c46c4fac006d7c5c',
   studentRenderer:
-    '13aa0843158257a207afe062879743d58048cc6d',
+    'a015f9049149037c48ac764ab30ed2bcbbe200d3',
 })
 const EXPECTED_STUDENT_RENDERER_CONTRACT = '0.2.0'
 
 const root = path.resolve(
   fileURLToPath(new URL('..', import.meta.url)),
 )
+const artifactRoot = path.join(root, 'artifacts', 'gtab-rt-01g')
+await mkdir(artifactRoot, { recursive: true })
+for (const name of ['release-evidence.json', 'release-evidence.pending.json']) {
+  await rm(path.join(artifactRoot, name), { force: true })
+}
 const editorRoot =
   process.env.GTAB_EDITOR_ROOT
 const studentRoot =
@@ -272,6 +277,7 @@ const sourceSession =
   editor.createSourceSession(
     finalScoreMusicXml,
     {
+      guitarPitchPolicy: 'source-sounding',
       targetSelection: {
         partId: 'P1',
         partIndex: 0,
@@ -445,6 +451,7 @@ const evidence = {
       sha256(pkg.content.guitarTab.data),
   },
   music: {
+    guitarPitchPolicy: sourceSession.guitarPitchPolicy,
     writtenMidi:
       sourceSession.events[0].pitch.midi,
     soundingMidi:
@@ -481,18 +488,6 @@ assert.deepEqual(
   'Only the real Student renderer browser proof may finalize SES-225.',
 )
 
-const artifactRoot = path.join(
-  root,
-  'artifacts',
-  'gtab-rt-01g',
-)
-await mkdir(artifactRoot, {
-  recursive: true,
-})
-await rm(
-  path.join(artifactRoot, 'release-evidence.json'),
-  { force: true },
-)
 await writeFile(
   path.join(artifactRoot, 'student-score.musicxml'),
   pkg.content.score.data,

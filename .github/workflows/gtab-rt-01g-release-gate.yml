@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GTAB_EDITOR_SHA: 4eb479bc84b12c6deefb289d03c933ce9980bc9f
-      STUDENT_APP_SHA: 70042d2314c005e71de80094363ba66faa795456
+      GTAB_EDITOR_SHA: 9d6532001c54a06dcc9b0a5db1db1a641d2fe1aa
+      STUDENT_APP_SHA: c646ab5ba58171dfa2c13a1ed79411ffa70f12a8
       SEMANTIC_ENGINE_SHA: ef305f45ff90d940ac6c51a0c46c4fac006d7c5c
-      STUDENT_RENDERER_SHA: 13aa0843158257a207afe062879743d58048cc6d
+      STUDENT_RENDERER_SHA: a015f9049149037c48ac764ab30ed2bcbbe200d3
       SES225_TEACHER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
@@ -69,7 +69,14 @@ jobs:
           npm --prefix student-app ci --ignore-scripts
           python -m pip install --only-binary :all: --disable-pip-version-check ./semantic-engine defusedxml==0.7.1 coverage==7.10.7
 
-      - name: Verify Audiveris to Student exact-head chain
+      - name: Install pinned Student Chromium for qualification
+        run: |
+          npm --prefix student-app exec -- playwright install --with-deps chromium
+          CHROME_PATH="$(cd student-app && node --input-type=module -e "import { chromium } from 'playwright'; process.stdout.write(chromium.executablePath())")"
+          echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+          echo "CHROME_BIN=$CHROME_PATH" >> "$GITHUB_ENV"
+
+      - name: Verify synthetic round-trip to Student exact-head chain
         working-directory: teacher
         env:
           GTAB_EDITOR_ROOT: ${{ github.workspace }}/editor

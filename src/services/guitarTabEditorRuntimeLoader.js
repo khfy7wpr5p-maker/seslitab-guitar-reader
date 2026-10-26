@@ -17,11 +17,23 @@ const requiredMethods = Object.freeze([
 
 const runtimeLoads = new WeakMap()
 
+function hasExpectedGuitarPitchPolicy(runtime) {
+  const policy = runtime?.GUITAR_PITCH_POLICY
+  return Boolean(
+    policy
+    && typeof policy === 'object'
+    && Object.isFrozen(policy)
+    && policy.SOURCE_SOUNDING === 'source-sounding'
+    && policy.STANDARD_GUITAR_WRITTEN === 'standard-guitar-written'
+  )
+}
+
 export function resolveGuitarTabEditorRuntime(globalScope = globalThis) {
   const runtime = globalScope?.[GUITAR_TAB_EDITOR_RUNTIME_GLOBAL]
   if (!runtime || typeof runtime !== 'object') return null
   if (runtime.runtimeVersion !== GUITAR_TAB_EDITOR_RUNTIME_VERSION) return null
   if (!runtime.profile || typeof runtime.profile !== 'object') return null
+  if (!hasExpectedGuitarPitchPolicy(runtime)) return null
   for (const field of [
     'networkCapable',
     'persistenceCapable',

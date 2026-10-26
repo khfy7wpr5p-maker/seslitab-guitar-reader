@@ -23,7 +23,10 @@ import {
   ST_SCORE_RENDERER_REVIEWED_REVISION,
 } from './services/scoreRendererConsumer.js'
 import { deriveCanonicalNoteSelection } from './services/canonicalNoteSelection.js'
-import { resolveCanonicalNoteFromScoreRef } from './services/scoreNoteIdentity.js'
+import {
+  deriveScoreNoteRefForCanonicalNote,
+  resolveCanonicalNoteFromScoreRef,
+} from './services/scoreNoteIdentity.js'
 import { deriveScoreMeasureSelection } from './services/scoreMeasureSync.js'
 import {
   analyzeSuspiciousMeasures,
@@ -33,12 +36,16 @@ import {
 } from './services/correctionAnalysisRuntimeLoader.js'
 import { replaceSuspiciousMeasureOverlays } from './services/correctionMeasureOverlay.js'
 
+import { clearTeacherToolSelection } from './teacherToolsNavigation.js'
+
 const SCORE_RUNTIME_URL = '/st-score-runtime/index.html'
 const SCORE_RUNTIME_READY_TIMEOUT_MS = 10000
 const scoreMeasureSubscriptions = new WeakMap()
 const scoreRuntimeHosts = new WeakMap()
 const scoreCursorSelections = new WeakMap()
 const scoreHighlightSelections = new WeakMap()
+const scorePlaybackHighlightSessions = new WeakMap()
+const scorePlaybackHighlightQueues = new WeakMap()
 const scoreNoteBindings = new WeakMap()
 let ticketCounter = 0
 
@@ -53,6 +60,8 @@ function selectionNotesFor(snapshot) {
 }
 
 function setExistingResultTabs(root, activeName) {
+  const persistentTools = Boolean(root.getElementById('teacher-tools-navigation'))
+  if (persistentTools) clearTeacherToolSelection(root)
   const buttons = root.querySelectorAll?.('.tab-btn') ?? []
   for (const button of buttons) {
     const active = button.dataset?.tab === activeName
@@ -62,6 +71,7 @@ function setExistingResultTabs(root, activeName) {
 
   const panelIds = ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-xml', 'tab-guitar-tab', 'tab-violin', 'tab-chords']
   for (const id of panelIds) {
+    if (persistentTools && id === 'tab-xml') continue
     const panel = root.getElementById(id)
     if (panel) panel.hidden = true
   }
@@ -163,9 +173,96 @@ async function resetScoreRuntime(root, runtime) {
   scoreRuntimeHosts.delete(root)
   scoreCursorSelections.delete(root)
   scoreHighlightSelections.delete(root)
+  scorePlaybackHighlightSessions.delete(root)
+  scorePlaybackHighlightQueues.delete(root)
   try { await clearScoreMeasureHighlights(runtime) } catch {}
   try { await clearScoreView(runtime) } catch {}
   removeRuntimeFrame(root)
+}
+
+function queueScorePlaybackHighlight(root, operation) {
+  const previous = scorePlaybackHighlightQueues.get(root) ?? Promise.resolve(false)
+  const current = previous.catch(() => false).then(operation)
+  scorePlaybackHighlightQueues.set(root, current)
+  return current.finally(() => {
+    if (scorePlaybackHighlightQueues.get(root) === current) scorePlaybackHighlightQueues.delete(root)
+  })
+}
+
+export function beginScorePlaybackHighlight(root, notes, runtime = scoreRuntimeHosts.get(root)) {
+  if (!root || !Array.isArray(notes)) return null
+  const token = `playback:${nextTicket()}`
+  scorePlaybackHighlightSessions.set(root, {
+    token,
+    notes,
+    runtime,
+    latestNoteIndex: null,
+  })
+  return token
+}
+
+export function syncScorePlaybackNoteHighlight(
+  root,
+  noteIndex,
+  token,
+  runtime = scoreRuntimeHosts.get(root),
+) {
+  const session = scorePlaybackHighlightSessions.get(root)
+  if (!session || session.token !== token || !Number.isSafeInteger(noteIndex) || noteIndex < 0) {
+    return Promise.resolve(false)
+  }
+  session.latestNoteIndex = noteIndex
+  return queueScorePlaybackHighlight(root, async () => {
+    const current = scorePlaybackHighlightSessions.get(root)
+    if (!current || current.token !== token || current.latestNoteIndex !== noteIndex) return false
+    const activeRuntime = runtime ?? current.runtime
+    const target = deriveScoreNoteRefForCanonicalNote(current.notes, noteIndex)
+    const status = root.getElementById?.('score-view-note-sync')
+    if (!activeRuntime || !target) {
+      if (status?.dataset) status.dataset.playbackNoteSynced = 'false'
+      return false
+    }
+    try {
+      await clearScoreHighlights(activeRuntime)
+      const latest = scorePlaybackHighlightSessions.get(root)
+      if (!latest || latest.token !== token || latest.latestNoteIndex !== noteIndex) return false
+      await highlightScoreNote(activeRuntime, target)
+      const afterHighlight = scorePlaybackHighlightSessions.get(root)
+      if (!afterHighlight || afterHighlight.token !== token || afterHighlight.latestNoteIndex !== noteIndex) {
+        try { await clearScoreHighlights(activeRuntime) } catch {}
+        return false
+      }
+      if (status?.dataset) status.dataset.playbackNoteSynced = 'true'
+      if (status) status.textContent = 'Çalınan nota görsel partisyon üzerinde turuncu vurgulanıyor.'
+      return true
+    } catch {
+      if (status?.dataset) status.dataset.playbackNoteSynced = 'false'
+      return false
+    }
+  })
+}
+
+export function endScorePlaybackHighlight(root, token, runtime = scoreRuntimeHosts.get(root)) {
+  const session = scorePlaybackHighlightSessions.get(root)
+  if (!session || session.token !== token) return Promise.resolve(false)
+  session.latestNoteIndex = null
+  return queueScorePlaybackHighlight(root, async () => {
+    const current = scorePlaybackHighlightSessions.get(root)
+    if (!current || current.token !== token) return false
+    scorePlaybackHighlightSessions.delete(root)
+    const status = root.getElementById?.('score-view-note-sync')
+    try { await clearScoreHighlights(runtime ?? current.runtime) } catch {}
+    scoreHighlightSelections.delete(root)
+    if (scorePlaybackHighlightSessions.has(root)) return false
+    if (status?.dataset) status.dataset.playbackNoteSynced = 'false'
+    await syncScoreNoteHighlightNow(
+      root,
+      getPackage3MeasureSnapshot(),
+      runtime ?? current.runtime,
+      { isCurrent: () => !scorePlaybackHighlightSessions.has(root) },
+    )
+    return !scorePlaybackHighlightSessions.has(root)
+  })
 }
 
 function ensureRuntimeFrame(root, surface) {
@@ -253,7 +350,12 @@ export async function syncScoreMeasureCursor(root, bridgeSnapshot, runtime = sco
   }
 }
 
-export async function syncScoreNoteHighlight(root, bridgeSnapshot, runtime = scoreRuntimeHosts.get(root)) {
+async function syncScoreNoteHighlightNow(
+  root,
+  bridgeSnapshot,
+  runtime,
+  { isCurrent = () => true } = {},
+) {
   if (!root || typeof root.getElementById !== 'function' || !runtime) return false
   const status = root.getElementById('score-view-note-sync')
   if (!status) return false
@@ -267,6 +369,7 @@ export async function syncScoreNoteHighlight(root, bridgeSnapshot, runtime = sco
   if (!selection.selected || !selection.rendererTarget) {
     scoreHighlightSelections.delete(root)
     try { await clearScoreHighlights(runtime) } catch {}
+    if (!isCurrent()) return false
     status.dataset.noteSynced = 'false'
     status.textContent = selection.selected
       ? 'Seçili canonical nota için güvenli görsel nota kimliği kanıtlanamadı.'
@@ -280,7 +383,12 @@ export async function syncScoreNoteHighlight(root, bridgeSnapshot, runtime = sco
 
   try {
     await clearScoreHighlights(runtime)
+    if (!isCurrent()) return false
     await highlightScoreNote(runtime, target)
+    if (!isCurrent()) {
+      try { await clearScoreHighlights(runtime) } catch {}
+      return false
+    }
     scoreHighlightSelections.set(root, signature)
     status.dataset.noteSynced = 'true'
     status.textContent = `Canonical Nota ${selection.measureNoteOrdinal + 1} görsel notayla eşlendi.`
@@ -292,6 +400,21 @@ export async function syncScoreNoteHighlight(root, bridgeSnapshot, runtime = sco
     status.textContent = 'Görsel nota vurgusu uygulanamadı; eski vurgu güvenli şekilde temizlendi.'
     return false
   }
+}
+
+export function syncScoreNoteHighlight(
+  root,
+  bridgeSnapshot,
+  runtime = scoreRuntimeHosts.get(root),
+  { isCurrent = () => true } = {},
+) {
+  if (!root || typeof root.getElementById !== 'function' || !runtime) return Promise.resolve(false)
+  return queueScorePlaybackHighlight(root, async () => {
+    if (scorePlaybackHighlightSessions.has(root)) return false
+    return syncScoreNoteHighlightNow(root, bridgeSnapshot, runtime, {
+      isCurrent: () => isCurrent() && !scorePlaybackHighlightSessions.has(root),
+    })
+  })
 }
 
 export function bindRenderedNoteSelection(root, frame, runtime) {

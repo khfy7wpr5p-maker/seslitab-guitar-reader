@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+
 const SHA40 = /^[0-9a-f]{40}$/u
 const SHA256 = /^[0-9a-f]{64}$/u
 
@@ -85,6 +88,7 @@ export function qualifyGtabRt01gReleaseEvidence(
 
   const music = evidence?.music ?? {}
   if (
+    music.guitarPitchPolicy !== 'source-sounding' ||
     music.writtenMidi !== 61 ||
     music.soundingMidi !== 61 ||
     music.string !== 2 ||
@@ -121,4 +125,26 @@ export function qualifyGtabRt01gReleaseEvidence(
       ...actual,
     }),
   })
+}
+
+// Only the exact delivered bytes from a successful preflight may be rendered
+// and promoted. A matching Git revision alone does not bind artifact bytes.
+export function verifyGtabRt01gStudentRenderInput({
+  pending, scoreBytes, tabBytes, revisions,
+}) {
+  assert.equal(pending?.status, 'PENDING_STUDENT_RENDERER')
+  assert.equal(pending.checks?.studentRendererRender, 'PENDING')
+  assert.deepEqual(revisions, pending.revisions, 'Browser checkout revision changed.')
+  const preflight = qualifyGtabRt01gReleaseEvidence({
+    ...pending,
+    checks: { ...pending.checks, studentRendererRender: 'PASS' },
+  })
+  assert.equal(preflight.status, 'PASS', 'All other preflight checks must pass.')
+  for (const [name, bytes, expected] of [
+    ['SCORE', scoreBytes, pending.finalPair.packageScoreSha256],
+    ['TAB', tabBytes, pending.finalPair.packageTabSha256],
+  ]) {
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), expected,
+      `Delivered ${name} bytes changed after preflight.`)
+  }
 }
