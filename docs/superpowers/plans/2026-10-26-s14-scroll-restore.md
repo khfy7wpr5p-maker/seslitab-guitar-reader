@@ -18,3 +18,15 @@ The old PR's root-CSS assertion has no matching implementation and does not esta
 - `npm run build`: successful. Existing bundle-size warning retained.
 - Real Chromium 153: production scroll-settle, mobile menu host-occlusion and Smoosic production/source-refresh scripts successful. Browser used this environment's proxy and test-only certificate allowance to load existing remote assets. Repository dependencies and production browser security were unchanged.
 - Independent review: visualViewport cancellation finding resolved; no remaining material findings. Physical iPhone Safari and remote CI/Sonar remain unverified by these local checks.
+
+## Follow-up after CI failure (supersedes deferred replay design above)
+
+CI's menu proof timed out before host occlusion. A read-only browser trace showed it starts scrolling while the editor still says 'Editör başlatılıyor…'. The old deferred replay also overwrites a newer programmatic scroll (300 -> 240), even before its scroll event is delivered. Cancelling on input or delivered scroll alone is insufficient.
+
+Final design removes asynchronous scrollTo completely. Before an iframe height write, a bounded lease temporarily applies overflow-anchor:none!important to the parent scrolling element. It lasts across one full rendering frame, then restores the previous inline value/priority. Existing synchronous restoration remains as a fallback; no permanent CSS or input interception is added. Native support on physical iPhone Safari remains unverified.
+
+The menu proof now waits for renderer readiness, enabled controls and actual geometry stability over the existing 140 ms settle window. No timeout extension or bypass. Tests cover scroll without an input event, scroll before event delivery, anchoring prevention, original style/priority restoration and preservation of a newer external style value.
+
+Fresh verification: 39 focused tests pass; full suite 3143 total / 3112 pass / 0 fail / 31 skipped. Production package refreshed with prepareSmoosicEditor + vite build + composition manifest. Real Chromium menu occlusion, production scroll-settle and Smoosic production/source refresh proofs pass. Independent review found no material blockers; optional priority-only ownership edge remains a low-risk observation.
+
+Sonar's earlier 0% new-code coverage was caused by anonymous VM script attribution. The VM now names the real production source file. Pinned c8@12.0.0 reports 90.7% line coverage for viewport-fit.js; every changed executable line is covered. This is local LCOV evidence, not a remote Sonar PASS claim.
