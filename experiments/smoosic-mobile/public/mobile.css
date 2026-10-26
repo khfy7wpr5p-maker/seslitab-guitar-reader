@@ -193,8 +193,8 @@ html, body {
     padding: 0 !important;
     transform: none !important;
     opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
+    visibility: inherit !important;
+    pointer-events: inherit !important;
     overflow: visible !important;
     background: transparent !important;
     box-shadow: none !important;
@@ -212,15 +212,10 @@ html, body {
     font-size: 16px !important;
   }
 
-  .media > .d-flex.flex-column.flex-shrink-0.p-3.bg-body-tertiary {
-    flex: 0 0 0 !important;
-    width: 0 !important;
-    min-width: 0 !important;
-    max-width: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    background: transparent !important;
+  /* Before the first Menu click the real outer shell still lives in .media.
+     Hide it here; the existing body portal enables the mobile overlay. */
+  .media > #controls-left {
+    display: none !important;
   }
 
   .media {
