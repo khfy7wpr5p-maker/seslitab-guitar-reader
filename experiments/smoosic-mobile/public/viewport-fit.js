@@ -6,19 +6,46 @@
   let scheduledFrame = 0;
   let scheduledMenuFrame = 0;
   let scrollSettleTimer = 0;
-  let scheduledScrollRestore = 0;
-
-  function cancelScrollRestore() {
-    const parent = parentWindow();
-    if (parent && scheduledScrollRestore) parent.cancelAnimationFrame(scheduledScrollRestore);
-    scheduledScrollRestore = 0;
-  }
+  let anchorLease = null;
 
   function parentWindow() {
     try {
       if (window.parent && window.parent !== window) return window.parent;
     } catch {}
     return null;
+  }
+
+  function releaseParentAnchoring() {
+    if (!anchorLease) return;
+    const { parent, style, value, priority, raf } = anchorLease;
+    anchorLease = null;
+    parent.cancelAnimationFrame(raf);
+    // Do not overwrite a style changed by another owner while the lease ran.
+    if (style.getPropertyValue('overflow-anchor') !== 'none') return;
+    if (value) style.setProperty('overflow-anchor', value, priority);
+    else style.removeProperty('overflow-anchor');
+  }
+
+  function suspendParentAnchoring(parent) {
+    const style = (parent.document?.scrollingElement ?? parent.document?.documentElement)?.style;
+    if (!style) return;
+    releaseParentAnchoring();
+    const lease = {
+      parent, style,
+      value: style.getPropertyValue('overflow-anchor'),
+      priority: style.getPropertyPriority('overflow-anchor'),
+      raf: 0,
+    };
+    anchorLease = lease;
+    // Prevent layout anchoring at the write boundary instead of replaying an
+    // old scroll position later, which cannot distinguish scrollTo from anchoring.
+    style.setProperty('overflow-anchor', 'none', 'important');
+    lease.raf = parent.requestAnimationFrame(() => {
+      if (anchorLease !== lease) return;
+      lease.raf = parent.requestAnimationFrame(() => {
+        if (anchorLease === lease) releaseParentAnchoring();
+      });
+    });
   }
 
   function hostHeaderBottom(parent, viewportTop) {
@@ -44,25 +71,17 @@
 
   function restoreParentScrollAfterFrameWrite(parent, frame, before) {
     if (typeof parent.scrollTo !== 'function') return;
-    cancelScrollRestore();
-    const restoreIfShifted = () => {
-      if (parent.innerWidth > MOBILE_MAX_WIDTH || !frameHostVisible(frame)) return;
-      frame.getBoundingClientRect();
-      const after = parentScrollPosition(parent);
-      if (Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5) return;
-      parent.scrollTo(before.x, before.y);
-    };
-    restoreIfShifted();
-    // Anchoring can follow the synchronous layout read. Keep only one recheck;
-    // new user input or geometry changes must retire its old scroll authority.
-    scheduledScrollRestore = parent.requestAnimationFrame(() => {
-      scheduledScrollRestore = 0;
-      restoreIfShifted();
-    });
+
+    // Force outer layout so a Chromium scroll-anchor adjustment caused by the
+    // iframe height write is observable before we restore the user's position.
+    frame.getBoundingClientRect();
+    const after = parentScrollPosition(parent);
+    if (Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5) return;
+    parent.scrollTo(before.x, before.y);
   }
 
   function clearMobileFrameState(parent, frame) {
-    cancelScrollRestore();
+    releaseParentAnchoring();
     if (scrollSettleTimer) {
       parent.clearTimeout(scrollSettleTimer);
       scrollSettleTimer = 0;
@@ -120,6 +139,7 @@
     const scrollBeforeWrite = parentScrollPosition(parent);
     let frameHeightChanged = false;
     if (frame.dataset.seslitabViewportHeight !== String(availableHeight) || frame.style.height !== heightText) {
+      suspendParentAnchoring(parent);
       frame.style.height = heightText;
       frame.dataset.seslitabViewportHeight = String(availableHeight);
       frameHeightChanged = true;
@@ -190,7 +210,6 @@
   }
 
   function scheduleParentResizeFit() {
-    cancelScrollRestore();
     if (scrollSettleTimer) {
       scheduleViewportMotionFit();
       return;
@@ -199,13 +218,7 @@
     scheduleMenuFit();
   }
 
-  function scheduleVisualViewportFit() {
-    cancelScrollRestore();
-    scheduleViewportMotionFit();
-  }
-
   function scheduleOrientationFit() {
-    cancelScrollRestore();
     const parent = parentWindow();
     if (parent && scrollSettleTimer) {
       parent.clearTimeout(scrollSettleTimer);
@@ -245,7 +258,6 @@
     if (!frame || typeof HostObserver !== 'function') return;
 
     const observer = new HostObserver(() => {
-      cancelScrollRestore();
       if (!frameHostVisible(frame)) return;
       scheduleParentResizeFit();
     });
@@ -264,17 +276,11 @@
     const parent = parentWindow();
     if (!parent) return;
 
-    for (const target of [parent, document]) {
-      for (const type of ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown']) {
-        target.addEventListener(type, cancelScrollRestore, { passive: true, capture: true });
-      }
-    }
-
     parent.addEventListener('resize', scheduleParentResizeFit, { passive: true });
     parent.addEventListener('orientationchange', scheduleOrientationFit, { passive: true });
     parent.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
-    parent.visualViewport?.addEventListener('resize', scheduleVisualViewportFit, { passive: true });
-    parent.visualViewport?.addEventListener('scroll', scheduleVisualViewportFit, { passive: true });
+    parent.visualViewport?.addEventListener('resize', scheduleViewportMotionFit, { passive: true });
+    parent.visualViewport?.addEventListener('scroll', scheduleViewportMotionFit, { passive: true });
     bindHostGeometry(parent);
     bindMenuStateGeometry();
 
