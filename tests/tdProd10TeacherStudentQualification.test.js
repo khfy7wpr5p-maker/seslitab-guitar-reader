@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   buildTdProd10QualificationFixture,
+  qualifyTdProd10MalformedMusicXml,
 } from '../scripts/tdProd10TeacherStudentFixture.js'
 
 const STUDENT_APP_SHA =
@@ -124,8 +125,21 @@ test('SES-122 qualification proves fail-closed negative and retry invariants wit
       exactReplayIdempotent: true,
       durablePrepareRetainedAfterDeliveryFailure: true,
       retryReachedDelivered: true,
+      revokedDeliveryFailsClosed: true,
+      malformedMusicXmlRejectedBeforePrepare: true,
     },
   )
+})
+
+test('SES-140 malformed final XML stops the actual package-to-delivery path before prepare', async () => {
+  const evidence = await qualifyTdProd10MalformedMusicXml()
+  assert.match(evidence.error, /^final-musicxml-invalid:/)
+  assert.equal(evidence.prepareCalls, 0)
+  assert.equal(evidence.deliverCalls, 0)
+  assert.equal(evidence.preparedRecord, null)
+  assert.equal(evidence.deliveryRecord, null)
+  assert.equal(evidence.validControlDelivered, true,
+    'the same harness must successfully prepare and deliver valid XML')
 })
 
 test('SES-122 CI pins exact Student App revision and qualifies Chromium + WebKit without production deploy', async () => {

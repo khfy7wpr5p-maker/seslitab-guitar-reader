@@ -284,10 +284,10 @@ function createScoreSourceRef(workspace) {
   })
 }
 
-async function createScoreItem({ musicXml = FINAL_XML, guitarTabMusicXml = TAB_XML, prefix = 'td-prod-10' } = {}) {
+async function createScoreItem({ musicXml = FINAL_XML, guitarTabMusicXml = TAB_XML, prefix = 'td-prod-10', sourceNotes = null } = {}) {
   const authority =
     createSmoosicProductAuthority({
-      notes: parsedNotes(musicXml),
+      notes: sourceNotes ?? parsedNotes(musicXml),
       musicXml,
       sourceId: `${prefix}-source-a`,
       automaticRevisionId:
@@ -469,6 +469,76 @@ function browserItem(view, studentId) {
   })
 }
 
+async function revokedDeliveryFailsClosed(score) {
+  const harness = createDeliveryHarness()
+  const assignmentId = score.assignment.assignmentId
+  await harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items: [score] })
+  await harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds: [assignmentId] })
+  const read = () => harness.student.getAssignment({
+    providerSubject: STUDENT_A_SUBJECT, deliveryId: assignmentId,
+  })
+  const before = await read()
+  assert.equal(before.package.content.score.data, FINAL_XML)
+  await harness.teacher.applyAssignmentAction({
+    providerSubject: TEACHER_SUBJECT, assignmentId, action: 'REVOKE',
+  })
+  assert.notEqual((await harness.store.getDelivery(assignmentId)).revokedAt, null)
+  await assert.rejects(read, /student-assignment-not-found-revoked/u)
+  const listed = await harness.student.listAssignments({ providerSubject: STUDENT_A_SUBJECT })
+  assert.ok(listed.every(item => item.assignmentId !== assignmentId))
+  return true
+}
+
+// A real package producer, delivery orchestrator and backend services share
+// one isolated store. Count actual service calls, including a valid control,
+// so an unrelated empty repository cannot stand in for a no-write proof.
+export async function qualifyTdProd10MalformedMusicXml() {
+  const harness = createDeliveryHarness()
+  let prepareCalls = 0
+  let deliverCalls = 0
+  const orchestrator = createTeacherAssignmentDeliveryOrchestrator({
+    secureDeliveryClient: {
+      prepareAssignments(items) {
+        prepareCalls++
+        return harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items })
+      },
+      deliverAssignments(assignmentIds) {
+        deliverCalls++
+        return harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds })
+      },
+    },
+  })
+  async function produceAndDeliver(musicXml, prefix, sourceNotes = null) {
+    const { score } = await createScoreItem({ musicXml, prefix, sourceNotes })
+    const result = await orchestrator.deliver([score])
+    assert.equal(result.ok, true)
+    return harness.student.getAssignment({
+      providerSubject: STUDENT_A_SUBJECT, deliveryId: score.assignment.assignmentId,
+    })
+  }
+
+  const prefix = 'td-prod-28-malformed'
+  let error = ''
+  try {
+    // Model an authority with previously parsed notes but damaged XML. This
+    // exercises final intake rather than stopping at the fixture's parser.
+    await produceAndDeliver('<score-partwise version="4.0"><part-list>', prefix, parsedNotes())
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : String(caught)
+  }
+  const evidence = {
+    error, prepareCalls, deliverCalls,
+    preparedRecord: await harness.store.getPreparedAssignment(`${prefix}-score-a`),
+    deliveryRecord: await harness.store.getDelivery(`${prefix}-score-a`),
+  }
+  const control = await produceAndDeliver(FINAL_XML, 'td-prod-28-valid-control')
+  return Object.freeze({
+    ...evidence,
+    validControlDelivered: control.package.content.score.data === FINAL_XML &&
+      prepareCalls === evidence.prepareCalls + 1 && deliverCalls === evidence.deliverCalls + 1,
+  })
+}
+
 async function negativeEvidence({
   score,
   chord,
@@ -646,6 +716,9 @@ async function negativeEvidence({
       TEACHER_ASSIGNMENT_DELIVERY_PHASE
         .DELIVERED_TO_STUDENT
 
+  const revokedDeliveryFailsClosedResult = await revokedDeliveryFailsClosed(score)
+  const malformed = await qualifyTdProd10MalformedMusicXml()
+
   return Object.freeze({
     wrongStudentRejected,
     missingGrantRejected,
@@ -655,6 +728,12 @@ async function negativeEvidence({
     exactReplayIdempotent,
     durablePrepareRetainedAfterDeliveryFailure,
     retryReachedDelivered,
+    revokedDeliveryFailsClosed: revokedDeliveryFailsClosedResult,
+    malformedMusicXmlRejectedBeforePrepare:
+      /^final-musicxml-invalid:/u.test(malformed.error) &&
+      malformed.prepareCalls === 0 && malformed.deliverCalls === 0 &&
+      malformed.preparedRecord === null && malformed.deliveryRecord === null &&
+      malformed.validControlDelivered,
   })
 }
 
