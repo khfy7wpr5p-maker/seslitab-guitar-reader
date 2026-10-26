@@ -1,109 +1,92 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, relative, extname, sep } from 'node:path'
 import { createServer } from 'node:http'
+import { StringDecoder } from 'node:string_decoder'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export async function discoverBrowserPage(portFile, {
-  deadline,
-  assertRunning = () => {},
-  fetchImpl = fetch,
-} = {}) {
-  let lastError
-  while (Date.now() < deadline) {
-    assertRunning()
-    if (existsSync(portFile)) {
-      const port = Number(readFileSync(portFile, 'utf8').split('\n')[0])
-      if (Number.isInteger(port) && port > 0 && port <= 65535) {
-        try {
-          const response = await fetchImpl(`http://127.0.0.1:${port}/json/list`, {
-            signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))),
-          })
-          if (!response.ok) throw new Error(`CDP discovery: HTTP ${response.status}`)
-          const targets = await response.json()
-          if (!Array.isArray(targets)) throw new Error('CDP discovery: invalid target list.')
-          const page = targets.find((item) => item.type === 'page' && typeof item.webSocketDebuggerUrl === 'string' && item.webSocketDebuggerUrl.length > 0)
-          if (page) return page
-        } catch (error) {
-          if (error.name !== 'TimeoutError' && !['ECONNREFUSED', 'ECONNRESET'].includes(error.cause?.code)) throw error
-          lastError = error
-        }
-      }
+// Chrome's supported pipe transport uses fd 3/4 and NUL-delimited JSON. It
+// requires no HTTP discovery listener, published port file or WebSocket target.
+export function createBrowserPipeConnection(child, { deadline } = {}) {
+  const writer = child.stdio[3]
+  const reader = child.stdio[4]
+  const decoder = new StringDecoder('utf8')
+  const pending = new Map()
+  let nextId = 1
+  let buffered = ''
+  let closed = false
+
+  function close(error = new Error('CDP pipe closed.')) {
+    if (closed) return
+    closed = true
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timer)
+      entry.reject(error)
     }
-    await delay(Math.max(1, Math.min(25, deadline - Date.now())))
+    pending.clear()
+    reader.removeListener('data', receive)
+    child.removeListener('exit', exited)
+    child.removeListener('error', failed)
+    writer.destroy()
+    reader.destroy()
   }
-  assertRunning()
-  throw new Error('CDP discovery timed out.', { cause: lastError })
-}
 
-function connectCdp(webSocketUrl) {
-  return new Promise((resolveConnection, rejectConnection) => {
-    const socket = new WebSocket(webSocketUrl)
-    const pending = new Map()
-    let nextId = 1
-    let settled = false
-    const connectionTimeout = setTimeout(() => {
-      socket.close()
-      rejectConnection(new Error('Chrome DevTools connection timed out.'))
-    }, 5000)
-
-    const rejectAll = (error) => {
-      for (const { reject } of pending.values()) reject(error)
-      pending.clear()
-    }
-
-    socket.addEventListener('open', () => {
-      settled = true
-      clearTimeout(connectionTimeout)
-      resolveConnection({
-        send(method, params = {}) {
-          const id = nextId++
-          return new Promise((resolveCommand, rejectCommand) => {
-            pending.set(id, { resolve: resolveCommand, reject: rejectCommand })
-            socket.send(JSON.stringify({ id, method, params }))
-          })
-        },
-        close() {
-          rejectAll(new Error('Chrome DevTools connection closed.'))
-          socket.close()
-        },
-      })
-    }, { once: true })
-
-    socket.addEventListener('message', (event) => {
+  function failed(error) { close(new Error('CDP pipe transport failed.', { cause: error })) }
+  function exited(code, signal) { close(new Error(`Chromium exited before proof completion (code=${code}, signal=${signal}).`)) }
+  function receive(chunk) {
+    buffered += decoder.write(chunk)
+    let end
+    while ((end = buffered.indexOf('\0')) !== -1) {
+      const frame = buffered.slice(0, end)
+      buffered = buffered.slice(end + 1)
       let message
       try {
-        message = JSON.parse(String(event.data))
-      } catch {
+        message = JSON.parse(frame)
+        if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('Invalid CDP message')
+      } catch (cause) {
+        close(new Error('Malformed CDP pipe response.', { cause }))
         return
       }
-      if (message.id && pending.has(message.id)) {
-        const handler = pending.get(message.id)
-        pending.delete(message.id)
-        if (message.error) {
-          handler.reject(new Error(`${message.error.message ?? 'CDP command failed'} (${message.error.code ?? 'unknown'})`))
-        } else {
-          handler.resolve(message.result ?? {})
-        }
-        return
-      }
-    })
+      const entry = pending.get(message.id)
+      if (!entry) continue // Events and replies to retired commands carry no authority.
+      pending.delete(message.id)
+      clearTimeout(entry.timer)
+      if (message.error) entry.reject(new Error(`CDP command ${entry.method} failed (${message.error.code}).`))
+      else entry.resolve(message.result ?? {})
+    }
+  }
 
-    socket.addEventListener('error', () => {
-      const error = new Error('Chrome DevTools WebSocket failed.')
-      rejectAll(error)
-      clearTimeout(connectionTimeout)
-      if (!settled) rejectConnection(error)
-    })
-    socket.addEventListener('close', () => {
-      clearTimeout(connectionTimeout)
-      const error = new Error('Chrome DevTools WebSocket closed.')
-      rejectAll(error)
-      if (!settled) rejectConnection(error)
-    })
-  })
+  reader.on('data', receive)
+  reader.on('end', () => close(new Error('CDP pipe ended before proof completion.')))
+  reader.on('close', () => close())
+  reader.on('error', failed)
+  writer.on('error', failed)
+  child.once('exit', exited)
+  child.once('error', failed)
+
+  return {
+    send(method, params = {}, sessionId) {
+      if (closed) return Promise.reject(new Error('CDP pipe is closed.'))
+      if (!Number.isFinite(deadline) || Date.now() >= deadline) {
+        return Promise.reject(new Error(`CDP command ${method} exceeded the proof deadline.`))
+      }
+      const id = nextId++
+      return new Promise((resolveCommand, rejectCommand) => {
+        const timer = setTimeout(() => {
+          close(new Error(`CDP command ${method} timed out before the proof deadline.`))
+        }, Math.max(1, deadline - Date.now()))
+        pending.set(id, { method, resolve: resolveCommand, reject: rejectCommand, timer })
+        try {
+          writer.write(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }) + '\0', (error) => {
+            if (error) failed(error)
+          })
+        } catch (error) { failed(error) }
+      })
+    },
+    close,
+  }
 }
 
 // Use an isolated profile and observe the fixture's actual completion, rather
@@ -129,31 +112,30 @@ export async function runBrowserFixture(chrome, fixturePath, viewport) {
   const [width, height] = viewport.split(',').map(Number)
   const child = spawn(chrome, [
     '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--allow-file-access-from-files', '--remote-debugging-port=0',
+    '--allow-file-access-from-files', '--remote-debugging-pipe',
     `--user-data-dir=${profile}`, 'about:blank',
-  ], { stdio: ['ignore', 'ignore', 'pipe'] })
+  ], { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] })
   let stderr = ''
   child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-4000) })
-  let launchError = null
-  child.on('error', (error) => { launchError = error })
   let cdp
+  let pageSession
+  let phase = 'browser startup'
   const deadline = Date.now() + 20000
   const timeout = setTimeout(() => child.kill('SIGKILL'), 22000)
   try {
-    const portFile = join(profile, 'DevToolsActivePort')
-    const target = await discoverBrowserPage(portFile, {
-      deadline,
-      assertRunning() {
-        if (launchError) throw launchError
-        if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Chromium startup failed: ${stderr}`)
-      },
-    })
-    cdp = await connectCdp(target.webSocketDebuggerUrl)
-    await cdp.send('Page.enable')
+    cdp = createBrowserPipeConnection(child, { deadline })
+    await cdp.send('Browser.getVersion')
+    phase = 'page target creation'
+    const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' })
+    const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true })
+    pageSession = sessionId
+    phase = 'fixture navigation'
+    await cdp.send('Page.enable', {}, pageSession)
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile: false,
-    })
-    await cdp.send('Page.navigate', { url: url })
+    }, pageSession)
+    await cdp.send('Page.navigate', { url }, pageSession)
+    phase = 'fixture proof'
     while (Date.now() < deadline) {
       const result = await cdp.send('Runtime.evaluate', {
         expression: `(() => {
@@ -161,12 +143,14 @@ export async function runBrowserFixture(chrome, fixturePath, viewport) {
           return { done: proof && /^(PASS|FAIL)$/.test(proof.textContent.trim()),
             html: document.documentElement?.outerHTML ?? '' };
         })()`, returnByValue: true,
-      })
+      }, pageSession)
       if (result.exceptionDetails) throw new Error(result.exceptionDetails.text)
       if (result.result?.value?.done) return result.result.value.html
       await delay(25)
     }
     throw new Error(`Browser fixture did not complete: ${fixturePath}`)
+  } catch (cause) {
+    throw new Error(`Browser fixture failed during ${phase}: ${cause.message}; Chromium stderr: ${stderr.slice(-1000)}`, { cause })
   } finally {
     clearTimeout(timeout)
     cdp?.close()

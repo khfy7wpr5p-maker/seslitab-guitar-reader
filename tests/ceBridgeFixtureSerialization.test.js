@@ -45,3 +45,24 @@ test('failed browser proof removes stale success evidence before checking prereq
     assert.equal(existsSync(artifact), false)
   } finally { rmSync(directory, { recursive: true, force: true }) }
 })
+
+test('real iframe proof does not depend on the DevTools HTTP discovery endpoint', async () => {
+  const chrome = [process.env.CHROME_BIN, 'google-chrome', 'chromium'].filter(Boolean)
+    .find((candidate) => spawnSync(candidate, ['--version'], { encoding: 'utf8' }).status === 0)
+  assert.ok(chrome, 'Chromium is required for the transport regression')
+  const originalFetch = globalThis.fetch
+  const discoveryRequests = []
+  globalThis.fetch = (...args) => {
+    if (String(args[0]).includes('/json/')) {
+      discoveryRequests.push(String(args[0]))
+      throw new Error('DevTools HTTP discovery is unavailable')
+    }
+    return originalFetch(...args)
+  }
+  try {
+    const html = await runBrowserFixture(chrome,
+      fileURLToPath(new URL('./fixtures/ce-bridge-payload-transport.html', import.meta.url)), '800,600')
+    assert.match(html, /id="proof"[^>]*>PASS/)
+    assert.deepEqual(discoveryRequests, [])
+  } finally { globalThis.fetch = originalFetch }
+})

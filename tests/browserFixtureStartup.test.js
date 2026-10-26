@@ -1,112 +1,98 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { createServer } from 'node:http'
-import { discoverBrowserPage } from './support/browserFixture.js'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { createBrowserPipeConnection } from './support/browserFixture.js'
 
-const listen = (server, port = 0) => new Promise((resolve, reject) => {
-  server.once('error', reject)
-  server.listen(port, '127.0.0.1', resolve)
+function harness(t, deadline = Date.now() + 5000) {
+  const child = new EventEmitter()
+  const writer = new PassThrough()
+  const reader = new PassThrough()
+  child.stdio = [null, null, null, writer, reader]
+  const sent = []
+  writer.on('data', (chunk) => sent.push(JSON.parse(chunk.toString().replace(/\0$/, ''))))
+  const connection = createBrowserPipeConnection(child, { deadline })
+  t.after(() => connection.close())
+  return { child, writer, reader, sent, connection }
+}
+
+test('pipe preserves fragmented UTF-8 JSON and correlates multiple replies by id', async (t) => {
+  const { reader, sent, connection } = harness(t)
+  const version = connection.send('Browser.getVersion')
+  const page = connection.send('Runtime.evaluate', { expression: '1' }, 'page-session')
+  assert.deepEqual(sent, [
+    { id: 1, method: 'Browser.getVersion', params: {} },
+    { id: 2, method: 'Runtime.evaluate', params: { expression: '1' }, sessionId: 'page-session' },
+  ])
+  const bytes = Buffer.from(JSON.stringify({ id: 2, result: { text: 'Önder 🎸' } }) + '\0'
+    + JSON.stringify({ method: 'Page.loadEventFired', params: {} }) + '\0'
+    + JSON.stringify({ id: 1, result: { product: 'Chrome/test' } }) + '\0')
+  const split = bytes.indexOf(Buffer.from('Ö')) + 1
+  reader.write(bytes.subarray(0, split))
+  reader.write(bytes.subarray(split))
+  assert.deepEqual(await page, { text: 'Önder 🎸' })
+  assert.deepEqual(await version, { product: 'Chrome/test' })
 })
-const close = (server) => new Promise((resolve) => server.close(resolve))
 
-test('browser discovery survives a real refused connection and waits for a usable page target', async () => {
-  const profile = mkdtempSync(join(tmpdir(), 'cdp-startup-test-'))
-  const portFile = join(profile, 'DevToolsActivePort')
-  let responses = 0
-  const server = createServer((_req, res) => {
-    responses += 1
-    res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify(responses === 1 ? [] : [{ type: 'page', webSocketDebuggerUrl: 'ws://127.0.0.1/devtools/page/ready' }]))
+test('pipe protocol error rejects only its exact pending command', async (t) => {
+  const { reader, connection } = harness(t)
+  const invalid = connection.send('Unknown.method')
+  const ready = connection.send('Browser.getVersion')
+  const rejected = assert.rejects(invalid, /Unknown.method failed \(-32601\)/)
+  reader.write(JSON.stringify({ id: 1, error: { code: -32601 } }) + '\0')
+  reader.write(JSON.stringify({ id: 2, result: { product: 'Chrome/test' } }) + '\0')
+  await rejected
+  assert.deepEqual(await ready, { product: 'Chrome/test' })
+})
+
+test('pipe rejects malformed frames and retires all pending commands', async (t) => {
+  const { reader, connection } = harness(t)
+  const first = connection.send('Browser.getVersion')
+  const second = connection.send('Target.createTarget')
+  const rejected = Promise.all([
+    assert.rejects(first, /Malformed CDP pipe response/),
+    assert.rejects(second, /Malformed CDP pipe response/),
+  ])
+  reader.write('not-json\0')
+  await rejected
+  await assert.rejects(connection.send('Page.enable'), /pipe is closed/)
+})
+
+test('pipe closes pending commands immediately when Chromium exits', async (t) => {
+  const { child, connection } = harness(t)
+  const pending = connection.send('Browser.getVersion')
+  const rejected = assert.rejects(pending, /Chromium exited.*code=7/)
+  child.emit('exit', 7, null)
+  await rejected
+})
+
+for (const source of ['writer', 'reader', 'child']) {
+  test(`pipe reports ${source} failure and cancels pending work`, async (t) => {
+    const h = harness(t)
+    const pending = h.connection.send('Browser.getVersion')
+    const rejected = assert.rejects(pending, /CDP pipe transport failed/)
+    h[source].emit('error', new Error('controlled failure'))
+    await rejected
   })
-  await listen(server)
-  const port = server.address().port
-  await close(server)
-  // Reproduce the CI ordering: the port file is visible before the listener.
-  writeFileSync(portFile, `${port}\n/devtools/browser/test`)
-  let refused = 0
-  try {
-    const page = await discoverBrowserPage(portFile, {
-      deadline: Date.now() + 5000,
-      async fetchImpl(...args) {
-        try { return await fetch(...args) } catch (error) {
-          assert.equal(error.cause?.code, 'ECONNREFUSED')
-          refused += 1
-          await listen(server, port)
-          throw error
-        }
-      },
-    })
-    assert.equal(refused, 1)
-    assert.equal(page.webSocketDebuggerUrl, 'ws://127.0.0.1/devtools/page/ready')
-    assert.equal(responses, 2)
-  } finally {
-    await close(server)
-    rmSync(profile, { recursive: true, force: true })
-  }
+}
+
+test('pipe EOF rejects unfinished commands instead of manufacturing success', async (t) => {
+  const { reader, connection } = harness(t)
+  const pending = connection.send('Target.createTarget')
+  const rejected = assert.rejects(pending, /pipe ended before proof completion/)
+  reader.end()
+  await rejected
 })
 
-test('browser discovery does not hide HTTP errors', async () => {
-  const profile = mkdtempSync(join(tmpdir(), 'cdp-http-test-'))
-  const portFile = join(profile, 'DevToolsActivePort')
-  writeFileSync(portFile, '12345\n')
-  let requests = 0
-  try {
-    await assert.rejects(discoverBrowserPage(portFile, {
-      deadline: Date.now() + 5000,
-      async fetchImpl() { requests += 1; return new Response('', { status: 403 }) },
-    }), /CDP discovery: HTTP 403/)
-    assert.equal(requests, 1)
-  } finally { rmSync(profile, { recursive: true, force: true }) }
+test('unresponsive pipe respects the shared proof deadline and identifies the command', async (t) => {
+  const { writer, reader, connection } = harness(t, Date.now() + 40)
+  await assert.rejects(connection.send('Browser.getVersion'), /Browser.getVersion timed out/)
+  assert.equal(writer.destroyed, true)
+  assert.equal(reader.destroyed, true)
 })
 
-test('browser discovery waits for a complete port file', async () => {
-  const profile = mkdtempSync(join(tmpdir(), 'cdp-port-test-'))
-  const portFile = join(profile, 'DevToolsActivePort')
-  const server = createServer((_req, res) => res.end(JSON.stringify([
-    { type: 'page', webSocketDebuggerUrl: 'ws://127.0.0.1/devtools/page/ready' },
-  ])))
-  await listen(server)
-  writeFileSync(portFile, '')
-  const publish = setTimeout(() => writeFileSync(portFile, `${server.address().port}\n`), 15)
-  try {
-    const page = await discoverBrowserPage(portFile, { deadline: Date.now() + 5000 })
-    assert.equal(page.type, 'page')
-  } finally {
-    clearTimeout(publish)
-    await close(server)
-    rmSync(profile, { recursive: true, force: true })
-  }
-})
-
-test('browser discovery bounds an unresponsive endpoint by the startup deadline', { timeout: 2000 }, async () => {
-  const profile = mkdtempSync(join(tmpdir(), 'cdp-timeout-test-'))
-  const portFile = join(profile, 'DevToolsActivePort')
-  const server = createServer(() => {})
-  await listen(server)
-  writeFileSync(portFile, `${server.address().port}\n`)
-  try {
-    await assert.rejects(discoverBrowserPage(portFile, {
-      deadline: Date.now() + 60,
-    }), /CDP discovery timed out/)
-  } finally {
-    server.closeAllConnections()
-    await close(server)
-    rmSync(profile, { recursive: true, force: true })
-  }
-})
-
-test('browser discovery checks process failure even when a port file already exists', async () => {
-  const profile = mkdtempSync(join(tmpdir(), 'cdp-exit-test-'))
-  const portFile = join(profile, 'DevToolsActivePort')
-  writeFileSync(portFile, '12345\n')
-  try {
-    await assert.rejects(discoverBrowserPage(portFile, {
-      deadline: Date.now() + 1000,
-      assertRunning() { throw new Error('browser exited') },
-      async fetchImpl() { throw new Error('must not fetch') },
-    }), /browser exited/)
-  } finally { rmSync(profile, { recursive: true, force: true }) }
+test('expired proof cannot enqueue a new command', async (t) => {
+  const { sent, connection } = harness(t, Date.now() - 1)
+  await assert.rejects(connection.send('Page.navigate'), /exceeded the proof deadline/)
+  assert.deepEqual(sent, [])
 })

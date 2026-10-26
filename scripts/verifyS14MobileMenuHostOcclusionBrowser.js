@@ -243,6 +243,33 @@ try {
     return !!doc?.getElementById('mobile-menu-toggle') && !!doc?.getElementById('controls-left');
   })()`, 'Smoosic mobile menu')
 
+  await waitFor(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const doc = frame?.contentDocument;
+    const status = String(doc?.getElementById('poc-status')?.textContent || '');
+    if (/^(Başlatma hatası:|Hata:|Renderer oluşmadı)/.test(status)) throw new Error(status);
+    return status.startsWith('Editör hazır') && !!doc?.querySelector('svg')
+      && doc.getElementById('mobile-menu-toggle')?.disabled === false;
+  })()`, 'Smoosic renderer and enabled controls')
+
+  // Observe actual geometry for the production 140 ms settle interval; menu
+  // DOM nodes exist earlier, while boot can still move the frame/host header.
+  await waitFor(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const header = document.querySelector('.app-header');
+    if (!frame || !header || frame.hidden || frame.parentElement?.hidden) return false;
+    const rect = frame.getBoundingClientRect();
+    const signature = JSON.stringify([rect.top, rect.height, frame.style.height,
+      header.getBoundingClientRect().bottom, innerHeight, visualViewport?.height]);
+    const previous = window.__s14MenuReadyLayout;
+    if (!previous || previous.signature !== signature) {
+      window.__s14MenuReadyLayout = { signature, since: performance.now() };
+      return false;
+    }
+    return frame.dataset.seslitabViewportFit === 'mobile' && rect.height > 0
+      && performance.now() - previous.since >= 140;
+  })()`, 'initial mobile frame geometry settled')
+
   await evaluate(cdp, `(() => {
     const spacer = document.createElement('div');
     spacer.id = 'host-occlusion-test-spacer';

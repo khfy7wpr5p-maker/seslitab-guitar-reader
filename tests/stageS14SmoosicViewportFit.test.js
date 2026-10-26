@@ -15,8 +15,8 @@ test('S14 mobile viewport fit keeps the embedded editor inside the parent visual
   assert.match(viewportFit, /frame\.style\.height = heightText/)
   assert.match(viewportFit, /frame\.dataset\.seslitabViewportHeight !== String\(availableHeight\)/)
   assert.match(viewportFit, /frame\.style\.minHeight !== '0px'/)
-  assert.match(viewportFit, /visualViewport\?\.addEventListener\('resize', scheduleViewportMotionFit/)
-  assert.match(viewportFit, /visualViewport\?\.addEventListener\('scroll', scheduleViewportMotionFit/)
+  // Actual visualViewport resize/scroll delivery and settled geometry are covered
+  // by stageS14SmoosicViewportScrollSettleProduction.test.js, independent of handler names.
 })
 
 test('S14 mobile scroll settles frame geometry while menu positioning remains live', () => {
