@@ -56,11 +56,12 @@ test('only audited CI proof scripts and their test-only helpers are classified a
     'scripts/verifySmoosicNativeMenuLayoutBrowserV3.js',
   ]
   for (const path of smenuProofs) assert.ok(smenu.includes(`node ${path}`), path)
-  const approved = [...proofs, 'scripts/s14CdpProofHarness.js', 'scripts/ses153BrowserProofSession.js',
+  const releaseProofs = ['scripts/verifyGtabRt01gCrossAppRelease.js', 'scripts/verifyGtabRt01gStudentRendererBrowser.js', 'scripts/gtabRt01gReleaseGate.js', 'scripts/studentRendererRuntimeIntegrity.js']
+  const approved = [...releaseProofs, ...proofs, 'scripts/s14CdpProofHarness.js', 'scripts/ses153BrowserProofSession.js',
     'scripts/ceBridgeFixtureTransport.js', ...smenuProofs].sort()
   const actual = /^sonar\.test\.inclusions=(.*)$/m.exec(config)[1].split(',').filter((path) => path.startsWith('scripts/')).sort()
   assert.deepEqual(actual, approved)
-  assert.equal(actual.length, 25)
+  assert.equal(actual.length, 29)
   for (const path of approved) {
     assert.equal(analysisType(path, config), 'test', path)
     const callers = productCallers( ['grep', '-l', '-F', path.split('/').at(-1), '--',
