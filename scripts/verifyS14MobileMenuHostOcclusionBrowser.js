@@ -182,6 +182,72 @@ async function waitFor(cdp, expression, label, timeoutMs = 60000) {
   throw new Error(`${label} timed out${lastValue ? ` (last=${String(lastValue)})` : ''}`)
 }
 
+async function menuLifecycleSnapshot(cdp) {
+  return evaluate(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const doc = frame?.contentDocument;
+    const menu = doc?.getElementById('controls-left');
+    const score = doc?.querySelector('.musicRelief');
+    const first = menu?.querySelector('button');
+    if (!menu || !score || !first) throw new Error('Real Smoosic menu/score DOM is missing.');
+    const view = frame.contentWindow;
+    const rect = first.getBoundingClientRect();
+    const hit = doc.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const activeInMenu = menu.contains(doc.activeElement);
+    first.focus({ preventScroll: true });
+    const focusAccepted = doc.activeElement === first;
+    if (focusAccepted) first.blur();
+    return {
+      home: menu.parentElement?.classList.contains('media') === true,
+      open: doc.body.classList.contains('mobile-menu-open'),
+      scrollTop: menu.scrollTop,
+      menuWidth: menu.getBoundingClientRect().width,
+      menuDisplay: view.getComputedStyle(menu).display,
+      scoreWidth: score.getBoundingClientRect().width,
+      viewportWidth: view.innerWidth,
+      firstTopInParent: frame.getBoundingClientRect().top + rect.top,
+      headerBottom: document.querySelector('.app-header').getBoundingClientRect().bottom,
+      pointerTarget: !!hit?.closest?.('#controls-left button'),
+      activeInMenu, focusAccepted,
+      buttonHeights: Array.from(menu.querySelectorAll('button'), button => button.getBoundingClientRect().height),
+      toolbarDisplay: view.getComputedStyle(doc.getElementById('mobile-toolbar')).display,
+    };
+  })()`)
+}
+
+function assertInitialMenuHidden(snapshot, label) {
+  if (!snapshot.home || snapshot.menuWidth > 1
+    || Math.abs(snapshot.scoreWidth - snapshot.viewportWidth) > 2
+    || snapshot.focusAccepted) {
+    throw new Error(`${label}: native sidebar occupies the mobile score or accepts focus: ${JSON.stringify(snapshot)}`)
+  }
+}
+
+async function tapMenuToggle(cdp, open) {
+  const point = await waitFor(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const frameRect = frame.getBoundingClientRect();
+    const doc = frame.contentDocument;
+    const rect = doc.getElementById('mobile-menu-toggle').getBoundingClientRect();
+    const localX = rect.left + rect.width / 2;
+    const localY = rect.top + rect.height / 2;
+    const x = frameRect.left + localX;
+    const y = frameRect.top + localY;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight
+      || document.elementFromPoint(x, y) !== frame
+      || !doc.elementFromPoint(localX, localY)?.closest('#mobile-menu-toggle')) return false;
+    return { x, y };
+  })()`, 'mobile Menu toggle visible and hittable after layout settles')
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await waitFor(cdp, `(() => {
+    const doc = document.getElementById('smoosic-editor-frame').contentDocument;
+    const menu = doc.getElementById('controls-left');
+    return doc.body.classList.contains('mobile-menu-open') === ${open}
+      && doc.defaultView.getComputedStyle(menu).opacity === '${open ? '1' : '0'}';
+  })()`, `mobile menu ${open ? 'open' : 'closed'} after touch`)
+}
+
 const server = createServer((request, response) => {
   const url = new URL(request.url || '/', 'http://127.0.0.1')
   const target = safeDistPath(url.pathname)
@@ -270,6 +336,9 @@ try {
       && performance.now() - previous.since >= 140;
   })()`, 'initial mobile frame geometry settled')
 
+  const initialMenu = await menuLifecycleSnapshot(cdp)
+  assertInitialMenuHidden(initialMenu, 'First load before any Menu click')
+
   await evaluate(cdp, `(() => {
     const spacer = document.createElement('div');
     spacer.id = 'host-occlusion-test-spacer';
@@ -290,16 +359,9 @@ try {
       && Number(frame.dataset.seslitabHostOccludedTop || 0) > 100;
   })()`, 'host header to occlude iframe top')
 
-  await evaluate(cdp, `(() => {
-    const frame = document.getElementById('smoosic-editor-frame');
-    const doc = frame.contentDocument;
-    if (doc.body.classList.contains('mobile-menu-open')) doc.getElementById('mobile-menu-toggle').click();
-    doc.getElementById('mobile-menu-toggle').click();
-    return true;
-  })()`)
-
-  await waitFor(cdp, `document.getElementById('smoosic-editor-frame')?.contentDocument?.body?.classList?.contains('mobile-menu-open') === true`, 'mobile menu open')
-  await delay(100)
+  const scrolledInitialMenu = await menuLifecycleSnapshot(cdp)
+  assertInitialMenuHidden(scrolledInitialMenu, 'Scrolled before any Menu click')
+  await tapMenuToggle(cdp, true)
 
   const proof = await evaluate(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
@@ -308,7 +370,7 @@ try {
     const menu = doc.getElementById('controls-left');
     const firstButton = menu.querySelector('button');
     const firstItem = firstButton?.closest?.('li') || firstButton?.parentElement;
-    const grayShell = doc.querySelector('.media > .d-flex.flex-column.flex-shrink-0.p-3.bg-body-tertiary');
+    const grayShell = doc.querySelector('.media > #controls-left');
     const frameRect = frame.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
@@ -414,7 +476,72 @@ try {
   if (proof.visibleFirstHeight < 40) throw new Error(`Help item is clipped to a narrow strip: ${JSON.stringify(proof)}`)
   if (proof.grayShellWidth > 1) throw new Error(`Empty Bootstrap menu shell still occupies score width: ${JSON.stringify(proof)}`)
 
-  console.log(`S14 mobile menu host-occlusion browser proof PASS using ${chrome}: ${JSON.stringify(proof)}`)
+  const closedMenus = []
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    const opened = await menuLifecycleSnapshot(cdp)
+    if (opened.scrollTop !== 0 || !opened.pointerTarget
+      || opened.firstTopInParent < opened.headerBottom - 2
+      || !opened.buttonHeights.every(height => height >= 44 && height <= 64)) {
+      throw new Error(`Reopened mobile menu is scrolled, clipped or stretched: ${JSON.stringify(opened)}`)
+    }
+    const beforeClose = await evaluate(cdp, `(() => {
+      const doc = document.getElementById('smoosic-editor-frame').contentDocument;
+      const menu = doc.getElementById('controls-left');
+      menu.scrollTop = menu.scrollHeight;
+      Array.from(menu.querySelectorAll('button')).at(-1).focus({ preventScroll: true });
+      return { focused: menu.contains(doc.activeElement), scrollTop: menu.scrollTop };
+    })()`)
+    if (!beforeClose.focused || beforeClose.scrollTop <= 0) {
+      throw new Error(`Real menu must be focused and scrolled before close: ${JSON.stringify(beforeClose)}`)
+    }
+    if (cycle === 0) {
+      // Programmatic activation preserves the focused descendant until the
+      // actual close handler runs, unlike a touch that can focus the toggle.
+      await evaluate(cdp, `document.getElementById('smoosic-editor-frame').contentDocument.getElementById('mobile-menu-toggle').click(); true`)
+      await waitFor(cdp, `(() => {
+        const doc = document.getElementById('smoosic-editor-frame').contentDocument;
+        return !doc.body.classList.contains('mobile-menu-open')
+          && doc.defaultView.getComputedStyle(doc.getElementById('controls-left')).opacity === '0';
+      })()`, 'menu closed with retained descendant focus')
+    } else {
+      await tapMenuToggle(cdp, false)
+    }
+    const closed = await menuLifecycleSnapshot(cdp)
+    if (closed.pointerTarget || closed.focusAccepted || closed.activeInMenu) {
+      throw new Error(`Closed mobile menu intercepts pointer or keyboard focus: ${JSON.stringify(closed)}`)
+    }
+    closedMenus.push({ ...closed, beforeClose })
+    await tapMenuToggle(cdp, true)
+  }
+
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280, height: 900, deviceScaleFactor: 1, mobile: false,
+  })
+  await waitFor(cdp, `document.getElementById('smoosic-editor-frame').contentWindow.innerWidth > 820
+    && document.getElementById('smoosic-editor-frame').contentDocument.getElementById('controls-left').parentElement.classList.contains('media')`, 'desktop menu restored to native parent')
+  const desktopMenu = await menuLifecycleSnapshot(cdp)
+  if (desktopMenu.open || desktopMenu.menuWidth <= 1 || desktopMenu.menuDisplay === 'none'
+    || desktopMenu.toolbarDisplay !== 'none') {
+    throw new Error(`Desktop menu did not restore: ${JSON.stringify(desktopMenu)}`)
+  }
+
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+  })
+  await waitFor(cdp, `document.getElementById('smoosic-editor-frame').contentWindow.innerWidth <= 820`, 'mobile viewport restored')
+  const returnedMenu = await menuLifecycleSnapshot(cdp)
+  assertInitialMenuHidden(returnedMenu, 'Returned from desktop to mobile')
+  await tapMenuToggle(cdp, true)
+  const reopenedMenu = await menuLifecycleSnapshot(cdp)
+  if (!reopenedMenu.open || !reopenedMenu.pointerTarget
+    || reopenedMenu.scrollTop !== 0
+    || reopenedMenu.firstTopInParent < reopenedMenu.headerBottom - 2
+    || !reopenedMenu.buttonHeights.every(height => height >= 44 && height <= 64)) {
+    throw new Error(`Mobile menu cannot reopen after desktop round trip: ${JSON.stringify(reopenedMenu)}`)
+  }
+
+  console.log(`S14 mobile menu host-occlusion browser proof PASS using ${chrome}: ${JSON.stringify({ ...proof,
+    lifecycle: { initialMenu, scrolledInitialMenu, closedMenus, desktopMenu, returnedMenu, reopenedMenu } })}`)
 } catch (error) {
   console.error(`S14 mobile menu host-occlusion proof failed closed: ${error?.message ?? error}`)
   process.exitCode = 1

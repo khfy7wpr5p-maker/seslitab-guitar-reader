@@ -45,8 +45,8 @@ test('S14 inner mobile layout keeps the real nested Smoosic menu in normal flow 
   assert.match(webpackConfig, /mobile:[\s\S]*?src\/mobile-layout\.js[\s\S]*?src\/index\.js/)
 })
 
-test('S14 mobile menu escapes the gray Bootstrap shell while preserving the score clipping boundary', () => {
-  assert.match(innerMobileCss, /\.media > \.d-flex\.flex-column\.flex-shrink-0\.p-3\.bg-body-tertiary \{[\s\S]*?width: 0 !important;[\s\S]*?padding: 0 !important;[\s\S]*?background: transparent !important;/)
+test('S14 mobile menu hides its real native shell before portal while preserving the score clipping boundary', () => {
+  assert.match(innerMobileCss, /\.media > #controls-left \{[\s\S]*?display: none !important;/)
   assert.match(innerMobileCss, /\.media \{[\s\S]*?overflow: hidden !important;/)
 })
 
