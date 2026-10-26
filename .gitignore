@@ -38,3 +38,5 @@ public/st-guitar-tab-editor-runtime/
 /.coverage
 /.coverage.*
 __pycache__/
+
+/artifacts/gtab-rt-01g/
