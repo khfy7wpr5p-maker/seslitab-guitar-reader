@@ -1,7 +1,8 @@
+import { runBrowserFixture } from './support/browserFixture.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import {
@@ -88,18 +89,7 @@ function findChrome() {
 }
 
 function runBrowser(chrome, viewport) {
-  const result = spawnSync(chrome, [
-    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--allow-file-access-from-files', '--virtual-time-budget=5000', `--window-size=${viewport}`,
-    '--dump-dom', pathToFileURL(fixturePath).href,
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 30000,
-    maxBuffer: 8 * 1024 * 1024,
-  })
-  assert.equal(result.status, 0, result.error?.message || result.stderr)
-  return result.stdout || ''
+  return runBrowserFixture(chrome, fixturePath, viewport)
 }
 
 test('S06 resolves same-pitch notes only through exact ScoreNoteRef identity', () => {
@@ -211,7 +201,7 @@ test('S06 Stage E editor opens only for an exact current revision-bound selectio
   }), null)
 })
 
-test('S06 real Chrome proof keeps mouse, keyboard and touch on one exact canonical note and invalidates stale revisions', (t) => {
+test('S06 real Chrome proof keeps mouse, keyboard and touch on one exact canonical note and invalidates stale revisions', async (t) => {
   const chrome = findChrome()
   if (!chrome) {
     t.skip('Chrome/Chromium not available in this environment')
@@ -219,7 +209,7 @@ test('S06 real Chrome proof keeps mouse, keyboard and touch on one exact canonic
   }
 
   for (const viewport of ['1280,900', '390,844']) {
-    const html = runBrowser(chrome, viewport)
+    const html = await runBrowser(chrome, viewport)
     assert.match(html, /data-stage-s06-identity-pass="true"/)
     assert.match(html, /data-stage-s06-revision-invalidation-pass="true"/)
     assert.match(html, /data-stage-s06-input-parity-pass="true"/)

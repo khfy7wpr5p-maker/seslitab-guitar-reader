@@ -1,0 +1,835 @@
+import { mountStaffToPartSplitUi } from './staffToPartSplitUi.js'
+import { mountPartInstrumentAssignmentUi } from './partInstrumentAssignmentUi.js'
+import {
+  getChordBoardVoicings,
+  listChordBoardSymbols,
+} from './services/chordBoardCatalog.js'
+import {
+  validateMusicXmlFile,
+} from './services/musicXmlFile.js'
+import {
+  TEACHER_ASSIGNMENT_DELIVERY_PHASE,
+} from './services/teacherAssignmentDeliveryOrchestrator.js'
+import {
+  STUDENT_PLAYBACK_INSTRUMENT,
+} from './services/studentPracticePackageV1.js'
+
+const CHORD_BOARD_URL =
+  'https://khfy7wpr5p-maker.github.io/st-guitar-chord-board/'
+
+function element(root, tag, className = '') {
+  const node = root.createElement(tag)
+  if (className) node.className = className
+  return node
+}
+
+function text(root, value) {
+  return root.createTextNode(String(value))
+}
+
+function createDefaultDraftId() {
+  const value =
+    globalThis.crypto?.randomUUID?.()
+  if (
+    typeof value !== 'string' ||
+    value.trim() === ''
+  ) {
+    throw new Error(
+      'assignment-composer-draft-id-unavailable',
+    )
+  }
+  return value
+}
+
+function isExactDeliverySuccess(result) {
+  const recipients =
+    Array.isArray(result?.recipients)
+      ? result.recipients
+      : []
+  return (
+    result?.ok === true &&
+    recipients.length > 0 &&
+    recipients.every(
+      (row) =>
+        row?.ok === true &&
+        row?.phase ===
+          TEACHER_ASSIGNMENT_DELIVERY_PHASE
+            .DELIVERED_TO_STUDENT &&
+        row?.pieceLinked === true,
+    )
+  )
+}
+
+function safeResultMessage(result) {
+  const recipients =
+    Array.isArray(result?.recipients)
+      ? result.recipients
+      : []
+  if (isExactDeliverySuccess(result)) {
+    return 'Gönderildi.'
+  }
+  if (
+    recipients.some(
+      (row) => row?.ok === true,
+    )
+  ) {
+    return 'Bazı öğrencilere gönderildi. Gönderilemeyen öğrenciler için tekrar deneyin.'
+  }
+  return 'Gönderilemedi. Tekrar deneyin.'
+}
+
+export function mountTeacherAssignmentComposerUi({
+  root = globalThis.document,
+  host,
+  service,
+  createDraftId = createDefaultDraftId,
+} = {}) {
+  if (!host?.appendChild) {
+    throw new TypeError(
+      'host must be a DOM container.',
+    )
+  }
+  if (
+    !service ||
+    typeof service.loadRoster !== 'function' ||
+    typeof service.prepareScoreUpload !==
+      'function' ||
+    typeof service.send !== 'function'
+  ) {
+    throw new TypeError(
+      'service must provide loadRoster(), prepareScoreUpload() and send().',
+    )
+  }
+  if (typeof createDraftId !== 'function') {
+    throw new TypeError(
+      'createDraftId must be a function.',
+    )
+  }
+
+  function nextDraftId() {
+    const value =
+      String(createDraftId()).trim()
+    if (!value) {
+      throw new Error(
+        'assignment-composer-draft-id-invalid',
+      )
+    }
+    return value
+  }
+
+  let draftId = nextDraftId()
+  let uploadGeneration = 0
+  let scoreUpload = null
+  let scoreFileSelected = false
+  let selectedSnapshots = []
+  let destroyed = false
+  let sending = false
+  let splitPending = false
+  let assignmentPending = false
+  let assignmentEditing = false
+  let rosterReady = false
+  let requestConversion = null
+  let requestConversionDraft = null
+  const attemptedDrafts = new Set()
+
+  function prepareEditedUpload(musicXml) {
+    const editDraftId = attemptedDrafts.has(draftId) ? nextDraftId() : draftId
+    return service.prepareScoreUpload({ musicXml, draftId: editDraftId })
+  }
+
+  function restoreEditedUpload(upload) {
+    const restoredDraftId = attemptedDrafts.has(draftId) || attemptedDrafts.has(upload.draftId) ? nextDraftId() : (upload.draftId ?? draftId)
+    scoreUpload = restoredDraftId === upload.draftId ? upload : Object.freeze({ ...upload, draftId: restoredDraftId })
+    draftId = restoredDraftId
+  }
+
+  const form = element(
+    root,
+    'form',
+    'teacher-assignment-composer',
+  )
+  form.noValidate = true
+
+  const heading = element(root, 'h3')
+  heading.textContent = 'Ödev Gönder'
+
+  const intro = element(
+    root,
+    'p',
+    'teacher-assignment-composer__intro',
+  )
+  intro.textContent =
+    'MusicXML, akor çalışması veya ikisini aynı öğrenci çalışmasında gönderin.'
+
+  const chordLink = element(
+    root,
+    'a',
+    'teacher-assignment-composer__chord-link',
+  )
+  chordLink.href = CHORD_BOARD_URL
+  chordLink.target = '_blank'
+  chordLink.rel = 'noopener noreferrer'
+  chordLink.textContent =
+    'ST Guitar Chord Board’u aç'
+
+  const titleLabel = element(root, 'label')
+  titleLabel.textContent = 'Çalışma adı'
+  const titleInput = element(root, 'input')
+  titleInput.type = 'text'
+  titleInput.name = 'assignmentTitle'
+  titleInput.required = true
+  titleLabel.appendChild(titleInput)
+
+  const scoreFieldset = element(root, 'fieldset')
+  const scoreLegend = element(root, 'legend')
+  scoreLegend.textContent = 'SCORE — MusicXML'
+  const fileInput = element(root, 'input')
+  fileInput.type = 'file'
+  fileInput.name = 'scoreMusicXml'
+  fileInput.accept = '.xml,.musicxml'
+  const scoreStatus = element(
+    root,
+    'div',
+    'teacher-assignment-composer__score-status',
+  )
+  scoreStatus.setAttribute('role', 'status')
+  scoreStatus.setAttribute(
+    'aria-live',
+    'polite',
+  )
+  scoreStatus.textContent =
+    'MusicXML isteğe bağlıdır.'
+  scoreFieldset.appendChild(scoreLegend)
+  scoreFieldset.appendChild(fileInput)
+  scoreFieldset.appendChild(scoreStatus)
+
+  const instrumentLabel = element(root, 'label')
+  instrumentLabel.textContent = 'Çalma enstrümanı'
+  const instrumentSelect = element(root, 'select')
+  instrumentSelect.name = 'playbackInstrument'
+  for (const [value, label] of [
+    [STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO, 'Grand Piyano'],
+    [STUDENT_PLAYBACK_INSTRUMENT.CLASSICAL_GUITAR, 'Klasik Gitar'],
+    [STUDENT_PLAYBACK_INSTRUMENT.VIOLIN, 'Keman'],
+  ]) {
+    const option = element(root, 'option')
+    option.value = value
+    option.textContent = label
+    instrumentSelect.appendChild(option)
+  }
+  instrumentSelect.value =
+    STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO
+  instrumentLabel.appendChild(instrumentSelect)
+  scoreFieldset.appendChild(instrumentLabel)
+
+  const violinPartLabel = element(root, 'label')
+  violinPartLabel.textContent = 'Takip edilecek keman partisi'
+  const violinPartSelect = element(root, 'select')
+  violinPartSelect.name = 'violinTargetPartId'
+  violinPartSelect.hidden = true
+  violinPartLabel.hidden = true
+  violinPartLabel.appendChild(violinPartSelect)
+  scoreFieldset.appendChild(violinPartLabel)
+
+  function updateViolinPartSelection() {
+    const parts = scoreUpload?.violinParts ?? []
+    const requiresSelection =
+      instrumentSelect.value === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN &&
+      Array.isArray(parts) && parts.length > 1
+    violinPartLabel.hidden = !requiresSelection
+    violinPartSelect.hidden = !requiresSelection
+    violinPartSelect.replaceChildren()
+    if (!requiresSelection) return
+
+    const prompt = element(root, 'option')
+    prompt.value = ''
+    prompt.textContent = 'Parti seçin'
+    violinPartSelect.appendChild(prompt)
+    for (const part of parts) {
+      const option = element(root, 'option')
+      option.value = part.partId
+      option.textContent = `${part.name} (${part.partId})`
+      violinPartSelect.appendChild(option)
+    }
+    violinPartSelect.value = ''
+  }
+  instrumentSelect.addEventListener('change', updateViolinPartSelection)
+
+  const splitHost = element(root, 'div', 'teacher-assignment-composer__part-split')
+  scoreFieldset.appendChild(splitHost)
+  const splitUi = mountStaffToPartSplitUi({
+    root, host: splitHost, getUpload: () => scoreUpload,
+    isBusy: () => sending || destroyed || requestConversionDraft !== null || assignmentPending || assignmentEditing || partAssignmentUi.isApplied(),
+    onPendingChange(value) { splitPending = value;updateSubmitState() },
+    prepareUpload: prepareEditedUpload,
+    onApply(upload) { scoreUpload = upload;draftId = upload.draftId ?? draftId;partAssignmentUi.setUpload(upload);updateViolinPartSelection();scoreStatus.textContent = 'İki partili MusicXML hazır.' },
+    onRestore(upload) { restoreEditedUpload(upload);partAssignmentUi.setUpload(scoreUpload);updateViolinPartSelection();scoreStatus.textContent = 'Kaynak MusicXML geri yüklendi.' },
+  })
+
+  const assignmentHost = element(root, 'div', 'teacher-assignment-composer__part-instruments')
+  scoreFieldset.appendChild(assignmentHost)
+  const partAssignmentUi = mountPartInstrumentAssignmentUi({
+    root, host: assignmentHost, getUpload: () => scoreUpload,
+    isBusy: () => sending || destroyed || requestConversionDraft !== null || splitPending,
+    getSettings: () => ({ instrument: instrumentSelect.value, violinTarget: violinPartSelect.value }),
+    onPendingChange(value) { assignmentPending = value;updateSubmitState() },
+    onEditingChange(value) { assignmentEditing = value;updateSubmitState() },
+    prepareUpload: prepareEditedUpload,
+    onApply(upload, assignments) {
+      scoreUpload = upload
+      draftId = upload.draftId ?? draftId
+      instrumentSelect.value = assignments.some(row => row.instrumentId === 'VIOLIN') ? 'VIOLIN' : assignments[0].instrumentId
+      instrumentLabel.hidden = true
+      updateViolinPartSelection()
+      scoreStatus.textContent = 'Parti enstrümanları hazır.'
+    },
+    onRestore(upload, settings) {
+      restoreEditedUpload(upload);splitUi.rebindAppliedUpload(upload, scoreUpload)
+      instrumentSelect.value = settings.instrument;instrumentLabel.hidden = Boolean(upload.partInstruments)
+      updateViolinPartSelection();violinPartSelect.value = settings.violinTarget
+      scoreStatus.textContent = 'Kaynak MusicXML geri yüklendi.'
+    },
+  })
+
+  const chordFieldset = element(root, 'fieldset')
+  const chordLegend = element(root, 'legend')
+  chordLegend.textContent =
+    'CHORD_BOARD — Akorlar'
+  const symbolSelect = element(root, 'select')
+  symbolSelect.name = 'chordSymbol'
+  const voicingSelect = element(root, 'select')
+  voicingSelect.name = 'chordVoicing'
+  const addChord = element(
+    root,
+    'button',
+    'btn btn-secondary btn-sm',
+  )
+  addChord.type = 'button'
+  addChord.textContent = 'Akoru Ekle'
+  const selectedList = element(
+    root,
+    'ul',
+    'teacher-assignment-composer__selected-chords',
+  )
+  chordFieldset.appendChild(chordLegend)
+  chordFieldset.appendChild(symbolSelect)
+  chordFieldset.appendChild(voicingSelect)
+  chordFieldset.appendChild(addChord)
+  chordFieldset.appendChild(selectedList)
+
+  const rosterFieldset = element(root, 'fieldset')
+  const rosterLegend = element(root, 'legend')
+  rosterLegend.textContent = 'Öğrenciler'
+  const roster = element(
+    root,
+    'div',
+    'teacher-assignment-composer__roster',
+  )
+  roster.textContent =
+    'Öğrenci listesi yükleniyor.'
+  rosterFieldset.appendChild(rosterLegend)
+  rosterFieldset.appendChild(roster)
+
+  const requestRecipient = element(
+    root,
+    'p',
+    'teacher-assignment-composer__request-recipient',
+  )
+  requestRecipient.hidden = true
+
+  const noteLabel = element(root, 'label')
+  noteLabel.textContent = 'Öğretmen notu'
+  const noteInput = element(root, 'textarea')
+  noteInput.name = 'teacherNote'
+  noteLabel.appendChild(noteInput)
+
+  const submit = element(
+    root,
+    'button',
+    'btn btn-primary',
+  )
+  submit.type = 'submit'
+  submit.textContent = 'Öğrenciye Gönder'
+  submit.disabled = true
+
+  const status = element(
+    root,
+    'div',
+    'teacher-assignment-composer__status',
+  )
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+
+  for (const node of [
+    heading,
+    intro,
+    chordLink,
+    titleLabel,
+    scoreFieldset,
+    chordFieldset,
+    rosterFieldset,
+    requestRecipient,
+    noteLabel,
+    submit,
+    status,
+  ]) {
+    form.appendChild(node)
+  }
+
+  function renderVoicings() {
+    voicingSelect.replaceChildren()
+    const snapshots =
+      getChordBoardVoicings(
+        symbolSelect.value,
+      )
+    snapshots.forEach(
+      (snapshot, index) => {
+        const option =
+          element(root, 'option')
+        option.value =
+          snapshot.voicingFingerprint
+        option.textContent =
+          `${index + 1}. pozisyon — ${snapshot.voicing.frets.join(' ')}`
+        voicingSelect.appendChild(option)
+      },
+    )
+    if (snapshots.length > 0) {
+      voicingSelect.value =
+        snapshots[0].voicingFingerprint
+    }
+  }
+
+  function renderChordSelection() {
+    selectedList.replaceChildren()
+    for (const snapshot of selectedSnapshots) {
+      const item = element(root, 'li')
+      item.appendChild(
+        text(
+          root,
+          `${snapshot.chord.displaySymbol} — ${snapshot.voicing.frets.join(' ')}`,
+        ),
+      )
+      selectedList.appendChild(item)
+    }
+  }
+
+  const symbols =
+    listChordBoardSymbols()
+  for (const symbol of symbols) {
+    const option =
+      element(root, 'option')
+    option.value = symbol
+    option.textContent = symbol
+    symbolSelect.appendChild(option)
+  }
+  if (symbols.length > 0) {
+    symbolSelect.value = symbols[0]
+  }
+  renderVoicings()
+
+  function resetCompletedAssignment() {
+    const nextId = nextDraftId()
+
+    uploadGeneration += 1
+    scoreUpload = null
+    splitUi.invalidate()
+    partAssignmentUi.invalidate()
+    instrumentLabel.hidden = false
+    scoreFileSelected = false
+    selectedSnapshots = []
+    attemptedDrafts.clear()
+    requestConversionDraft = null
+
+    titleInput.value = ''
+    noteInput.value = ''
+    instrumentSelect.value =
+      STUDENT_PLAYBACK_INSTRUMENT.GRAND_PIANO
+    updateViolinPartSelection()
+    fileInput.value = ''
+    for (
+      const input of roster.querySelectorAll(
+        'input[name="studentId"]',
+      )
+    ) {
+      input.checked = false
+    }
+
+    renderChordSelection()
+    scoreStatus.textContent =
+      'MusicXML isteğe bağlıdır.'
+    if (symbols.length > 0) {
+      symbolSelect.value = symbols[0]
+      renderVoicings()
+    }
+
+    draftId = nextId
+  }
+
+  function leaveRequestConversion() {
+    requestConversion = null
+    titleInput.disabled = false
+    rosterFieldset.hidden = false
+    requestRecipient.hidden = true
+    requestRecipient.textContent = ''
+    submit.textContent = 'Öğrenciye Gönder'
+  }
+
+  symbolSelect.addEventListener(
+    'change',
+    renderVoicings,
+  )
+
+  addChord.addEventListener('click', () => {
+    if (sending || destroyed || requestConversionDraft !== null) return
+    const snapshot =
+      getChordBoardVoicings(
+        symbolSelect.value,
+      ).find(
+        (row) =>
+          row.voicingFingerprint ===
+          voicingSelect.value,
+      )
+    if (!snapshot) return
+    if (
+      selectedSnapshots.some(
+        (row) =>
+          row.voicingFingerprint ===
+          snapshot.voicingFingerprint,
+      )
+    ) {
+      status.textContent =
+        'Bu akor pozisyonu zaten seçildi.'
+      return
+    }
+    selectedSnapshots = [
+      ...selectedSnapshots,
+      snapshot,
+    ]
+    renderChordSelection()
+    status.textContent =
+      'Akor pozisyonu eklendi.'
+  })
+
+  fileInput.addEventListener(
+    'change',
+    async () => {
+      if (sending || destroyed || requestConversionDraft !== null) return
+      if (attemptedDrafts.has(draftId)) draftId = nextDraftId()
+      const uploadToken = ++uploadGeneration
+      scoreUpload = null
+      splitUi.invalidate()
+      partAssignmentUi.invalidate()
+      instrumentLabel.hidden = false
+      updateViolinPartSelection()
+      const file = fileInput.files?.[0]
+      scoreFileSelected = Boolean(file)
+      if (!file) {
+        scoreStatus.textContent =
+          'MusicXML isteğe bağlıdır.'
+        return
+      }
+      const validation =
+        validateMusicXmlFile(file)
+      if (validation) {
+        scoreStatus.textContent =
+          validation
+        return
+      }
+      scoreStatus.textContent =
+        'MusicXML doğrulanıyor.'
+      try {
+        const musicXml =
+          await file.text()
+        if (destroyed || uploadToken !== uploadGeneration) return
+        const prepared =
+          await service.prepareScoreUpload({ musicXml, draftId })
+        if (destroyed || uploadToken !== uploadGeneration) return
+        scoreUpload = prepared
+        splitUi.setUpload(scoreUpload)
+        partAssignmentUi.setUpload(scoreUpload)
+        if (prepared.partInstruments) {
+          const sounds = Object.values(prepared.partInstruments)
+          instrumentSelect.value = sounds.includes('VIOLIN') ? 'VIOLIN' : sounds[0]
+          instrumentLabel.hidden = true
+        }
+        updateViolinPartSelection()
+        scoreStatus.textContent =
+          'MusicXML doğrulandı.'
+      } catch {
+        if (destroyed || uploadToken !== uploadGeneration) return
+        scoreUpload = null
+        splitUi.invalidate()
+        partAssignmentUi.invalidate()
+        updateViolinPartSelection()
+        scoreStatus.textContent =
+          'MusicXML doğrulanamadı.'
+      }
+    },
+  )
+
+  function updateSubmitState() {
+    const conversionLocked = requestConversionDraft !== null
+    fileInput.disabled = sending || conversionLocked
+    scoreFieldset.disabled = conversionLocked
+    chordFieldset.disabled = conversionLocked
+    noteInput.disabled = conversionLocked
+    submit.disabled =
+      sending || destroyed || splitPending || assignmentPending || assignmentEditing ||
+      (requestConversion === null && !rosterReady)
+  }
+
+  async function loadRoster() {
+    rosterReady = false
+    updateSubmitState()
+    try {
+      const rows =
+        await service.loadRoster()
+      if (destroyed) return
+      roster.replaceChildren()
+      if (rows.length === 0) {
+        roster.textContent =
+          'Aktif öğrenci bulunamadı.'
+        rosterReady = false
+        updateSubmitState()
+        return
+      }
+      for (const row of rows) {
+        const label = element(root, 'label')
+        const input = element(root, 'input')
+        input.type = 'checkbox'
+        input.name = 'studentId'
+        input.value = row.studentId
+        label.appendChild(input)
+        label.appendChild(
+          text(
+            root,
+            row.displayNameOrNickname,
+          ),
+        )
+        roster.appendChild(label)
+      }
+      rosterReady = true
+      updateSubmitState()
+    } catch {
+      if (!destroyed) {
+        rosterReady = false
+        updateSubmitState()
+        roster.textContent =
+          'Öğrenci listesi yüklenemedi.'
+      }
+    }
+  }
+
+  form.addEventListener(
+    'submit',
+    async (event) => {
+      event.preventDefault()
+      if (sending || destroyed) return
+      if (splitPending || assignmentPending || assignmentEditing) {
+        status.textContent = 'Partiler hazırlanıyor. Tamamlanınca tekrar gönderin.'
+        return
+      }
+
+      let studentIds = []
+      if (requestConversion === null) {
+        if (!rosterReady) {
+          status.textContent =
+            'Öğrenci listesi hazır değil.'
+          return
+        }
+
+        studentIds =
+          roster
+            .querySelectorAll(
+              'input[type="checkbox"]:checked',
+            )
+            .map?.((row) => row.value) ??
+          Array.from(
+            roster.querySelectorAll(
+              'input[type="checkbox"]:checked',
+            ),
+            (row) => row.value,
+          )
+
+        if (studentIds.length === 0) {
+          status.textContent =
+            'En az bir öğrenci seçin.'
+          return
+        }
+      }
+
+      if (
+        scoreFileSelected &&
+        scoreUpload === null
+      ) {
+        status.textContent =
+          'MusicXML hazır değil. Dosyayı düzeltin veya seçimi kaldırın.'
+        return
+      }
+      if (
+        scoreUpload === null &&
+        selectedSnapshots.length === 0
+      ) {
+        status.textContent =
+          'MusicXML veya en az bir akor seçin.'
+        return
+      }
+      if (
+        instrumentSelect.value === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN &&
+        (scoreUpload?.violinParts?.length ?? 0) > 1 &&
+        !scoreUpload.violinParts.some((part) => part.partId === violinPartSelect.value)
+      ) {
+        status.textContent = 'Takip edilecek keman partisini seçin.'
+        return
+      }
+
+      const violinSelection =
+        instrumentSelect.value === STUDENT_PLAYBACK_INSTRUMENT.VIOLIN &&
+        !violinPartSelect.hidden
+          ? { violinTargetPartId: violinPartSelect.value }
+          : {}
+
+      const title =
+        titleInput.value.trim()
+      if (!title) {
+        status.textContent =
+          'Çalışma adını yazın.'
+        return
+      }
+
+      sending = true
+      attemptedDrafts.add(draftId)
+      splitUi.invalidatePending()
+      updateSubmitState()
+      status.textContent =
+        'Gönderiliyor.'
+      try {
+        if (requestConversion !== null) {
+          requestConversionDraft ??= Object.freeze({
+              teacherNote: noteInput.value,
+              scoreUpload,
+              guitarTabUpload: null,
+              chordSnapshots: Object.freeze([...selectedSnapshots]),
+              playbackInstrument:
+                instrumentSelect.value,
+              ...violinSelection,
+            })
+          updateSubmitState()
+          await requestConversion.onSubmit(requestConversionDraft)
+          status.textContent = 'Gönderildi.'
+          leaveRequestConversion()
+          resetCompletedAssignment()
+        } else {
+          const result =
+            await service.send({
+              draftId,
+              studentIds,
+              title,
+              teacherNote:
+                noteInput.value,
+              scoreUpload,
+              chordSnapshots:
+                selectedSnapshots,
+              playbackInstrument:
+                instrumentSelect.value,
+              ...violinSelection,
+            })
+          const exactSuccess =
+            isExactDeliverySuccess(result)
+          status.textContent =
+            safeResultMessage(result)
+          if (exactSuccess) {
+            try {
+              resetCompletedAssignment()
+            } catch {
+              rosterReady = false
+              status.textContent =
+                'Gönderildi. Yeni ödev hazırlanamadı; sayfayı yenileyin.'
+            }
+          }
+        }
+      } catch {
+        status.textContent =
+          requestConversionDraft !== null
+            ? 'Gönderim sonucu doğrulanamadı. İçerik korundu ve kilitlendi; aynı içerikle tekrar deneyin.'
+            : 'Gönderilemedi. Tekrar deneyin.'
+      } finally {
+        sending = false
+        updateSubmitState()
+      }
+    },
+  )
+
+  host.replaceChildren(form)
+  void loadRoster()
+
+  return Object.freeze({
+    startRequestConversion({
+      title,
+      displayNameOrNickname,
+      targetState,
+      onSubmit,
+    } = {}) {
+      if (destroyed) {
+        throw new Error('assignment-composer-destroyed')
+      }
+      const normalizedTitle =
+        typeof title === 'string' ? title.trim() : ''
+      const normalizedName =
+        typeof displayNameOrNickname === 'string'
+          ? displayNameOrNickname.trim()
+          : ''
+      if (!normalizedTitle || !normalizedName) {
+        throw new TypeError(
+          'request conversion requires title and display name.',
+        )
+      }
+      if (!['ACTIVE', 'REPERTOIRE'].includes(targetState)) {
+        throw new TypeError(
+          'request conversion targetState must be ACTIVE or REPERTOIRE.',
+        )
+      }
+      if (typeof onSubmit !== 'function') {
+        throw new TypeError(
+          'request conversion onSubmit must be a function.',
+        )
+      }
+
+      resetCompletedAssignment()
+      requestConversion = Object.freeze({
+        targetState,
+        onSubmit,
+      })
+      titleInput.value = normalizedTitle
+      titleInput.disabled = true
+      rosterFieldset.hidden = true
+      requestRecipient.hidden = false
+      requestRecipient.textContent =
+        `Öğrenci: ${normalizedName}`
+      submit.textContent =
+        targetState === 'REPERTOIRE'
+          ? 'Repertuara Gönder'
+          : 'Aktif Çalışmaya Gönder'
+      status.textContent =
+        'İçeriği seçip gönderin.'
+      updateSubmitState()
+      titleInput.focus?.()
+    },
+    cancelRequestConversion() {
+      if (requestConversion === null) return
+      leaveRequestConversion()
+      resetCompletedAssignment()
+      updateSubmitState()
+    },
+    destroy() {
+      if (destroyed) return
+      destroyed = true
+      uploadGeneration += 1
+      splitUi.destroy()
+      partAssignmentUi.destroy()
+      rosterReady = false
+      requestConversion = null
+      host.replaceChildren()
+    },
+  })
+}

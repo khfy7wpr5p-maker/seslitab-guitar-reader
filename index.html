@@ -30,6 +30,10 @@
     </header>
 
     <main class="app-main">
+      <div class="teacher-tools-navigation" id="teacher-tools-navigation" role="tablist" aria-label="Öğretmen araçları">
+        <button class="teacher-tool-btn active" id="result-assignment-btn" type="button" role="tab" aria-selected="true" aria-controls="tab-assignment" tabindex="0">Ödev Gönder</button>
+      </div>
+
       <section class="card input-card" id="input-section" aria-labelledby="input-heading">
         <div class="card-header">
           <h2 id="input-heading">Dosya Aç</h2>
@@ -127,11 +131,11 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
         </div>
       </section>
 
-      <section class="card results-card" id="results-section" hidden aria-labelledby="results-heading">
+      <section class="card results-card" id="results-section" aria-labelledby="results-heading">
         <div class="card-header">
           <h2 id="results-heading">Çıktı</h2>
           <div class="card-actions">
-            <button class="btn btn-secondary btn-sm" id="copy-btn" aria-label="Ritmik metni kopyala">
+            <button class="btn btn-secondary btn-sm teacher-surface-hidden" id="copy-btn" aria-label="Ritmik metni kopyala" aria-hidden="true" tabindex="-1">
               <span class="btn-icon-text" aria-hidden="true">📋 Kopyala</span>
             </button>
             <button class="btn btn-secondary btn-sm" id="reset-btn" aria-label="Tümünü sıfırla">
@@ -141,31 +145,45 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
         </div>
         <div class="card-body">
           <div class="result-tabs" role="tablist" aria-label="Çıktı görünümü seç">
-            <button class="tab-btn active" role="tab" aria-selected="true" data-tab="rhythmic">Metin</button>
-            <button class="tab-btn" role="tab" aria-selected="false" data-tab="html">HTML</button>
-            <button class="tab-btn" role="tab" aria-selected="false" data-tab="notes">Notalar</button>
-            <button class="tab-btn" role="tab" aria-selected="false" data-tab="xml">MusicXML</button>
+            <button class="tab-btn teacher-surface-hidden" id="result-rhythmic-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="rhythmic">Metin</button>
+            <button class="tab-btn teacher-surface-hidden" id="result-html-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="html">HTML</button>
+            <button class="tab-btn teacher-surface-hidden" id="result-notes-btn" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="notes">Notalar</button>
+            <button class="tab-btn active" id="result-xml-btn" role="tab" aria-selected="true" data-tab="xml">MusicXML</button>
           </div>
 
-          <div class="tab-content" id="tab-rhythmic" role="tabpanel">
+          <div class="tab-content teacher-surface-hidden" id="tab-rhythmic" role="tabpanel" aria-hidden="true" hidden>
             <div class="rhythm-warning" id="rhythm-warning" hidden></div>
             <pre class="rhythmic-text" id="rhythmic-output" aria-label="Ritmik metin çıktısı"></pre>
           </div>
 
-          <div class="tab-content" id="tab-html" role="tabpanel" hidden>
+          <div class="tab-content teacher-surface-hidden" id="tab-html" role="tabpanel" aria-hidden="true" hidden>
             <div class="rhythm-warning" id="rhythm-warning-html" hidden></div>
             <div class="rhythmic-html" id="rhythmic-html-output" aria-label="Ritmik HTML çıktısı"></div>
           </div>
 
-          <div class="tab-content" id="tab-notes" role="tabpanel" hidden>
+          <div class="tab-content teacher-surface-hidden" id="tab-notes" role="tabpanel" aria-hidden="true" hidden>
             <div class="notes-grid" id="notes-output" aria-label="Nota kartları"></div>
           </div>
 
-          <div class="tab-content" id="tab-xml" role="tabpanel" hidden>
+          <div class="tab-content teacher-assignment-composer-panel" id="tab-assignment" role="tabpanel" aria-labelledby="result-assignment-btn">
+            <div id="teacher-auth-session-host"></div>
+            <div id="teacher-student-management-host"></div>
+            <div id="teacher-assignment-composer-host">
+              <h3>Ödev Gönder</h3>
+              <p>MusicXML ve akor çalışmalarını öğrenciye göndermek için öğretmen oturumu gerekir.</p>
+              <p>
+                Akor çalışması:
+                <a href="https://khfy7wpr5p-maker.github.io/st-guitar-chord-board/" target="_blank" rel="noopener noreferrer">ST Guitar Chord Board</a>
+              </p>
+              <div class="teacher-assignment-composer__status" role="status" aria-live="polite">Güvenli gönderim bağlantısı bekleniyor.</div>
+            </div>
+          </div>
+
+          <div class="tab-content" id="tab-xml" role="tabpanel">
             <pre class="xml-text" id="xml-output" aria-label="MusicXML ham çıktı"></pre>
           </div>
 
-          <div class="notes-summary" id="notes-summary" aria-live="polite"></div>
+          <div class="notes-summary teacher-surface-hidden" id="notes-summary" aria-live="polite" aria-hidden="true"></div>
 
           <div class="omr-download-area" id="omr-download-area" hidden>
             <button class="btn btn-primary btn-sm" id="musicxml-download-btn" hidden aria-label="MusicXML Dosyasını İndir">
@@ -180,7 +198,7 @@ E|---------------|" aria-label="Gitar TAB metni giriş alanı"></textarea>
         </div>
       </section>
 
-      <section class="card playback-card" id="voice-section" hidden aria-labelledby="voice-heading">
+      <section class="card playback-card teacher-surface-hidden" id="voice-section" hidden aria-hidden="true" aria-labelledby="voice-heading">
         <div class="card-header">
           <h2 id="voice-heading">Sesli Oku</h2>
         </div>

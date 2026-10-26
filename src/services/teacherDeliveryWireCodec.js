@@ -20,6 +20,7 @@ import {
 import {
   SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION,
   SCORE_ASSIGNMENT_SOURCE_KIND,
+  SCORE_ASSIGNMENT_TEACHER_SELECTED_SOURCE_KIND,
   isScoreAssignmentSourceBinding,
 } from './scoreAssignmentSourceBinding.js'
 import {
@@ -108,14 +109,17 @@ function restoreScoreAssignmentSourceBindingV1(raw) {
   assertStrictInputObject(raw, SOURCE_FIELDS, 'ScoreAssignmentSourceBinding wire')
   if (
     raw.schemaVersion !== SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION ||
-    raw.sourceKind !== SCORE_ASSIGNMENT_SOURCE_KIND
+    ![
+      SCORE_ASSIGNMENT_SOURCE_KIND,
+      SCORE_ASSIGNMENT_TEACHER_SELECTED_SOURCE_KIND,
+    ].includes(raw.sourceKind)
   ) {
     throw new TypeError('unsupported ScoreAssignmentSourceBinding schema.')
   }
 
   const restored = Object.freeze({
     schemaVersion: SCORE_ASSIGNMENT_SOURCE_SCHEMA_VERSION,
-    sourceKind: SCORE_ASSIGNMENT_SOURCE_KIND,
+    sourceKind: raw.sourceKind,
     studentId: normalizeRequiredId(raw.studentId, 'studentId'),
     sourceId: normalizeRequiredId(raw.sourceId, 'sourceId'),
     sourceRevisionId: normalizeRequiredId(raw.sourceRevisionId, 'sourceRevisionId'),

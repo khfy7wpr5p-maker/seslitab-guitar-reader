@@ -10,9 +10,9 @@ import {
   noteToMidi,
   resolveCanonicalPitch,
 } from './noteTheory.js'
+import { resolveGuitarPhysicalPitch } from './guitarPhysicalPitch.js'
 
 export const BASIC_GUITAR_MAX_FRET = 24
-export const BASIC_GUITAR_WRITTEN_TRANSPOSITION = -12
 
 export const GUITAR_POSITION_CANDIDATE_STATE = Object.freeze({
   CANDIDATES: 'candidates',
@@ -61,7 +61,7 @@ function invalidResult(reason) {
     reason,
     writtenMidi: null,
     mappingMidi: null,
-    transpositionSemitones: BASIC_GUITAR_WRITTEN_TRANSPOSITION,
+    transpositionSemitones: null,
     candidates: [],
   })
 }
@@ -106,9 +106,8 @@ function resolveWrittenPitch(note) {
  * Enumerate every physically representable position in SesliTab's current
  * basic standard-tuning / 24-fret contract for one canonical MusicXML note.
  *
- * Guitar staff notation is treated as octave-transposing exactly as the
- * existing parser regression contract does: the position-mapping pitch is the
- * written pitch minus 12 semitones. No preferred fingering is selected here.
+ * Physical pitch is derived only from explicit source transposition metadata.
+ * No clef or instrument-name heuristic is applied here.
  *
  * @param {Object} note canonical NoteObject
  * @returns {Object} immutable candidate result
@@ -124,7 +123,7 @@ export function enumerateCanonicalGuitarPositionCandidates(note) {
       reason: null,
       writtenMidi: null,
       mappingMidi: null,
-      transpositionSemitones: BASIC_GUITAR_WRITTEN_TRANSPOSITION,
+      transpositionSemitones: null,
       candidates: [],
     })
   }
@@ -135,7 +134,17 @@ export function enumerateCanonicalGuitarPositionCandidates(note) {
   }
 
   const writtenMidi = writtenPitch.midi
-  const mappingMidi = writtenMidi + BASIC_GUITAR_WRITTEN_TRANSPOSITION
+  let physicalPitch
+  try {
+    physicalPitch = resolveGuitarPhysicalPitch({
+      writtenMidi,
+      sourceTranspositionSemitones: note.sourceTranspositionSemitones ?? 0,
+      soundingPitchMidi: note.soundingPitchMidi,
+    })
+  } catch {
+    return invalidResult('invalid-source-transposition')
+  }
+  const mappingMidi = physicalPitch.soundingPitchMidi
 
   if (!Number.isInteger(mappingMidi) || mappingMidi < 0 || mappingMidi > 127) {
     return freezeResult({
@@ -143,7 +152,7 @@ export function enumerateCanonicalGuitarPositionCandidates(note) {
       reason: 'mapping-pitch-out-of-midi-range',
       writtenMidi,
       mappingMidi,
-      transpositionSemitones: BASIC_GUITAR_WRITTEN_TRANSPOSITION,
+      transpositionSemitones: physicalPitch.sourceTranspositionSemitones,
       candidates: [],
     })
   }
@@ -172,7 +181,7 @@ export function enumerateCanonicalGuitarPositionCandidates(note) {
       reason: 'no-basic-guitar-position',
       writtenMidi,
       mappingMidi,
-      transpositionSemitones: BASIC_GUITAR_WRITTEN_TRANSPOSITION,
+      transpositionSemitones: physicalPitch.sourceTranspositionSemitones,
       candidates: [],
     })
   }
@@ -182,7 +191,7 @@ export function enumerateCanonicalGuitarPositionCandidates(note) {
     reason: null,
     writtenMidi,
     mappingMidi,
-    transpositionSemitones: BASIC_GUITAR_WRITTEN_TRANSPOSITION,
+    transpositionSemitones: physicalPitch.sourceTranspositionSemitones,
     candidates,
   })
 }

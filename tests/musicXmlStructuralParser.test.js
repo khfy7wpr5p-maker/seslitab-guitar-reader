@@ -429,6 +429,19 @@ describe('17. Multiple voices remain distinct', () => {
   })
 })
 
+describe('17a. Voice zero remains canonical', () => {
+  test('parseMusicXml and parseMusicXmlWithStructure preserve explicit voice zero', () => {
+    const xml = makeScoreXml(makeMeasureXml(1,
+      '      <attributes>\n        <divisions>4</divisions>\n      </attributes>\n' +
+      makeNoteXml({ pitch: 'C4', duration: 4, type: 'quarter', voice: 0 })
+    ))
+    const flat = parseMusicXml(xml)
+    const structured = parseMusicXmlWithStructure(xml)
+    assert.equal(flat.notes[0].voice, 0)
+    assert.equal(structured.notes[0].voice, 0)
+  })
+})
+
 describe('18. Existing note count and order unchanged', () => {
   test('parseMusicXml and parseMusicXmlWithStructure produce same note count and order', () => {
     // Use compact single-line XML for reliable MiniDOMParser parsing

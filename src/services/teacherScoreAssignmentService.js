@@ -246,6 +246,8 @@ export function createTeacherScoreAssignmentService({
   rosterService,
   createAssignmentId,
   createReadinessIds,
+  createSourceBinding =
+    createScoreAssignmentSourceBinding,
   now,
 } = {}) {
   const trustedRepository =
@@ -274,6 +276,13 @@ export function createTeacherScoreAssignmentService({
   ) {
     throw new TypeError(
       'createReadinessIds must be a function.',
+    )
+  }
+  if (
+    typeof createSourceBinding !== 'function'
+  ) {
+    throw new TypeError(
+      'createSourceBinding must be a function.',
     )
   }
   if (typeof now !== 'function') {
@@ -344,7 +353,7 @@ export function createTeacherScoreAssignmentService({
           studentId,
           index,
           sourceRef:
-            createScoreAssignmentSourceBinding({
+            createSourceBinding({
               workspace: input.workspace,
               sourceNotes:
                 input.sourceNotes,

@@ -1,8 +1,9 @@
+import { runBrowserFixture } from './support/browserFixture.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import { STAGE_S05_WORKSPACE_COPY } from '../src/stageS05ScoreWorkspaceUi.js'
@@ -18,18 +19,7 @@ function findChrome() {
 }
 
 function runBrowser(chrome, viewport) {
-  const result = spawnSync(chrome, [
-    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--allow-file-access-from-files', '--virtual-time-budget=4000', `--window-size=${viewport}`,
-    '--dump-dom', pathToFileURL(fixturePath).href,
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 30000,
-    maxBuffer: 8 * 1024 * 1024,
-  })
-  assert.equal(result.status, 0, result.error?.message || result.stderr)
-  return result.stdout || ''
+  return runBrowserFixture(chrome, fixturePath, viewport)
 }
 
 test('S05 stays presentation-only and reusable, while S14 retires the old score workspace from production', () => {
@@ -60,7 +50,7 @@ test('S05 workspace is responsive and has no separate Nota Görünümü result t
   assert.doesNotMatch(source, /textContent\s*=\s*['"]Nota Görünümü['"]/)
 })
 
-test('S05 real Chrome proof covers desktop and 390px workspace behavior', (t) => {
+test('S05 real Chrome proof covers desktop and 390px workspace behavior', async (t) => {
   const chrome = findChrome()
   if (!chrome) {
     t.skip('Chrome/Chromium not available in this environment')
@@ -68,7 +58,7 @@ test('S05 real Chrome proof covers desktop and 390px workspace behavior', (t) =>
   }
 
   for (const viewport of ['1280,900', '390,844']) {
-    const html = runBrowser(chrome, viewport)
+    const html = await runBrowser(chrome, viewport)
     assert.match(html, /data-stage-s05-workspace-pass="true"/)
     assert.match(html, /data-stage-s05-auto-score-pass="true"/)
     assert.match(html, /data-stage-s05-tab-preservation-pass="true"/)

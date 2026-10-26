@@ -73,6 +73,51 @@ test('private SCORE package matches Student App PracticePackage v1 boundary', as
   assert.equal(validateStudentPracticePackageV1(pkg).ok, true)
 })
 
+test('SCORE package carries a validated optional playback instrument while legacy packages remain valid', async () => {
+  const {
+    createStudentPrivatePracticePackageV1,
+    validateStudentPracticePackageV1,
+  } = await loadPackageContract()
+
+  const selected = createStudentPrivatePracticePackageV1(
+    validInput({ playbackInstrument: 'VIOLIN' }),
+  )
+  assert.equal(selected.playbackInstrument, 'VIOLIN')
+  assert.equal(validateStudentPracticePackageV1(selected).ok, true)
+
+  const legacy = createStudentPrivatePracticePackageV1(validInput())
+  assert.equal(Object.hasOwn(legacy, 'playbackInstrument'), false)
+  assert.equal(validateStudentPracticePackageV1(legacy).ok, true)
+
+  assert.throws(
+    () => createStudentPrivatePracticePackageV1(
+      validInput({ playbackInstrument: 'RANDOM_INSTRUMENT' }),
+    ),
+    /playbackInstrument/,
+  )
+})
+
+test('violin assignment descriptor is bounded, immutable and rejected for other instruments', async () => {
+  const { createStudentPrivatePracticePackageV1, validateStudentPracticePackageV1 } = await loadPackageContract()
+  const pkg = createStudentPrivatePracticePackageV1(validInput({
+    playbackInstrument: 'VIOLIN',
+    violinTargetPartId: 'P1',
+  }))
+  assert.deepEqual(pkg.content.violin, { schemaVersion: 1, targetPartId: 'P1', position: 1 })
+  assert.equal(Object.isFrozen(pkg.content.violin), true)
+  assert.equal(validateStudentPracticePackageV1(pkg).ok, true)
+
+  assert.throws(() => createStudentPrivatePracticePackageV1(validInput({
+    playbackInstrument: 'GRAND_PIANO', violinTargetPartId: 'P1',
+  })), /violin/i)
+  const invalid = structuredClone(pkg)
+  invalid.content.violin.targetPartId = ' P1 '
+  assert.equal(validateStudentPracticePackageV1(invalid).ok, false)
+  const leakedSelection = structuredClone(pkg)
+  leakedSelection.violinTargetPartId = 'P1'
+  assert.equal(validateStudentPracticePackageV1(leakedSelection).ok, false)
+})
+
 test('PracticePackage validator rejects teacher-only/OMR fields and invalid private recipient/revision state', async () => {
   const {
     createStudentPrivatePracticePackageV1,

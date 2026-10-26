@@ -394,12 +394,12 @@ describe('21. Existing validator tests continue to pass', () => {
 })
 
 describe('22. Existing duration/BPM/dot/tie/playback/MIDI/mapping/HTML/TTS/OMR tests pass', () => {
-  test('guitarOctaveMapping still works (E4 → D string, fret 2)', async () => {
+  test('source-derived mapping keeps plain E4 at first string, open', async () => {
     const { parseMusicXml } = await import('../musicXmlParser.js')
     const xml = `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.0"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>4</divisions></attributes><note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><type>quarter</type></note></measure></part></score-partwise>`
     const result = parseMusicXml(xml)
-    assert.equal(result.notes[0].string, 'D')
-    assert.equal(result.notes[0].fret, 2)
+    assert.equal(result.notes[0].string, 'e')
+    assert.equal(result.notes[0].fret, 0)
     assert.equal(result.notes[0].midi, 64)
   })
 })

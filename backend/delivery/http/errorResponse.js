@@ -1,3 +1,7 @@
+import {
+  secureDeliveryFailureClass,
+} from '../observability/secureDeliveryRequestObserver.js'
+
 function messageOf(error) {
   return error instanceof Error
     ? String(error.message || '')
@@ -6,6 +10,13 @@ function messageOf(error) {
 
 export function secureDeliveryErrorStatus(error) {
   const message = messageOf(error).toLowerCase()
+
+  if (
+    secureDeliveryFailureClass(error) !==
+    null
+  ) {
+    return 503
+  }
 
   if (
     /authorization-bearer|auth-invalid|unauthenticated|identity-mapping-missing/.test(

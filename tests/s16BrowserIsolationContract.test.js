@@ -24,7 +24,7 @@ test('S16 real-browser guard is isolated from the parallel unit-test pool', () =
   assert.match(browserGuard, /S16 browser guard prevents a controlled POST from reaching the server/)
 
   const ci = readFileSync(ciPath, 'utf8')
-  const unitStep = ci.indexOf('run: npm test')
+  const unitStep = ci.indexOf('run: node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js')
   const browserStep = ci.indexOf('run: npm run test:s16:browser')
   assert.notEqual(unitStep, -1, 'unit test step must exist')
   assert.ok(browserStep > unitStep, 'serialized S16 browser step must run after unit tests')

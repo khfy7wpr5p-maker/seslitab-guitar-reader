@@ -1,3 +1,4 @@
+import { activateTeacherTool, bindTeacherToolsNavigation } from './teacherToolsNavigation.js'
 // Package 4F + Package 9 — accessible quality-gated Guitar TAB result panel.
 //
 // The UI consumes the exact NoteObject[] reference already published by the
@@ -12,6 +13,7 @@ import {
   buildQualityGatedGuitarTab,
   GUITAR_TAB_CONSUMER_STATE,
 } from './services/guitarTabConsumer.js'
+import { ensureGuitarTabTeacherWorkspace } from './guitarTabTeacherWorkspaceUi.js'
 
 export const GUITAR_TAB_UI_STATE = Object.freeze({
   EMPTY: 'empty',
@@ -122,13 +124,14 @@ function setActiveTabState(root, activeName) {
 }
 
 export function activateGuitarTabResultTab(root) {
+  if (root?.getElementById?.('teacher-tools-navigation')) return activateTeacherTool(root, 'guitar-tab')
   if (!root || typeof root.getElementById !== 'function') return false
 
   const panel = root.getElementById('tab-guitar-tab')
   if (!panel) return false
 
   setActiveTabState(root, 'guitar-tab')
-  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-xml']) {
+  for (const id of ['tab-rhythmic', 'tab-html', 'tab-notes', 'tab-assignment', 'tab-xml', 'tab-violin']) {
     const existingPanel = root.getElementById(id)
     if (existingPanel) existingPanel.hidden = true
   }
@@ -146,9 +149,13 @@ export function ensureGuitarTabPanel(root) {
   }
 
   const existing = root.getElementById('tab-guitar-tab')
-  if (existing) return existing
+  if (existing) {
+    ensureGuitarTabTeacherWorkspace(root, existing)
+    return existing
+  }
 
-  const tabList = root.querySelector?.('.result-tabs') ?? null
+  const navigation = root.getElementById('teacher-tools-navigation')
+  const tabList = navigation ?? root.querySelector?.('.result-tabs') ?? null
   const notesSummary = root.getElementById('notes-summary')
   const host = notesSummary?.parentElement ?? tabList?.parentElement ?? null
   if (!tabList || !host) return null
@@ -156,14 +163,18 @@ export function ensureGuitarTabPanel(root) {
   const button = root.createElement('button')
   button.id = 'result-guitar-tab-btn'
   button.type = 'button'
-  button.className = 'tab-btn'
+  button.className = navigation ? 'teacher-tool-btn' : 'tab-btn'
   button.dataset.tab = 'guitar-tab'
   button.textContent = 'Gitar TAB'
   button.setAttribute('role', 'tab')
   button.setAttribute('aria-selected', 'false')
   button.setAttribute('aria-controls', 'tab-guitar-tab')
-  button.addEventListener('click', () => activateGuitarTabResultTab(root))
+  if (!navigation) button.addEventListener('click', () => activateGuitarTabResultTab(root))
   tabList.appendChild(button)
+  if (navigation) {
+    button.setAttribute('tabindex', '-1')
+    bindTeacherToolsNavigation(root)
+  }
 
   const panel = root.createElement('div')
   panel.id = 'tab-guitar-tab'
@@ -196,8 +207,9 @@ export function ensureGuitarTabPanel(root) {
   panel.appendChild(output)
   if (notesSummary && notesSummary.parentElement === host) host.insertBefore(panel, notesSummary)
   else host.appendChild(panel)
+  ensureGuitarTabTeacherWorkspace(root, panel)
 
-  if (!existingTabBindings.has(root)) {
+  if (!navigation && !existingTabBindings.has(root)) {
     const buttons = root.querySelectorAll?.('.tab-btn') ?? []
     for (const existingButton of buttons) {
       if (existingButton === button) continue

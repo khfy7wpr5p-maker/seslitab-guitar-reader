@@ -1,0 +1,85 @@
+import {
+  createTeacherAssignmentComposerService,
+} from './services/teacherAssignmentComposerService.js'
+import {
+  mountTeacherAssignmentWorkspaceUi,
+} from './teacherAssignmentWorkspaceUi.js'
+
+function requiredTeacherId(value) {
+  if (
+    typeof value !== 'string' ||
+    value.trim() === ''
+  ) {
+    throw new TypeError(
+      'authenticated teacherId is required.',
+    )
+  }
+  return value.trim()
+}
+
+export function createTeacherAssignmentProductionComposition({
+  authenticatedTeacher,
+  secureDeliveryClient,
+  now,
+  createDraftId,
+} = {}) {
+  const teacherId =
+    requiredTeacherId(
+      authenticatedTeacher?.teacherId,
+    )
+
+  const service =
+    createTeacherAssignmentComposerService({
+      teacherId,
+      secureDeliveryClient,
+      now,
+    })
+
+  return Object.freeze({
+    authenticatedTeacher:
+      Object.freeze({ teacherId }),
+
+    async prepareAssignmentAuthority() {
+      return service.loadRoster()
+    },
+
+    mountAssignmentSurface({
+      root,
+      teacherId: mountedTeacherId,
+    } = {}) {
+      if (
+        requiredTeacherId(
+          mountedTeacherId,
+        ) !== teacherId
+      ) {
+        throw new Error(
+          'assignment-composer-teacher-identity-mismatch',
+        )
+      }
+
+      const host =
+        root?.getElementById?.(
+          'teacher-assignment-composer-host',
+        )
+      if (!host) {
+        throw new Error(
+          'assignment-composer-host-missing',
+        )
+      }
+
+      const results =
+        root.getElementById?.(
+          'results-section',
+        )
+      if (results) results.hidden = false
+
+      return mountTeacherAssignmentWorkspaceUi({
+        root,
+        host,
+        composerService: service,
+        managementClient: secureDeliveryClient,
+        createDraftId,
+      })
+    },
+  })
+}

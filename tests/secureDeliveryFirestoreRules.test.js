@@ -24,6 +24,7 @@ const COLLECTIONS = Object.freeze([
   'deliveries',
   'pieceAssignments',
   'pieceAssignmentLifecycle',
+  'studentWorkRequests',
 ])
 
 const EMULATOR_AVAILABLE = Boolean(

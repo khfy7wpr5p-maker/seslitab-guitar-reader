@@ -235,7 +235,7 @@ class HostElement {
   removeAttribute(name) { this.attributes.delete(name) }
   appendChild(child) { child.parentElement = this; this.children.push(child); return child }
   addEventListener(type, listener) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]) }
-  click() { for (const listener of this.listeners.get('click') ?? []) listener({ type: 'click' }) }
+  click() { if (this.disabled) return; for (const listener of this.listeners.get('click') ?? []) listener({ type: 'click' }) }
   dispatchEvent(event) { for (const listener of this.listeners.get(event.type) ?? []) listener(event); return true }
   set src(value) { this.setAttribute('src', value) }
   get src() { return this.getAttribute('src') }
@@ -246,6 +246,14 @@ const S15_SOURCE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 const S15_TWO_NOTE_XML = S15_SOURCE_XML.replace(
   '</note></measure>',
   '</note><note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>',
+)
+const SES221_SOURCE_XML = readFileSync(
+  new URL('./fixtures/ses-221/audiveris-octave-clef.musicxml', import.meta.url),
+  'utf8',
+)
+const SES221_SMOOSIC_4096_XML = readFileSync(
+  new URL('./fixtures/ses-221/smoosic-4096-octave-clef.musicxml', import.meta.url),
+  'utf8',
 )
 
 function staleSourceHost({
@@ -262,6 +270,9 @@ function staleSourceHost({
   const root = {
     nodes: new Map(),
     postMessageCount: 0,
+    correctionOverlayMessages: [],
+    importRevisions: [],
+    importedMusicXml: [],
     defaultView: {
       crypto: secureIds ? { randomUUID: () => 's15-test-id' } : {},
       location: { origin: 'https://seslitab.test' },
@@ -297,17 +308,29 @@ function staleSourceHost({
         editorStatus.textContent = 'Yüklendi: s15-writeback.musicxml'
         editorStatus.setAttribute('data-loaded-file-name', 's15-writeback.musicxml')
         const editorInput = new HostElement(root, 'input')
-        editorInput.dispatchEvent = () => {
+        editorInput.type = 'file'
+        const documentListeners = []
+        editorInput.dispatchEvent = (event) => {
+          for (const listener of documentListeners) listener({ ...event, target: editorInput, isTrusted: false })
           editorStatus.setAttribute('data-loaded-file-name', 's15-writeback.musicxml')
           editorStatus.textContent = 'Yüklendi: s15-writeback.musicxml'
+          root.importRevisions.push(editorInput.dataset.seslitabImportRevision ?? null)
           return true
         }
-        element.contentDocument = { getElementById(id) { return id === 'poc-status' ? editorStatus : (id === 'mobile-xml-input' ? editorInput : null) } }
+        element.contentDocument = { addEventListener(type, fn) { if (type === 'change') documentListeners.push(fn) }, dispatchEvent(event) { for (const fn of documentListeners) fn(event) }, getElementById(id) { return id === 'poc-status' ? editorStatus : (id === 'mobile-xml-input' ? editorInput : null) } }
         element.contentWindow = {
-          File: class { constructor(parts, name) { this.parts = parts; this.name = name } },
+          File: class {
+            constructor(parts, name) {
+              this.parts = parts
+              this.name = name
+              root.importedMusicXml.push(parts[0])
+            }
+          },
           Event: class { constructor(type) { this.type = type } },
+          CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail } },
           postMessage(message) {
             if (message?.type === 'seslitab:smoosic-correction-overlay-request') {
+              root.correctionOverlayMessages.push(message)
               queueMicrotask(() => {
                 for (const listener of windowListeners.get('message') ?? []) listener({
                   origin: root.defaultView.location.origin,
@@ -449,10 +472,57 @@ test('S15 rejects apply while a replacement source is pending without requesting
   root.getElementById('smoosic-apply-btn').click()
   await new Promise((resolve) => setTimeout(resolve, 0))
 
-  const status = root.getElementById('smoosic-editor-host-status')
-  assert.equal(status.dataset.kind, 'error')
-  assert.match(status.textContent, /Yeni eser hazırlanırken düzenleme uygulanamaz/)
+  assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+  assert.equal(root.postMessageCount, 0)
   globalThis.document = previousDocument
+})
+
+test('SES-142 committed revision rebinds Smoosic source authority before correction overlay reapply', async () => {
+  const candidateXml = S15_SOURCE_XML.replace('<step>C</step>', '<step>D</step>')
+  const root = staleSourceHost({ sourceXml: S15_SOURCE_XML, candidateXml })
+  installResultPublishingSurface(root)
+  publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+
+  const previousDocument = globalThis.document
+  globalThis.document = root
+  try {
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    assert.ok(ensureSmoosicEditorTab(root))
+    root.getElementById('smoosic-tab-btn').click()
+    root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+    await settleWriteback()
+    await settleWriteback()
+
+    const initialReplaces = root.correctionOverlayMessages.filter((message) => message.action === 'replace')
+    assert.ok(initialReplaces.length >= 1)
+    const initialReplace = initialReplaces.at(-1)
+    assert.equal(root.importRevisions.at(-1), String(initialReplace.sourceRevision))
+
+    root.getElementById('smoosic-apply-btn').click()
+    await settleWriteback()
+    await settleWriteback()
+    await settleWriteback()
+
+    const replaceMessages = root.correctionOverlayMessages.filter((message) => message.action === 'replace')
+    assert.ok(replaceMessages.length >= 2, 'new committed revision must receive a fresh overlay replace request')
+    const reapplied = replaceMessages.at(-1)
+    assert.ok(reapplied.sourceRevision > initialReplace.sourceRevision)
+    assert.equal(root.importRevisions.at(-1), String(reapplied.sourceRevision))
+    assert.ok(
+      root.correctionOverlayMessages.some(
+        (message) => message.action === 'clear' && message.sourceRevision === reapplied.sourceRevision,
+      ),
+      'stale overlay must be cleared for the new revision before reapply',
+    )
+    assert.equal(root.getElementById('xml-output').textContent, candidateXml)
+    assert.match(
+      root.getElementById('smoosic-editor-host-status').textContent,
+      /Yeni sürüm doğrulandı/,
+    )
+  } finally {
+    clearPackage3Notes()
+    globalThis.document = previousDocument
+  }
 })
 
 test('S15 returns a typed retryable publish failure after the immutable commit when result publication fails', async () => {
@@ -538,6 +608,9 @@ test('S15 returns CONFLICT when secure request identity cannot be created', asyn
   globalThis.document = root
   const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
   ensureSmoosicEditorTab(root)
+  root.getElementById('smoosic-tab-btn').click()
+  root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+  await settleWriteback(); await settleWriteback()
   root.getElementById('smoosic-apply-btn').click()
   await settleWriteback()
 
@@ -560,9 +633,17 @@ async function runHostWritebackCandidate(candidateXml, sourceXml = S15_SOURCE_XM
   ensureSmoosicEditorTab(root)
   root.getElementById('smoosic-tab-btn').click()
   root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  root.getElementById('smoosic-apply-btn').click()
-  await settleWriteback()
+  const status = root.getElementById('smoosic-editor-host-status')
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    if (root.importedMusicXml.length > 0 && status.dataset.kind === 'ready') break
+  }
+  const applyButton = root.getElementById('smoosic-apply-btn')
+  applyButton.click()
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    if (root.postMessageCount > 0 && applyButton.disabled === false) break
+  }
   clearPackage3Notes()
   globalThis.document = previousDocument
   return options.returnRoot ? root : root.getElementById('smoosic-editor-host-status').textContent
@@ -597,6 +678,27 @@ test('S15 forwards certified padding and the exact pending revision into canonic
   assert.match(root.xmlOutput.textContent, /<forward><duration>2<\/duration><voice>1<\/voice><\/forward>/)
   assert.equal(parseMusicXmlToNotes(root.xmlOutput.textContent).notes[0].step, 'G')
   assert.equal(root.postMessageCount, 1)
+})
+
+test('SES-221 host round-trip restores canonical octave clef while preserving a teacher pitch edit', async () => {
+  const root = await runHostWritebackCandidate(SES221_SMOOSIC_4096_XML, SES221_SOURCE_XML, {
+    publish: true,
+    returnRoot: true,
+  })
+
+  assert.match(root.importedMusicXml[0], /<step>C<\/step><alter>1<\/alter><octave>5<\/octave>/)
+  assert.doesNotMatch(root.importedMusicXml[0], /clef-octave-change/)
+  assert.equal(root.postMessageCount, 1)
+  assert.match(root.getElementById('smoosic-editor-host-status').textContent, /Yeni sürüm doğrulandı/)
+  assert.match(root.xmlOutput.textContent, /<step>D<\/step><alter>1<\/alter><octave>4<\/octave>/)
+  assert.match(root.xmlOutput.textContent, /<clef-octave-change>-1<\/clef-octave-change>/)
+  assert.match(root.xmlOutput.textContent, /<duration>2<\/duration>/)
+  assert.match(root.xmlOutput.textContent, /<type>half<\/type><tie type="start"\/>/)
+  const finalNotes = parseMusicXmlToNotes(root.xmlOutput.textContent).notes
+  assert.deepEqual(finalNotes.map((note) => note.startBeat), [0, 2])
+  assert.deepEqual(finalNotes.map((note) => note.beats), [2, 2])
+  assert.equal(finalNotes[0].tieStart, true)
+  assert.equal(finalNotes[1].tieStop, true)
 })
 
 test('S15 preserves canonical state for no-change, unsupported, and invalid candidates', async () => {
@@ -740,4 +842,391 @@ test('Task 6 structural outcomes extend writeback status without changing S15 pu
   assert.match(host, /retryPendingPublication\(root\)/)
   assert.match(host, /publishCommittedRevision\(root, pendingPublication\)/)
   assert.match(host, /applyRevalidatedMusicXmlRevision\(committed\.revision\.content, committed\.musicXml\)/)
+})
+
+
+test('SES-141 read-only Smoosic assignment verifier accepts only the current editor export', async () => {
+  const currentXml = S15_SOURCE_XML.replace('<step>C</step>', '<step>E</step>')
+  const root = staleSourceHost({
+    sourceXml: S15_SOURCE_XML,
+    candidateXml: currentXml,
+  })
+  const previousDocument = globalThis.document
+  globalThis.document = root
+  try {
+    const {
+      ensureSmoosicEditorTab,
+      verifySmoosicAssignmentMusicXml,
+    } = await import('../src/smoosicEditorTabUi.js')
+
+    assert.ok(ensureSmoosicEditorTab(root))
+    root.getElementById('smoosic-tab-btn').click()
+    root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+    await settleWriteback()
+
+    assert.equal(
+      await verifySmoosicAssignmentMusicXml(root, currentXml),
+      true,
+    )
+    assert.equal(
+      await verifySmoosicAssignmentMusicXml(root, S15_SOURCE_XML),
+      false,
+    )
+    assert.equal(root.postMessageCount, 2)
+    assert.equal(
+      root.getElementById('xml-output').textContent,
+      S15_SOURCE_XML,
+      'assignment verification must not publish or mutate the SesliTab source',
+    )
+  } finally {
+    globalThis.document = previousDocument
+  }
+})
+
+
+async function standaloneHost(sourceXml = '') {
+  const root = staleSourceHost({ sourceXml, candidateXml: S15_SOURCE_XML.replace('<step>C</step>', '<step>D</step>'), observeSources: true })
+  root.getElementById('progress-container').hidden = true
+  installResultPublishingSurface(root)
+  globalThis.document = root
+  const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+  ensureSmoosicEditorTab(root)
+  root.getElementById('smoosic-tab-btn').click()
+  root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+  await settleWriteback(); await settleWriteback()
+  return root
+}
+
+test('SES-257 no-source entry keeps the editor visible and disables canonical apply', async () => {
+  const previous = globalThis.document
+  try {
+    const root = await standaloneHost()
+    assert.equal(root.getElementById('smoosic-editor-frame').hidden, false)
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+test('SES-257 native XML selection cannot publish independent B as an edit of A', async () => {
+  const previous = globalThis.document
+  try {
+    publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+    const root = await standaloneHost(S15_SOURCE_XML)
+    const input = root.getElementById('smoosic-editor-frame').contentDocument.getElementById('mobile-xml-input')
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'B.musicxml' }] })
+    root.getElementById('smoosic-editor-frame').contentDocument.dispatchEvent({ type: 'change', isTrusted: true, target: input })
+    root.getElementById('smoosic-apply-btn').click()
+    await settleWriteback()
+    assert.equal(root.getElementById('xml-output').textContent, S15_SOURCE_XML)
+    assert.equal(root.postMessageCount, 0)
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+test('SES-257 a new parent source cannot overwrite an independent editor session', async () => {
+  const previous = globalThis.document
+  try {
+    const root = await standaloneHost(S15_SOURCE_XML)
+    const input = root.getElementById('smoosic-editor-frame').contentDocument.getElementById('mobile-xml-input')
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'B.musicxml' }] })
+    root.getElementById('smoosic-editor-frame').contentDocument.dispatchEvent({ type: 'change', isTrusted: true, target: input })
+    const before = root.importedMusicXml.length
+    root.xmlOutput.textContent = S15_SOURCE_XML.replace('<step>C</step>', '<step>F</step>')
+    root.emitSourceMutation({ target: root.xmlOutput })
+    await settleWriteback(); await settleWriteback()
+    assert.equal(root.importedMusicXml.length, before)
+    const resume = root.getElementById('smoosic-load-current-btn')
+    assert.ok(resume)
+    root.defaultView.confirm = () => false
+    resume.click(); await settleWriteback()
+    assert.equal(root.importedMusicXml.length, before)
+    root.defaultView.confirm = () => true
+    resume.click(); await settleWriteback(); await settleWriteback()
+    assert.equal(root.importedMusicXml.at(-1), root.xmlOutput.textContent)
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, false)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+
+test('SES-257 native file selection cancels an in-flight apply and keeps apply disabled', async () => {
+  const previous = globalThis.document
+  try {
+    const root = staleSourceHost({ sourceXml: S15_SOURCE_XML, holdExport: true })
+    installResultPublishingSurface(root)
+    publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+    globalThis.document = root
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    ensureSmoosicEditorTab(root)
+    root.getElementById('smoosic-tab-btn').click()
+    root.getElementById('smoosic-editor-frame').dispatchEvent({ type: 'load' })
+    await settleWriteback(); await settleWriteback()
+    root.getElementById('smoosic-apply-btn').click(); await settleWriteback()
+    assert.equal(root.postMessageCount, 1)
+    const input = root.getElementById('smoosic-editor-frame').contentDocument.getElementById('mobile-xml-input')
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'B.musicxml' }] })
+    root.getElementById('smoosic-editor-frame').contentDocument.dispatchEvent({ type: 'change', isTrusted: true, target: input })
+    await settleWriteback()
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+    assert.equal(root.xmlOutput.textContent, S15_SOURCE_XML)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+
+test('SES-257 document capture detaches native XML before production compat redispatch', async () => {
+  const previous = globalThis.document
+  try {
+    const root = staleSourceHost({ sourceXml: S15_SOURCE_XML })
+    globalThis.document = root
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    ensureSmoosicEditorTab(root)
+    root.getElementById('smoosic-tab-btn').click()
+    const frame = root.getElementById('smoosic-editor-frame')
+    const input = frame.contentDocument.getElementById('mobile-xml-input')
+    const captures = []
+    frame.contentDocument.addEventListener = (type, fn, capture) => { if (type === 'change' && capture === true) captures.push(fn) }
+    const inputCaptures = []
+    const originalAdd = input.addEventListener.bind(input)
+    input.addEventListener = (type, fn, capture) => capture === true ? inputCaptures.push(fn) : originalAdd(type, fn)
+    // Execute the real production compatibility interceptor; its native capture
+    // suppresses all input bubble listeners and emits an untrusted change.
+    vm.runInNewContext(readFileSync(new URL('../experiments/smoosic-mobile/public/musicxml-compat.js', import.meta.url), 'utf8'), {
+      document: { readyState: 'complete', getElementById: () => input }, window: {},
+      HTMLInputElement: HostElement, DOMParser: SmoosicTestDOMParser, XMLSerializer: SmoosicTestXMLSerializer,
+      Event: class { constructor(type) { this.type = type; this.isTrusted = false } },
+      CustomEvent: class { constructor(type, options) { this.type = type; this.isTrusted = false; this.detail = options.detail } }, console,
+    })
+    frame.dispatchEvent({ type: 'load' }); await settleWriteback(); await settleWriteback()
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'B.musicxml', text: async () => S15_SOURCE_XML }] })
+    input.type = 'file'
+    const native = { type: 'change', isTrusted: true, target: input, currentTarget: input, preventDefault() {}, stopImmediatePropagation() { this.stopped = true } }
+    for (const capture of captures) capture(native)
+    for (const capture of inputCaptures) await capture(native)
+    assert.equal(native.stopped, true)
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+
+function standaloneEditorHarness() {
+  const h = editorExportHarness()
+  const attrs = new Map()
+  const status = { textContent: '', setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k) ?? null }
+  h.context.document.getElementById = id => id === 'poc-status' ? status : null
+  h.context.window.crypto = { randomUUID: () => 'independent-session' }
+  h.context.window.innerWidth = 700
+  h.context.window.dispatchEvent = () => {}
+  h.context.Event = class { constructor(type) { this.type = type } }
+  vm.runInContext('applicationInstance.view.changeScore = async function(score) { this.score = score; this.storeScore = score }; applicationInstance.view.moveHome = async () => {}; activeCorrectionOverlayManager = { reset() {} };', h.context)
+  return { ...h, status }
+}
+
+test('SES-257 delayed older XML cannot replace a newer native import', async () => {
+  const h = standaloneEditorHarness()
+  let release
+  const heldText = new Promise(resolve => { release = resolve })
+  const older = h.context.loadMusicXmlFile({ name: 'A.musicxml', text: () => heldText }, 7)
+  await h.context.loadMusicXmlFile({ name: 'B.musicxml', text: async () => EXPORT_RAW_XML }, null)
+  release(EXPORT_RAW_XML)
+  await older
+  assert.equal(h.status.getAttribute('data-loaded-file-name'), 'B.musicxml')
+  await vm.runInContext('exportMusicXml()', h.context)
+  assert.equal(h.files.length, 1)
+  assert.equal(h.posts.length, 0)
+})
+
+test('SES-257 source detached during structural runtime await cannot commit', async () => {
+  let release, entered = false, committed = 0
+  const runtime = new Promise(resolve => { release = resolve })
+  const state = { sourceRevision: 1, authority: {}, independent: false }
+  const candidate = { musicXml: EXPORT_RAW_XML, paddingRestProvenance: { version: 1, sourceRevision: 1, rawNoteCount: 1, entries: [] }, structuralActionManifest: {} }
+  const context = vm.createContext({
+    APPLY_ID: 'smoosic-apply-btn', editorHasCurrentImport: () => true,
+    stateFor: () => state, sourceTransitionPending: () => false,
+    createAuthorityForAcceptedSource: () => state.authority,
+    requestEditorMusicXml: async () => candidate,
+    validateStructuralApplyManifest: () => ({}),
+    loadCeStructRuntime: async () => { entered = true; return runtime },
+    setHostStatus() {}, updateEditorSessionControls() {}, secureId: () => 'id',
+    structuralFailureMessage: () => '',
+    createSmoosicWritebackOutcome: status => ({ status }),
+    SMOOSIC_WRITEBACK_STATUS: { STALE_SOURCE: 'STALE_SOURCE', NO_CHANGE: 'NO_CHANGE' },
+    applySmoosicProductWriteback: () => { committed++; return { status: 'NO_CHANGE' } }, console,
+  })
+  vm.runInContext(host.slice(host.indexOf('async function applyEditorWriteback('), host.indexOf('function setTabActive(')), context)
+  const pending = context.applyEditorWriteback({ getElementById() { return { disabled: false } }, defaultView: {} })
+  await settleWriteback()
+  assert.equal(entered, true)
+  state.independent = true; state.sourceRevision++
+  release({})
+  await pending
+  assert.equal(committed, 0)
+})
+
+
+test('SES-257 restoring the parent keeps Apply blocked until its import completes', async () => {
+  const previous = globalThis.document
+  let status
+  try {
+    publishPackage3Notes(parseMusicXmlToNotes(S15_SOURCE_XML).notes)
+    const root = await standaloneHost(S15_SOURCE_XML)
+    const frame = root.getElementById('smoosic-editor-frame')
+    const input = frame.contentDocument.getElementById('mobile-xml-input')
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'B.musicxml' }] })
+    root.getElementById('smoosic-editor-frame').contentDocument.dispatchEvent({ type: 'change', isTrusted: true, target: input })
+    status = frame.contentDocument.getElementById('poc-status')
+    status.textContent = 'Preparing'
+    status.removeAttribute('data-loaded-file-name')
+    root.defaultView.confirm = () => true
+    root.getElementById('smoosic-load-current-btn').click()
+    await settleWriteback()
+    root.getElementById('smoosic-apply-btn').click()
+    await settleWriteback()
+    assert.equal(root.postMessageCount, 0)
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+  } finally {
+    if (status) { status.textContent = 'Editör hazır'; status.setAttribute('data-loaded-file-name', 's15-writeback.musicxml') }
+    await new Promise(resolve => setTimeout(resolve, 180))
+    globalThis.document = previous; clearPackage3Notes()
+  }
+})
+
+
+test('SES-257 disabled host buttons do not dispatch clicks', () => {
+  const element = new HostElement({ nodes: new Map() }, 'button')
+  let clicks = 0
+  element.addEventListener('click', () => { clicks++ })
+  element.disabled = true
+  element.click()
+  assert.equal(clicks, 0)
+  element.disabled = false
+  element.click()
+  assert.equal(clicks, 1)
+})
+
+test('SES-257 synthetic file selection without an active host transfer detaches B', async () => {
+  const previous = globalThis.document
+  try {
+    const root = await standaloneHost(S15_SOURCE_XML)
+    const frame = root.getElementById('smoosic-editor-frame')
+    const input = frame.contentDocument.getElementById('mobile-xml-input')
+    Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'B.musicxml' }] })
+    // A file picker can be automated with synthetic events. Even old, leftover
+    // parent import stamps must not give a new file canonical source authority.
+    frame.contentDocument.dispatchEvent({ type: 'change', isTrusted: false, target: input })
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+    assert.equal(root.xmlOutput.textContent, S15_SOURCE_XML)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+
+test('SES-257 S15 capture waits for an enabled imported editor before arming and clicking', () => {
+  const source = readFileSync(new URL('../scripts/verifyS15SmoosicWritebackBrowser.js', import.meta.url), 'utf8')
+  const expression = source.match(/const pending = await (?:waitFor|evaluate)\(cdp, `([\s\S]*?)`/)[1]
+  let clicks = 0, loaded = false
+  const editorWindow = { postMessage() {} }
+  const button = { disabled: true, click() { if (!this.disabled) { clicks++; editorWindow.postMessage({ type: 'seslitab:smoosic-export-request', requestId: 'request-test', sourceRevision: 7 }) } } }
+  const frame = { hidden: false, contentWindow: editorWindow, contentDocument: { getElementById: () => ({ hasAttribute: () => loaded }) } }
+  const scope = vm.createContext({ document: { getElementById: id => id === 'smoosic-apply-btn' ? button : frame }, window: {} })
+  assert.equal(vm.runInContext(expression, scope), false)
+  assert.equal(clicks, 0)
+  assert.equal(scope.window.__S15_ORIGINAL_POSTMESSAGE__, undefined)
+  button.disabled = false
+  assert.equal(vm.runInContext(expression, scope), false)
+  loaded = true
+  assert.equal(vm.runInContext(expression, scope), true)
+  assert.equal(clicks, 1)
+  assert.equal(scope.window.__S15_PENDING_REQUEST__.sourceRevision, 7)
+})
+
+
+test('SES-257 synthetic same-name B during an active stamped transfer cannot inherit parent authority', async () => {
+  const previous = globalThis.document
+  try {
+    const root = staleSourceHost({ sourceXml: S15_SOURCE_XML, observeSources: true })
+    globalThis.document = root
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    ensureSmoosicEditorTab(root)
+    root.getElementById('smoosic-tab-btn').click()
+    const frame = root.getElementById('smoosic-editor-frame')
+    const input = frame.contentDocument.getElementById('mobile-xml-input')
+    const parentDispatch = input.dispatchEvent.bind(input)
+    input.dispatchEvent = event => {
+      const result = parentDispatch(event)
+      // The compatibility import is still active on this call stack. A second
+      // same-name File has no parent event identity, despite leftover stamps.
+      Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 's15-writeback.musicxml', text: async () => S15_TWO_NOTE_XML }] })
+      frame.contentDocument.dispatchEvent({ type: 'change', isTrusted: false, target: input })
+      return result
+    }
+    frame.dispatchEvent({ type: 'load' })
+    await settleWriteback(); await settleWriteback()
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, true)
+    assert.equal(root.getElementById('smoosic-load-current-btn').hidden, false)
+    assert.equal(root.xmlOutput.textContent, S15_SOURCE_XML)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+test('SES-257 genuine parent context survives the actual async compatibility replay', async () => {
+  const previous = globalThis.document
+  try {
+    const root = staleSourceHost({ sourceXml: S15_SOURCE_XML, observeSources: true })
+    globalThis.document = root
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    ensureSmoosicEditorTab(root)
+    root.getElementById('smoosic-tab-btn').click()
+    const frame = root.getElementById('smoosic-editor-frame')
+    const input = frame.contentDocument.getElementById('mobile-xml-input')
+    const captures = [], inputCaptures = []
+    frame.contentDocument.addEventListener = (type, listener) => { if (type === 'change') captures.push(listener) }
+    input.addEventListener = (type, listener, capture) => { if (type === 'change' && capture) inputCaptures.push(listener) }
+    class CompatEvent {
+      constructor(type, options = {}) { this.type = type; this.detail = options.detail; this.isTrusted = false }
+      preventDefault() {}
+      stopImmediatePropagation() { this.stopped = true }
+    }
+    const FileCtor = frame.contentWindow.File
+    frame.contentWindow.File = class extends FileCtor { async text() { return this.parts.join('') } }
+    frame.contentWindow.CustomEvent = CompatEvent
+    const loaded = input.dispatchEvent.bind(input)
+    input.dispatchEvent = event => {
+      event.target = input; event.currentTarget = input
+      for (const listener of captures) listener(event)
+      for (const listener of inputCaptures) listener(event)
+      if (!event.stopped) return loaded(event)
+      return true
+    }
+    vm.runInNewContext(readFileSync(new URL('../experiments/smoosic-mobile/public/musicxml-compat.js', import.meta.url), 'utf8'), {
+      document: { readyState: 'complete', getElementById: () => input }, window: {},
+      HTMLInputElement: HostElement, DOMParser: SmoosicTestDOMParser, XMLSerializer: SmoosicTestXMLSerializer,
+      Event: CompatEvent, CustomEvent: CompatEvent, console,
+    })
+    frame.dispatchEvent({ type: 'load' })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    await settleWriteback()
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, false)
+    assert.equal(root.getElementById('smoosic-load-current-btn').hidden, true)
+    assert.equal(root.xmlOutput.textContent, S15_SOURCE_XML)
+    assert.equal(root.importRevisions.at(-1), '1')
+  } finally { globalThis.document = previous; clearPackage3Notes() }
+})
+
+test('SES-257 delayed replay of a genuine parent event does not become an independent selection', async () => {
+  const previous = globalThis.document
+  try {
+    const root = staleSourceHost({ sourceXml: S15_SOURCE_XML })
+    globalThis.document = root
+    const { ensureSmoosicEditorTab } = await import('../src/smoosicEditorTabUi.js')
+    ensureSmoosicEditorTab(root)
+    root.getElementById('smoosic-tab-btn').click()
+    const frame = root.getElementById('smoosic-editor-frame')
+    const input = frame.contentDocument.getElementById('mobile-xml-input')
+    let context
+    const dispatch = input.dispatchEvent.bind(input)
+    input.dispatchEvent = event => { context = event.detail; return dispatch(event) }
+    frame.dispatchEvent({ type: 'load' }); await settleWriteback(); await settleWriteback()
+    assert.ok(context)
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, false)
+    frame.contentDocument.dispatchEvent({ type: 'change', isTrusted: false, target: input, detail: context })
+    assert.equal(root.getElementById('smoosic-apply-btn').disabled, false)
+    assert.equal(root.getElementById('smoosic-load-current-btn').hidden, true)
+  } finally { globalThis.document = previous; clearPackage3Notes() }
 })

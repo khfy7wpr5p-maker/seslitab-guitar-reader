@@ -1,0 +1,24 @@
+.teacher-auth-session {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.teacher-auth-session__form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 28rem;
+}
+
+.teacher-auth-session__form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.teacher-auth-session__form input {
+  min-height: 44px;
+}
+
+.teacher-auth-session__status {
+  min-height: 1.5rem;
+}

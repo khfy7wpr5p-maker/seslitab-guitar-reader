@@ -39,6 +39,25 @@ jobs:
           tags: seslitab-omr:smoke
           push: false
 
+      - name: Verify packaged gateway health endpoint
+        run: |
+          set -euo pipefail
+          docker run -d --name seslitab-health -p 3001:3001 \
+            -e OMR_PROVIDER=mock \
+            seslitab-omr:smoke
+          trap 'docker logs seslitab-health || true; docker rm -f seslitab-health >/dev/null 2>&1 || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/health > /tmp/seslitab-health.json; then
+              cat /tmp/seslitab-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo 'Packaged gateway /health did not become ready within 30 seconds.' >&2
+          exit 1
+
       - name: Start isolated Audiveris container
         run: |
           docker run -d --name seslitab-smoke seslitab-omr:smoke sleep infinity

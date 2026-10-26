@@ -41,13 +41,44 @@ jobs:
         run: npm run test:td06:emulator
 
       - name: Run tests
-        run: npm test
+        run: node --test --test-concurrency=1 --test-reporter=spec tests/*.test.js
 
       - name: Verify S16 read-only request guard in serialized real browser
         run: npm run test:s16:browser
 
+      - name: Verify SES-147 authenticated roster gate in real browser
+        run: node scripts/verifySes147AuthRosterBrowser.js
+
+      - name: Verify SES-153 teacher-authority SCORE sends in real browser
+        run: |
+          node --test --test-concurrency=1 browser-tests/ses153BrowserQualification.browser.test.mjs
+          node scripts/verifySes153TeacherAuthorityBrowser.js
+
+      - name: Verify GTAB-10B multipart target selection in real browser
+        run: npm run test:gtab10b-browser
+
+      - name: Verify GTAB-VALIDATOR-01 unified export validation in real browser
+        run: npm run test:gtab-validator-browser
+
+      - name: Upload SES-153 browser qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses153-teacher-authority-browser
+          path: artifacts/ses153-teacher-authority-browser.json
+          if-no-files-found: warn
+
+      - name: Verify SES-248 reversible staff-to-part split in real browser
+        run: node scripts/verifySes248StaffSplitBrowser.js
+
       - name: Build production bundle
         run: npm run build
+
+      - name: Verify Guitar TAB Editor runtime is shipped
+        run: node scripts/verifyGuitarTabEditorRuntimeBuild.js
+
+      - name: Verify SES-222 accepted Smoosic revision in Guitar TAB renderer
+        run: node scripts/verifySes222SmoosicGuitarTabRendererBrowser.js
 
       - name: Verify S16 build composition identity
         run: node scripts/verifyS16BuildCompositionManifest.js
@@ -145,8 +176,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STUDENT_APP_SHA: b59bcb6dc5525f035515ab358734ebbe5a277fbb
-      RENDERER_SHA: 13aa0843158257a207afe062879743d58048cc6d
+      STUDENT_APP_SHA: df4b0d0a80f6254f830ba068ea2fe3b7bce8fed2
+      RENDERER_SHA: a015f9049149037c48ac764ab30ed2bcbbe200d3
 
     strategy:
       fail-fast: false
@@ -215,10 +246,29 @@ jobs:
           cp teacher/qualification/td-prod-10/student-app-e2e-fixture-adapter.mjs student-app/browser-tests/support/td-prod-10-e2e-fixture-adapter.mjs
           cp teacher/qualification/td-prod-10/student-app-e2e-bootstrap.mjs student-app/browser-tests/support/td-prod-10-e2e-bootstrap.mjs
           cp teacher/qualification/td-prod-10/student-app-e2e.spec.mjs student-app/browser-tests/td-prod-10-teacher-delivery.spec.mjs
+          cp teacher/qualification/td-prod-10/part-instrument-ui.spec.mjs student-app/browser-tests/td-prod-10-part-instrument-ui.spec.mjs
+          mkdir -p student-app/browser-tests/support/ses249-teacher/src/services
+          cp teacher/musicXmlSecurity.js student-app/browser-tests/support/ses249-teacher/
+          cp teacher/src/partInstrumentAssignmentUi.js student-app/browser-tests/support/ses249-teacher/src/
+          cp teacher/src/services/musicXmlPartInstrumentAssignment.js student-app/browser-tests/support/ses249-teacher/src/services/
 
       - name: Generate exact teacher-delivered Student App fixture
         working-directory: teacher
         run: node scripts/writeTdProd10StudentFixture.js ../student-app/browser-tests/support/td-prod-10-generated-fixture.mjs
+
+      - name: Route Ubuntu package indexes through the reachable HTTPS mirror
+        run: |
+          sudo find /etc/apt -type f \
+            \( -name '*.list' -o -name '*.sources' -o -name 'apt-mirrors.txt' \) \
+            -exec sed -E -i 's#[[:alpha:]]+://azure\.archive\.ubuntu\.com#https://archive.ubuntu.com#g' {} +
+          # Current Ubuntu runners select repositories through this mirror+file list.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            cat /etc/apt/apt-mirrors.txt
+            if grep -Eq 'https?://azure\.archive\.ubuntu\.com([/:[:space:]]|$)' /etc/apt/apt-mirrors.txt; then
+              echo "::error::Ubuntu mirror list still points to Azure after HTTPS routing."
+              exit 1
+            fi
+          fi
 
       - name: Install qualification browser
         working-directory: student-app
@@ -228,4 +278,4 @@ jobs:
         working-directory: student-app
         env:
           ST_BROWSER: ${{ matrix.browser }}
-        run: node --test browser-tests/td-prod-10-teacher-delivery.spec.mjs
+        run: node --test browser-tests/td-prod-10-*.spec.mjs

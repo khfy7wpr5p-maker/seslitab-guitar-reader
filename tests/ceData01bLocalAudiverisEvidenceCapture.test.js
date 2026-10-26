@@ -171,6 +171,11 @@ test('fails closed when runtime version evidence does not contain the pinned eng
 
 test('Docker smoke workflow captures CE-DATA-01B evidence only through the local container', async () => {
   const workflow = await readFile(new URL('../.github/workflows/audiveris-docker-smoke-test.yml', import.meta.url), 'utf8')
+  const evidenceStart = workflow.indexOf('      - name: Start isolated Audiveris container')
+  const evidenceEnd = workflow.indexOf('      - name: Upload CE-DATA-01B local evidence')
+  assert.ok(evidenceStart >= 0)
+  assert.ok(evidenceEnd > evidenceStart)
+  const evidenceWorkflow = workflow.slice(evidenceStart, evidenceEnd)
   assert.ok(workflow.includes('actions/setup-node@v4'))
   assert.ok(workflow.includes("      - 'scripts/local-audiveris-evidence-capture.js'"))
   assert.ok(workflow.includes("      - 'scripts/run-local-audiveris-provider.js'"))
@@ -183,8 +188,8 @@ test('Docker smoke workflow captures CE-DATA-01B evidence only through the local
   assert.ok(workflow.includes('docker exec --user seslitab'))
   assert.ok(workflow.includes('/app/tmp/ce-data-01b/output.musicxml'))
   assert.ok(workflow.includes('--musicxml /tmp/ce-data-01b/output.musicxml'))
-  assert.equal(workflow.includes('http://127.0.0.1:8080'), false)
-  assert.equal(workflow.includes('/health'), false)
+  assert.equal(evidenceWorkflow.includes('http://127.0.0.1:8080'), false)
+  assert.equal(evidenceWorkflow.includes('/health'), false)
   assert.ok(workflow.includes('ce-data-01b-local-audiveris-capture'))
   assert.ok(workflow.includes('--expected-source-sha256 c6e91647ba9dfcd38094f59848823ce3c92e7f5fe495747e2588ac0120f5bfed'))
   assert.ok(workflow.includes('--expected-reference-sha256 7004b4ac37711cca340c63e2f2436dd70e0f630f4e891cb311caff159b5d9d94'))

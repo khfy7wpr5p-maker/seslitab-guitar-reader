@@ -37,6 +37,7 @@ import {
 import {
   createWebAudioPianoEngine,
 } from "../../src/playback/webAudioPianoEngine.js";
+import { createScoreAudioVoiceAdapter } from "../../src/playback/scoreAudioVoiceAdapter.js";
 import {
   createStudentAppController,
 } from "../../src/ui/studentAppController.js";
@@ -52,6 +53,11 @@ import {
   tdProd10CredentialsMatch,
   tdProd10Student,
 } from "./td-prod-10-e2e-fixture-adapter.mjs";
+import {
+  TD_PROD_10_FIXTURE,
+  SES248_FIXTURE,
+  SES249_FIXTURE,
+} from "./td-prod-10-generated-fixture.mjs";
 
 const root = document.querySelector("#app");
 if (root === null) {
@@ -93,6 +99,45 @@ const notationAdapter =
   });
 const playbackPlanResolver =
   createPlaybackPlanResolver();
+const playbackContext =
+  playbackPlanResolver.resolvePackageContext(
+    TD_PROD_10_FIXTURE.score.package,
+  );
+const scoreOnlyPlaybackContext =
+  playbackPlanResolver.resolvePackageContext(
+    TD_PROD_10_FIXTURE.scoreOnly.package,
+  );
+const firstPlaybackNote =
+  playbackContext?.plan?.notes?.[0] ?? null;
+
+Object.defineProperty(
+  globalThis,
+  "__SES_224_QUALIFICATION__",
+  {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: Object.freeze({
+      playback: Object.freeze({
+        firstMidi:
+          firstPlaybackNote?.midi ?? null,
+        sourceExact:
+          playbackContext?.timingProvenance
+            ?.kind === "EXACT_SCORE_SOURCE" &&
+          playbackContext.timingProvenance
+            .musicXml ===
+            TD_PROD_10_FIXTURE.score
+              .package.content.score.data,
+        scoreOnlyFirstMidi:
+          scoreOnlyPlaybackContext?.plan
+            ?.notes?.[0]?.midi ?? null,
+        scoreOnlyHasTab:
+          TD_PROD_10_FIXTURE.scoreOnly
+            .package.content.guitarTab !== null,
+      }),
+    }),
+  },
+);
 const sampleBank =
   createPianoSampleBank({
     manifestUrl:
@@ -107,20 +152,43 @@ const AudioContextCtor =
   globalThis.webkitAudioContext;
 const audioContextSupported =
   typeof AudioContextCtor === "function";
+let sharedAudioContext = null;
+const audioContextFactory = () => {
+  if (sharedAudioContext === null && typeof AudioContextCtor === "function") sharedAudioContext = new AudioContextCtor();
+  return sharedAudioContext;
+};
 const playbackEngine =
   createWebAudioPianoEngine({
-    audioContextFactory: () =>
-      typeof AudioContextCtor === "function"
-        ? new AudioContextCtor()
-        : null,
+    audioContextFactory,
     audioContextSupported,
     sampleBank,
+    scoreAudioVoice: createScoreAudioVoiceAdapter({ runtime: globalThis.STScoreAudioEngine, audioContextFactory }),
   });
 const playbackPort =
   createStudentPlaybackPort({
     playbackPlanResolver,
     engine: playbackEngine,
   });
+// Observe the real resolver and engine; never substitute a playback plan or audio.
+const pilotPlaybackContext = playbackPort.getScoreFollowPlaybackContextForPackage(SES248_FIXTURE.package);
+const pilotPositions = [];
+playbackPort.subscribePositionForPackage(SES248_FIXTURE.package, snapshot => pilotPositions.push(snapshot));
+Object.defineProperty(globalThis, "__SES248_QUALIFICATION__", {
+  value: Object.freeze({
+    plan: pilotPlaybackContext?.plan ?? null,
+    partInstruments: pilotPlaybackContext?.partInstruments ?? null,
+    sourceExact: pilotPlaybackContext?.timingProvenance?.musicXml === SES248_FIXTURE.package.content.score.data,
+    positions: pilotPositions,
+  }),
+});
+const valsPlaybackContext = playbackPort.getScoreFollowPlaybackContextForPackage(SES249_FIXTURE.package);
+const valsPositions = [];
+playbackPort.subscribePositionForPackage(SES249_FIXTURE.package, snapshot => valsPositions.push(snapshot));
+Object.defineProperty(globalThis, '__SES249_QUALIFICATION__', { value: Object.freeze({
+  plan: valsPlaybackContext?.plan ?? null, partInstruments: valsPlaybackContext?.partInstruments ?? null,
+  sourceExact: valsPlaybackContext?.timingProvenance?.musicXml === SES249_FIXTURE.package.content.score.data,
+  positions: valsPositions,
+}) });
 const scoreFollowCoordinator =
   createScoreFollowCoordinator({
     notationAdapter,

@@ -92,6 +92,38 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.guitar-tab-source-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.65rem 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--neutral-50);
+}
+
+.guitar-tab-source-controls label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.guitar-tab-source-controls select {
+  min-width: min(100%, 18rem);
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface);
+}
+
+.guitar-tab-source-controls select:disabled {
+  color: var(--text-muted);
+  background: var(--neutral-100);
+}
+
 .field-label {
   display: block;
   font-size: 1.05rem;

@@ -21,6 +21,14 @@ function matchesSelector(node, selector) {
     return true
   }
 
+  const attributeEquals = selector.match(
+    /^\[([a-zA-Z0-9:-]+)="([^"]+)"\]$/,
+  )
+  if (attributeEquals) {
+    const [, name, value] = attributeEquals
+    return node.getAttribute(name) === value
+  }
+
   const dataAttribute = selector.match(
     /^\[data-([a-z0-9-]+)\]$/,
   )
@@ -92,6 +100,14 @@ class FakeNode {
 
   setAttribute(name, value) {
     this.attributes.set(name, String(value))
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null
+  }
+
+  focus() {
+    this.focused = true
   }
 
   addEventListener(type, listener) {

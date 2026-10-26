@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { createStudentPrivatePracticePackageV1 } from '../src/services/studentPracticePackageV1.js'
+import { resolveViolinAssignmentTarget } from '../src/services/violinAssignmentTarget.js'
 
 import {
   SmoosicTestDOMParser,
@@ -69,7 +71,7 @@ globalThis.XMLSerializer =
   globalThis.XMLSerializer ?? SmoosicTestXMLSerializer
 
 export const TD_PROD_10_STUDENT_APP_SHA =
-  'b59bcb6dc5525f035515ab358734ebbe5a277fbb'
+  'df4b0d0a80f6254f830ba068ea2fe3b7bce8fed2'
 
 const TEACHER_ID = 'td-prod-10-teacher-a'
 const TEACHER_SUBJECT = 'td-prod-10-uid-teacher'
@@ -83,38 +85,40 @@ const DELIVERED_AT = '2026-09-30T18:12:00Z'
 
 const FINAL_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
+  <identification><encoding><software>Smoosic</software></encoding></identification>
   <part-list>
     <score-part id="P1"><part-name>Guitar</part-name></score-part>
   </part-list>
   <part id="P1">
     <measure number="1">
       <attributes>
-        <divisions>1</divisions>
+        <divisions>4096</divisions>
         <key><fifths>0</fifths></key>
         <time><beats>4</beats><beat-type>4</beat-type></time>
-        <clef><sign>G</sign><line>2</line></clef>
+        <clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>
       </attributes>
       <direction placement="above"><direction-type><metronome>
         <beat-unit>quarter</beat-unit><per-minute>60</per-minute>
       </metronome></direction-type><sound tempo="60"/></direction>
-      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
-      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
-      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
-      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>C</step><alter>1</alter><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><staff>1</staff><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><staff>1</staff><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><staff>1</staff><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><staff>1</staff><type>quarter</type></note>
     </measure>
   </part>
 </score-partwise>`
 
 const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<score-partwise version="3.1">
+<score-partwise version="4.0">
+  <identification><encoding><software>Smoosic</software></encoding></identification>
   <part-list><score-part id="P1"><part-name>Guitar TAB</part-name></score-part></part-list>
   <part id="P1"><measure number="1"><attributes>
-    <divisions>1</divisions><key><fifths>0</fifths></key>
+    <divisions>4096</divisions><key><fifths>0</fifths></key>
     <time><beats>4</beats><beat-type>4</beat-type></time>
     <staves>2</staves>
-    <clef number="1"><sign>G</sign><line>2</line></clef>
+    <clef number="1"><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>
     <clef number="2"><sign>TAB</sign><line>5</line></clef>
-    <staff-details number="2"><staff-lines>6</staff-lines>
+    <staff-details number="2" show-frets="numbers"><staff-type>alternate</staff-type><staff-lines>6</staff-lines>
       <staff-tuning line="1"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
       <staff-tuning line="2"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
       <staff-tuning line="3"><tuning-step>D</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
@@ -123,17 +127,21 @@ const TAB_XML = `<?xml version="1.0" encoding="UTF-8"?>
       <staff-tuning line="6"><tuning-step>E</tuning-step><tuning-octave>4</tuning-octave></staff-tuning>
     </staff-details>
   </attributes>
-  <note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
-  <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
-  <backup><duration>4</duration></backup>
-  <note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>5</voice><type>half</type><staff>2</staff>
-    <notations><technical><string>1</string><fret>7</fret></technical></notations></note>
-  <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>5</voice><type>half</type><staff>2</staff>
-    <notations><technical><string>1</string><fret>12</fret></technical></notations></note>
+  <note><pitch><step>C</step><alter>1</alter><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+  <note><pitch><step>D</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+  <note><pitch><step>E</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+  <note><pitch><step>F</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+  <backup><duration>16384</duration></backup>
+  <note><pitch><step>C</step><alter>1</alter><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>2</staff>
+    <notations><technical><string>2</string><fret>2</fret></technical></notations></note>
+  <note><pitch><step>D</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>2</staff>
+    <notations><technical><string>2</string><fret>3</fret></technical></notations></note>
+  <note><pitch><step>E</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>2</staff>
+    <notations><technical><string>1</string><fret>0</fret></technical></notations></note>
+  <note><pitch><step>F</step><octave>4</octave></pitch><duration>4096</duration><voice>1</voice><type>quarter</type><staff>2</staff>
+    <notations><technical><string>1</string><fret>1</fret></technical></notations></note>
   </measure></part>
 </score-partwise>`
-
-const MALFORMED_XML = '<score-partwise version="4.0"><part-list>'
 
 function parsedNotes(xml = FINAL_XML) {
   const parsed = parseMusicXmlToNotes(xml)
@@ -276,15 +284,15 @@ function createScoreSourceRef(workspace) {
   })
 }
 
-async function createScoreItem() {
+async function createScoreItem({ musicXml = FINAL_XML, guitarTabMusicXml = TAB_XML, prefix = 'td-prod-10', sourceNotes = null } = {}) {
   const authority =
     createSmoosicProductAuthority({
-      notes: parsedNotes(),
-      musicXml: FINAL_XML,
-      sourceId: 'td-prod-10-source-a',
+      notes: sourceNotes ?? parsedNotes(musicXml),
+      musicXml,
+      sourceId: `${prefix}-source-a`,
       automaticRevisionId:
-        'td-prod-10-root-a',
-      historyId: 'td-prod-10-history-a',
+        `${prefix}-root-a`,
+      historyId: `${prefix}-history-a`,
       actorId: TEACHER_ID,
       createdAt:
         '2026-09-30T18:05:00Z',
@@ -293,7 +301,7 @@ async function createScoreItem() {
     approveTeacherWorkspace({
       workspace: authority.workspace,
       approvalId:
-        'td-prod-10-approval-a',
+        `${prefix}-approval-a`,
       createdAt:
         '2026-09-30T18:06:00Z',
     })
@@ -309,7 +317,7 @@ async function createScoreItem() {
   const assignment =
     createPrivateAssignment({
       assignmentId:
-        'td-prod-10-score-a',
+        `${prefix}-score-a`,
       studentId: STUDENT_A_ID,
       practiceType:
         PRIVATE_ASSIGNMENT_PRACTICE_TYPE
@@ -326,19 +334,55 @@ async function createScoreItem() {
       assignment,
       intake,
       packageId:
-        'td-prod-10-score-package-a',
+        `${prefix}-score-package-a`,
       title: 'TD-PROD-10 E2E Etüdü',
       practice: {
         tempoBpm: 60,
         allowTempoChange: true,
         allowMeasureRepeat: true,
       },
-      guitarTabMusicXml: TAB_XML,
+      guitarTabMusicXml,
+    })
+
+  const scoreOnlyAssignment =
+    createPrivateAssignment({
+      assignmentId:
+        `${prefix}-score-only-a`,
+      studentId: STUDENT_A_ID,
+      practiceType:
+        PRIVATE_ASSIGNMENT_PRACTICE_TYPE
+          .SCORE,
+      teacherNote:
+        'Yalnızca nota görünümünü çalış.',
+      assignedAt: ASSIGNED_AT,
+      sourceRef:
+        createScoreSourceRef(workspace),
+    })
+  const scoreOnlyPackage =
+    await createScorePracticePackageFromFinalMusicXml({
+      workspace,
+      assignment: scoreOnlyAssignment,
+      intake,
+      packageId:
+        `${prefix}-score-only-package-a`,
+      title:
+        prefix === 'ses248' ? 'SES-248 Fikrimin İnce Gülü' : prefix === 'ses249' ? 'SES-249 Vals' : 'TD-PROD-10 SCORE-only Etüdü',
+      practice: {
+        tempoBpm: 60,
+        allowTempoChange: true,
+        allowMeasureRepeat: true,
+      },
     })
 
   return Object.freeze({
-    assignment,
-    package: pkg,
+    score: Object.freeze({
+      assignment,
+      package: pkg,
+    }),
+    scoreOnly: Object.freeze({
+      assignment: scoreOnlyAssignment,
+      package: scoreOnlyPackage,
+    }),
   })
 }
 
@@ -426,103 +470,73 @@ function browserItem(view, studentId) {
 }
 
 async function revokedDeliveryFailsClosed(score) {
-  const harness =
-    createDeliveryHarness()
-
-  await harness.prepared.prepareBatch({
-    providerSubject: TEACHER_SUBJECT,
-    items: [score],
+  const harness = createDeliveryHarness()
+  const assignmentId = score.assignment.assignmentId
+  await harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items: [score] })
+  await harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds: [assignmentId] })
+  const read = () => harness.student.getAssignment({
+    providerSubject: STUDENT_A_SUBJECT, deliveryId: assignmentId,
   })
-  await harness.teacher.deliverBatch({
-    providerSubject: TEACHER_SUBJECT,
-    assignmentIds: [
-      score.assignment.assignmentId,
-    ],
-  })
-
-  const before =
-    await harness.student.getAssignment({
-      providerSubject: STUDENT_A_SUBJECT,
-      deliveryId:
-        score.assignment.assignmentId,
-    })
-
+  const before = await read()
+  assert.equal(before.package.content.score.data, FINAL_XML)
   await harness.teacher.applyAssignmentAction({
-    providerSubject: TEACHER_SUBJECT,
-    assignmentId:
-      score.assignment.assignmentId,
-    action: 'REVOKE',
+    providerSubject: TEACHER_SUBJECT, assignmentId, action: 'REVOKE',
   })
-
-  const exactReadRejected =
-    await rejected(() =>
-      harness.student.getAssignment({
-        providerSubject: STUDENT_A_SUBJECT,
-        deliveryId:
-          score.assignment.assignmentId,
-      }),
-    )
-  const listed =
-    await harness.student.listAssignments({
-      providerSubject: STUDENT_A_SUBJECT,
-    })
-
-  return (
-    before?.assignmentId ===
-      score.assignment.assignmentId &&
-    exactReadRejected &&
-    listed.every(
-      (item) =>
-        item.assignmentId !==
-        score.assignment.assignmentId,
-    )
-  )
+  assert.notEqual((await harness.store.getDelivery(assignmentId)).revokedAt, null)
+  await assert.rejects(read, /student-assignment-not-found-revoked/u)
+  const listed = await harness.student.listAssignments({ providerSubject: STUDENT_A_SUBJECT })
+  assert.ok(listed.every(item => item.assignmentId !== assignmentId))
+  return true
 }
 
-async function malformedMusicXmlRejectedBeforePrepare() {
-  const authority =
-    createSmoosicProductAuthority({
-      notes: parsedNotes(),
-      musicXml: MALFORMED_XML,
-      sourceId:
-        'td-prod-28-malformed-source',
-      automaticRevisionId:
-        'td-prod-28-malformed-root',
-      historyId:
-        'td-prod-28-malformed-history',
-      actorId: TEACHER_ID,
-      createdAt:
-        '2026-10-01T10:00:00Z',
+// A real package producer, delivery orchestrator and backend services share
+// one isolated store. Count actual service calls, including a valid control,
+// so an unrelated empty repository cannot stand in for a no-write proof.
+export async function qualifyTdProd10MalformedMusicXml() {
+  const harness = createDeliveryHarness()
+  let prepareCalls = 0
+  let deliverCalls = 0
+  const orchestrator = createTeacherAssignmentDeliveryOrchestrator({
+    secureDeliveryClient: {
+      prepareAssignments(items) {
+        prepareCalls++
+        return harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items })
+      },
+      deliverAssignments(assignmentIds) {
+        deliverCalls++
+        return harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds })
+      },
+    },
+  })
+  async function produceAndDeliver(musicXml, prefix, sourceNotes = null) {
+    const { score } = await createScoreItem({ musicXml, prefix, sourceNotes })
+    const result = await orchestrator.deliver([score])
+    assert.equal(result.ok, true)
+    return harness.student.getAssignment({
+      providerSubject: STUDENT_A_SUBJECT, deliveryId: score.assignment.assignmentId,
     })
-  const revision =
-    getTeacherWorkspaceCurrentRevision(
-      authority.workspace,
-    )
+  }
 
-  const rejectedAtIntake =
-    await rejected(() =>
-      createFinalMusicXmlIntake({
-        workspace: authority.workspace,
-        revision,
-      }),
-    )
-
-  const harness =
-    createDeliveryHarness()
-  const markerAssignmentId =
-    'td-prod-28-malformed-score'
-
-  return (
-    rejectedAtIntake &&
-    await harness.store
-      .getPreparedAssignment(
-        markerAssignmentId,
-      ) === null &&
-    await harness.store
-      .getDelivery(
-        markerAssignmentId,
-      ) === null
-  )
+  const prefix = 'td-prod-28-malformed'
+  let error = ''
+  try {
+    // Model an authority with previously parsed notes but damaged XML. This
+    // exercises final intake rather than stopping at the fixture's parser.
+    await produceAndDeliver('<score-partwise version="4.0"><part-list>', prefix, parsedNotes())
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : String(caught)
+  }
+  const evidence = {
+    error, prepareCalls, deliverCalls,
+    preparedRecord: await harness.store.getPreparedAssignment(`${prefix}-score-a`),
+    deliveryRecord: await harness.store.getDelivery(`${prefix}-score-a`),
+  }
+  const control = await produceAndDeliver(FINAL_XML, 'td-prod-28-valid-control')
+  return Object.freeze({
+    ...evidence,
+    validControlDelivered: control.package.content.score.data === FINAL_XML &&
+      prepareCalls === evidence.prepareCalls + 1 && deliverCalls === evidence.deliverCalls + 1,
+  })
 }
 
 async function negativeEvidence({
@@ -702,10 +716,8 @@ async function negativeEvidence({
       TEACHER_ASSIGNMENT_DELIVERY_PHASE
         .DELIVERED_TO_STUDENT
 
-  const revokedDeliveryFailsClosedResult =
-    await revokedDeliveryFailsClosed(score)
-  const malformedMusicXmlRejectedBeforePrepareResult =
-    await malformedMusicXmlRejectedBeforePrepare()
+  const revokedDeliveryFailsClosedResult = await revokedDeliveryFailsClosed(score)
+  const malformed = await qualifyTdProd10MalformedMusicXml()
 
   return Object.freeze({
     wrongStudentRejected,
@@ -716,23 +728,27 @@ async function negativeEvidence({
     exactReplayIdempotent,
     durablePrepareRetainedAfterDeliveryFailure,
     retryReachedDelivered,
-    revokedDeliveryFailsClosed:
-      revokedDeliveryFailsClosedResult,
+    revokedDeliveryFailsClosed: revokedDeliveryFailsClosedResult,
     malformedMusicXmlRejectedBeforePrepare:
-      malformedMusicXmlRejectedBeforePrepareResult,
+      /^final-musicxml-invalid:/u.test(malformed.error) &&
+      malformed.prepareCalls === 0 && malformed.deliverCalls === 0 &&
+      malformed.preparedRecord === null && malformed.deliveryRecord === null &&
+      malformed.validControlDelivered,
   })
 }
 
 export async function buildTdProd10QualificationFixture() {
-  const score =
+  const scoreItems =
     await createScoreItem()
+  const score = scoreItems.score
+  const scoreOnly = scoreItems.scoreOnly
   const chord =
     createChordItem()
   const piece =
     createPiece(score, chord)
   const harness =
     createDeliveryHarness()
-  const items = [score, chord]
+  const items = [score, chord, scoreOnly]
 
   await harness.prepared.prepareBatch({
     providerSubject: TEACHER_SUBJECT,
@@ -760,6 +776,12 @@ export async function buildTdProd10QualificationFixture() {
       deliveryId:
         chord.assignment.assignmentId,
     })
+  const scoreOnlyView =
+    await harness.student.getAssignment({
+      providerSubject: STUDENT_A_SUBJECT,
+      deliveryId:
+        scoreOnly.assignment.assignmentId,
+    })
   const pieceView =
     await harness.student.getPiece({
       providerSubject: STUDENT_A_SUBJECT,
@@ -774,6 +796,14 @@ export async function buildTdProd10QualificationFixture() {
   assert.equal(
     scoreView.package.content.guitarTab.data,
     TAB_XML,
+  )
+  assert.equal(
+    scoreOnlyView.package.content.score.data,
+    FINAL_XML,
+  )
+  assert.equal(
+    scoreOnlyView.package.content.guitarTab,
+    null,
   )
   assert.deepEqual(
     chordView.package.content.chordBoard
@@ -808,6 +838,17 @@ export async function buildTdProd10QualificationFixture() {
         STUDENT_A_ID,
       ),
     }),
+    scoreOnly: Object.freeze({
+      assignmentId:
+        scoreOnlyView.assignmentId,
+      practiceType:
+        scoreOnlyView.practiceType,
+      package: scoreOnlyView.package,
+      item: browserItem(
+        scoreOnlyView,
+        STUDENT_A_ID,
+      ),
+    }),
     chord: Object.freeze({
       assignmentId:
         chordView.assignmentId,
@@ -820,10 +861,47 @@ export async function buildTdProd10QualificationFixture() {
       ),
     }),
     piece: pieceView,
+    qualification: Object.freeze({
+      expectedFirstPitch: Object.freeze({
+        step: 'C',
+        alter: 1,
+        octave: 4,
+        midi: 61,
+      }),
+      rejectedFirstMidi:
+        Object.freeze([49, 73]),
+      expectedFirstTabPosition:
+        Object.freeze({
+          string: 2,
+          fret: 2,
+        }),
+    }),
     evidence:
       await negativeEvidence({
         score,
         chord,
       }),
   })
+}
+
+// Qualification only: uses real package and delivery services with an isolated
+// in-memory repository and fixture identities, never a live student account.
+export async function buildSes248StudentQualificationFixture({ musicXml, prefix = 'ses248' } = {}) {
+  const { scoreOnly } = await createScoreItem({ musicXml, guitarTabMusicXml: null, prefix })
+  const base = scoreOnly.package
+  const selected = Object.freeze({ assignment: scoreOnly.assignment,
+    package: createStudentPrivatePracticePackageV1({
+      packageId: base.packageId, workId: base.workId, title: base.title,
+      revisionId: base.approvedRevision.revisionId, approvedAt: base.approvedRevision.approvedAt,
+      studentId: base.publication.recipientStudentId, musicXml,
+      guitarTabMusicXml: null, canonicalEvents: base.content.canonicalEvents, practice: base.practice,
+      playbackInstrument: 'VIOLIN', violinTargetPartId: resolveViolinAssignmentTarget(musicXml, 'P1'),
+    }) })
+  const harness = createDeliveryHarness()
+  await harness.prepared.prepareBatch({ providerSubject: TEACHER_SUBJECT, items: [selected] })
+  await harness.teacher.deliverBatch({ providerSubject: TEACHER_SUBJECT, assignmentIds: [scoreOnly.assignment.assignmentId] })
+  const view = await harness.student.getAssignment({ providerSubject: STUDENT_A_SUBJECT, deliveryId: scoreOnly.assignment.assignmentId })
+  assert.equal(view.package.content.score.data, musicXml)
+  return Object.freeze({ assignmentId: view.assignmentId, practiceType: view.practiceType,
+    package: view.package, item: browserItem(view, STUDENT_A_ID) })
 }

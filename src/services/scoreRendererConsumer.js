@@ -31,6 +31,7 @@ export const SCORE_RENDER_DIAGNOSTIC = Object.freeze({
 
 const MISS_REASON_SET = new Set(SCORE_RENDER_MISS_REASONS)
 const renderEvidenceByHost = new WeakMap()
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
 
 function utf8Length(value) {
   return new TextEncoder().encode(value).byteLength
@@ -79,6 +80,16 @@ export function validateScoreViewMusicXml(musicxml) {
   return musicxml
 }
 
+function prepareRendererMusicXml(musicxml) {
+  const source = validateScoreViewMusicXml(musicxml)
+  const withoutLeadingWhitespace = source.trimStart()
+  if (withoutLeadingWhitespace.startsWith('<?xml')) return withoutLeadingWhitespace
+  if (/^<score-partwise(?:\s|>)/u.test(withoutLeadingWhitespace)) {
+    return `${XML_DECLARATION}\n${source}`
+  }
+  return source
+}
+
 export function validateScoreCursorTarget(target) {
   if (!target || typeof target !== 'object' || Array.isArray(target)) {
     throw new TypeError('Nota görünümü cursor hedefi nesne olmalıdır.')
@@ -120,7 +131,7 @@ export async function renderScoreView(host, musicxml, options = {}) {
     throw new TypeError('ST score renderer runtime bağlı değil.')
   }
 
-  const source = validateScoreViewMusicXml(musicxml)
+  const source = prepareRendererMusicXml(musicxml)
   const ticket = String(options.ticket ?? '1')
   if (!/^[1-9][0-9]{0,18}$/.test(ticket)) {
     throw new TypeError('Nota görünümü render ticket değeri geçersiz.')

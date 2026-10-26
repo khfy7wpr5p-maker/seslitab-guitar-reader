@@ -33,73 +33,50 @@ jobs:
         run: |
           mkdir -p artifacts
           set +e
-          npm audit --omit=dev --audit-level=high --json > artifacts/npm-audit-production.json
+          npm audit --omit=dev --json > artifacts/npm-audit-production.json
           production_status=$?
-          npm audit --audit-level=high --json > artifacts/npm-audit-full.json
+          npm audit --json > artifacts/npm-audit-full.json
           full_status=$?
           set -e
 
           PRODUCTION_STATUS="$production_status" FULL_STATUS="$full_status" node - <<'NODE'
           const fs = require('node:fs')
 
-          const approvedModerate = Object.freeze({
-            production: new Set(['gaxios', 'uuid']),
-            full: new Set([
-              '@google-cloud/pubsub',
-              '@opentelemetry/core',
-              'firebase-tools',
-              'gaxios',
-              'uuid',
-            ]),
-          })
-
-          let unexpectedModerate = false
-
           for (const [label, file] of [
             ['production', 'artifacts/npm-audit-production.json'],
             ['full', 'artifacts/npm-audit-full.json'],
           ]) {
             const report = JSON.parse(fs.readFileSync(file, 'utf8'))
-            const vulnerabilities = report.metadata?.vulnerabilities || {}
+            if (report.error || !report.metadata?.vulnerabilities ||
+                !report.vulnerabilities || typeof report.vulnerabilities !== 'object' ||
+                Array.isArray(report.vulnerabilities)) {
+              throw new Error(`invalid-dependency-audit-report: ${label}`)
+            }
+            const vulnerabilities = report.metadata.vulnerabilities
+            for (const severity of ['info', 'low', 'moderate', 'high', 'critical', 'total']) {
+              if (!Number.isInteger(vulnerabilities[severity]) || vulnerabilities[severity] < 0) {
+                throw new Error(`invalid-dependency-audit-summary: ${label}/${severity}`)
+              }
+              if (vulnerabilities[severity] !== 0) {
+                throw new Error(`dependency-vulnerability-detected: ${label}/${severity}`)
+              }
+            }
+            if (Object.keys(report.vulnerabilities).length !== 0) {
+              throw new Error(`dependency-vulnerability-detected: ${label}/inventory`)
+            }
             console.log(
               `${label}: info=${vulnerabilities.info || 0} low=${vulnerabilities.low || 0} moderate=${vulnerabilities.moderate || 0} high=${vulnerabilities.high || 0} critical=${vulnerabilities.critical || 0} total=${vulnerabilities.total || 0}`,
             )
 
-            for (const [name, finding] of Object.entries(report.vulnerabilities || {})) {
-              console.log(JSON.stringify({
-                graph: label,
-                name,
-                severity: finding.severity,
-                isDirect: finding.isDirect,
-                via: finding.via,
-                effects: finding.effects,
-                range: finding.range,
-                nodes: finding.nodes,
-                fixAvailable: finding.fixAvailable,
-              }))
-
-              if (
-                finding.severity === 'moderate' &&
-                !approvedModerate[label].has(name)
-              ) {
-                console.error(
-                  `Unexpected moderate dependency vulnerability in ${label} graph: ${name}`,
-                )
-                unexpectedModerate = true
-              }
-            }
           }
 
           if (
             process.env.PRODUCTION_STATUS !== '0' ||
             process.env.FULL_STATUS !== '0'
           ) {
-            throw new Error('high-or-critical-dependency-vulnerability-detected')
+            throw new Error('dependency-audit-command-failed')
           }
 
-          if (unexpectedModerate) {
-            throw new Error('unclassified-moderate-dependency-vulnerability-detected')
-          }
           NODE
 
       - name: Upload npm audit evidence

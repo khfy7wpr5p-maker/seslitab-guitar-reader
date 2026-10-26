@@ -9,6 +9,29 @@ class Element {
     this.childNodes = []
     this.parentNode = null
   }
+  get nodeType() { return 1 }
+  setAttribute(name, value) {
+    this.removeAttribute(name)
+    this.attributes += ` ${name}="${String(value)}"`
+  }
+  removeAttribute(name) {
+    this.attributes = this.attributes.replace(new RegExp(`(?:^|\\s)${name}=["\'][^"\']*["\']`, "g"), "")
+  }
+  removeChild(child) {
+    const index = this.childNodes.indexOf(child)
+    if (index < 0) throw new Error("Missing child")
+    this.childNodes.splice(index, 1)
+    if (typeof child !== "string") child.parentNode = null
+    return child
+  }
+  insertBefore(child, before) {
+    const index = this.childNodes.indexOf(before)
+    if (index < 0) return this.appendChild(child)
+    child.parentNode = this
+    this.childNodes.splice(index, 0, child)
+    return child
+  }
+  getElementsByTagName(name) { return this.querySelectorAll(name) }
   get children() { return this.childNodes.filter((child) => child instanceof Element) }
   get textContent() { return this.childNodes.map((child) => typeof child === 'string' ? child : child.textContent).join('') }
   set textContent(value) {
@@ -16,6 +39,9 @@ class Element {
   }
   getAttribute(name) {
     return this.attributes.match(new RegExp(`(?:^|\\s)${name}=["']([^"']*)["']`))?.[1] ?? null
+  }
+  getAttributeNames() {
+    return Array.from(this.attributes.matchAll(/(?:^|\s)([\w:-]+)=["']/g), match => match[1])
   }
   appendChild(child) {
     if (child instanceof Element) child.parentNode = this

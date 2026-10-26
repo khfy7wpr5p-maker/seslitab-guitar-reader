@@ -11,6 +11,7 @@
     ['128th', 1 / 32]
   ];
   let redispatching = false;
+  let importSequence = 0;
   let tupletNumber = 900;
 
   function directChildren(node, tagName) {
@@ -338,11 +339,13 @@
     const file = input.files && input.files[0];
     if (!file || !/\.(xml|musicxml|mxml)$/i.test(String(file.name || ''))) return;
 
+    const sequence = ++importSequence;
     event.preventDefault();
     event.stopImmediatePropagation();
 
     try {
       const originalText = await file.text();
+      if (sequence !== importSequence) return;
       const result = normalizeMusicXml(originalText);
       window.__smoosicMusicXmlCompat = {
         file: file.name,
@@ -354,7 +357,7 @@
 
       if (!result.changed) {
         redispatching = true;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: event.detail ?? null }));
         redispatching = false;
         return;
       }
@@ -368,9 +371,10 @@
       input.files = transfer.files;
 
       redispatching = true;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: event.detail ?? null }));
       redispatching = false;
     } catch (error) {
+      if (sequence !== importSequence) return;
       console.error('Smoosic MusicXML uyumluluk katmanı hatası', error);
       window.__smoosicMusicXmlCompat = {
         file: file.name,
@@ -378,7 +382,7 @@
         error: String(error)
       };
       redispatching = true;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: event.detail ?? null }));
       redispatching = false;
     }
   }

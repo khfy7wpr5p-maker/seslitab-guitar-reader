@@ -24,6 +24,10 @@ import {
   isPieceAssignmentLifecycleRecord,
 } from '../../../src/services/pieceAssignmentLifecycleRecord.js'
 import {
+  buildPieceChildCascadeMutation,
+  PIECE_LIFECYCLE_ACTION,
+} from '../../../src/services/pieceLifecycleCascade.js'
+import {
   isStudentRosterEntry,
 } from '../../../src/services/studentRosterEntry.js'
 import {
@@ -39,6 +43,7 @@ import {
 import {
   assertStrictInputObject,
   normalizeRequiredId,
+  normalizeRequiredTimestamp,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
 import {
   createProvisioningState,
@@ -61,10 +66,13 @@ const LIFECYCLE_MUTATION_FIELDS = Object.freeze([
   'historyEventId',
 ])
 
-
 const PIECE_LIFECYCLE_MUTATION_FIELDS = Object.freeze([
   'currentLifecycle',
   'nextLifecycle',
+  'teacherId',
+  'action',
+  'changedAt',
+  'historyEventId',
 ])
 
 function grantKey(teacherId, studentId) {
@@ -77,6 +85,40 @@ function exactJson(value) {
 
 function sameRecord(left, right) {
   return left === right || exactJson(left) === exactJson(right)
+}
+
+function hasOwn(input, key) {
+  return Object.prototype.hasOwnProperty.call(input, key)
+}
+
+function pieceChildren(piece) {
+  const rows = []
+  const seen = new Set()
+  const scoreId = piece.contentRefs.scoreAssignmentId
+
+  if (scoreId !== null) {
+    if (seen.has(scoreId)) {
+      throw new Error('Piece child membership conflict.')
+    }
+    seen.add(scoreId)
+    rows.push(Object.freeze({
+      assignmentId: scoreId,
+      expectedPracticeType: 'SCORE',
+    }))
+  }
+
+  for (const assignmentId of piece.contentRefs.chordAssignmentIds) {
+    if (seen.has(assignmentId)) {
+      throw new Error('Piece child membership conflict.')
+    }
+    seen.add(assignmentId)
+    rows.push(Object.freeze({
+      assignmentId,
+      expectedPracticeType: 'CHORD_BOARD',
+    }))
+  }
+
+  return Object.freeze(rows)
 }
 
 function assertPreparedCommitRow(row) {
@@ -139,6 +181,7 @@ export function createInMemorySecureDeliveryStore({
   let poolById = new Map()
   let pieceByAssignment = new Map()
   let pieceLifecycleByAssignment = new Map()
+  let pieceHistoryByAssignment = new Map()
 
   for (const mapping of identityMappings) {
     if (!isSecureDeliveryIdentityMapping(mapping)) {
@@ -632,22 +675,164 @@ export function createInMemorySecureDeliveryStore({
       )
     }
 
-    if (
-      sameRecord(
-        currentLifecycle,
-        nextLifecycle,
+    const cascadeFields = [
+      'teacherId',
+      'action',
+      'changedAt',
+      'historyEventId',
+    ]
+    const cascadeRequested =
+      cascadeFields.some((field) =>
+        hasOwn(input, field),
       )
-    ) {
-      return storedLifecycle ??
-        currentLifecycle
+
+    if (!cascadeRequested) {
+      if (
+        sameRecord(
+          currentLifecycle,
+          nextLifecycle,
+        )
+      ) {
+        return storedLifecycle ??
+          currentLifecycle
+      }
+
+      const next =
+        new Map(
+          pieceLifecycleByAssignment,
+        )
+      next.set(id, nextLifecycle)
+      pieceLifecycleByAssignment = next
+      return nextLifecycle
     }
 
-    const next =
-      new Map(
-        pieceLifecycleByAssignment,
+    if (
+      !cascadeFields.every((field) =>
+        hasOwn(input, field),
+      ) ||
+      !Object.values(PIECE_LIFECYCLE_ACTION)
+        .includes(input.action)
+    ) {
+      throw new TypeError(
+        'Piece cascade mutation requires teacherId, action, changedAt and historyEventId.',
       )
-    next.set(id, nextLifecycle)
-    pieceLifecycleByAssignment = next
+    }
+
+    const teacherId = normalizeRequiredId(
+      input.teacherId,
+      'teacherId',
+    )
+    const changedAt = normalizeRequiredTimestamp(
+      input.changedAt,
+      'changedAt',
+    )
+    const historyEventId = normalizeRequiredId(
+      input.historyEventId,
+      'historyEventId',
+    )
+
+    const existingPieceHistory =
+      pieceHistoryByAssignment.get(id) ?? []
+    if (
+      existingPieceHistory.some(
+        (event) =>
+          event.historyEventId === historyEventId,
+      )
+    ) {
+      throw new Error(
+        'Piece lifecycle history event conflict.',
+      )
+    }
+
+    const childMutations = pieceChildren(storedPiece)
+      .map((child) => {
+        const childId = child.assignmentId
+        return Object.freeze({
+          child,
+          mutation:
+            buildPieceChildCascadeMutation({
+              prepared:
+                preparedByAssignment.get(childId) ?? null,
+              delivery:
+                deliveryByAssignment.get(childId) ?? null,
+              lifecycle:
+                lifecycleByAssignment.get(childId) ?? null,
+              assignmentId: childId,
+              expectedPracticeType:
+                child.expectedPracticeType,
+              teacherId,
+              studentId: storedPiece.studentId,
+              action: input.action,
+              changedAt,
+            }),
+        })
+      })
+
+    const nextPieceLifecycles =
+      new Map(pieceLifecycleByAssignment)
+    const nextLifecycles =
+      new Map(lifecycleByAssignment)
+    const nextHistory =
+      new Map(historyByAssignment)
+    const nextDeliveries =
+      new Map(deliveryByAssignment)
+    const nextPieceHistory =
+      new Map(pieceHistoryByAssignment)
+
+    nextPieceLifecycles.set(
+      id,
+      nextLifecycle,
+    )
+
+    for (const row of childMutations) {
+      if (!row.mutation.changed) continue
+      const childId = row.child.assignmentId
+      nextLifecycles.set(
+        childId,
+        row.mutation.nextLifecycle,
+      )
+      nextHistory.set(
+        childId,
+        [
+          ...(nextHistory.get(childId) ?? []),
+          row.mutation.nextLifecycle,
+        ],
+      )
+      nextDeliveries.set(
+        childId,
+        row.mutation.deliveryAfter,
+      )
+    }
+
+    nextPieceHistory.set(
+      id,
+      [
+        ...existingPieceHistory,
+        Object.freeze({
+          schemaVersion: 1,
+          teacherId,
+          historyEventId,
+          action: input.action,
+          changedAt,
+          lifecycle: nextLifecycle,
+          childAssignmentIds:
+            Object.freeze(
+              childMutations.map(
+                (row) =>
+                  row.child.assignmentId,
+              ),
+            ),
+        }),
+      ],
+    )
+
+    pieceLifecycleByAssignment =
+      nextPieceLifecycles
+    lifecycleByAssignment = nextLifecycles
+    historyByAssignment = nextHistory
+    deliveryByAssignment = nextDeliveries
+    pieceHistoryByAssignment = nextPieceHistory
+
     return nextLifecycle
   }
 

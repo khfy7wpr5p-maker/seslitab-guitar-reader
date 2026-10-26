@@ -236,7 +236,31 @@ async function waitFor(cdp, expression, label, timeoutMs = 120000) {
     }
     await delay(100)
   }
-  throw new Error(`${label} timed out${lastError ? `: ${lastError.message}` : ''}`)
+  let diagnostic = null
+  try {
+    diagnostic = await evaluate(cdp, `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const editorStatus = frame?.contentDocument?.getElementById('poc-status');
+      return {
+        applyDisabled: document.getElementById('smoosic-apply-btn')?.disabled ?? null,
+        hostStatus: document.getElementById('smoosic-editor-host-status')?.textContent || '',
+        editorStatus: editorStatus?.textContent || '',
+        loadedFile: editorStatus?.getAttribute('data-loaded-file-name') || null,
+        importRevision: frame?.contentDocument?.getElementById('mobile-xml-input')?.dataset?.seslitabImportRevision || null,
+        pendingCaptured: Boolean(window.__S15_PENDING_REQUEST__),
+      };
+    })()`)
+  } catch {}
+  throw new Error(`${label} timed out${lastError ? `: ${lastError.message}` : ''} | diagnostic=${JSON.stringify(diagnostic)}`)
+}
+
+async function waitForApplyReady(cdp, label) {
+  return waitFor(cdp, `(() => {
+    const frame = document.getElementById('smoosic-editor-frame');
+    const button = document.getElementById('smoosic-apply-btn');
+    return !!frame && frame.hidden === false && !!button && button.disabled === false
+      && !!frame.contentDocument?.getElementById('poc-status')?.hasAttribute('data-loaded-file-name');
+  })()`, label)
 }
 
 function uploadExpression(xml, fileName) {
@@ -406,11 +430,12 @@ try {
     `(() => {
       const frame = document.getElementById('smoosic-editor-frame');
       const button = document.getElementById('smoosic-apply-btn');
-      return !!frame && !!button && frame.hidden === false;
+      return !!frame && !!button && frame.hidden === false && button.disabled === false;
     })()`,
     'S15 host apply control',
   )
 
+  await waitForApplyReady(cdp, 'canonical editor ready for S15 apply')
   await evaluate(cdp, `(() => {
     window.__S15_FIRST_EXPORT__ = null;
     window.__S15_CONSUMER_MUTATIONS__ = { guitar: 0, violin: 0 };
@@ -532,8 +557,11 @@ try {
   )
   if (!editorUsable) throw new Error('Smoosic editor did not remain usable after write-back.')
 
-  const pending = await evaluate(cdp, `(() => {
+  const pending = await waitFor(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
+    const button = document.getElementById('smoosic-apply-btn');
+    if (!frame || frame.hidden || !button || button.disabled) return false;
+    if (!frame.contentDocument?.getElementById('poc-status')?.hasAttribute('data-loaded-file-name')) return false;
     const editorWin = frame.contentWindow;
     const original = editorWin.postMessage.bind(editorWin);
     window.__S15_ORIGINAL_POSTMESSAGE__ = original;
@@ -548,9 +576,9 @@ try {
       }
       return original(message, targetOrigin, transfer);
     };
-    document.getElementById('smoosic-apply-btn').click();
+    button.click();
     return true;
-  })()`)
+  })()`, 'canonical re-import ready before arming stale S15 capture')
   if (!pending) throw new Error('Could not arm stale-writeback request capture.')
 
   const pendingRequest = await waitFor(
@@ -564,6 +592,23 @@ try {
     cdp,
     `document.getElementById('smoosic-editor-frame')?.hidden === false`,
     'replacement keeps Smoosic visible',
+  )
+  const replacementRevision = await waitFor(
+    cdp,
+    `(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const doc = frame?.contentDocument;
+      const status = String(doc?.getElementById('poc-status')?.textContent || '');
+      const revision = Number(doc?.getElementById('mobile-xml-input')?.dataset?.seslitabImportRevision);
+      return status.startsWith('Yüklendi:')
+        && status.includes('s15-replacement.musicxml')
+        && Number.isSafeInteger(revision)
+        && revision > ${Number(pendingRequest.sourceRevision)}
+          ? revision
+          : 0;
+    })()`,
+    'replacement Smoosic revision-bound handoff',
+    16000,
   )
   await evaluate(cdp, `(() => {
     const frame = document.getElementById('smoosic-editor-frame');
@@ -581,7 +626,7 @@ try {
       type: 'seslitab:smoosic-export-request',
       version: 1,
       requestId,
-      sourceRevision: ${Number(pendingRequest.sourceRevision) + 1},
+      sourceRevision: ${Number(replacementRevision)},
     }, location.origin);
     return true;
   })()`)
@@ -786,6 +831,7 @@ try {
   })()`)
   if (!voicePitchTriggered) throw new Error('Smoosic voice-identity pitch edit could not be triggered.')
 
+  await waitForApplyReady(cdp, 'canonical editor ready for S15 apply')
   await evaluate(cdp, `(() => {
     window.__S15_FIRST_EXPORT__ = null;
     document.getElementById('smoosic-apply-btn').click();
@@ -857,6 +903,7 @@ try {
   })()`)
   if (!gesiPitchTriggered) throw new Error('gesi-clean E pitch control could not be triggered.')
 
+  await waitForApplyReady(cdp, 'canonical editor ready for S15 apply')
   await evaluate(cdp, `(() => {
     window.__S15_FIRST_EXPORT__ = null;
     document.getElementById('smoosic-apply-btn').click();
@@ -973,6 +1020,7 @@ try {
   })()`)
 
   const runGesiCapturedCase = async ({ name, musicXml, provenance = null, expectedText }) => {
+    await waitForApplyReady(cdp, `${name} canonical editor ready`)
     await evaluate(cdp, `(() => {
       window.__S15_PENDING_REQUEST__ = null;
       const status = document.getElementById('smoosic-editor-host-status');

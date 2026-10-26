@@ -27,9 +27,10 @@ const CLEAN_XML = SUSPICIOUS_XML.replace(
 )
 
 const evidence = {
-  contract: 'SES-120 Smoosic correction overlay browser proof',
+  contract: 'SES-142 Smoosic correction overlay revision lifecycle browser proof',
   smoosicVersion: '1.0.44',
   suspicious: null,
+  revisionLifecycle: null,
   cleared: null,
   sourceImmutable: null,
 }
@@ -181,6 +182,109 @@ async function main() {
       chrome,
     }
     evidence.sourceImmutable = true
+
+    const pitchTriggered = await evaluate(`(() => {
+      const frame = document.getElementById('smoosic-editor-frame');
+      const button = frame?.contentDocument?.querySelector('button[data-key="g"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`)
+    if (!pitchTriggered) {
+      throw new Error('SES-142 Smoosic pitch edit control could not be triggered.')
+    }
+
+    const applyTriggered = await evaluate(`(() => {
+      const button = document.getElementById('smoosic-apply-btn');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`)
+    if (!applyTriggered) {
+      throw new Error('SES-142 host write-back control could not be triggered.')
+    }
+
+    await waitFor(
+      `String(document.getElementById('smoosic-editor-host-status')?.textContent || '').includes('Yeni sürüm doğrulandı')`,
+      'SES-142 committed revision publication',
+    )
+
+    const lifecycleAcknowledgement = await waitFor(
+      `(() => {
+        const rows = window.__ses120OverlayResults || [];
+        return rows.find((row) =>
+          typeof row?.requestId === 'string'
+          && !row.requestId.includes('-clear-')
+          && row.sourceRevision > ${Number(acknowledgement.sourceRevision)}
+          && row.ok === true
+          && row.appliedCount >= 1
+        ) || null;
+      })()`,
+      'SES-142 correction overlay reapply acknowledgement',
+    )
+
+    const reboundRevision = await waitFor(
+      `(() => {
+        const frame = document.getElementById('smoosic-editor-frame');
+        const input = frame?.contentDocument?.getElementById('mobile-xml-input');
+        const value = Number(input?.dataset?.seslitabImportRevision);
+        return Number.isSafeInteger(value) && value === ${Number(lifecycleAcknowledgement.sourceRevision)}
+          ? value
+          : 0;
+      })()`,
+      'SES-142 Smoosic source revision rebind',
+    )
+
+    const lifecycleOverlay = await waitFor(
+      `(() => {
+        const frame = document.getElementById('smoosic-editor-frame');
+        const doc = frame?.contentDocument;
+        const group = doc?.querySelector('g.vf-seslitab-correction-overlay.seslitab-correction-measure');
+        const rect = group?.querySelector('rect');
+        if (!group || !rect) return null;
+        return {
+          groups: doc.querySelectorAll('g.vf-seslitab-correction-overlay.seslitab-correction-measure').length,
+          stroke: String(rect.getAttribute('stroke') || ''),
+          strokeWidth: String(rect.getAttribute('stroke-width') || ''),
+          fill: String(rect.getAttribute('fill') || ''),
+          width: Number(rect.getAttribute('width')),
+          height: Number(rect.getAttribute('height')),
+        };
+      })()`,
+      'SES-142 red overlay after committed revision',
+    )
+
+    if (
+      lifecycleOverlay.groups !== 1
+      || lifecycleOverlay.stroke.toLowerCase() !== '#dc2626'
+      || Number(lifecycleOverlay.strokeWidth) !== 4
+      || lifecycleOverlay.fill !== 'none'
+      || !(lifecycleOverlay.width > 0)
+      || !(lifecycleOverlay.height > 0)
+    ) {
+      throw new Error(
+        `SES-142 overlay was not safely reapplied: ${JSON.stringify(lifecycleOverlay)}`,
+      )
+    }
+
+    const committedSource = await evaluate(
+      `String(document.getElementById('xml-output')?.textContent || '')`,
+    )
+    if (
+      committedSource === SUSPICIOUS_XML
+      || !committedSource.includes('<duration>8</duration>')
+    ) {
+      throw new Error('SES-142 committed source proof did not preserve the suspicious measure.')
+    }
+
+    evidence.revisionLifecycle = {
+      initialSourceRevision: acknowledgement.sourceRevision,
+      committedSourceRevision: lifecycleAcknowledgement.sourceRevision,
+      reboundRevision,
+      lifecycleAcknowledgement,
+      overlay: lifecycleOverlay,
+      suspiciousMeasurePreserved: true,
+    }
 
     await openSource(session, CLEAN_XML, 'ses-120-clean.musicxml')
     await openSmoosic(session, 'ses-120-clean.musicxml')

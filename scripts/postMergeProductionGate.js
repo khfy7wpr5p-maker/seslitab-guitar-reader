@@ -1,149 +1,62 @@
-const SHA_PATTERN = /^[0-9a-f]{40}$/i
+const SHA = /^[0-9a-f]{40}$/
+const PROJECT = /^[A-Za-z0-9_.:-]{1,400}$/
+const ID = /^[A-Za-z0-9_-]{1,200}$/
 
-function requireSha(value, errorCode) {
-  const normalized = String(value ?? '').trim().toLowerCase()
-  if (!SHA_PATTERN.test(normalized)) {
-    throw new Error(errorCode)
-  }
-  return normalized
+function fail(code) { throw new Error(`production-gate-${code}`) }
+function trusted(run, repository, name, path, workflowId) {
+  if (!run || run.name !== name) fail('workflow-required')
+  if (run.repository?.full_name !== repository || run.repository?.fork !== false ||
+      run.head_repository?.full_name !== repository || run.head_repository?.fork !== false) fail('source-repository-untrusted')
+  if (![path, `${path}@main`, `${path}@refs/heads/main`].includes(run.path) ||
+      !Number.isSafeInteger(workflowId) || workflowId < 1 || run.workflow_id !== workflowId) fail('workflow-identity-mismatch')
+  if (!Number.isSafeInteger(run.id) || run.id < 1 || !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) fail('run-identity-invalid')
 }
-
-function requireObject(value, errorCode) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(errorCode)
-  }
-  return value
+function evidence(run) {
+  return Object.freeze({ workflowName: run.name, workflowId: run.workflow_id, runId: run.id,
+    runNumber: run.run_number ?? null, runAttempt: run.run_attempt, event: run.event, branch: run.head_branch,
+    headSha: run.head_sha, status: run.status, conclusion: run.conclusion })
 }
-
-function freezeEvidence(run, workflowName) {
-  return Object.freeze({
-    workflowName,
-    runId: run.id,
-    runNumber: run.run_number ?? null,
-    runAttempt: run.run_attempt,
-    event: run.event,
-    branch: run.head_branch,
-    headSha: String(run.head_sha).toLowerCase(),
-    status: run.status,
-    conclusion: run.conclusion,
-  })
+export function selectPostMergeGitHubEvidence({ repository, triggerRun: ci, regressionRuns, currentMainSha,
+  workflowIds, verifiedAt } = {}) {
+  if (typeof repository !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) fail('repository-required')
+  if (!ci) fail('ci-run-required')
+  if (ci.name !== 'CI') fail('ci-workflow-required')
+  if (ci.event !== 'push') fail('ci-push-required')
+  if (ci.head_branch !== 'main') fail('ci-main-required')
+  if (ci.status !== 'completed') fail('ci-completed-required')
+  if (ci.run_attempt !== 1) fail('ci-first-attempt-required')
+  if (ci.conclusion !== 'success') fail('ci-success-required')
+  if (!SHA.test(ci.head_sha ?? '')) fail('ci-sha-invalid')
+  if (!SHA.test(currentMainSha ?? '')) fail('main-sha-invalid')
+  if (ci.head_sha !== currentMainSha) fail('main-advanced')
+  trusted(ci, repository, 'CI', '.github/workflows/ci.yml', workflowIds?.ci)
+  if (!Array.isArray(regressionRuns)) fail('regression-runs-required')
+  const exact = regressionRuns.filter((run) => run?.name === 'Regression Quality' && run.event === 'push' &&
+    run.head_branch === 'main' && run.head_sha === ci.head_sha)
+  if (!exact.length) fail('regression-missing')
+  const regression = [...exact].sort((a, b) => Number(b.run_number ?? 0) - Number(a.run_number ?? 0) || b.id - a.id)[0]
+  trusted(regression, repository, 'Regression Quality', '.github/workflows/regression-quality.yml', workflowIds?.regression)
+  if (regression.status !== 'completed') fail('regression-pending')
+  if (regression.conclusion !== 'success') fail('regression-success-required')
+  if (typeof verifiedAt !== 'string' || Number.isNaN(Date.parse(verifiedAt))) fail('verified-at-invalid')
+  return Object.freeze({ schemaVersion: 2, gate: 'PENDING_SONAR', repository, branch: 'main', headSha: ci.head_sha,
+    verifiedAt, ci: evidence(ci), regressionQuality: evidence(regression),
+    artifactName: `sonar-task-${regression.id}-${regression.run_attempt}` })
 }
-
-function newestRun(runs) {
-  return [...runs].sort((left, right) => {
-    const numberDelta =
-      Number(right.run_number ?? 0) -
-      Number(left.run_number ?? 0)
-    if (numberDelta !== 0) return numberDelta
-    return Number(right.id ?? 0) - Number(left.id ?? 0)
-  })[0]
-}
-
-export function evaluatePostMergeProductionGate({
-  repository,
-  triggerRun,
-  regressionRuns,
-  currentMainSha,
-  verifiedAt,
-} = {}) {
-  if (
-    typeof repository !== 'string' ||
-    repository.trim() === ''
-  ) {
-    throw new Error('production-gate-repository-required')
-  }
-
-  const ci = requireObject(
-    triggerRun,
-    'production-gate-ci-run-required',
-  )
-
-  if (ci.name !== 'CI') {
-    throw new Error('production-gate-ci-workflow-required')
-  }
-  if (ci.event !== 'push') {
-    throw new Error('production-gate-ci-push-required')
-  }
-  if (ci.head_branch !== 'main') {
-    throw new Error('production-gate-ci-main-required')
-  }
-  if (ci.status !== 'completed') {
-    throw new Error('production-gate-ci-completed-required')
-  }
-  if (ci.run_attempt !== 1) {
-    throw new Error('production-gate-ci-first-attempt-required')
-  }
-  if (ci.conclusion !== 'success') {
-    throw new Error('production-gate-ci-success-required')
-  }
-
-  const ciSha = requireSha(
-    ci.head_sha,
-    'production-gate-ci-sha-invalid',
-  )
-  const mainSha = requireSha(
-    currentMainSha,
-    'production-gate-main-sha-invalid',
-  )
-
-  if (ciSha !== mainSha) {
-    throw new Error('production-gate-main-advanced')
-  }
-
-  if (!Array.isArray(regressionRuns)) {
-    throw new Error('production-gate-regression-runs-required')
-  }
-
-  const exactRegressionRuns = regressionRuns.filter((run) => (
-    run &&
-    typeof run === 'object' &&
-    run.name === 'Regression Quality' &&
-    run.event === 'push' &&
-    run.head_branch === 'main' &&
-    String(run.head_sha ?? '').trim().toLowerCase() === ciSha
-  ))
-
-  if (exactRegressionRuns.length === 0) {
-    throw new Error('production-gate-regression-missing')
-  }
-
-  const regression = newestRun(exactRegressionRuns)
-
-  if (regression.status !== 'completed') {
-    throw new Error('production-gate-regression-pending')
-  }
-  if (regression.run_attempt !== 1) {
-    throw new Error(
-      'production-gate-regression-first-attempt-required',
-    )
-  }
-  if (regression.conclusion !== 'success') {
-    throw new Error(
-      'production-gate-regression-success-required',
-    )
-  }
-
-  const timestamp = String(verifiedAt ?? '').trim()
-  if (timestamp === '' || Number.isNaN(Date.parse(timestamp))) {
-    throw new Error('production-gate-verified-at-invalid')
-  }
-
-  return Object.freeze({
-    schemaVersion: 1,
-    gate: 'PASS',
-    repository: repository.trim(),
-    branch: 'main',
-    headSha: ciSha,
-    verifiedAt: timestamp,
-    ci: freezeEvidence(ci, 'CI'),
-    regressionQuality: freezeEvidence(
-      regression,
-      'Regression Quality',
-    ),
-    requirements: Object.freeze([
-      'exact-current-main-sha',
-      'ci-push-main-first-attempt-success',
-      'regression-quality-push-main-first-attempt-success',
-    ]),
-  })
+export function evaluatePostMergeProductionGate(input = {}) {
+  const base = selectPostMergeGitHubEvidence(input)
+  const sonar = input.sonarEvidence
+  if (!sonar || !PROJECT.test(input.projectKey ?? '') || sonar.projectKey !== input.projectKey ||
+      !ID.test(sonar.taskId ?? '') || !ID.test(sonar.analysisId ?? '') || sonar.branch !== 'main' ||
+      sonar.headSha !== base.headSha || sonar.analysisRevision !== base.headSha ||
+      sonar.runId !== base.regressionQuality.runId || sonar.runAttempt !== base.regressionQuality.runAttempt ||
+      sonar.ceStatus !== 'SUCCESS' || sonar.qualityGate !== 'OK' || sonar.newSecurityRating !== 1 ||
+      sonar.newReliabilityRating !== 1 || typeof sonar.verifiedAt !== 'string' ||
+      !Number.isFinite(Date.parse(sonar.verifiedAt)) ||
+      Math.abs(Date.parse(base.verifiedAt) - Date.parse(sonar.verifiedAt)) > 120000) fail('exact-sonar-acceptance-required')
+  return Object.freeze({ ...base, gate: 'PASS', sonar: Object.freeze({ ...sonar }), requirements: Object.freeze([
+    'exact-current-main-sha', 'ci-push-main-first-attempt-success',
+    'regression-quality-push-main-latest-attempt-success', 'attempt-qualified-task-metadata',
+    'exact-current-analysis-revision', 'sonar-ce-success-quality-gate-ok-security-a-reliability-a',
+  ]) })
 }

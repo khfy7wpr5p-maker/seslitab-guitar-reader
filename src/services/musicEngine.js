@@ -912,6 +912,24 @@ export function createCanonicalMusicXmlBridgeNote(
     fret: source.fret,
     noteName: source.noteName,
     midi: source.midi,
+    ...(Object.prototype.hasOwnProperty.call(
+      source,
+      'soundingPitchMidi',
+    )
+      ? {
+          soundingPitchMidi:
+            source.soundingPitchMidi,
+        }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(
+      source,
+      'sourceTranspositionSemitones',
+    )
+      ? {
+          sourceTranspositionSemitones:
+            source.sourceTranspositionSemitones,
+        }
+      : {}),
     frequency: source.frequency,
     duration: source.duration,
     measureNumber:

@@ -1,5 +1,7 @@
 import {
   TD_PROD_10_FIXTURE,
+  SES248_FIXTURE,
+  SES249_FIXTURE,
 } from "./td-prod-10-generated-fixture.mjs";
 
 function requireOnline() {
@@ -22,6 +24,8 @@ function requireStudent(session) {
 }
 
 function itemForAssignment(assignmentId) {
+  if (assignmentId === SES249_FIXTURE.assignmentId) return SES249_FIXTURE.item;
+  if (assignmentId === SES248_FIXTURE.assignmentId) return SES248_FIXTURE.item;
   if (
     assignmentId ===
     TD_PROD_10_FIXTURE.score.assignmentId
@@ -33,6 +37,13 @@ function itemForAssignment(assignmentId) {
     TD_PROD_10_FIXTURE.chord.assignmentId
   ) {
     return TD_PROD_10_FIXTURE.chord.item;
+  }
+  if (
+    assignmentId ===
+    TD_PROD_10_FIXTURE.scoreOnly
+      .assignmentId
+  ) {
+    return TD_PROD_10_FIXTURE.scoreOnly.item;
   }
   return null;
 }
@@ -71,9 +82,48 @@ export function createTdProd10OnlineReadService() {
       );
     },
 
-    async listAssignments() {
+    async listAssignments({
+      session,
+      state,
+    } = {}) {
       requireOnline();
-      return Object.freeze([]);
+      requireStudent(session);
+      return Object.freeze(
+        state === undefined ||
+        state === "ACTIVE"
+          ? [
+              Object.freeze({ assignmentId: SES249_FIXTURE.assignmentId, practiceType: 'SCORE', state: 'ACTIVE', title: SES249_FIXTURE.package.title, teacherNote: '', assignedAt: TD_PROD_10_FIXTURE.piece.assignedAt }),
+              Object.freeze({
+                assignmentId: SES248_FIXTURE.assignmentId,
+                practiceType: "SCORE",
+                state: "ACTIVE",
+                title: SES248_FIXTURE.package.title,
+                teacherNote: SES248_FIXTURE.package.practice?.teacherNote ?? "",
+                assignedAt: TD_PROD_10_FIXTURE.piece.assignedAt,
+              }),
+              Object.freeze({
+                assignmentId:
+                  TD_PROD_10_FIXTURE
+                    .scoreOnly
+                    .assignmentId,
+                practiceType: "SCORE",
+                state: "ACTIVE",
+                title:
+                  TD_PROD_10_FIXTURE
+                    .scoreOnly.package
+                    .title,
+                teacherNote:
+                  TD_PROD_10_FIXTURE
+                    .scoreOnly.package
+                    .practice
+                    ?.teacherNote ?? "",
+                assignedAt:
+                  TD_PROD_10_FIXTURE
+                    .piece.assignedAt,
+              }),
+            ]
+          : [],
+      );
     },
 
     async getAssignment({
@@ -110,15 +160,14 @@ export function createTdProd10OnlineReadService() {
     } = {}) {
       requireOnline();
       requireStudent(session);
-      if (
-        assignmentId !==
-        TD_PROD_10_FIXTURE.score.assignmentId
-      ) {
+      const item =
+        itemForAssignment(assignmentId);
+      if (item?.practiceType !== "SCORE") {
         throw new Error(
           "TD-PROD-10 SCORE unavailable",
         );
       }
-      return TD_PROD_10_FIXTURE.score.item;
+      return item;
     },
 
     async getChordBoardPracticeItem({

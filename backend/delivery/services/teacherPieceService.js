@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import {
   isAssignmentLifecycleRecord,
 } from '../../../src/services/assignmentLifecycleRecord.js'
@@ -45,6 +47,8 @@ const ACTIONS = Object.freeze({
   COMPLETE: 'COMPLETE',
   MOVE_TO_REPERTOIRE:
     'MOVE_TO_REPERTOIRE',
+  PLACE_IN_REPERTOIRE:
+    'PLACE_IN_REPERTOIRE',
   REVOKE: 'REVOKE',
 })
 
@@ -59,6 +63,25 @@ function childAuthorityError() {
   return new Error(
     'piece-child-authority-mismatch',
   )
+}
+
+function pieceHistoryEventId({
+  pieceAssignmentId,
+  action,
+  changedAt,
+}) {
+  const digest = createHash('sha256')
+    .update(
+      JSON.stringify([
+        pieceAssignmentId,
+        action,
+        changedAt,
+      ]),
+      'utf8',
+    )
+    .digest('hex')
+
+  return `piece-${digest}`
 }
 
 export function createTeacherPieceService({
@@ -228,6 +251,34 @@ export function createTeacherPieceService({
     }
   }
 
+  function pieceInputMatchesExisting(
+    existing,
+    input,
+  ) {
+    return (
+      existing.pieceAssignmentId ===
+        input.pieceAssignmentId &&
+      existing.pieceId === input.pieceId &&
+      existing.arrangementId ===
+        input.arrangementId &&
+      existing.studentId ===
+        input.studentId &&
+      existing.title === input.title &&
+      existing.teacherNote ===
+        input.teacherNote &&
+      existing.contentRefs
+        .scoreAssignmentId ===
+        input.scoreAssignmentId &&
+      JSON.stringify(
+        existing.contentRefs
+          .chordAssignmentIds,
+      ) ===
+        JSON.stringify(
+          input.chordAssignmentIds,
+        )
+    )
+  }
+
   async function createPiece({
     providerSubject,
     input,
@@ -242,6 +293,37 @@ export function createTeacherPieceService({
       await teacherPrincipal(
         providerSubject,
       )
+
+    const pieceAssignmentId =
+      normalizeRequiredId(
+        input.pieceAssignmentId,
+        'pieceAssignmentId',
+      )
+    const existing =
+      await trustedStore
+        .getPieceAssignment(
+          pieceAssignmentId,
+        )
+
+    if (existing !== null) {
+      if (
+        !isPieceAssignment(existing) ||
+        !pieceInputMatchesExisting(
+          existing,
+          input,
+        )
+      ) {
+        throw new Error(
+          'piece-assignment-idempotency-conflict',
+        )
+      }
+
+      await verifyPieceChildren(
+        existing,
+        teacherId,
+      )
+      return existing
+    }
 
     const piece = createPieceAssignment({
       pieceAssignmentId:
@@ -365,6 +447,25 @@ export function createTeacherPieceService({
     }
 
     return Object.freeze({
+      teacherId,
+      piece,
+      lifecycle,
+    })
+  }
+
+  async function getPieceForTeacher({
+    providerSubject,
+    pieceAssignmentId,
+  } = {}) {
+    const {
+      piece,
+      lifecycle,
+    } = await loadPieceContext({
+      providerSubject,
+      pieceAssignmentId,
+    })
+
+    return Object.freeze({
       piece,
       lifecycle,
     })
@@ -380,11 +481,12 @@ export function createTeacherPieceService({
         .includes(action)
     ) {
       throw new TypeError(
-        'action must be COMPLETE, MOVE_TO_REPERTOIRE or REVOKE.',
+        'action must be COMPLETE, MOVE_TO_REPERTOIRE, PLACE_IN_REPERTOIRE or REVOKE.',
       )
     }
 
     const {
+      teacherId,
       piece,
       lifecycle: current,
     } = await loadPieceContext({
@@ -402,15 +504,58 @@ export function createTeacherPieceService({
     }
 
     let next
+    let changedAt
+    let commitAction = action
 
     if (action === ACTIONS.REVOKE) {
+      changedAt = normalizeRequiredTimestamp(
+        now(),
+        'revokedAt',
+      )
       next = revokePieceLifecycleRecord(
         current,
-        normalizeRequiredTimestamp(
-          now(),
-          'revokedAt',
-        ),
+        changedAt,
       )
+    } else if (
+      action === ACTIONS.PLACE_IN_REPERTOIRE
+    ) {
+      if (
+        current.state ===
+        PIECE_ASSIGNMENT_STATE.REPERTOIRE
+      ) {
+        return current
+      }
+
+      changedAt = normalizeRequiredTimestamp(
+        now(),
+        'transitionedAt',
+      )
+
+      if (
+        current.state ===
+        PIECE_ASSIGNMENT_STATE.ACTIVE
+      ) {
+        const completed =
+          transitionPieceLifecycleRecord(
+            current,
+            PIECE_ASSIGNMENT_STATE.COMPLETED,
+            changedAt,
+          )
+        next = transitionPieceLifecycleRecord(
+          completed,
+          PIECE_ASSIGNMENT_STATE.REPERTOIRE,
+          changedAt,
+        )
+      } else {
+        next = transitionPieceLifecycleRecord(
+          current,
+          PIECE_ASSIGNMENT_STATE.REPERTOIRE,
+          changedAt,
+        )
+      }
+
+      commitAction =
+        ACTIONS.MOVE_TO_REPERTOIRE
     } else {
       const target =
         action === ACTIONS.COMPLETE
@@ -423,14 +568,15 @@ export function createTeacherPieceService({
         return current
       }
 
+      changedAt = normalizeRequiredTimestamp(
+        now(),
+        'transitionedAt',
+      )
       next =
         transitionPieceLifecycleRecord(
           current,
           target,
-          normalizeRequiredTimestamp(
-            now(),
-            'transitionedAt',
-          ),
+          changedAt,
         )
     }
 
@@ -439,6 +585,16 @@ export function createTeacherPieceService({
         .commitPieceLifecycleMutation({
           currentLifecycle: current,
           nextLifecycle: next,
+          teacherId,
+          action: commitAction,
+          changedAt,
+          historyEventId:
+            pieceHistoryEventId({
+              pieceAssignmentId:
+                piece.pieceAssignmentId,
+              action,
+              changedAt,
+            }),
         })
 
     if (
@@ -474,6 +630,7 @@ export function createTeacherPieceService({
 
   return Object.freeze({
     createPiece,
+    getPieceForTeacher,
     applyPieceAction,
   })
 }

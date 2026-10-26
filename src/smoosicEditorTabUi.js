@@ -6,6 +6,10 @@ import {
   createSmoosicWritebackOutcome,
   createSmoosicProductAuthority,
 } from './services/smoosicProductWriteback.js'
+import {
+  createSmoosicRoundTripWorkingCopy,
+  restoreSmoosicRoundTripCandidate,
+} from './services/smoosicOctaveClefRoundTrip.js'
 import { validateTeacherStructuralActionManifest } from './services/smoosicStructuralActionManifest.js'
 import { createSmoosicCeStructIdentityBridge } from './services/smoosicCeStructIdentityBridge.js'
 import { resolveCeStructRuntime } from './services/smoosicCeStructBridge.js'
@@ -28,6 +32,7 @@ const PANEL_ID = 'smoosic-panel'
 const FRAME_ID = 'smoosic-editor-frame'
 const STATUS_ID = 'smoosic-editor-host-status'
 const APPLY_ID = 'smoosic-apply-btn'
+const LOAD_CURRENT_ID = 'smoosic-load-current-btn'
 const EDITOR_URL = '/smoosic-editor/index.html'
 const CE_STRUCT_RUNTIME_SRC = '/st-omr-correction-engine-runtime/ce-struct-browser-runtime.js'
 const READY_TIMEOUT_MS = 60000
@@ -107,8 +112,16 @@ function stateFor(root) {
     state = {
       frame: null,
       frameReadyPromise: null,
+      independent: false,
+      nativeInput: null,
+      hostImportRevision: null,
+      hostImportContext: null,
+      parentImportContexts: new WeakSet(),
+      resetFrameOnEmpty: false,
       lastSourceXml: null,
       lastSourceName: 'seslitab-current.musicxml',
+      roundTripProvenance: null,
+      roundTripSourceRevision: null,
       observedSourceXml: null,
       observedSourceName: null,
       observedSourcePending: false,
@@ -163,6 +176,20 @@ function clearAuthorityState(state) {
   state.authoritySourceRevision = null
   state.pendingPublication = null
   state.publishingWritebackXml = null
+}
+
+function roundTripDomOptions(root) {
+  const windowScope = root?.defaultView
+  return {
+    DOMParserCtor: windowScope?.DOMParser ?? globalThis.DOMParser,
+    XMLSerializerCtor: windowScope?.XMLSerializer ?? globalThis.XMLSerializer,
+    cryptoScope: windowScope?.crypto?.subtle ? windowScope.crypto : globalThis.crypto,
+  }
+}
+
+function clearRoundTripState(state) {
+  state.roundTripProvenance = null
+  state.roundTripSourceRevision = null
 }
 
 function sourceTransitionPending(root) {
@@ -232,7 +259,7 @@ function createAuthorityForAcceptedSource(root) {
   const state = stateFor(root)
   const source = acceptedSource(root)
   const snapshot = getPackage3MeasureSnapshot()
-  if (!source || !Array.isArray(snapshot?.notes) || snapshot.notes.length === 0) {
+  if (state.independent || !source || !Array.isArray(snapshot?.notes) || snapshot.notes.length === 0) {
     throw new Error('SesliTab current nota verisi düzenleme için hazır değil.')
   }
 
@@ -515,6 +542,63 @@ function requestEditorMusicXml(root) {
   })
 }
 
+export async function verifySmoosicAssignmentMusicXml(
+  root = document,
+  musicXml,
+) {
+  if (
+    typeof musicXml !== 'string' ||
+    musicXml.trim() === '' ||
+    sourceTransitionPending(root)
+  ) {
+    return false
+  }
+
+  try {
+    const candidate =
+      await requestEditorMusicXml(root)
+    return (
+      typeof candidate?.musicXml ===
+        'string' &&
+      candidate.musicXml === musicXml &&
+      candidate.sourceRevision ===
+        stateFor(root).sourceRevision
+    )
+  } catch {
+    return false
+  }
+}
+
+function scheduleCommittedRevisionCorrectionOverlayResync(root, committedMusicXml) {
+  const state = stateFor(root)
+  const sourceRevision = state.sourceRevision
+
+  // A committed revision is a new overlay authority even when the editor already
+  // contains byte-identical MusicXML from the write-back candidate. Force the
+  // next editor sync to re-import the accepted source so Smoosic binds the new
+  // sourceRevision before any fresh Correction Engine overlay is requested.
+  state.lastSourceXml = null
+
+  const frame = state.frame
+  if (!frame?.isConnected || !frame.getAttribute('src')) return false
+
+  void clearSmoosicCorrectionOverlay(root)
+    .then((cleared) => {
+      if (
+        !cleared
+        || state.sourceRevision !== sourceRevision
+        || state.observedSourceXml !== committedMusicXml
+        || sourceTransitionPending(root)
+      ) {
+        return false
+      }
+      return enqueueEditorSync(root, { quiet: true })
+    })
+    .catch(() => false)
+
+  return true
+}
+
 function publishCommittedRevision(root, committed) {
   const state = stateFor(root)
   state.publishingWritebackXml = committed.musicXml
@@ -522,10 +606,10 @@ function publishCommittedRevision(root, committed) {
   try {
     applyRevalidatedMusicXmlRevision(committed.revision.content, committed.musicXml)
     state.observedSourceXml = committed.musicXml
-    state.lastSourceXml = committed.musicXml
     state.sourceRevision += 1
+    clearRoundTripState(state)
     cancelPendingCorrectionOverlay(state)
-    void clearSmoosicCorrectionOverlay(root)
+    scheduleCommittedRevisionCorrectionOverlayResync(root, committed.musicXml)
     state.authoritySourceXml = committed.musicXml
     state.authoritySourceName = state.observedSourceName || state.authoritySourceName
     state.authoritySourceRevision = state.sourceRevision
@@ -560,6 +644,11 @@ async function applyEditorWriteback(root) {
   const applyButton = root.getElementById?.(APPLY_ID)
   const startingSourceRevision = state.sourceRevision
 
+  if (state.independent) {
+    setHostStatus(root, 'Bağımsız dosya eski SesliTab eserine uygulanamaz. XML Kaydet ile kaydedebilirsiniz.', 'info')
+    return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
+  }
+
   if (sourceTransitionPending(root)) {
     setHostStatus(root, 'Yeni eser hazırlanırken düzenleme uygulanamaz.', 'error')
     return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
@@ -574,6 +663,10 @@ async function applyEditorWriteback(root) {
     }
   }
 
+  if (!editorHasCurrentImport(root)) {
+    setHostStatus(root, 'SesliTab eseri editöre aktarılmadan düzenleme uygulanamaz.', 'info')
+    return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
+  }
   if (state.pendingWriteback) return false
   if (applyButton) applyButton.disabled = true
 
@@ -585,6 +678,39 @@ async function applyEditorWriteback(root) {
     if (typeof candidate.musicXml !== 'string' || !candidate.musicXml.trim()) {
       setHostStatus(root, candidate.error || 'Editörden MusicXML alınamadı.', 'error')
       return false
+    }
+
+    let canonicalCandidateMusicXml = candidate.musicXml
+    if (state.roundTripProvenance) {
+      try {
+        const restored = await restoreSmoosicRoundTripCandidate({
+          sourceMusicXml: state.authoritySourceXml,
+          candidateMusicXml: canonicalCandidateMusicXml,
+          provenance: state.roundTripProvenance,
+          sourceRevision: startingSourceRevision,
+          ...roundTripDomOptions(root),
+        })
+        canonicalCandidateMusicXml = restored.musicXml
+      } catch {
+        const result = Object.freeze({
+          status: state.sourceRevision === startingSourceRevision
+            ? SMOOSIC_WRITEBACK_STATUS.UNSUPPORTED_STRUCTURE
+            : SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE,
+          authority,
+        })
+        setHostStatus(
+          root,
+          result.status === SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE
+            ? structuralFailureMessage(result.status)
+            : 'Editörün oktav/anahtar dönüşüm kanıtı doğrulanamadı; mevcut SesliTab sürümü korunuyor.',
+          'error',
+        )
+        return result
+      }
+    }
+    if (state.sourceRevision !== startingSourceRevision || sourceTransitionPending(root)) {
+      setHostStatus(root, structuralFailureMessage(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE), 'error')
+      return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
     }
 
     const proof = candidate.paddingRestProvenance
@@ -628,9 +754,12 @@ async function applyEditorWriteback(root) {
       }
     }
 
+    if (state.independent || state.sourceRevision !== startingSourceRevision || sourceTransitionPending(root)) {
+      return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.STALE_SOURCE)
+    }
     const result = proofMatchesSource ? applySmoosicProductWriteback({
       authority,
-      musicXml: candidate.musicXml,
+      musicXml: canonicalCandidateMusicXml,
       paddingRestProvenance: proof,
       sourceRevision: startingSourceRevision,
       revisionId: secureId(root, 'smoosic-revision'),
@@ -702,7 +831,7 @@ async function applyEditorWriteback(root) {
     }
     return createSmoosicWritebackOutcome(SMOOSIC_WRITEBACK_STATUS.CONFLICT)
   } finally {
-    if (applyButton) applyButton.disabled = false
+    updateEditorSessionControls(root)
   }
 }
 
@@ -763,9 +892,10 @@ async function waitForEditorReady(frame) {
   throw new Error('Nota editörü zamanında hazır olmadı.')
 }
 
-async function waitForMusicXmlLoad(frame, expectedFileName) {
+async function waitForMusicXmlLoad(frame, expectedFileName, isCurrent = () => true) {
   const deadline = Date.now() + LOAD_TIMEOUT_MS
   while (Date.now() < deadline) {
+    if (!isCurrent()) return false
     const status = iframeStatus(frame)
     if (frame.contentDocument?.getElementById('poc-status')?.getAttribute('data-loaded-file-name') === expectedFileName) return status
     if (status.startsWith('XML hatası:') || status.startsWith('Hata:') || status.startsWith('Başlatma hatası:')) {
@@ -792,10 +922,10 @@ function stampIframeImportProvenance(input, sourceRevision) {
   input.dataset.seslitabImportRevision = String(sourceRevision)
 }
 
-function createIframeImportEvent(frame) {
+function createIframeImportEvent(frame, context) {
   const win = frame.contentWindow
-  if (!win?.Event) throw new Error('Editör olay API’si kullanılamıyor.')
-  return new win.Event('change', { bubbles: true })
+  if (!win?.CustomEvent) throw new Error('Editör olay API’si kullanılamıyor.')
+  return new win.CustomEvent('change', { bubbles: true, detail: context })
 }
 
 function assignInputFile(frame, input, file) {
@@ -822,11 +952,85 @@ function resetIframeStatusForTransfer(frame, fileName) {
   }
 }
 
-async function loadSourceIntoEditor(root, frame) {
+function editorHasCurrentImport(root) {
   const state = stateFor(root)
+  const source = acceptedSource(root)
+  return Boolean(!state.independent && source
+    && state.lastSourceXml === source.xml && state.lastSourceName === source.fileName
+    && state.roundTripSourceRevision === state.sourceRevision)
+}
+
+function updateEditorSessionControls(root) {
+  const state = stateFor(root)
+  const source = acceptedSource(root)
+  const apply = root.getElementById?.(APPLY_ID)
+  if (apply) apply.disabled = !editorHasCurrentImport(root) || sourceTransitionPending(root)
+  const load = root.getElementById?.(LOAD_CURRENT_ID)
+  if (load) load.hidden = !state.independent || !source || sourceTransitionPending(root)
+}
+
+function bindNativeEditorInput(root, frame) {
+  const state = stateFor(root)
+  const input = frame.contentDocument?.getElementById('mobile-xml-input')
+  if (!input || input === state.nativeInput) return
+  state.nativeInput = input
+  frame.contentDocument.addEventListener?.('change', (event) => {
+    // Only the currently dispatched, revision-stamped parent transfer can
+    // retain canonical binding. User/automated picker events may be synthetic.
+    const selectedInput = event.target
+    if (selectedInput?.type !== 'file' || !selectedInput.files?.length) return
+    // A late compatibility replay belongs to its old transfer; it must not
+    // detach a newer session or grant that old transfer current authority.
+    if (!event.isTrusted && selectedInput === input
+      && state.parentImportContexts.has(event.detail)
+      && event.detail !== state.hostImportContext) return
+    const parentTransfer = !event.isTrusted && selectedInput === input
+      && state.hostImportRevision !== null
+      && state.hostImportContext !== null && event.detail === state.hostImportContext
+      && input.dataset?.seslitabImportContract === 'SESLITAB_SMOOSIC_IMPORT_V1'
+      && input.dataset?.seslitabImportVersion === '1'
+      && input.dataset?.seslitabImportRevision === String(state.hostImportRevision)
+    if (parentTransfer) return
+    state.independent = true
+    state.sourceRevision += 1
+    cancelPendingWriteback(state)
+    cancelPendingCorrectionOverlay(state)
+    clearAuthorityState(state)
+    clearRoundTripState(state)
+    updateEditorSessionControls(root)
+    setHostStatus(root, 'Bağımsız XML oturumu. XML Kaydet ile çalışmanızı kaydedebilirsiniz.', 'info')
+  }, true)
+}
+
+async function startEditorFrame(root, frame) {
+  const state = stateFor(root)
+  state.nativeInput = null
+  state.frameReadyPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Nota editörü sayfası yüklenemedi.')), READY_TIMEOUT_MS)
+    frame.addEventListener('load', () => {
+      clearTimeout(timeout)
+      bindNativeEditorInput(root, frame)
+      resolve(true)
+    }, { once: true })
+  })
+  frame.src = EDITOR_URL
+  await state.frameReadyPromise
+  await waitForEditorReady(frame)
+}
+
+async function loadSourceIntoEditor(root, frame, { quiet = false } = {}) {
+  const state = stateFor(root)
+  bindNativeEditorInput(root, frame)
+  updateEditorSessionControls(root)
+
+  if (state.independent) {
+    frame.hidden = false
+    setHostStatus(root, 'Bağımsız nota oturumu. XML Aç / XML Kaydet kullanılabilir.', 'info')
+    return false
+  }
 
   if (sourceTransitionPending(root)) {
-    frame.hidden = true
+    frame.hidden = false
     setHostStatus(root, 'Yeni eser hazırlanıyor…', 'loading')
     return false
   }
@@ -835,15 +1039,27 @@ async function loadSourceIntoEditor(root, frame) {
   if (!source) {
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
-    frame.hidden = true
-    setHostStatus(root, 'Önce PDF veya MusicXML açın.', 'info')
+    clearRoundTripState(state)
+    if (state.resetFrameOnEmpty) {
+      state.resetFrameOnEmpty = false
+      await startEditorFrame(root, frame)
+      bindNativeEditorInput(root, frame)
+    }
+    state.independent = true
+    frame.hidden = false
+    updateEditorSessionControls(root)
+    setHostStatus(root, 'Bağımsız nota oturumu. XML Aç / XML Kaydet kullanılabilir.', 'info')
     return false
   }
 
   const { xml, fileName } = source
-  if (state.lastSourceXml === xml && state.lastSourceName === fileName) {
+  if (
+    state.lastSourceXml === xml
+    && state.lastSourceName === fileName
+    && state.roundTripSourceRevision === state.sourceRevision
+  ) {
     frame.hidden = false
-    setHostStatus(root, '', 'ready')
+    if (!quiet) setHostStatus(root, '', 'ready')
     void syncSmoosicCorrectionOverlays(
       root,
       frame,
@@ -854,19 +1070,40 @@ async function loadSourceIntoEditor(root, frame) {
   }
 
   frame.hidden = false
+  const targetRevision = state.sourceRevision
   await waitForEditorReady(frame)
   const doc = frame.contentDocument
   const input = doc?.getElementById('mobile-xml-input')
   if (!input) throw new Error('Nota editörünün MusicXML giriş alanı bulunamadı.')
 
-  const targetRevision = state.sourceRevision
-  const file = makeIframeFile(frame, xml, fileName)
+  const workingCopy = await createSmoosicRoundTripWorkingCopy({
+    musicXml: xml,
+    sourceRevision: targetRevision,
+    ...roundTripDomOptions(root),
+  })
+  if (state.independent || targetRevision !== state.sourceRevision || sourceTransitionPending(root)) return false
+  const currentSource = acceptedSource(root)
+  if (currentSource?.xml !== xml || currentSource?.fileName !== fileName) return false
+  const file = makeIframeFile(frame, workingCopy.musicXml, fileName)
   stampIframeImportProvenance(input, targetRevision)
   assignInputFile(frame, input, file)
   resetIframeStatusForTransfer(frame, fileName)
-  setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
-  input.dispatchEvent(createIframeImportEvent(frame))
-  await waitForMusicXmlLoad(frame, fileName)
+  if (!quiet) {
+    setHostStatus(root, 'Eser Nota Düzenle alanına aktarılıyor…', 'loading')
+  }
+  const importContext = Object.freeze({ sourceRevision: targetRevision })
+  state.hostImportRevision = targetRevision
+  state.hostImportContext = importContext
+  state.parentImportContexts.add(importContext)
+  try {
+    input.dispatchEvent(createIframeImportEvent(frame, importContext))
+    await waitForMusicXmlLoad(frame, fileName, () => !state.independent && state.sourceRevision === targetRevision)
+  } finally {
+    if (state.hostImportContext === importContext) {
+      state.hostImportRevision = null
+      state.hostImportContext = null
+    }
+  }
 
   // A newer PDF/MusicXML may have completed while this import was running.
   // Never mark the older transfer as current in that case; the queued sync
@@ -883,7 +1120,10 @@ async function loadSourceIntoEditor(root, frame) {
 
   state.lastSourceXml = xml
   state.lastSourceName = fileName
-  setHostStatus(root, '', 'ready')
+  state.roundTripProvenance = workingCopy.provenance
+  state.roundTripSourceRevision = targetRevision
+  updateEditorSessionControls(root)
+  if (!quiet) setHostStatus(root, '', 'ready')
   void syncSmoosicCorrectionOverlays(
     root,
     frame,
@@ -908,7 +1148,7 @@ function ensureFrame(root, panel) {
   return frame
 }
 
-function enqueueEditorSync(root) {
+function enqueueEditorSync(root, { quiet = false } = {}) {
   const state = stateFor(root)
   state.syncPromise = state.syncPromise
     .catch(() => false)
@@ -918,7 +1158,7 @@ function enqueueEditorSync(root) {
       try {
         if (state.frameReadyPromise) await state.frameReadyPromise
         await waitForEditorReady(frame)
-        return await loadSourceIntoEditor(root, frame)
+        return await loadSourceIntoEditor(root, frame, { quiet })
       } catch (error) {
         console.error(error)
         setHostStatus(root, error?.message || 'Nota editörü güncellenemedi.', 'error')
@@ -943,6 +1183,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
       // Invalidate any in-flight transfer, but keep the last accepted source.
       // If the replacement fails, that accepted source remains authoritative.
       state.sourceRevision += 1
+      clearRoundTripState(state)
       cancelPendingWriteback(state)
       cancelPendingCorrectionOverlay(state)
       if (state.frame?.isConnected && state.frame.getAttribute('src')) {
@@ -974,12 +1215,14 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
     // A reset, TAB conversion, or other explicit non-MusicXML result clears
     // the accepted source. This cannot be confused with a failed replacement,
     // because failed replacement leaves the old valid XML in the result DOM.
+    if (!state.independent) state.resetFrameOnEmpty = true
     state.observedSourceXml = null
     state.observedSourceName = null
     state.sourceRevision += 1
     cancelPendingWriteback(state)
     cancelPendingCorrectionOverlay(state)
     clearAuthorityState(state)
+    clearRoundTripState(state)
     state.lastSourceXml = null
     state.lastSourceName = 'seslitab-current.musicxml'
     if (state.frame?.isConnected && state.frame.getAttribute('src')) {
@@ -1035,6 +1278,7 @@ function refreshObservedSource(root, { xmlChanged = false, allowInitial = false 
   state.observedSourceXml = xml
   state.observedSourceName = fileName
   state.sourceRevision += 1
+  clearRoundTripState(state)
   cancelPendingWriteback(state)
   cancelPendingCorrectionOverlay(state)
   state.lastSourceXml = null
@@ -1085,14 +1329,7 @@ async function activateEditor(root) {
   try {
     if (!frame.getAttribute('src')) {
       setHostStatus(root, 'Nota editörü yükleniyor…', 'loading')
-      state.frameReadyPromise = new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Nota editörü sayfası yüklenemedi.')), READY_TIMEOUT_MS)
-        frame.addEventListener('load', () => {
-          clearTimeout(timeout)
-          resolve(true)
-        }, { once: true })
-      })
-      frame.src = EDITOR_URL
+      await startEditorFrame(root, frame)
     }
     await enqueueEditorSync(root)
     return true
@@ -1145,6 +1382,7 @@ export function ensureSmoosicEditorTab(root = document) {
   const applyButton = root.createElement('button')
   applyButton.id = APPLY_ID
   applyButton.type = 'button'
+  applyButton.disabled = true
   applyButton.className = 'smoosic-apply-button'
   applyButton.textContent = "Düzenlemeyi SesliTab'a Uygula"
   applyButton.setAttribute('aria-describedby', STATUS_ID)
@@ -1155,6 +1393,22 @@ export function ensureSmoosicEditorTab(root = document) {
       .then(() => applyEditorWriteback(root))
   })
   panel.appendChild(applyButton)
+
+  const loadCurrent = root.createElement('button')
+  loadCurrent.id = LOAD_CURRENT_ID
+  loadCurrent.type = 'button'
+  loadCurrent.textContent = 'SesliTab eserini editöre yükle'
+  loadCurrent.hidden = true
+  loadCurrent.addEventListener('click', () => {
+    const state = stateFor(root)
+    if (!acceptedSource(root) || sourceTransitionPending(root)) return
+    if (root.defaultView?.confirm?.('Bağımsız çalışmanız değiştirilecek. Önce XML Kaydet ile kaydedin. SesliTab eserini yüklemek istiyor musunuz?') !== true) return
+    state.independent = false
+    state.lastSourceXml = null
+    state.lastSourceName = 'seslitab-current.musicxml'
+    void enqueueEditorSync(root)
+  })
+  panel.appendChild(loadCurrent)
 
   panelParent.appendChild(panel)
   button.addEventListener('click', () => { void activateEditor(root) })

@@ -50,7 +50,7 @@ test('Package 4C projects sequential canonical notes with exact original NoteObj
   assert.equal(result.measureCount, 1)
   assert.equal(result.measures[0].events[0].note, first)
   assert.equal(result.measures[0].events[1].note, second)
-  assert.deepEqual(result.measures[0].events.map((event) => event.position?.fret), [2, 3])
+  assert.deepEqual(result.measures[0].events.map((event) => event.position?.fret), [0, 1])
 })
 
 test('Package 4C duplicate visible measure numbers remain distinct through canonical measureKey', () => {
@@ -88,7 +88,7 @@ test('Package 4C preserves rests without inventing a fret', () => {
 test('Package 4C unplayable pitch aborts the whole projection with no partial TAB', () => {
   const notes = [
     makeCanonicalNote({ step: 'E', octave: 4, startBeat: 0 }),
-    makeCanonicalNote({ step: 'E', octave: 2, startBeat: 1 }),
+    makeCanonicalNote({ step: 'E', octave: 1, startBeat: 1 }),
   ]
 
   const result = projectCanonicalNotesToBasicGuitarTab(notes)

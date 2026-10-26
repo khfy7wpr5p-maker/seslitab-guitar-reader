@@ -1,8 +1,9 @@
+import { runBrowserFixture } from './support/browserFixture.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import {
@@ -98,18 +99,7 @@ function findChrome() {
 }
 
 function runBrowser(chrome, viewport) {
-  const result = spawnSync(chrome, [
-    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-    '--allow-file-access-from-files', '--virtual-time-budget=7000', `--window-size=${viewport}`,
-    '--dump-dom', pathToFileURL(fixturePath).href,
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    timeout: 30000,
-    maxBuffer: 8 * 1024 * 1024,
-  })
-  assert.equal(result.status, 0, result.error?.message || result.stderr)
-  return result.stdout || ''
+  return runBrowserFixture(chrome, fixturePath, viewport)
 }
 
 test('S08 keeps missing exact quality evidence UNKNOWN and never invents no-issue state', () => {
@@ -248,7 +238,7 @@ test('S08 implementation remains tested while S14 retires its production rail wi
   assert.match(source, /initSmoosicEditorTab\(document\)/)
 })
 
-test('S08 real Chrome proof covers exact marker -> inspector flow, accessibility, stale clearing and 390px layout', (t) => {
+test('S08 real Chrome proof covers exact marker -> inspector flow, accessibility, stale clearing and 390px layout', async (t) => {
   const chrome = findChrome()
   if (!chrome) {
     t.skip('Chrome/Chromium not available in this environment')
@@ -256,7 +246,7 @@ test('S08 real Chrome proof covers exact marker -> inspector flow, accessibility
   }
 
   for (const viewport of ['1280,900', '390,844']) {
-    const html = runBrowser(chrome, viewport)
+    const html = await runBrowser(chrome, viewport)
     assert.match(html, /data-stage-s08-exact-pass="true"/)
     assert.match(html, /data-stage-s08-accessible-pass="true"/)
     assert.match(html, /data-stage-s08-inspector-pass="true"/)

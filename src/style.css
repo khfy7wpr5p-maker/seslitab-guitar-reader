@@ -88,6 +88,26 @@ body {
 .tab-textarea:focus { outline: none; border-color: var(--primary-500); background: white; }
 .tab-actions { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
 
+/* Guitar TAB fretboard editor */
+.guitar-tab-editor-surface { overflow-x: auto; padding: 0.25rem 0 0.75rem; }
+.guitar-tab-fretboard-header, .guitar-tab-string-row {
+  display: grid;
+  grid-template-columns: 7.5rem repeat(21, minmax(2rem, 1fr));
+  min-width: 820px;
+  align-items: stretch;
+}
+.guitar-tab-fretboard-header { color: var(--neutral-500); font-size: 0.75rem; font-weight: 700; text-align: center; }
+.guitar-tab-fretboard-string-heading, .guitar-tab-fret-number { padding: 0.35rem 0; }
+.guitar-tab-string-row { min-height: 2.5rem; border-top: 1px solid var(--neutral-300); position: relative; }
+.guitar-tab-string-row::after { content: ''; position: absolute; z-index: 0; left: 7.5rem; right: 0; top: 50%; height: 1px; background: var(--neutral-300); pointer-events: none; }
+.guitar-tab-fretboard-string-label { position: relative; z-index: 1; display: flex; align-items: center; padding: 0.35rem 0.5rem; color: var(--neutral-700); font-size: 0.8rem; font-weight: 650; white-space: nowrap; }
+.guitar-tab-fret-position { position: relative; z-index: 1; min-width: 2rem; min-height: 2.4rem; border: 0; border-right: 1px solid var(--neutral-200); background: transparent; color: var(--neutral-700); cursor: pointer; font: inherit; }
+.guitar-tab-fret-position:disabled { cursor: not-allowed; opacity: 0.35; }
+.guitar-tab-fret-position:hover, .guitar-tab-fret-position:focus-visible { outline: 2px solid var(--primary-500); outline-offset: -2px; background: var(--primary-50); }
+.guitar-tab-fret-position.assigned { align-self: center; justify-self: center; width: 1.65rem; height: 1.65rem; min-height: 1.65rem; border: 0; border-radius: 50%; background: var(--primary-600); color: white; font-size: 0.75rem; font-weight: 700; }
+.guitar-tab-string-row.active .guitar-tab-fretboard-string-label { color: var(--primary-700); }
+.guitar-tab-string-row.active:not(.assigned) .guitar-tab-fret-position:hover { background: var(--primary-100); }
+
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.625rem 1.5rem; border: none; border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all var(--transition); font-family: inherit; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -158,6 +178,7 @@ body {
 
 /* OMR project download */
 .omr-download-area { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+.omr-download-area[hidden], .omr-download-area [hidden], .smoosic-editor-frame[hidden] { display: none !important; }
 .omr-download-status { font-size: 0.8125rem; color: var(--neutral-600); }
 
 /* Playback */
@@ -181,3 +202,75 @@ body {
   .tab-actions { flex-direction: column; }
   .tab-actions .btn { width: 100%; }
 }
+
+/* SES-143: keep legacy modules mounted for compatibility while removing them
+   from the normal teacher composition and accessibility tree. */
+.teacher-surface-hidden {
+  display: none !important;
+}
+
+
+/* SES-141 — Teacher Assignment Composer */
+.teacher-assignment-composer {
+  display: grid;
+  gap: 1rem;
+}
+.teacher-assignment-composer fieldset {
+  min-width: 0;
+  padding: 0.875rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-md);
+}
+.teacher-assignment-composer legend {
+  padding: 0 0.375rem;
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+.teacher-assignment-composer label {
+  display: grid;
+  gap: 0.375rem;
+  font-weight: 500;
+  color: var(--neutral-700);
+}
+.teacher-assignment-composer input[type="text"],
+.teacher-assignment-composer input[type="file"],
+.teacher-assignment-composer select,
+.teacher-assignment-composer textarea {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--neutral-800);
+  font: inherit;
+}
+.teacher-assignment-composer__roster {
+  display: grid;
+  gap: 0.5rem;
+}
+.teacher-assignment-composer__roster label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.teacher-assignment-composer__selected-chords {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+.teacher-assignment-composer__status,
+.teacher-assignment-composer__score-status {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--neutral-600);
+}
+.teacher-assignment-composer__chord-link {
+  width: fit-content;
+  font-weight: 600;
+}
+
+/* Persistent teacher controls are outside score/reset visibility. */
+.teacher-tools-navigation { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.teacher-tool-btn { padding: .75rem 1rem; min-height: 44px; border: 1px solid var(--neutral-200); border-radius: var(--radius-sm); background: white; color: var(--neutral-700); font: inherit; cursor: pointer; }
+.teacher-tool-btn.active { background: var(--primary-500); color: white; }
+.teacher-tool-btn:focus-visible { outline: 3px solid var(--primary-500); outline-offset: 3px; }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 
 import {
@@ -12,6 +13,10 @@ import {
   createInitialPieceLifecycleRecord,
   isPieceAssignmentLifecycleRecord,
 } from '../../../src/services/pieceAssignmentLifecycleRecord.js'
+import {
+  buildPieceChildCascadeMutation,
+  PIECE_LIFECYCLE_ACTION,
+} from '../../../src/services/pieceLifecycleCascade.js'
 import {
   createDeliveryRecord,
   isDeliveryRecord,
@@ -47,6 +52,7 @@ import {
 import {
   assertStrictInputObject,
   normalizeRequiredId,
+  normalizeRequiredTimestamp,
 } from '../../../src/services/teacherDeliveryContractValidation.js'
 import {
   canonicalPackageJson,
@@ -77,6 +83,46 @@ function pairDocumentId(teacherId, studentId) {
     JSON.stringify([teacher, student]),
     'utf8',
   ).toString('base64url')
+}
+
+function derivedHistoryEventId(...parts) {
+  return `piece-${createHash('sha256')
+    .update(JSON.stringify(parts), 'utf8')
+    .digest('hex')}`
+}
+
+function hasOwn(input, key) {
+  return Object.prototype.hasOwnProperty.call(input, key)
+}
+
+function pieceChildren(piece) {
+  const rows = []
+  const seen = new Set()
+  const scoreId = piece.contentRefs.scoreAssignmentId
+
+  if (scoreId !== null) {
+    if (seen.has(scoreId)) {
+      throw new Error('Piece child membership conflict.')
+    }
+    seen.add(scoreId)
+    rows.push(Object.freeze({
+      assignmentId: scoreId,
+      expectedPracticeType: 'SCORE',
+    }))
+  }
+
+  for (const assignmentId of piece.contentRefs.chordAssignmentIds) {
+    if (seen.has(assignmentId)) {
+      throw new Error('Piece child membership conflict.')
+    }
+    seen.add(assignmentId)
+    rows.push(Object.freeze({
+      assignmentId,
+      expectedPracticeType: 'CHORD_BOARD',
+    }))
+  }
+
+  return Object.freeze(rows)
 }
 
 function restoreIdentity(raw) {
@@ -130,8 +176,17 @@ function restoreDelivery(raw) {
   return record
 }
 
-
-function restorePieceAssignment(raw) {
+export function restorePieceAssignment(raw) {
+  // Persistence-only query projection; never part of immutable Piece authority.
+  const { studentListEligible, ...pieceSnapshot } = raw
+  if (
+    hasOwn(raw, 'studentListEligible') &&
+    typeof studentListEligible !== 'boolean'
+  ) {
+    throw new TypeError(
+      'invalid PieceAssignment persistence snapshot.',
+    )
+  }
   const restored = createPieceAssignment({
     pieceAssignmentId:
       raw.pieceAssignmentId,
@@ -144,7 +199,7 @@ function restorePieceAssignment(raw) {
     contentRefs: raw.contentRefs,
   })
 
-  if (!same(restored, raw)) {
+  if (!same(restored, pieceSnapshot)) {
     throw new TypeError(
       'invalid PieceAssignment persistence snapshot.',
     )
@@ -153,7 +208,7 @@ function restorePieceAssignment(raw) {
   return restored
 }
 
-function restorePieceLifecycle(
+export function restorePieceLifecycle(
   raw,
   piece,
 ) {
@@ -202,7 +257,8 @@ function assertFirestore(firestore) {
     !firestore ||
     typeof firestore.collection !== 'function' ||
     typeof firestore.runTransaction !== 'function' ||
-    typeof firestore.batch !== 'function'
+    typeof firestore.batch !== 'function' ||
+    typeof firestore.getAll !== 'function'
   ) {
     throw new TypeError(
       'firestore must provide Admin Firestore methods.',
@@ -253,8 +309,13 @@ function validatePreparedRow(row) {
 
 export function createFirestoreSecureDeliveryStore({
   firestore,
+  env = {},
 } = {}) {
   const db = assertFirestore(firestore)
+  // Enable only after all existing Pieces have a verified projection and index.
+  const indexedStudentPieceReads =
+    String(env.STUDENT_PIECE_INDEXED_READS_ENABLED ?? '')
+      .trim().toLowerCase() === 'true'
 
   const collections = Object.freeze({
     identities: db.collection(
@@ -288,6 +349,28 @@ export function createFirestoreSecureDeliveryStore({
       'pieceAssignmentLifecycle',
     ),
   })
+
+  async function getAllSnapshotsByPath(
+    refs,
+    incompleteMessage,
+  ) {
+    const refsByPath = new Map()
+    for (const ref of refs) {
+      refsByPath.set(ref.path, ref)
+    }
+    const uniqueRefs = [...refsByPath.values()]
+    const snapshots =
+      await db.getAll(...uniqueRefs)
+    if (snapshots.length !== uniqueRefs.length) {
+      throw new Error(incompleteMessage)
+    }
+    return new Map(
+      uniqueRefs.map((ref, index) => [
+        ref.path,
+        snapshots[index],
+      ]),
+    )
+  }
 
   async function getPreparedAssignment(
     assignmentId,
@@ -357,7 +440,6 @@ export function createFirestoreSecureDeliveryStore({
       ? restoreDelivery(snap.data())
       : null
   }
-
 
   async function getPieceAssignment(
     pieceAssignmentId,
@@ -466,7 +548,10 @@ export function createFirestoreSecureDeliveryStore({
           return stored
         }
 
-        tx.create(ref, plain(piece))
+        tx.create(ref, {
+          ...plain(piece),
+          studentListEligible: true,
+        })
         return piece
       },
     )
@@ -480,6 +565,10 @@ export function createFirestoreSecureDeliveryStore({
       [
         'currentLifecycle',
         'nextLifecycle',
+        'teacherId',
+        'action',
+        'changedAt',
+        'historyEventId',
       ],
       'PieceLifecycleMutation',
     )
@@ -519,6 +608,49 @@ export function createFirestoreSecureDeliveryStore({
       )
     }
 
+    const cascadeFields = [
+      'teacherId',
+      'action',
+      'changedAt',
+      'historyEventId',
+    ]
+    const cascadeRequested =
+      cascadeFields.some((field) =>
+        hasOwn(input, field),
+      )
+
+    let teacherId = null
+    let changedAt = null
+    let historyEventId = null
+    let childDescriptors = []
+    let pieceHistoryRef = null
+
+    if (cascadeRequested) {
+      if (
+        !cascadeFields.every((field) =>
+          hasOwn(input, field),
+        ) ||
+        !Object.values(PIECE_LIFECYCLE_ACTION)
+          .includes(input.action)
+      ) {
+        throw new TypeError(
+          'Piece cascade mutation requires teacherId, action, changedAt and historyEventId.',
+        )
+      }
+      teacherId = normalizeRequiredId(
+        input.teacherId,
+        'teacherId',
+      )
+      changedAt = normalizeRequiredTimestamp(
+        input.changedAt,
+        'changedAt',
+      )
+      historyEventId = normalizeRequiredId(
+        input.historyEventId,
+        'historyEventId',
+      )
+    }
+
     const pieceRef =
       collections.pieces.doc(
         documentId(id),
@@ -528,12 +660,77 @@ export function createFirestoreSecureDeliveryStore({
         documentId(id),
       )
 
+    if (cascadeRequested) {
+      pieceHistoryRef = lifecycleRef
+        .collection('history')
+        .doc(documentId(historyEventId))
+      childDescriptors =
+        pieceChildren(currentLifecycle.piece)
+          .map((child) => {
+            const key = documentId(
+              child.assignmentId,
+            )
+            const childLifecycleRef =
+              collections.lifecycle.doc(key)
+            const childHistoryEventId =
+              derivedHistoryEventId(
+                historyEventId,
+                child.assignmentId,
+              )
+            return Object.freeze({
+              ...child,
+              preparedRef:
+                collections.prepared.doc(key),
+              lifecycleRef: childLifecycleRef,
+              deliveryRef:
+                collections.deliveries.doc(key),
+              historyEventId:
+                childHistoryEventId,
+              historyRef:
+                childLifecycleRef
+                  .collection('history')
+                  .doc(
+                    documentId(
+                      childHistoryEventId,
+                    ),
+                  ),
+            })
+          })
+    }
+
     return db.runTransaction(
       async (tx) => {
         const pieceSnap =
           await tx.get(pieceRef)
         const lifecycleSnap =
           await tx.get(lifecycleRef)
+
+        let pieceHistorySnap = null
+        const childSnapshots = []
+        if (cascadeRequested) {
+          pieceHistorySnap =
+            await tx.get(pieceHistoryRef)
+          for (const child of childDescriptors) {
+            childSnapshots.push({
+              prepared:
+                await tx.get(
+                  child.preparedRef,
+                ),
+              lifecycle:
+                await tx.get(
+                  child.lifecycleRef,
+                ),
+              delivery:
+                await tx.get(
+                  child.deliveryRef,
+                ),
+              history:
+                await tx.get(
+                  child.historyRef,
+                ),
+            })
+          }
+        }
 
         if (!pieceSnap.exists) {
           throw new Error(
@@ -591,20 +788,156 @@ export function createFirestoreSecureDeliveryStore({
           )
         }
 
-        if (
-          same(
-            currentLifecycle,
-            nextLifecycle,
+        if (!cascadeRequested) {
+          if (
+            same(
+              currentLifecycle,
+              nextLifecycle,
+            )
+          ) {
+            return storedLifecycle ??
+              currentLifecycle
+          }
+
+          if (
+            pieceSnap.data().studentListEligible !==
+              (nextLifecycle.revokedAt === null)
+          ) {
+            tx.update(pieceRef, {
+              studentListEligible:
+                nextLifecycle.revokedAt === null,
+            })
+          }
+          tx.set(
+            lifecycleRef,
+            plain(nextLifecycle),
           )
-        ) {
-          return storedLifecycle ??
-            currentLifecycle
+          return nextLifecycle
         }
 
+        if (pieceHistorySnap.exists) {
+          throw new Error(
+            'Piece lifecycle history event conflict.',
+          )
+        }
+
+        const childMutations = []
+        for (
+          let index = 0;
+          index < childDescriptors.length;
+          index += 1
+        ) {
+          const child = childDescriptors[index]
+          const snaps = childSnapshots[index]
+          const prepared = snaps.prepared.exists
+            ? restorePrepared(
+                snaps.prepared.data(),
+              )
+            : null
+          const childLifecycle =
+            snaps.lifecycle.exists && prepared !== null
+              ? restoreAssignmentLifecycleRecordV1(
+                  snaps.lifecycle.data(),
+                  prepared.assignment,
+                )
+              : null
+          const delivery = snaps.delivery.exists
+            ? restoreDelivery(
+                snaps.delivery.data(),
+              )
+            : null
+
+          childMutations.push(
+            Object.freeze({
+              child,
+              historyExists:
+                snaps.history.exists,
+              mutation:
+                buildPieceChildCascadeMutation({
+                  prepared,
+                  delivery,
+                  lifecycle: childLifecycle,
+                  assignmentId:
+                    child.assignmentId,
+                  expectedPracticeType:
+                    child.expectedPracticeType,
+                  teacherId,
+                  studentId:
+                    storedPiece.studentId,
+                  action: input.action,
+                  changedAt,
+                }),
+            }),
+          )
+        }
+
+        for (const row of childMutations) {
+          if (
+            row.mutation.changed &&
+            row.historyExists
+          ) {
+            throw new Error(
+              'lifecycle history event conflict.',
+            )
+          }
+        }
+
+        if (
+          pieceSnap.data().studentListEligible !==
+            (nextLifecycle.revokedAt === null)
+        ) {
+          tx.update(pieceRef, {
+            studentListEligible:
+              nextLifecycle.revokedAt === null,
+          })
+        }
         tx.set(
           lifecycleRef,
           plain(nextLifecycle),
         )
+        tx.create(pieceHistoryRef, {
+          schemaVersion: 1,
+          teacherId,
+          historyEventId,
+          action: input.action,
+          changedAt,
+          lifecycle: plain(nextLifecycle),
+          childAssignmentIds:
+            childMutations.map(
+              (row) =>
+                row.child.assignmentId,
+            ),
+        })
+
+        for (const row of childMutations) {
+          if (!row.mutation.changed) continue
+          tx.set(
+            row.child.lifecycleRef,
+            plain(
+              row.mutation.nextLifecycle,
+            ),
+          )
+          tx.set(
+            row.child.deliveryRef,
+            plain(
+              row.mutation.deliveryAfter,
+            ),
+          )
+          tx.create(row.child.historyRef, {
+            schemaVersion: 1,
+            teacherId,
+            historyEventId:
+              row.child.historyEventId,
+            lifecycle:
+              plain(
+                row.mutation.nextLifecycle,
+              ),
+            deliveryRevokedAt:
+              row.mutation.deliveryAfter
+                .revokedAt,
+          })
+        }
+
         return nextLifecycle
       },
     )
@@ -1172,6 +1505,269 @@ export function createFirestoreSecureDeliveryStore({
     )
   }
 
+  async function listActiveAssignmentContextsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+    const querySnap =
+      await collections.deliveries
+        .where('studentId', '==', id)
+        .where('revokedAt', '==', null)
+        .get()
+    const candidates = []
+    const seen = new Set()
+
+    for (const item of querySnap.docs) {
+      const delivery = restoreDelivery(
+        item.data(),
+      )
+      if (
+        delivery.studentId !== id ||
+        delivery.revokedAt !== null
+      ) {
+        throw new Error(
+          'student delivery list authority mismatch.',
+        )
+      }
+      if (seen.has(delivery.assignmentId)) {
+        throw new Error(
+          'duplicate student delivery authority.',
+        )
+      }
+      seen.add(delivery.assignmentId)
+      candidates.push(delivery)
+    }
+
+    if (candidates.length === 0) {
+      return Object.freeze([])
+    }
+
+    const descriptors = candidates.map(
+      (delivery) => Object.freeze({
+        delivery,
+        deliveryRef: collections.deliveries.doc(
+          documentId(delivery.assignmentId),
+        ),
+        preparedRef: collections.prepared.doc(
+          documentId(delivery.assignmentId),
+        ),
+        lifecycleRef: collections.lifecycle.doc(
+          documentId(delivery.assignmentId),
+        ),
+        packageRef: collections.packages.doc(
+          documentId(delivery.packageId),
+        ),
+      }),
+    )
+    const snapshotsByPath =
+      await getAllSnapshotsByPath(
+        descriptors.flatMap((descriptor) => [
+          descriptor.deliveryRef,
+          descriptor.preparedRef,
+          descriptor.lifecycleRef,
+          descriptor.packageRef,
+        ]),
+        'student delivery batch read incomplete.',
+      )
+    const snapshotFor = (ref) =>
+      snapshotsByPath.get(ref.path)
+
+    const contexts = []
+    for (const descriptor of descriptors) {
+      const deliverySnap = snapshotFor(
+        descriptor.deliveryRef,
+      )
+      if (!deliverySnap?.exists) {
+        continue
+      }
+      const delivery = restoreDelivery(
+        deliverySnap.data(),
+      )
+      if (
+        delivery.assignmentId !==
+          descriptor.delivery.assignmentId ||
+        delivery.studentId !== id
+      ) {
+        throw new Error(
+          'student delivery batch authority mismatch.',
+        )
+      }
+      if (delivery.revokedAt !== null) {
+        continue
+      }
+      if (
+        delivery.packageId !==
+        descriptor.delivery.packageId
+      ) {
+        throw new Error(
+          'student delivery package authority mismatch.',
+        )
+      }
+
+      const preparedSnap = snapshotFor(
+        descriptor.preparedRef,
+      )
+      const prepared = preparedSnap?.exists
+        ? restorePrepared(preparedSnap.data())
+        : null
+      const lifecycleSnap = snapshotFor(
+        descriptor.lifecycleRef,
+      )
+      let lifecycle = null
+      if (lifecycleSnap?.exists) {
+        if (prepared === null) {
+          throw new Error(
+            'lifecycle prepared assignment missing.',
+          )
+        }
+        lifecycle =
+          restoreAssignmentLifecycleRecordV1(
+            lifecycleSnap.data(),
+            prepared.assignment,
+          )
+      }
+      const packageSnap = snapshotFor(
+        descriptor.packageRef,
+      )
+      const pkg = packageSnap?.exists
+        ? restoreSecureDeliveryPackage(
+            packageSnap.data(),
+          )
+        : null
+
+      contexts.push(Object.freeze({
+        delivery,
+        prepared,
+        lifecycle,
+        package: pkg,
+      }))
+    }
+
+    return Object.freeze(contexts)
+  }
+
+  async function listActivePieceContextsForStudent(
+    studentId,
+  ) {
+    const id = normalizeRequiredId(
+      studentId,
+      'studentId',
+    )
+    let query = collections.pieces
+      .where('studentId', '==', id)
+    if (indexedStudentPieceReads) {
+      query = query.where('studentListEligible', '==', true)
+    }
+    const querySnap = await query.get()
+    const candidates = []
+    const seen = new Set()
+
+    for (const item of querySnap.docs) {
+      const piece = restorePieceAssignment(
+        item.data(),
+      )
+      if (piece.studentId !== id) {
+        throw new Error(
+          'Piece student scope conflict.',
+        )
+      }
+      if (seen.has(piece.pieceAssignmentId)) {
+        throw new Error(
+          'duplicate student Piece authority.',
+        )
+      }
+      seen.add(piece.pieceAssignmentId)
+      candidates.push(piece)
+    }
+
+    if (candidates.length === 0) {
+      return Object.freeze([])
+    }
+
+    const descriptors = candidates.map(
+      (piece) => Object.freeze({
+        piece,
+        pieceRef: collections.pieces.doc(
+          documentId(
+            piece.pieceAssignmentId,
+          ),
+        ),
+        lifecycleRef:
+          collections.pieceLifecycle.doc(
+            documentId(
+              piece.pieceAssignmentId,
+            ),
+          ),
+      }),
+    )
+    const snapshotsByPath =
+      await getAllSnapshotsByPath(
+        descriptors.flatMap((descriptor) => [
+          descriptor.pieceRef,
+          descriptor.lifecycleRef,
+        ]),
+        'student Piece batch read incomplete.',
+      )
+    const snapshotFor = (ref) =>
+      snapshotsByPath.get(ref.path)
+
+    const contexts = []
+    for (const descriptor of descriptors) {
+      const pieceSnap = snapshotFor(
+        descriptor.pieceRef,
+      )
+      if (!pieceSnap?.exists) {
+        continue
+      }
+      const piece = restorePieceAssignment(
+        pieceSnap.data(),
+      )
+      if (
+        piece.studentId !== id ||
+        piece.pieceAssignmentId !==
+          descriptor.piece.pieceAssignmentId ||
+        !same(piece, descriptor.piece)
+      ) {
+        throw new Error(
+          'student Piece batch authority mismatch.',
+        )
+      }
+
+      if (
+        indexedStudentPieceReads &&
+        pieceSnap.data().studentListEligible !== true
+      ) {
+        continue
+      }
+
+      const lifecycleSnap = snapshotFor(
+        descriptor.lifecycleRef,
+      )
+      const lifecycle = lifecycleSnap?.exists
+        ? restorePieceLifecycle(
+            lifecycleSnap.data(),
+            piece,
+          )
+        : null
+      if (
+        lifecycle !== null &&
+        lifecycle.revokedAt !== null
+      ) {
+        continue
+      }
+
+      contexts.push(Object.freeze({
+        piece,
+        lifecycle,
+      }))
+    }
+
+    return Object.freeze(contexts)
+  }
+
   async function putRosterEntriesForProvisioning(
     entries,
   ) {
@@ -1418,6 +2014,9 @@ export function createFirestoreSecureDeliveryStore({
         ),
       )
     },
+
+    listActiveAssignmentContextsForStudent,
+    listActivePieceContextsForStudent,
 
     listPoolPublicationsForStudent,
 

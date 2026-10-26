@@ -362,6 +362,100 @@ test('delivery transaction is atomic and exact active replay is idempotent', { s
   assert.deepEqual(await store.getDelivery(deliveryA.assignmentId), deliveryA)
 })
 
+test('SES-193 batched student authority read preserves ACTIVE, COMPLETED, REPERTOIRE and revoke isolation', { skip: !EMULATOR_AVAILABLE }, async () => {
+  const store = createFirestoreSecureDeliveryStore({ firestore: db })
+  const row = preparedRow('ses193-batch')
+  await store.commitPreparedBatch([row])
+  const delivery = createDeliveryRecord({
+    assignmentId: row.prepared.assignment.assignmentId,
+    packageId: row.prepared.packageId,
+    teacherId: row.prepared.teacherId,
+    studentId: row.prepared.assignment.studentId,
+    deliveredAt: '2026-10-07T07:30:00Z',
+  })
+  await store.commitDeliveryBatch([delivery])
+
+  const active = createInitialAssignmentLifecycleRecord(
+    row.prepared.assignment,
+  )
+  const activeContexts =
+    await store.listActiveAssignmentContextsForStudent(
+      row.prepared.assignment.studentId,
+    )
+  assert.equal(activeContexts.length, 1)
+  assert.equal(activeContexts[0].lifecycle, null)
+  assert.equal(
+    activeContexts[0].prepared.assignment.state,
+    'ACTIVE',
+  )
+
+  const completed = transitionAssignmentLifecycleRecord(
+    active,
+    'COMPLETED',
+    '2026-10-07T07:31:00Z',
+  )
+  await store.commitLifecycleMutation({
+    teacherId: row.prepared.teacherId,
+    assignment: row.prepared.assignment,
+    currentLifecycle: active,
+    nextLifecycle: completed,
+    deliveryBefore: delivery,
+    deliveryAfter: delivery,
+    historyEventId: 'ses193-completed',
+  })
+  assert.equal(
+    (await store.listActiveAssignmentContextsForStudent(
+      row.prepared.assignment.studentId,
+    ))[0].lifecycle.state,
+    'COMPLETED',
+  )
+
+  const repertoire = transitionAssignmentLifecycleRecord(
+    completed,
+    'REPERTOIRE',
+    '2026-10-07T07:32:00Z',
+  )
+  await store.commitLifecycleMutation({
+    teacherId: row.prepared.teacherId,
+    assignment: row.prepared.assignment,
+    currentLifecycle: completed,
+    nextLifecycle: repertoire,
+    deliveryBefore: delivery,
+    deliveryAfter: delivery,
+    historyEventId: 'ses193-repertoire',
+  })
+  assert.equal(
+    (await store.listActiveAssignmentContextsForStudent(
+      row.prepared.assignment.studentId,
+    ))[0].lifecycle.state,
+    'REPERTOIRE',
+  )
+
+  const revokedLifecycle = revokeAssignmentLifecycleRecord(
+    repertoire,
+    '2026-10-07T07:33:00Z',
+  )
+  const revokedDelivery = revokeDeliveryRecord(
+    delivery,
+    '2026-10-07T07:33:00Z',
+  )
+  await store.commitLifecycleMutation({
+    teacherId: row.prepared.teacherId,
+    assignment: row.prepared.assignment,
+    currentLifecycle: repertoire,
+    nextLifecycle: revokedLifecycle,
+    deliveryBefore: delivery,
+    deliveryAfter: revokedDelivery,
+    historyEventId: 'ses193-revoked',
+  })
+  assert.deepEqual(
+    await store.listActiveAssignmentContextsForStudent(
+      row.prepared.assignment.studentId,
+    ),
+    Object.freeze([]),
+  )
+})
+
 test('one missing prepared delivery row rejects whole batch without silent partial success', { skip: !EMULATOR_AVAILABLE }, async () => {
   const store = createFirestoreSecureDeliveryStore({ firestore: db })
   const valid = preparedRow('delivery-atomic-valid')
@@ -923,6 +1017,17 @@ test('Firestore round-trips immutable Piece authority and lifecycle in server-ow
   assert.deepEqual(
     await store.getPieceLifecycle(piece.pieceAssignmentId),
     completed,
+  )
+  assert.deepEqual(
+    await store.listActivePieceContextsForStudent(
+      piece.studentId,
+    ),
+    Object.freeze([
+      Object.freeze({
+        piece,
+        lifecycle: completed,
+      }),
+    ]),
   )
 
   const conflict = createPieceAssignment({

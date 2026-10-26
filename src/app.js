@@ -1,3 +1,4 @@
+import { bindTeacherToolsNavigation, resetTeacherResultsPresentation } from './teacherToolsNavigation.js'
 // SesliTab — Main application UI logic.
 //
 // Supports three input modes:
@@ -45,6 +46,11 @@ import {
   resolveStageHPlaybackRoute,
 } from './services/stageHReviewPlayback.js'
 import { normalizeTabInput } from '../tabParser.js'
+import {
+  beginScorePlaybackHighlight,
+  endScorePlaybackHighlight,
+  syncScorePlaybackNoteHighlight,
+} from './scoreViewUi.js'
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -73,6 +79,7 @@ let selectedMusicXmlFile = null
 let qualityGateActive = false
 let stageHPlaybackRoute = null
 let suppressResultScroll = false
+let activeRhythmHighlightToken = null
 
 const SAMPLE_TAB = `e|---0---1---3---|
 B|---1-----------|
@@ -84,6 +91,7 @@ E|---------------|`
 // ── Init ──────────────────────────────────────────────────────
 
 function init() {
+  bindTeacherToolsNavigation(document)
   // Preload and cache speech synthesis voices at startup so the Turkish
   // voice is ready immediately when the user presses the voice button.
   if ('speechSynthesis' in window) {
@@ -574,7 +582,13 @@ function switchResultTab(tabName) {
   $('tab-rhythmic').hidden = tabName !== 'rhythmic'
   $('tab-html').hidden = tabName !== 'html'
   $('tab-notes').hidden = tabName !== 'notes'
-  $('tab-xml').hidden = tabName !== 'xml'
+  const assignmentPanel = $('tab-assignment')
+  if (!document.getElementById('teacher-tools-navigation')) {
+    if (assignmentPanel) assignmentPanel.hidden = tabName !== 'assignment'
+    $('tab-xml').hidden = tabName !== 'xml'
+  } else {
+    $('tab-xml').hidden = false
+  }
 }
 
 // ── Note cards ──────────────────────────────────────────────
@@ -651,7 +665,7 @@ function resetApp() {
   $('musicxml-open-btn').disabled = true
   $('musicxml-progress').hidden = true
   $('tab-textarea').value = ''
-  $('results-section').hidden = true
+  resetTeacherResultsPresentation(document)
   $('voice-section').hidden = true
   $('rhythm-section').hidden = true
 
@@ -808,12 +822,20 @@ async function toggleRhythm() {
 
   const tempo = parseFloat($('tempo-slider').value)
   const speed = bpmToSpeed(tempo)
+  const playbackHighlightToken = beginScorePlaybackHighlight(document, parsedNotes)
+  activeRhythmHighlightToken = playbackHighlightToken
 
   await playRhythm(parsedNotes, speed, (note, i) => {
     document.querySelectorAll('.note-card.playing').forEach((c) => c.classList.remove('playing'))
     const card = $(`note-${i}`)
     if (card) card.classList.add('playing')
+    if (playbackHighlightToken) {
+      void syncScorePlaybackNoteHighlight(document, i, playbackHighlightToken)
+    }
   })
+
+  if (playbackHighlightToken) await endScorePlaybackHighlight(document, playbackHighlightToken)
+  if (activeRhythmHighlightToken === playbackHighlightToken) activeRhythmHighlightToken = null
 
   isPlaying = false
   resetRhythmButtons()
@@ -827,6 +849,9 @@ async function toggleRhythm() {
 
 function stopRhythmPlayback() {
   stopRhythm()
+  const playbackHighlightToken = activeRhythmHighlightToken
+  activeRhythmHighlightToken = null
+  if (playbackHighlightToken) void endScorePlaybackHighlight(document, playbackHighlightToken)
   isPlaying = false
   resetRhythmButtons()
   if (stageHPlaybackRoute?.mode === STAGE_H_PLAYBACK_MODE.REVIEW_PREVIEW) {
